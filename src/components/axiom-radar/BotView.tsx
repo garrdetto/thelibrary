@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, Bot, Check, ChevronDown, LoaderCircle, RotateCcw, Undo2 } from 'lucide-react'
-import { botDialGroups, botDials, botPresets, botQuickDials, defaultBotValues, normalizeBotValues, type BotDial, type BotDialValue, type BotValues } from '@/lib/axiom-bot'
+import { ArrowRight, Bot, Check, LoaderCircle, RotateCcw, Undo2 } from 'lucide-react'
+import { botDialGroups, botDials, botPresets, defaultBotValues, normalizeBotValues, type BotDial, type BotDialValue, type BotValues } from '@/lib/axiom-bot'
 import { BotControls, botStatus, bracket, feeLine, headline, signedHeadline, signedPercent, toneOf } from './BotControls'
+import { BotLearningCard } from './BotLearning'
 import { relativeSeconds } from './format'
 import { NumberField, Toggle } from './SettingsFields'
 import { useBot } from './useBot'
@@ -10,7 +11,9 @@ import './axiom-bot.css'
 
 const pauseKey = 'bot.enabled'
 const shownDials = botDials.filter(dial => dial.key !== pauseKey)
-const quickDials = botQuickDials.map(key => shownDials.find(dial => dial.key === key)).filter((dial): dial is BotDial => Boolean(dial))
+const shownGroups = botDialGroups.map(group => ({ ...group, dials: shownDials.filter(dial => dial.key.startsWith(`${group.id}.`)) })).filter(group => group.dials.length > 0)
+const rideOnly = new Set(['sell.ride_trail_pct'])
+const autoFeeOnly = new Set(['costs.auto_fee_level', 'costs.max_fee_sol'])
 
 function DialField({ dial, prefix, value, onChange }: { dial: BotDial; prefix: string; value: BotDialValue; onChange: (value: BotDialValue) => void }) {
   const id = `${prefix}-${dial.key.replace('.', '-')}`
@@ -93,33 +96,30 @@ export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () =
     {view && <form className={`radar-settings radar-bot-settings ${canEdit ? '' : 'radar-readonly'}`} noValidate inert={!canEdit} onSubmit={event => { event.preventDefault(); if (canEdit) void save() }}>
       {!canEdit && <p className="radar-note radar-readonly-note" role="note">These are the dials the bot is using. Only the administrator can change them.</p>}
       <section className="radar-card">
-        <div className="panel-heading"><span className="number-tag">01</span><h2>Quick setup</h2><span className="panel-caption">START FROM A STYLE, THEN ADJUST</span></div>
+        <div className="panel-heading"><span className="number-tag">01</span><h2>Trading style</h2><span className="panel-caption">A STARTING POINT FOR THE DIALS BELOW</span></div>
         <div className="radar-bot-presets" role="radiogroup" aria-label="Trading style">
           {botPresets.map(option => <button key={option.id} type="button" role="radio" aria-checked={preset === option.id} className={preset === option.id ? 'active' : ''} onClick={() => { setForm(current => ({ ...current, ...option.values })); setDirty(true) }}>
             <strong>{option.label}</strong><small>{option.summary}</small>
           </button>)}
         </div>
         <p className="radar-note">{preset === 'custom' ? 'Your dials do not match a style exactly. That is fine: a style only fills in a starting point.' : `Using the ${botPresets.find(option => option.id === preset)?.label} style.`}</p>
-        <div className="radar-field-grid radar-bot-dials">
-          {quickDials.map(dial => <DialField key={dial.key} dial={dial} prefix="quick" value={form[dial.key] ?? dial.default} onChange={value => change(dial.key, value)}/>)}
-        </div>
       </section>
 
-      {botDialGroups.map((group, index) => {
-        const dials = shownDials.filter(dial => dial.key.startsWith(`${group.id}.`))
-        const edits = changedIn(dials)
-        return <details key={group.id} className="radar-card radar-bot-group">
-          <summary>
+      {shownGroups.map((group, index) => {
+        const edits = changedIn(group.dials)
+        const dials = group.dials.filter(dial => (!rideOnly.has(dial.key) || form['sell.ride_momentum'] === true) && (!autoFeeOnly.has(dial.key) || form['costs.fee_mode'] === 'auto'))
+        return <section key={group.id} className="radar-card radar-bot-group" aria-labelledby={`bot-group-${group.id}`}>
+          <div className="panel-heading">
             <span className="number-tag">{String(index + 2).padStart(2, '0')}</span>
-            <h2>{group.label}</h2>
+            <h2 id={`bot-group-${group.id}`}>{group.label}</h2>
             <span className="radar-bot-caption">{group.caption}</span>
-            <span className={`radar-bot-count ${edits ? 'changed' : ''}`}>{edits ? `${edits} changed` : `${dials.length} dial${dials.length === 1 ? '' : 's'}`}</span>
-            <ChevronDown size={15} aria-hidden="true"/>
-          </summary>
+            {edits > 0 && <span className="radar-bot-count changed">{edits} changed</span>}
+          </div>
           <div className="radar-field-grid radar-bot-dials">
             {dials.map(dial => <DialField key={dial.key} dial={dial} prefix="bot" value={form[dial.key] ?? dial.default} onChange={value => change(dial.key, value)}/>)}
           </div>
-        </details>
+          {group.id === 'learn' && <BotLearningCard learning={report?.learning ?? null}/>}
+        </section>
       })}
 
       <div className="radar-settings-actions radar-bot-savebar">

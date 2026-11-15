@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from axiom_paper import cli, dashboard, fees, money
+from axiom_paper import rules
 from axiom_paper import settings as dials
 from axiom_paper.engine import Engine
 from axiom_paper.ledger import Ledger
@@ -66,7 +67,7 @@ class MoneyTests(unittest.TestCase):
 
 class FeeTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.s = dials.normalize({**dials.defaults(), "costs.fee_mode": "manual", "costs.priority_fee_sol": 0.001, "costs.bribe_sol": 0.002})
+        self.s = rules.normalize({**rules.defaults(), "costs.fee_mode": "manual", "costs.priority_fee_sol": 0.001, "costs.bribe_sol": 0.002})
 
     def test_your_own_fees_are_used_as_set(self) -> None:
         quote = fees.quote(self.s, LEVELS)
@@ -148,6 +149,7 @@ class SolAccountTests(unittest.TestCase):
         bot.quotes[SOL_MINT] = Quote(200.0, None)
         bot.tick(seconds=31)
         bot.pull(token())
+        bot.pull(token(), seconds=16)
         self.assertEqual(bot.engine.positions, [])
         trade = bot.engine.trade_rows()[0]
         self.assertEqual(trade["reason"], "Stop loss")
@@ -211,7 +213,7 @@ class ConversionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             db = Path(folder) / "paper.db"
             settings = Path(folder) / "paper-bot.toml"
-            settings.write_text("[account]\nstarting_cash = 1000\n\n[risk]\nstrength = 7\n", encoding="utf-8")
+            settings.write_text("[account]\nstarting_cash = 1000\n\n[risk]\nmax_open_positions = 7\n", encoding="utf-8")
             legacy = sqlite3.connect(db)
             legacy.executescript(LEGACY_SCHEMA)
             legacy.commit()
@@ -221,7 +223,7 @@ class ConversionTests(unittest.TestCase):
                 self.assertFalse(ledger.in_sol)
                 clock = Clock()
                 engine = Engine(ledger, FakeSite(clock), settings, price_source=lambda wanted: {SOL_MINT: Quote(100.0, None)} if SOL_MINT in wanted else {}, fee_source=lambda: None, clock=clock)
-                self.assertEqual(engine.values["risk.strength"], 7)
+                self.assertEqual(engine.values["buy.max_coins"], 7)
                 clock.t += 5
                 engine.step()
                 self.assertTrue(ledger.in_sol)

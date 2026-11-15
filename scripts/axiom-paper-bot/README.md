@@ -28,7 +28,7 @@ Every action is also a command, and each works whether or not the bot is running
 | --- | --- |
 | `run.py status` | The account, open positions and recent trades |
 | `run.py settings` | Every dial and its value |
-| `run.py set <dial> <value> ...` | Change dials, for example `set risk.strength 7 exit.stop_loss_pct 30`. A running bot picks the change up within seconds |
+| `run.py set <dial> <value> ...` | Change dials, for example `set buy.max_coins 3 sell.stop_loss_pct 25`. A running bot picks the change up within seconds |
 | `run.py pause` / `run.py resume` | Stop or allow new buys. Open positions are still managed while paused |
 | `run.py flatten` | Sell every coin the bot holds |
 | `run.py reset [--sol 10] [--yes]` | Wipe every pretend trade and start the account again, with that many SOL when given |
@@ -63,7 +63,7 @@ It opens `http://127.0.0.1:8793/` in your browser. Type a request such as "be mo
 
 - **Runs straight away:** reading the account, settings and logs, changing dials, pausing and resuming.
 - **Waits for your click:** selling everything, resetting the account, starting, stopping or restarting a PM2 process, and any command that is not one of the bot's own (those run in PowerShell).
-- **Typing commands yourself:** `bot status`, `bot set risk.strength 7`, `pm2 status`, or `!` followed by any command. These do not need Claude.
+- **Typing commands yourself:** `bot status`, `bot set buy.max_coins 3`, `pm2 status`, or `!` followed by any command. These do not need Claude.
 - **Ask me before every command** makes every command wait.
 
 Claude is reached through the Claude Code command line (`claude`) already on the PC, with every tool turned off: it only writes text, and the console checks and runs the commands. It needs a one-time sign-in: run `claude`, type `/login`, and finish in the browser. Set `AXIOM_CONSOLE_MODEL` to change the model (default `haiku`).
@@ -79,40 +79,37 @@ Every dial lives in two places, and the most recent change wins:
 
 The Trading bot tab also has the terminal's actions as buttons: pause or resume buying, close every position, reset the account. The Paper trades tab shows the bot's account, positions and trades.
 
-| Group | What it controls |
+There are about twenty dials, each with a plain description on the Radar page and in the settings file:
+
+| Group | Dials |
 | --- | --- |
-| Bot | Buying on or off, how often to pull, the fast feed, live price checks |
+| Buying | Score to buy on (Score, DexScreener, Quality or Blend), buy when the score reaches, how picky (strict, normal, loose), SOL per buy, most coins held at once, stop buying for the day after losing |
+| Selling | Profit target, stay in while momentum is strong (on or off), while staying in sell this far off the high, stop loss, longest hold |
+| Learning | Learn from trades and watched coins, learn the best moment to buy |
+| Fees | Network fee (auto with a speed and max fee, or your own priority fee and bribe) |
 | Account | Starting balance in SOL for the next reset |
-| Pick coins by | Score (the Radar's live runner score) or Quality (the holder checklist score). Each mode has its own buy level, a trend rule (buy only while the number is climbing, not falling, or either way, read from the bot's own pulls over the last minute), a sell level and a sell when the number falls a set number of points from its best since buying. Quality mode can also sell when a checklist item that passed at the buy now fails. A position keeps the mode it was bought in |
-| When to buy | Radar signal, price gains, viewers, liquidity, market cap, volume, buy share, age, safety, failed quality checks, warnings, the Radar's buy advice, rebuys only above the old high, confirmation pulls, cooldown |
-| Before buying | The last look at the chart with live data just before each buy: price fell since the Radar reading, dumped from its 10-minute high, a drop in the last 30 seconds, holder figures too old, holders falling, and live 5-minute volume, buy share and liquidity still meeting the When to buy limits |
-| Learned predictions | Runner, could-explode and big-winner chances, and crash timing from the Radar's learner |
-| Risk and bet size | A fixed buy amount in SOL or a share of the account, the most SOL in one coin, risk strength, caps, open coins, exposure, daily loss limit, drawdown stop, loss-streak break, buys per hour |
-| When to sell | Stop loss, profit target and share sold, entry protection, trailing stop, time limits, viewers, warnings, the Radar's exit advice, fading momentum, coins that leave the Radar |
-| Costs and realism | Trading fee, network fees (auto fee with a max fee, or your own priority fee and bribe), price impact, extra slippage, extra slippage on stop sells |
 
-**Buy amounts.** By default every buy is a fixed amount (**Buy amount**, 0.25 SOL), and **Most SOL in one coin** (0.5 SOL) caps what goes into any one coin across all its buys in 24 hours. Switch **How each buy is sized** to a share of the account to size buys by percentage instead.
+Everything else the bot checks is set for you by **How picky**. `axiom_paper/rules.py` turns the dials into the full rule set (`rules.json`: Radar signal, safety rating, failed checks, liquidity, volume, buy share, age, the chart check before each buy, the Radar's advice, cooldowns, slippage). Normal buys any coin that reaches the score with the usual safety checks; Strict also needs the Radar's own buy call, clean holders and more liquidity; Loose lets thinner coins through. Settings files and site settings saved before this change are read into the new dials (`renamed` in `dials.json`; the buy level comes from the old mode's buy level).
 
-**Risk strength** (1 to 10) scales how much of the account can be in coins at once, and every buy when buys are a share of the account. 5 uses the numbers as written, 10 doubles them, 1 uses a fifth. The largest-single-buy cap and the liquidity cap still apply at any strength.
+## Selling at the target
 
-## Buying at the score
+The bot sells the whole position at the **Profit target**. With **Stay in while momentum is strong** on, it reads the chart when the target is reached: its own price change over the last 30 seconds, the Radar's 30-second and 1-minute change, the share of buys, and the DexScreener score's trend. When most of those point up it keeps holding (the log says "staying in" and the Paper trades tab tags the coin "riding momentum"), and it sells as soon as momentum fades on two readings in a row, the price falls back to the target, or it drops **While staying in, sell this far off the high**. A ride is never cut by the longest-hold limit.
 
-On the defaults a coin is bought when it reaches the buy score and passes the When to buy limits. **Radar signal required** defaults to any tracked coin: the Radar's own buy call adds its own 1- and 5-minute gain, viewer and zero-failed-check rules on top, so coins over the buy score were skipped as "not a recommended buy". **Crash timing** defaults to off, since a guessed crash time held back coins that were still near their high with holders growing.
+## Stale prices
 
-Then, just before buying, the bot looks at the chart again (**Before buying**, on by default). It pulls a live DexScreener reading and skips the coin if it cannot get one, if the price fell more than 10% since the Radar reading, if it is more than 25% under its high from the last 10 minutes (the Radar's chart points) or dropped 8% in 30 seconds, if the holder figures (top 10, dev, bundlers, holder count) are more than 120 seconds old, if holders fell over the last minute, or if the live 5-minute volume, buy share or liquidity no longer meets the When to buy limits. Each skip is written to the activity log once per coin and reason, and shows in the coins closest to a buy as "chart check: ...".
+The Radar and DexScreener sometimes return a price from a minute earlier. On 2026-11-15 the bot bought MANA right after a 68% minute, DexScreener then read the price from before the run, and the stop loss sold at -46% five seconds after the buy. `axiom_paper/pricegate.py` now holds back any move of more than 15% from the price the bot is using until every reading for 15 seconds agrees, and then takes the mildest of those readings. A reading back near the old price cancels the move, unless its source has shown the same price for 45 seconds (a quote that stopped updating). Radar warnings, such as liquidity being pulled, still sell at once.
 
-## The Radar's advice
+## Learning
 
-Each coin carries `advice` from the tracker's own study of which warning signs came before falls (see `AXIOM_RADAR.md`, Exit and rebuy advice). The bot reads it and never hardcodes which signs matter:
+`axiom_paper/learner.py` keeps a notebook in the same database (`learn_samples`), kept through account resets:
 
-- `exit: 'exit'` sells the position (**Sell when the Radar says exit**).
-- `exit: 'tighten'`, or a held coin leaving the Radar, puts the position on the tighter **Trailing stop while tightened** at once (or sells it, or does nothing, by the dials). The bot never adds to a position.
-- `rebuy: 'never'` blocks a buy. With **Radar buy advice** set to follow, `rebuy: 'wait'`, `exit` and `tighten` block it too; the default only follows `never`, because those softer signs held back coins that were over the buy score and still running. This applies to first buys as well as rebuys.
-- After the bot sells a coin it buys it again only above its high at the time of that sale (**Rebuy only above the old high**).
+- Every coin within 20 points of the buy level is sampled every 2 minutes (at most 12 times a day per coin) and followed until it would have hit the profit target or the stop loss on two readings in a row, or the longest hold runs out, or it leaves the Radar for 2 minutes.
+- Every closed trade is added with the bands it was bought in and counts three times.
+- Each sample records its band of score, coin age, buy share, liquidity and viewers, and (timing) the last minute's move, the last 5 minutes' move, how far under its 10-minute high it was, and the time of day.
+- From the last three days of results, a band seen at least 20 times that averages worse than -2% after costs and wins under 40% blocks a buy. A timing band makes the bot wait instead, and names the band that pays best, so a coin right after a spike is bought on the dip if dips are what pay.
+- After 8 or more recent trades, a win rate under 40% raises the buy level 5 points (10 under 25%); over 60% lowers it 3. Each losing trade writes a lesson to the activity log.
 
-That study found coins often bounce after a price dip and that stops rarely sell where they are set, so the default stop loss and trailing stop are wide (25%), the default bet is small (2% of the account), and stop sells pay extra slippage (5%).
-
-The learned rules use `outlook`, `explode` and `maker` on each coin. When the tracker does not send them, those rules pass or skip the coin according to **When a prediction is not ready**.
+The Trading bot tab shows what it has learned under Learning.
 
 ## The SOL account
 
@@ -147,7 +144,10 @@ The bot stops buying (and keeps managing what it holds) when: buying is paused, 
 
 | File | What it is |
 | --- | --- |
-| `axiom_paper/dials.json` | Every dial: label, range, default. Also read by the site (`src/lib/axiom-bot.ts`) |
+| `axiom_paper/dials.json` | The owner's dials: label, help, range, default. Also read by the site (`src/lib/axiom-bot.ts`) |
+| `axiom_paper/rules.json`, `rules.py` | The full rule set the strategy reads, filled in from the dials and the picky level |
+| `axiom_paper/pricegate.py` | Holds back sudden price moves until they last |
+| `axiom_paper/learner.py` | The notebook: watched coins, trades, lessons and the buy-level adjustment |
 | `axiom_paper/strategy.py` | The buy rules, bet sizing and sell rules |
 | `axiom_paper/broker.py` | Simulated fills: fees, price impact, slippage |
 | `axiom_paper/fees.py` | Network fees per trade: auto fee from live Jito tip and Solana priority fee levels, or your own |
@@ -158,10 +158,10 @@ The bot stops buying (and keeps managing what it holds) when: buying is paused, 
 | `axiom_paper/dashboard.py`, `cli.py` | The live view and the commands |
 | `axiom_paper/console.py`, `console.html` | The prompt console: local server, Claude translator, command checks, and the page |
 | `ecosystem.config.cjs` | PM2 processes for the bot and the console |
-| `tests/test_bot.py`, `tests/test_console.py`, `tests/test_sol.py` | `python -m unittest discover -s scripts/axiom-paper-bot/tests` |
+| `tests/test_bot.py`, `tests/test_simple.py`, `tests/test_chart_check.py`, `tests/test_console.py`, `tests/test_sol.py` | `python -m unittest discover -s scripts/axiom-paper-bot/tests` |
 
 `data/paper-bot.toml`, `data/axiom-paper.db*`, `data/axiom-paper.lock`, `data/paper-bot.inbox.json` and `data/console-key.json` are git-ignored. Delete the database to start with no history, or use `reset`.
 
 ## Site requests
 
-By default the bot pulls every 10 seconds (about 8,600 requests a day) and leaves the tracker on its 20-second idle cadence. **Fast feed** makes the tracker send every 3 seconds while the bot runs, which is fresher but adds about 29,000 tracker requests a day; lower **Pull the Radar every** to match if you turn it on.
+The bot pulls every 5 seconds (about 17,000 requests a day) with the fast feed on, so the tracker sends every 3 seconds while the bot runs (about 29,000 tracker requests a day). Both are set in `rules.py`.

@@ -6,16 +6,11 @@ import difflib
 import json
 import math
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-
-_SCHEMA = json.loads(Path(__file__).with_name("dials.json").read_text(encoding="utf-8"))
-GROUPS: list[dict[str, str]] = _SCHEMA["groups"]
-DIALS: list[dict[str, Any]] = _SCHEMA["dials"]
-DIAL_BY_KEY: dict[str, dict[str, Any]] = {dial["key"]: dial for dial in DIALS}
-RENAMED: dict[str, str] = _SCHEMA.get("renamed", {})
 
 Values = dict[str, Any]
 
@@ -24,32 +19,67 @@ FILE_HEADER = (
     "# Edit and save: the running bot picks changes up within a few seconds.\n"
     "# The same dials are on the Radar page (Trading bot tab). The most recent change wins.\n"
 )
+TRUE_WORDS = {"true", "on", "yes", "1"}
+FALSE_WORDS = {"false", "off", "no", "0"}
+_TEMPLATE = re.compile(r"\{([^}]+)\}")
+
+
+class Schema:
+    """A list of dials read from a JSON file: groups, dials with ranges and defaults, and renamed keys."""
+
+    def __init__(self, path: Path):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.groups: list[dict[str, str]] = data["groups"]
+        self.dials: list[dict[str, Any]] = data["dials"]
+        self.by_key: dict[str, dict[str, Any]] = {dial["key"]: dial for dial in self.dials}
+        self.renamed: dict[str, str] = data.get("renamed", {})
+
+    def defaults(self) -> Values:
+        return {dial["key"]: dial["default"] for dial in self.dials}
+
+    def clean(self, key: str, value: Any) -> Any:
+        """One dial's value, clamped to its range, or its default when the value is missing or the wrong kind."""
+        dial = self.by_key[key]
+        kind = dial["type"]
+        if kind == "toggle":
+            return value if isinstance(value, bool) else dial["default"]
+        if kind == "choice":
+            return value if any(value == choice[0] for choice in dial["choices"]) else dial["default"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return dial["default"]
+        number = min(dial["max"], max(dial["min"], value))
+        return int(number) if float(number).is_integer() else float(number)
+
+    def normalize(self, raw: Mapping[str, Any] | None) -> Values:
+        """Every dial, cleaned. A renamed dial takes the old key's value when only that is present.
+        An old key may name another value in braces, as in mode.{mode.pick_by}_buy_at."""
+        source = dict(raw) if isinstance(raw, Mapping) else {}
+        for key, old in self.renamed.items():
+            if key in source:
+                continue
+            old_key = _TEMPLATE.sub(lambda match: str(source.get(match.group(1), "score")), old)
+            if old_key in source:
+                source[key] = source[old_key]
+        return {dial["key"]: self.clean(dial["key"], source.get(dial["key"])) for dial in self.dials}
+
+
+DIAL_SCHEMA = Schema(Path(__file__).with_name("dials.json"))
+GROUPS = DIAL_SCHEMA.groups
+DIALS = DIAL_SCHEMA.dials
+DIAL_BY_KEY = DIAL_SCHEMA.by_key
+RENAMED = DIAL_SCHEMA.renamed
 
 
 def defaults() -> Values:
-    return {dial["key"]: dial["default"] for dial in DIALS}
+    return DIAL_SCHEMA.defaults()
 
 
 def clean(key: str, value: Any) -> Any:
-    """One dial's value, clamped to its range, or its default when the value is missing or the wrong kind."""
-    dial = DIAL_BY_KEY[key]
-    kind = dial["type"]
-    if kind == "toggle":
-        return value if isinstance(value, bool) else dial["default"]
-    if kind == "choice":
-        return value if any(value == choice[0] for choice in dial["choices"]) else dial["default"]
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-        return dial["default"]
-    number = min(dial["max"], max(dial["min"], value))
-    return int(number) if float(number).is_integer() else float(number)
-
-
-TRUE_WORDS = {"true", "on", "yes", "1"}
-FALSE_WORDS = {"false", "off", "no", "0"}
+    return DIAL_SCHEMA.clean(key, value)
 
 
 def parse_value(key: str, text: str) -> Any:
-    """A dial's value from what someone typed (8, 30%, on, safe), cleaned and clamped. Raises ValueError with a plain reason."""
+    """A dial's value from what someone typed (8, 30%, on, strict), cleaned and clamped. Raises ValueError with a plain reason."""
     dial = DIAL_BY_KEY.get(key)
     if dial is None:
         close = difflib.get_close_matches(key, list(DIAL_BY_KEY), n=3, cutoff=0.5)
@@ -63,7 +93,7 @@ def parse_value(key: str, text: str) -> Any:
         raise ValueError(f"{dial['label']} takes on or off.")
     if dial["type"] == "choice":
         for choice, label in dial["choices"]:
-            if word in (choice.casefold(), label.casefold()):
+            if word in (choice.casefold(), label.casefold(), label.split(":")[0].casefold()):
                 return choice
         raise ValueError(f"{dial['label']} takes one of: {', '.join(choice for choice, _ in dial['choices'])}.")
     try:
@@ -76,12 +106,7 @@ def parse_value(key: str, text: str) -> Any:
 
 
 def normalize(raw: Mapping[str, Any] | None) -> Values:
-    """Every dial, cleaned. A dial that was renamed takes the old key's value when only that is present."""
-    source = dict(raw) if isinstance(raw, Mapping) else {}
-    for key, old in RENAMED.items():
-        if key not in source and old in source:
-            source[key] = source[old]
-    return {dial["key"]: clean(dial["key"], source.get(dial["key"])) for dial in DIALS}
+    return DIAL_SCHEMA.normalize(raw)
 
 
 def flatten(nested: Mapping[str, Any]) -> Values:
@@ -105,7 +130,7 @@ def _toml_value(value: Any) -> str:
 def to_toml(values: Mapping[str, Any]) -> str:
     lines = [FILE_HEADER]
     for group in GROUPS:
-        lines.append(f"# {group['label']}: {group['caption'].lower()}.")
+        lines.append(f"# {group['label']}: {group['caption'][:1].lower()}{group['caption'][1:]}.")
         lines.append(f"[{group['id']}]")
         for dial in DIALS:
             prefix, name = dial["key"].split(".", 1)
@@ -127,6 +152,15 @@ def to_toml(values: Mapping[str, Any]) -> str:
 def load_file(path: Path) -> Values:
     with path.open("rb") as handle:
         return normalize(flatten(tomllib.load(handle)))
+
+
+def is_current(path: Path) -> bool:
+    """True when the settings file holds exactly today's dials, so an older layout can be rewritten once."""
+    try:
+        with path.open("rb") as handle:
+            return set(flatten(tomllib.load(handle))) == set(DIAL_BY_KEY)
+    except (OSError, tomllib.TOMLDecodeError):
+        return True
 
 
 def save_file(path: Path, values: Mapping[str, Any]) -> None:

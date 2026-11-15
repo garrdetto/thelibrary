@@ -50,30 +50,30 @@ class Folder(unittest.TestCase):
 
 class DialCommandTests(Folder):
     def test_values_are_read_the_way_people_type_them(self) -> None:
-        self.assertEqual(dials.parse_value("risk.strength", "8"), 8)
-        self.assertEqual(dials.parse_value("exit.stop_loss_pct", "30%"), 30)
-        self.assertEqual(dials.parse_value("exit.stop_loss_pct", "500"), 95)
+        self.assertEqual(dials.parse_value("buy.max_coins", "8"), 8)
+        self.assertEqual(dials.parse_value("sell.stop_loss_pct", "30%"), 30)
+        self.assertEqual(dials.parse_value("sell.stop_loss_pct", "500"), 95)
         self.assertEqual(dials.parse_value("account.starting_sol", "2,500"), 2500)
         self.assertIs(dials.parse_value("bot.enabled", "Off"), False)
-        self.assertEqual(dials.parse_value("entry.safety", "Safe only"), "safe")
-        with self.assertRaisesRegex(ValueError, "Did you mean risk.strength"):
-            dials.parse_value("risk.strenth", "8")
+        self.assertEqual(dials.parse_value("buy.picky", "Strict"), "strict")
+        with self.assertRaisesRegex(ValueError, "Did you mean buy.max_coins"):
+            dials.parse_value("buy.max_coin", "8")
         with self.assertRaisesRegex(ValueError, "takes a number"):
-            dials.parse_value("risk.strength", "banana")
+            dials.parse_value("buy.max_coins", "banana")
         with self.assertRaisesRegex(ValueError, "takes one of"):
-            dials.parse_value("entry.signal", "moon")
+            dials.parse_value("buy.picky", "moon")
 
     def test_set_pause_and_resume_write_the_settings_file(self) -> None:
-        self.assertEqual(cli.set_dials(self.args("set", "risk.strength", "7", "entry.signal", "any")), 0)
+        self.assertEqual(cli.set_dials(self.args("set", "buy.max_coins", "7", "buy.picky", "loose")), 0)
         saved = dials.load_file(self.settings)
-        self.assertEqual((saved["risk.strength"], saved["entry.signal"]), (7, "any"))
+        self.assertEqual((saved["buy.max_coins"], saved["buy.picky"]), (7, "loose"))
         self.assertEqual(cli.main(["pause", "--settings", str(self.settings), "--db", str(self.db)]), 0)
         self.assertIs(dials.load_file(self.settings)["bot.enabled"], False)
         self.assertEqual(cli.main(["resume", "--settings", str(self.settings), "--db", str(self.db)]), 0)
         self.assertIs(dials.load_file(self.settings)["bot.enabled"], True)
-        self.assertEqual(cli.set_dials(self.args("set", "risk.strength")), 2)
+        self.assertEqual(cli.set_dials(self.args("set", "buy.max_coins")), 2)
         self.assertEqual(cli.set_dials(self.args("set", "nope.nothing", "1")), 2)
-        self.assertEqual(dials.load_file(self.settings)["risk.strength"], 7)
+        self.assertEqual(dials.load_file(self.settings)["buy.max_coins"], 7)
 
 
 class InboxTests(Folder):
@@ -119,9 +119,9 @@ class InboxTests(Folder):
         Engine(ledger, None, self.settings)
         remembered = ledger.get("settings_mtime")
         time.sleep(0.05)
-        cli.set_dials(self.args("set", "risk.strength", "9"))
+        cli.set_dials(self.args("set", "buy.max_coins", "9"))
         watcher = Engine(ledger, None, self.settings, observer=True)
-        self.assertEqual(watcher.values["risk.strength"], 9)
+        self.assertEqual(watcher.values["buy.max_coins"], 9)
         self.assertEqual(ledger.get("settings_mtime"), remembered)
         starting = Engine(ledger, None, self.settings)
         self.assertTrue(starting.push_settings)
@@ -132,12 +132,12 @@ class StepTests(Folder):
         return console.build_step(text, self.settings, self.db)
 
     def test_bot_commands_are_checked_and_safe_ones_run_straight_away(self) -> None:
-        for text in ("bot status", "bot settings", "bot pause", "bot resume", "bot logs 50", "bot set risk.strength 8 exit.stop_loss_pct 30"):
+        for text in ("bot status", "bot settings", "bot pause", "bot resume", "bot logs 50", "bot set buy.max_coins 8 sell.stop_loss_pct 30"):
             step = self.step(text)
             self.assertEqual((step.kind, step.approval), ("bot", False), text)
             self.assertEqual(step.argv[1], str(console.RUN_PY))
             self.assertEqual(step.argv[-4:], ["--settings", str(self.settings), "--db", str(self.db)])
-        self.assertEqual(self.step("bot set risk.strength 8").argv[2:5], ["set", "risk.strength", "8"])
+        self.assertEqual(self.step("bot set buy.max_coins 8").argv[2:5], ["set", "buy.max_coins", "8"])
 
     def test_selling_wiping_and_process_changes_wait_for_a_click(self) -> None:
         self.assertTrue(self.step("bot flatten").approval)
@@ -150,8 +150,8 @@ class StepTests(Folder):
             self.assertTrue(step.approval or step.kind == "error", text)
 
     def test_mistakes_are_explained_instead_of_run(self) -> None:
-        self.assertEqual(self.step("bot set risk.strength banana").kind, "error")
-        self.assertIn("Did you mean", self.step("bot set risk.strenth 8").note)
+        self.assertEqual(self.step("bot set buy.max_coins banana").kind, "error")
+        self.assertIn("Did you mean", self.step("bot set buy.max_coin 8").note)
         self.assertEqual(self.step("bot dance").kind, "error")
         self.assertEqual(self.step("bot status; del important.txt").kind, "error")
         self.assertEqual(self.step("bot reset --sol lots").kind, "error")
@@ -163,19 +163,19 @@ class StepTests(Folder):
             self.assertIn(text, step.argv[-1])
 
     def test_a_checked_step_really_runs(self) -> None:
-        result = console.run_step(self.step("bot set risk.strength 6"))
+        result = console.run_step(self.step("bot set buy.max_coins 6"))
         self.assertTrue(result["ok"], result["output"])
-        self.assertIn("Risk strength: 5 to 6", result["output"])
-        self.assertEqual(dials.load_file(self.settings)["risk.strength"], 6)
-        self.assertFalse(console.run_step(self.step("bot set risk.strength banana"))["ok"])
+        self.assertIn("Most coins held at once: 5 to 6", result["output"])
+        self.assertEqual(dials.load_file(self.settings)["buy.max_coins"], 6)
+        self.assertFalse(console.run_step(self.step("bot set buy.max_coins banana"))["ok"])
 
 
 class TranslatorTests(Folder):
     def test_claude_is_asked_with_every_tool_off_and_its_answer_is_read(self) -> None:
-        runner = fake_claude({"is_error": False, "result": "", "structured_output": {"say": "Raising risk strength to 8.", "commands": ["bot set risk.strength 8", "  ", "bot status"]}})
+        runner = fake_claude({"is_error": False, "result": "", "structured_output": {"say": "Raising risk strength to 8.", "commands": ["bot set buy.max_coins 8", "  ", "bot status"]}})
         translator = console.Translator(executable="claude", runner=runner)
         answer = translator.ask("be bolder", console.build_system(dials.defaults()))
-        self.assertEqual(answer, {"say": "Raising risk strength to 8.", "commands": ["bot set risk.strength 8", "bot status"]})
+        self.assertEqual(answer, {"say": "Raising risk strength to 8.", "commands": ["bot set buy.max_coins 8", "bot status"]})
         call = runner.calls[0]
         argv = call["argv"]
         self.assertEqual(argv[argv.index("--tools") + 1], "")
@@ -183,7 +183,7 @@ class TranslatorTests(Folder):
         self.assertEqual(call["input"], "be bolder")
         self.assertTrue(translator.ready)
         system = Path(argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8")
-        self.assertIn("risk.strength | Risk strength.", system)
+        self.assertIn("buy.max_coins | Most coins held at once.", system)
         self.assertIn("bot flatten", system)
 
     def test_an_answer_in_plain_text_is_still_read(self) -> None:
@@ -207,7 +207,7 @@ class TranslatorTests(Folder):
 class ServerTests(Folder):
     def setUp(self) -> None:
         super().setUp()
-        runner = fake_claude({"is_error": False, "result": "", "structured_output": {"say": "Setting risk strength to 4.", "commands": ["bot set risk.strength 4", "bot flatten"]}})
+        runner = fake_claude({"is_error": False, "result": "", "structured_output": {"say": "Setting risk strength to 4.", "commands": ["bot set buy.max_coins 4", "bot flatten"]}})
         self.console = console.Console(self.settings, self.db, console.Translator(executable="claude", runner=runner), key="k" * 32)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), console.handler_for(self.console))
         self.port = self.server.server_address[1]
@@ -244,10 +244,10 @@ class ServerTests(Folder):
         status, plan = self.call("/api/ask", {"prompt": "be a bit more careful and sell everything"})
         self.assertEqual(status, 200)
         self.assertEqual(plan["source"], "claude")
-        self.assertEqual([(step["command"], step["approval"]) for step in plan["steps"]], [("bot set risk.strength 4", False), ("bot flatten", True)])
+        self.assertEqual([(step["command"], step["approval"]) for step in plan["steps"]], [("bot set buy.max_coins 4", False), ("bot flatten", True)])
         status, result = self.call("/api/run", {"id": plan["id"], "index": 0})
         self.assertTrue(result["ok"], result)
-        self.assertEqual(dials.load_file(self.settings)["risk.strength"], 4)
+        self.assertEqual(dials.load_file(self.settings)["buy.max_coins"], 4)
         self.assertEqual(self.call("/api/run", {"id": plan["id"], "index": 9})[0], 400)
         self.assertEqual(self.call("/api/run", {"id": "nope", "index": 0})[0], 400)
 

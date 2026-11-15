@@ -1,0 +1,1365 @@
+{
+ "groups": [
+  {
+   "id": "bot",
+   "label": "Bot",
+   "caption": "How the bot runs"
+  },
+  {
+   "id": "account",
+   "label": "Account",
+   "caption": "Pretend SOL only"
+  },
+  {
+   "id": "mode",
+   "label": "Pick coins by",
+   "caption": "Score, quality, DexScreener or a blend, each with its own buy and sell rules"
+  },
+  {
+   "id": "entry",
+   "label": "When to buy",
+   "caption": "A coin must pass all of these"
+  },
+  {
+   "id": "verify",
+   "label": "Before buying",
+   "caption": "The chart is checked again with live data just before each buy"
+  },
+  {
+   "id": "learned",
+   "label": "Learned predictions",
+   "caption": "From the Radar's self-learning models"
+  },
+  {
+   "id": "risk",
+   "label": "Risk and bet size",
+   "caption": "How hard the bot bets"
+  },
+  {
+   "id": "exit",
+   "label": "When to sell",
+   "caption": "Any one of these sells"
+  },
+  {
+   "id": "costs",
+   "label": "Costs and realism",
+   "caption": "So results are not flattering"
+  }
+ ],
+ "dials": [
+  {
+   "key": "bot.enabled",
+   "type": "toggle",
+   "default": true,
+   "label": "Buy new coins",
+   "help": "Off pauses new buys. Open positions are still managed and sold."
+  },
+  {
+   "key": "bot.poll_seconds",
+   "type": "number",
+   "default": 10,
+   "min": 3,
+   "max": 120,
+   "step": 1,
+   "unit": "seconds",
+   "label": "Pull the Radar every",
+   "help": "How often the bot fetches the Radar from the site."
+  },
+  {
+   "key": "bot.fast_feed",
+   "type": "toggle",
+   "default": false,
+   "label": "Fast feed",
+   "help": "Ask the tracker to send every 3 seconds while the bot runs, as it does when the Radar page is open. Uses more of the site's daily request allowance."
+  },
+  {
+   "key": "bot.live_prices",
+   "type": "toggle",
+   "default": true,
+   "label": "Live prices for open positions",
+   "help": "Check open positions against DexScreener between pulls so stops react in seconds."
+  },
+  {
+   "key": "bot.price_seconds",
+   "type": "number",
+   "default": 3,
+   "min": 2,
+   "max": 30,
+   "step": 1,
+   "unit": "seconds",
+   "label": "Live price check every",
+   "help": "Only used while a position is open."
+  },
+  {
+   "key": "account.starting_sol",
+   "type": "number",
+   "default": 10,
+   "min": 0.5,
+   "max": 100000,
+   "step": 0.5,
+   "unit": "SOL",
+   "label": "Starting balance",
+   "help": "Used the next time the account is reset."
+  },
+  {
+   "key": "mode.pick_by",
+   "type": "choice",
+   "default": "score",
+   "choices": [
+    [
+     "score",
+     "Score: the Radar's live runner score"
+    ],
+    [
+     "quality",
+     "Quality: the holder checklist score"
+    ],
+    [
+     "dex",
+     "DexScreener: price movement over 5s to 5m with liquidity and volume"
+    ],
+    [
+     "blend",
+     "Blend: the average of the runner score and the DexScreener score"
+    ]
+   ],
+   "label": "Pick coins by",
+   "help": "The bot finds, buys and sells coins on this number, with the rules below for that mode. The other number is not required."
+  },
+  {
+   "key": "mode.score_buy_at",
+   "type": "number",
+   "default": 70,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "",
+   "label": "Score mode: buy at a score of",
+   "help": "The Radar's 0 to 100 score."
+  },
+  {
+   "key": "mode.score_trend",
+   "type": "choice",
+   "default": "steady",
+   "choices": [
+    [
+     "rising",
+     "Climbing over the last minute"
+    ],
+    [
+     "steady",
+     "Not falling over the last minute"
+    ],
+    [
+     "any",
+     "Going either way"
+    ]
+   ],
+   "label": "Score mode: buy while the score is",
+   "help": "Read from the bot's own pulls over the last minute."
+  },
+  {
+   "key": "mode.score_sell_below",
+   "type": "number",
+   "default": 50,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "",
+   "label": "Score mode: sell when the score falls below",
+   "help": "A disqualified coin scores 0, so this sells it. 0 turns this off."
+  },
+  {
+   "key": "mode.score_drop_points",
+   "type": "number",
+   "default": 20,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "points",
+   "label": "Score mode: sell when the score falls from its best",
+   "help": "Points below the best score seen since buying. 0 turns this off."
+  },
+  {
+   "key": "mode.quality_buy_at",
+   "type": "number",
+   "default": 70,
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "unit": "",
+   "label": "Quality mode: buy at a quality score of",
+   "help": "Holder quality from the Pulse checklist. Coins with no quality score are skipped."
+  },
+  {
+   "key": "mode.quality_trend",
+   "type": "choice",
+   "default": "steady",
+   "choices": [
+    [
+     "rising",
+     "Climbing over the last minute"
+    ],
+    [
+     "steady",
+     "Not falling over the last minute"
+    ],
+    [
+     "any",
+     "Going either way"
+    ]
+   ],
+   "label": "Quality mode: buy while quality is",
+   "help": "Read from the bot's own pulls over the last minute."
+  },
+  {
+   "key": "mode.quality_sell_below",
+   "type": "number",
+   "default": 50,
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "unit": "",
+   "label": "Quality mode: sell when quality falls below",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "mode.quality_drop_points",
+   "type": "number",
+   "default": 20,
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "unit": "points",
+   "label": "Quality mode: sell when quality falls from its best",
+   "help": "Points below the best quality score seen since buying. 0 turns this off."
+  },
+  {
+   "key": "mode.quality_sell_on_new_fail",
+   "type": "toggle",
+   "default": true,
+   "label": "Quality mode: sell when a check fails",
+   "help": "Sell when a checklist item that passed at the buy now fails, such as top 10, dev or bundlers."
+  },
+  {
+   "key": "mode.dex_buy_at",
+   "type": "number",
+   "default": 55,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "",
+   "label": "DexScreener mode: buy at a DexScreener score of",
+   "help": "The Radar's DexScreener score: movement over 5s, 30s, 1m and 5m backed by liquidity and volume. Coins without one yet are skipped."
+  },
+  {
+   "key": "mode.dex_trend",
+   "type": "choice",
+   "default": "steady",
+   "choices": [
+    [
+     "rising",
+     "Climbing over the last minute"
+    ],
+    [
+     "steady",
+     "Not falling over the last minute"
+    ],
+    [
+     "any",
+     "Going either way"
+    ]
+   ],
+   "label": "DexScreener mode: buy while the score is",
+   "help": "Read from the bot's own pulls over the last minute."
+  },
+  {
+   "key": "mode.dex_sell_below",
+   "type": "number",
+   "default": 30,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "",
+   "label": "DexScreener mode: sell when the score falls below",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "mode.dex_drop_points",
+   "type": "number",
+   "default": 25,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "points",
+   "label": "DexScreener mode: sell when the score falls from its best",
+   "help": "Points below the best DexScreener score seen since buying. 0 turns this off."
+  },
+  {
+   "key": "mode.dex_skip_viewers",
+   "type": "toggle",
+   "default": true,
+   "label": "DexScreener mode: buy without Axiom viewers",
+   "help": "Ignore the viewer minimums, so coins moving on DexScreener can be bought when no Axiom tab is open."
+  },
+  {
+   "key": "mode.dex_confirm_pulls",
+   "type": "number",
+   "default": 1,
+   "min": 1,
+   "max": 10,
+   "step": 1,
+   "unit": "pulls",
+   "label": "DexScreener mode: pulls in a row before buying",
+   "help": "Used instead of the When to buy setting, so a fast mover is bought on the first pull that passes."
+  },
+  {
+   "key": "mode.dex_quick_exits",
+   "type": "toggle",
+   "default": true,
+   "label": "DexScreener mode: quick in and out",
+   "help": "Coins bought in DexScreener mode use the stop loss, profit target, trailing stop and hold time below instead of the ones under When to sell."
+  },
+  {
+   "key": "mode.dex_stop_loss_pct",
+   "type": "number",
+   "default": 10,
+   "min": 0,
+   "max": 95,
+   "step": 0.5,
+   "unit": "%",
+   "label": "Quick trades: stop loss",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "mode.dex_take_profit_pct",
+   "type": "number",
+   "default": 25,
+   "min": 0,
+   "max": 10000,
+   "step": 1,
+   "unit": "%",
+   "label": "Quick trades: profit target",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "mode.dex_take_profit_sell_pct",
+   "type": "number",
+   "default": 75,
+   "min": 5,
+   "max": 100,
+   "step": 5,
+   "unit": "% of the position",
+   "label": "Quick trades: share sold at the target",
+   "help": "The rest rides the trailing stop."
+  },
+  {
+   "key": "mode.dex_trailing_stop_pct",
+   "type": "number",
+   "default": 8,
+   "min": 0,
+   "max": 95,
+   "step": 0.5,
+   "unit": "% below the high",
+   "label": "Quick trades: trailing stop",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "mode.dex_trailing_start_pct",
+   "type": "number",
+   "default": 6,
+   "min": 0,
+   "max": 10000,
+   "step": 1,
+   "unit": "%",
+   "label": "Quick trades: trailing stop starts after a gain of",
+   "help": ""
+  },
+  {
+   "key": "mode.dex_max_hold_minutes",
+   "type": "number",
+   "default": 10,
+   "min": 0,
+   "max": 10080,
+   "step": 1,
+   "unit": "minutes",
+   "label": "Quick trades: longest time to hold",
+   "help": "0 means no limit."
+  },
+  {
+   "key": "mode.blend_buy_at",
+   "type": "number",
+   "default": 65,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "",
+   "label": "Blend mode: buy at a blended score of",
+   "help": "The average of the runner score and the DexScreener score (the runner score alone until the DexScreener score arrives)."
+  },
+  {
+   "key": "mode.blend_trend",
+   "type": "choice",
+   "default": "steady",
+   "choices": [
+    [
+     "rising",
+     "Climbing over the last minute"
+    ],
+    [
+     "steady",
+     "Not falling over the last minute"
+    ],
+    [
+     "any",
+     "Going either way"
+    ]
+   ],
+   "label": "Blend mode: buy while the blend is",
+   "help": "Read from the bot's own pulls over the last minute."
+  },
+  {
+   "key": "mode.blend_sell_below",
+   "type": "number",
+   "default": 40,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "",
+   "label": "Blend mode: sell when the blend falls below",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "mode.blend_drop_points",
+   "type": "number",
+   "default": 20,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "points",
+   "label": "Blend mode: sell when the blend falls from its best",
+   "help": "Points below the best blend seen since buying. 0 turns this off."
+  },
+  {
+   "key": "entry.signal",
+   "type": "choice",
+   "default": "any",
+   "choices": [
+    [
+     "buy",
+     "Recommended buys only"
+    ],
+    [
+     "buy_or_watch",
+     "Buys and coins to watch"
+    ],
+    [
+     "any",
+     "Any tracked coin"
+    ]
+   ],
+   "label": "Radar signal required",
+   "help": "Which of the Radar's own picks the bot may buy."
+  },
+  {
+   "key": "entry.min_gain_1m_pct",
+   "type": "number",
+   "default": 0,
+   "min": -100,
+   "max": 10000,
+   "step": 0.5,
+   "unit": "%",
+   "label": "Minimum price gain, 1 minute",
+   "help": ""
+  },
+  {
+   "key": "entry.min_gain_5m_pct",
+   "type": "number",
+   "default": 0,
+   "min": -100,
+   "max": 10000,
+   "step": 0.5,
+   "unit": "%",
+   "label": "Minimum price gain, 5 minutes",
+   "help": ""
+  },
+  {
+   "key": "entry.max_gain_5m_pct",
+   "type": "number",
+   "default": 150,
+   "min": 0,
+   "max": 10000,
+   "step": 5,
+   "unit": "%",
+   "label": "Maximum price gain, 5 minutes",
+   "help": "Skip coins that already ran this far. 0 means no limit."
+  },
+  {
+   "key": "entry.min_viewers",
+   "type": "number",
+   "default": 30,
+   "min": 0,
+   "max": 100000,
+   "step": 5,
+   "unit": "viewers",
+   "label": "Minimum Axiom viewers",
+   "help": ""
+  },
+  {
+   "key": "entry.min_viewers_per_min",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 10000,
+   "step": 1,
+   "unit": "per min",
+   "label": "Minimum viewer growth",
+   "help": "Viewers gained per minute."
+  },
+  {
+   "key": "entry.min_liquidity_usd",
+   "type": "number",
+   "default": 8000,
+   "min": 0,
+   "max": 1000000000,
+   "step": 500,
+   "unit": "USD",
+   "label": "Minimum liquidity",
+   "help": "Coins with no liquidity figure are skipped unless this is 0."
+  },
+  {
+   "key": "entry.min_market_cap_usd",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100000000000,
+   "step": 1000,
+   "unit": "USD",
+   "label": "Minimum market cap",
+   "help": ""
+  },
+  {
+   "key": "entry.max_market_cap_usd",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100000000000,
+   "step": 1000,
+   "unit": "USD",
+   "label": "Maximum market cap",
+   "help": "0 means no limit."
+  },
+  {
+   "key": "entry.min_volume_5m_usd",
+   "type": "number",
+   "default": 3000,
+   "min": 0,
+   "max": 1000000000,
+   "step": 500,
+   "unit": "USD",
+   "label": "Minimum 5-minute volume",
+   "help": ""
+  },
+  {
+   "key": "entry.min_buy_share_pct",
+   "type": "number",
+   "default": 50,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "%",
+   "label": "Minimum share of buys, 5 minutes",
+   "help": "Buys as a share of all trades."
+  },
+  {
+   "key": "entry.min_age_minutes",
+   "type": "number",
+   "default": 2,
+   "min": 0,
+   "max": 100000,
+   "step": 1,
+   "unit": "minutes",
+   "label": "Minimum coin age",
+   "help": ""
+  },
+  {
+   "key": "entry.max_age_minutes",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 1000000,
+   "step": 5,
+   "unit": "minutes",
+   "label": "Maximum coin age",
+   "help": "0 means no limit."
+  },
+  {
+   "key": "entry.safety",
+   "type": "choice",
+   "default": "caution",
+   "choices": [
+    [
+     "safe",
+     "Safe only"
+    ],
+    [
+     "caution",
+     "Safe or caution"
+    ],
+    [
+     "any",
+     "Any, including risky and unknown"
+    ]
+   ],
+   "label": "Riskiest safety rating allowed",
+   "help": "The RugCheck rating on the Radar."
+  },
+  {
+   "key": "entry.max_failed_checks",
+   "type": "number",
+   "default": 1,
+   "min": 0,
+   "max": 12,
+   "step": 1,
+   "unit": "checks",
+   "label": "Most failed quality checks",
+   "help": "Top 10, dev, snipers, insiders, bundlers, fees, dev record, holders, authorities."
+  },
+  {
+   "key": "entry.skip_warnings",
+   "type": "toggle",
+   "default": true,
+   "label": "Skip coins with a Radar warning",
+   "help": "Liquidity pulled, a sharp dump, or risky authorities."
+  },
+  {
+   "key": "entry.radar_advice",
+   "type": "choice",
+   "default": "never_only",
+   "choices": [
+    [
+     "follow",
+     "Skip coins the Radar says to wait on or never rebuy"
+    ],
+    [
+     "never_only",
+     "Skip only coins the Radar says never to rebuy"
+    ],
+    [
+     "ignore",
+     "Ignore the Radar's advice"
+    ]
+   ],
+   "label": "Radar buy advice",
+   "help": "The Radar tests which warning signs came before falls and marks each coin ok, wait or never. Coins it says to exit or tighten are skipped too."
+  },
+  {
+   "key": "entry.rebuy_above_high",
+   "type": "toggle",
+   "default": true,
+   "label": "Rebuy only above the old high",
+   "help": "After the bot sells a coin, buy it again only once the price is back above its high at the time of that sale."
+  },
+  {
+   "key": "entry.min_smart_holders",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "wallets",
+   "label": "Minimum smart holders",
+   "help": ""
+  },
+  {
+   "key": "entry.max_data_age_seconds",
+   "type": "number",
+   "default": 90,
+   "min": 10,
+   "max": 600,
+   "step": 5,
+   "unit": "seconds",
+   "label": "Oldest data to buy on",
+   "help": "No buys while the Radar or a coin's last reading is older than this."
+  },
+  {
+   "key": "entry.confirm_pulls",
+   "type": "number",
+   "default": 2,
+   "min": 1,
+   "max": 10,
+   "step": 1,
+   "unit": "pulls",
+   "label": "Pulls in a row before buying",
+   "help": "A coin must pass on this many pulls in a row, so a one-off flicker is ignored."
+  },
+  {
+   "key": "entry.cooldown_minutes",
+   "type": "number",
+   "default": 30,
+   "min": 0,
+   "max": 1440,
+   "step": 5,
+   "unit": "minutes",
+   "label": "Wait before buying the same coin again",
+   "help": ""
+  },
+  {
+   "key": "entry.max_buys_per_coin",
+   "type": "number",
+   "default": 2,
+   "min": 1,
+   "max": 20,
+   "step": 1,
+   "unit": "buys",
+   "label": "Most buys of one coin in 24 hours",
+   "help": ""
+  },
+  {
+   "key": "verify.enabled",
+   "type": "toggle",
+   "default": true,
+   "label": "Check the chart before buying",
+   "help": "Just before a buy the bot pulls a live DexScreener price, volume, buys and liquidity, and checks the holder figures are fresh and the coin has not been dumped. A coin that fails is skipped."
+  },
+  {
+   "key": "verify.max_live_drop_pct",
+   "type": "number",
+   "default": 10,
+   "min": 1,
+   "max": 90,
+   "step": 1,
+   "unit": "%",
+   "label": "Skip if the price fell since the Radar reading",
+   "help": "Compares the live price with the price the Radar scored."
+  },
+  {
+   "key": "verify.max_drop_from_high_pct",
+   "type": "number",
+   "default": 25,
+   "min": 0,
+   "max": 95,
+   "step": 1,
+   "unit": "%",
+   "label": "Skip if it fell this far from its 10-minute high",
+   "help": "A coin this far under its high from the last 10 minutes has already been dumped. 0 turns this off."
+  },
+  {
+   "key": "verify.max_drop_30s_pct",
+   "type": "number",
+   "default": 8,
+   "min": 0,
+   "max": 90,
+   "step": 1,
+   "unit": "%",
+   "label": "Skip if it dropped this much in 30 seconds",
+   "help": "Catches a dump that is happening right now. 0 turns this off."
+  },
+  {
+   "key": "verify.max_holder_age_seconds",
+   "type": "number",
+   "default": 120,
+   "min": 0,
+   "max": 3600,
+   "step": 10,
+   "unit": "seconds",
+   "label": "Holder figures no older than",
+   "help": "Top 10, dev, bundler and holder counts must have been read this recently. 0 turns this off."
+  },
+  {
+   "key": "verify.skip_holders_falling",
+   "type": "toggle",
+   "default": true,
+   "label": "Skip while holders are falling",
+   "help": "More wallets selling out than buying in over the last minute."
+  },
+  {
+   "key": "verify.live_market",
+   "type": "toggle",
+   "default": true,
+   "label": "Recheck volume, buy share and liquidity live",
+   "help": "The live 5-minute volume, buy share and liquidity must still meet the When to buy limits."
+  },
+  {
+   "key": "learned.min_runner_chance_pct",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "unit": "%",
+   "label": "Minimum runner chance",
+   "help": "The learner's chance that this coin becomes a runner. 0 turns this off."
+  },
+  {
+   "key": "learned.min_explode_chance_pct",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "unit": "%",
+   "label": "Minimum could-explode chance",
+   "help": "From viewer bursts. 0 turns this off."
+  },
+  {
+   "key": "learned.min_maker_chance_pct",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "unit": "%",
+   "label": "Minimum big-winner chance",
+   "help": "From the coins that made the biggest gains. 0 turns this off."
+  },
+  {
+   "key": "learned.skip_phase",
+   "type": "choice",
+   "default": "none",
+   "choices": [
+    [
+     "none",
+     "Buy at any point in a run"
+    ],
+    [
+     "overdue",
+     "Skip coins past their usual crash time"
+    ],
+    [
+     "late",
+     "Also skip coins near their usual crash time"
+    ]
+   ],
+   "label": "Crash timing",
+   "help": "Uses the learner's expected life for coins like this one."
+  },
+  {
+   "key": "learned.min_minutes_left",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 600,
+   "step": 1,
+   "unit": "minutes",
+   "label": "Minimum time left before the usual crash",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "learned.missing",
+   "type": "choice",
+   "default": "pass",
+   "choices": [
+    [
+     "pass",
+     "Buy anyway"
+    ],
+    [
+     "skip",
+     "Skip the coin"
+    ]
+   ],
+   "label": "When a prediction is not ready",
+   "help": "Applies only to the learned rules turned on above."
+  },
+  {
+   "key": "risk.strength",
+   "type": "number",
+   "default": 5,
+   "min": 1,
+   "max": 10,
+   "step": 1,
+   "unit": "of 10",
+   "slider": true,
+   "label": "Risk strength",
+   "help": "Scales how much of the account can be in coins at once, and every buy when buys are a share of the account. 5 uses the numbers below as written, 10 doubles them, 1 uses a fifth."
+  },
+  {
+   "key": "risk.buy_mode",
+   "type": "choice",
+   "default": "fixed",
+   "choices": [
+    [
+     "fixed",
+     "A fixed amount of SOL each time"
+    ],
+    [
+     "percent",
+     "A share of the account, scaled by risk strength"
+    ]
+   ],
+   "label": "How each buy is sized",
+   "help": ""
+  },
+  {
+   "key": "risk.buy_amount_sol",
+   "type": "number",
+   "default": 0.25,
+   "min": 0.05,
+   "max": 1000,
+   "step": 0.05,
+   "unit": "SOL",
+   "label": "Buy amount",
+   "help": "Used when buys are a fixed amount."
+  },
+  {
+   "key": "risk.max_per_coin_sol",
+   "type": "number",
+   "default": 0.5,
+   "min": 0,
+   "max": 10000,
+   "step": 0.05,
+   "unit": "SOL",
+   "label": "Most SOL in one coin",
+   "help": "Across every buy of the same coin in 24 hours. 0 means no limit."
+  },
+  {
+   "key": "risk.position_pct",
+   "type": "number",
+   "default": 2,
+   "min": 0.5,
+   "max": 100,
+   "step": 0.5,
+   "unit": "% of account",
+   "label": "Share of the account per buy",
+   "help": "Used when buys are a share of the account. At risk strength 5."
+  },
+  {
+   "key": "risk.max_position_pct",
+   "type": "number",
+   "default": 10,
+   "min": 0.5,
+   "max": 100,
+   "step": 0.5,
+   "unit": "% of account",
+   "label": "Largest single buy",
+   "help": "A hard cap on any buy, whatever the buy amount or risk strength."
+  },
+  {
+   "key": "risk.min_position_sol",
+   "type": "number",
+   "default": 0.02,
+   "min": 0.01,
+   "max": 100,
+   "step": 0.01,
+   "unit": "SOL",
+   "label": "Smallest buy worth making",
+   "help": "Smaller buys are skipped."
+  },
+  {
+   "key": "risk.max_open_positions",
+   "type": "number",
+   "default": 5,
+   "min": 1,
+   "max": 50,
+   "step": 1,
+   "unit": "coins",
+   "label": "Most coins held at once",
+   "help": ""
+  },
+  {
+   "key": "risk.max_exposure_pct",
+   "type": "number",
+   "default": 40,
+   "min": 5,
+   "max": 100,
+   "step": 5,
+   "unit": "% of account",
+   "label": "Most of the account in coins",
+   "help": "At risk strength 5."
+  },
+  {
+   "key": "risk.max_pool_share_pct",
+   "type": "number",
+   "default": 1.5,
+   "min": 0.05,
+   "max": 25,
+   "step": 0.05,
+   "unit": "% of liquidity",
+   "label": "Largest buy against a coin's liquidity",
+   "help": "Keeps buys small enough to get out of."
+  },
+  {
+   "key": "risk.scale_with_conviction",
+   "type": "toggle",
+   "default": true,
+   "label": "Bet more on stronger setups",
+   "help": "Only when buys are a share of the account. Half size at the minimum score, up to one and a half times at a perfect score or learned chance."
+  },
+  {
+   "key": "risk.daily_loss_limit_pct",
+   "type": "number",
+   "default": 10,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "% of account",
+   "label": "Daily loss limit",
+   "help": "No more buys today once the account is down this much. 0 turns this off."
+  },
+  {
+   "key": "risk.max_drawdown_pct",
+   "type": "number",
+   "default": 30,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "% below its high",
+   "label": "Drawdown stop",
+   "help": "No more buys while the account is this far below its high. 0 turns this off."
+  },
+  {
+   "key": "risk.loss_streak",
+   "type": "number",
+   "default": 4,
+   "min": 0,
+   "max": 50,
+   "step": 1,
+   "unit": "losses",
+   "label": "Losses in a row before a break",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "risk.loss_streak_pause_minutes",
+   "type": "number",
+   "default": 30,
+   "min": 5,
+   "max": 1440,
+   "step": 5,
+   "unit": "minutes",
+   "label": "Length of that break",
+   "help": ""
+  },
+  {
+   "key": "risk.max_buys_per_hour",
+   "type": "number",
+   "default": 10,
+   "min": 0,
+   "max": 500,
+   "step": 1,
+   "unit": "buys",
+   "label": "Most buys in an hour",
+   "help": "0 means no limit."
+  },
+  {
+   "key": "exit.stop_loss_pct",
+   "type": "number",
+   "default": 25,
+   "min": 0,
+   "max": 95,
+   "step": 0.5,
+   "unit": "%",
+   "label": "Stop loss",
+   "help": "Sell when the price is this far below the entry. 0 turns this off. The Radar's research found coins often bounce after a dip, so a tight stop sells too early."
+  },
+  {
+   "key": "exit.take_profit_pct",
+   "type": "number",
+   "default": 40,
+   "min": 0,
+   "max": 10000,
+   "step": 1,
+   "unit": "%",
+   "label": "Profit target",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "exit.take_profit_sell_pct",
+   "type": "number",
+   "default": 50,
+   "min": 5,
+   "max": 100,
+   "step": 5,
+   "unit": "% of the position",
+   "label": "Share sold at the profit target",
+   "help": "The rest rides on the trailing stop."
+  },
+  {
+   "key": "exit.breakeven_after_target",
+   "type": "toggle",
+   "default": true,
+   "label": "Protect the entry price after the target",
+   "help": "Once the target is hit, sell the rest if the price falls back to the entry."
+  },
+  {
+   "key": "exit.trailing_stop_pct",
+   "type": "number",
+   "default": 25,
+   "min": 0,
+   "max": 95,
+   "step": 0.5,
+   "unit": "% below the high",
+   "label": "Trailing stop",
+   "help": "Sell when the price falls this far from its high since buying. 0 turns this off."
+  },
+  {
+   "key": "exit.trailing_start_pct",
+   "type": "number",
+   "default": 20,
+   "min": 0,
+   "max": 10000,
+   "step": 1,
+   "unit": "%",
+   "label": "Trailing stop starts after a gain of",
+   "help": ""
+  },
+  {
+   "key": "exit.max_hold_minutes",
+   "type": "number",
+   "default": 60,
+   "min": 0,
+   "max": 10080,
+   "step": 5,
+   "unit": "minutes",
+   "label": "Longest time to hold",
+   "help": "0 means no limit."
+  },
+  {
+   "key": "exit.stall_minutes",
+   "type": "number",
+   "default": 15,
+   "min": 0,
+   "max": 1440,
+   "step": 1,
+   "unit": "minutes",
+   "label": "Sell a stalled trade after",
+   "help": "0 turns this off."
+  },
+  {
+   "key": "exit.stall_min_gain_pct",
+   "type": "number",
+   "default": 3,
+   "min": -100,
+   "max": 1000,
+   "step": 0.5,
+   "unit": "%",
+   "label": "A trade is stalled below a gain of",
+   "help": ""
+  },
+  {
+   "key": "exit.viewer_drop_pct",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "unit": "% below their high",
+   "label": "Sell when viewers fall",
+   "help": "Measured from the most viewers seen since buying. 0 turns this off."
+  },
+  {
+   "key": "exit.sell_on_warning",
+   "type": "toggle",
+   "default": true,
+   "label": "Sell on a Radar warning",
+   "help": "Liquidity pulled, a sharp dump, or risky authorities."
+  },
+  {
+   "key": "exit.follow_radar_advice",
+   "type": "toggle",
+   "default": true,
+   "label": "Sell when the Radar says exit",
+   "help": "The Radar marks a coin exit when it crashed, has a warning, or shows a sign that came before falls in its own history."
+  },
+  {
+   "key": "exit.on_tighten",
+   "type": "choice",
+   "default": "tighten_stop",
+   "choices": [
+    [
+     "tighten_stop",
+     "Pull the trailing stop in"
+    ],
+    [
+     "sell_all",
+     "Sell the position"
+    ],
+    [
+     "ignore",
+     "Do nothing"
+    ]
+   ],
+   "label": "When the Radar says momentum is fading",
+   "help": "The Radar's tighten advice. The bot never adds to a position either way."
+  },
+  {
+   "key": "exit.tighten_trailing_pct",
+   "type": "number",
+   "default": 10,
+   "min": 1,
+   "max": 95,
+   "step": 1,
+   "unit": "% below the high",
+   "label": "Trailing stop while tightened",
+   "help": "Used at once, whatever the gain, while the Radar says tighten or the coin has left the Radar."
+  },
+  {
+   "key": "exit.left_radar",
+   "type": "choice",
+   "default": "tighten",
+   "choices": [
+    [
+     "tighten",
+     "Treat it as fading momentum"
+    ],
+    [
+     "sell",
+     "Sell the position"
+    ],
+    [
+     "ignore",
+     "Do nothing"
+    ]
+   ],
+   "label": "When a held coin leaves the Radar",
+   "help": "The tracker stopped seeing the volume, trades or liquidity it requires."
+  },
+  {
+   "key": "exit.sell_when_overdue",
+   "type": "toggle",
+   "default": false,
+   "label": "Sell past the usual crash time",
+   "help": "Uses the learner's expected life for coins like this one."
+  },
+  {
+   "key": "exit.no_price_minutes",
+   "type": "number",
+   "default": 5,
+   "min": 1,
+   "max": 120,
+   "step": 1,
+   "unit": "minutes",
+   "label": "Sell after this long with no price",
+   "help": "Sold at the last known price."
+  },
+  {
+   "key": "exit.ride_momentum",
+   "type": "toggle",
+   "default": false,
+   "label": "Stay in while momentum is strong",
+   "help": "At the profit target, keep holding while the chart is still climbing."
+  },
+  {
+   "key": "exit.ride_trail_pct",
+   "type": "number",
+   "default": 12,
+   "min": 2,
+   "max": 60,
+   "step": 1,
+   "unit": "%",
+   "label": "While riding, sell this far off the high",
+   "help": ""
+  },
+  {
+   "key": "costs.fee_pct",
+   "type": "number",
+   "default": 1,
+   "min": 0,
+   "max": 10,
+   "step": 0.05,
+   "unit": "% per side",
+   "label": "Trading fee",
+   "help": "Axiom's fee plus the pool's fee, on each buy and each sell."
+  },
+  {
+   "key": "costs.fee_mode",
+   "type": "choice",
+   "default": "auto",
+   "choices": [
+    [
+     "auto",
+     "Auto fee: follow the network, up to the max fee"
+    ],
+    [
+     "manual",
+     "My own priority fee and bribe"
+    ]
+   ],
+   "label": "Network fees",
+   "help": "Paid on every buy and every sell, in SOL."
+  },
+  {
+   "key": "costs.auto_fee_level",
+   "type": "choice",
+   "default": "normal",
+   "choices": [
+    [
+     "low",
+     "Low: the cheapest that usually lands"
+    ],
+    [
+     "normal",
+     "Normal: lands with most trades"
+    ],
+    [
+     "high",
+     "High: lands first when it is busy"
+    ]
+   ],
+   "label": "Auto fee speed",
+   "help": "Auto fee is estimated from live Jito tip levels and Solana priority fees. Axiom does not publish its own formula, so this is a close stand-in, not a copy."
+  },
+  {
+   "key": "costs.max_fee_sol",
+   "type": "number",
+   "default": 0.01,
+   "min": 0.0005,
+   "max": 1,
+   "step": 0.0005,
+   "unit": "SOL per trade",
+   "label": "Max fee",
+   "help": "The most auto fee pays in priority fee and bribe together."
+  },
+  {
+   "key": "costs.priority_fee_sol",
+   "type": "number",
+   "default": 0.001,
+   "min": 0,
+   "max": 1,
+   "step": 0.0001,
+   "unit": "SOL per trade",
+   "label": "Priority fee",
+   "help": "Used when you set your own fees, and when auto fee has no live data."
+  },
+  {
+   "key": "costs.bribe_sol",
+   "type": "number",
+   "default": 0.001,
+   "min": 0,
+   "max": 1,
+   "step": 0.0001,
+   "unit": "SOL per trade",
+   "label": "Bribe",
+   "help": "Used when you set your own fees, and when auto fee has no live data."
+  },
+  {
+   "key": "costs.price_impact",
+   "type": "toggle",
+   "default": true,
+   "label": "Model price impact from liquidity",
+   "help": "Bigger bets in thinner pools get worse prices, and a pulled pool pays almost nothing."
+  },
+  {
+   "key": "costs.extra_slippage_pct",
+   "type": "number",
+   "default": 1,
+   "min": 0,
+   "max": 25,
+   "step": 0.25,
+   "unit": "% per side",
+   "label": "Extra slippage",
+   "help": "For delay and other traders, on top of price impact."
+  },
+  {
+   "key": "costs.stop_slippage_pct",
+   "type": "number",
+   "default": 5,
+   "min": 0,
+   "max": 90,
+   "step": 1,
+   "unit": "%",
+   "label": "Extra slippage on stop and exit sells",
+   "help": "These coins fall faster than prices arrive, so stops rarely sell where they are set. Applies to stop loss, trailing stop, Radar exit and warning sells."
+  }
+ ]
+}
