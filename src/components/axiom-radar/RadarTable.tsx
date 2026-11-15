@@ -30,6 +30,7 @@ export function formatChange(value: number | null) {
 const windowSourceNotes: Record<RadarPriceWindowSource, string> = {
   'since-launch': 'The coin is younger than this window: change since its first price',
   'since-tracked': 'The tracker started following this coin inside this window: change since its first reading',
+  'between-readings': 'No reading at the start of this window: the price there is estimated from the readings on either side',
   dexscreener: "DexScreener's own 5-minute change: the tracker has no reading from 5 minutes ago",
 }
 

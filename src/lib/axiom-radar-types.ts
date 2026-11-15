@@ -42,7 +42,7 @@ export type RadarDexScore = { score: number; moves: RadarDexMoves; signal: numbe
 
 export type RadarPriceWindow = 's5' | 's30' | 'm1' | 'm5' | 'm10'
 /** Where a price-change window came from when the tracker had no reading at its exact start. */
-export type RadarPriceWindowSource = 'since-launch' | 'since-tracked' | 'dexscreener'
+export type RadarPriceWindowSource = 'between-readings' | 'since-launch' | 'since-tracked' | 'dexscreener'
 
 export type RadarScoreStatus = 'earned' | 'partial' | 'missed' | 'unknown'
 
