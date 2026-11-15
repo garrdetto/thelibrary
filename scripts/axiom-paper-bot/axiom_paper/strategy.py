@@ -11,6 +11,8 @@ Settings = Mapping[str, Any]
 
 SAFETY_ALLOWED = {"safe": {"safe"}, "caution": {"safe", "caution"}}
 PHASES_SKIPPED = {"overdue": {"overdue"}, "late": {"late", "overdue"}}
+MODES = ("score", "quality")
+MODE_LABELS = {"score": "score", "quality": "quality score"}
 
 
 class Exit(NamedTuple):
@@ -43,9 +45,35 @@ def _learned(value: float | None, minimum_pct: float, label: str, settings: Sett
     return None
 
 
-def entry_block(coin: Coin, settings: Settings, data_age_seconds: float) -> str | None:
-    """Why this coin is not bought, or None when it passes every rule."""
+def mode_of(settings: Settings, position: Position | None = None) -> str:
+    """The number the bot picks coins by. A position keeps the mode it was bought in."""
+    if position is not None and position.entry.get("mode") in MODES:
+        return position.entry["mode"]
+    return settings["mode.pick_by"]
+
+
+def mode_value(coin: Coin, mode: str) -> float | None:
+    return coin.score if mode == "score" else coin.quality
+
+
+def trend_block(change: float | None, mode: str, settings: Settings) -> str | None:
+    """`change` is how far the mode's number moved over the last minute of pulls, or None before there are two readings."""
+    wanted = settings[f"mode.{mode}_trend"]
+    label = MODE_LABELS[mode]
+    if wanted == "rising":
+        if change is None:
+            return f"waiting to see the {label} climb"
+        if change <= 0:
+            return f"{label} is not climbing ({change:+.0f} in the last minute)"
+    if wanted == "steady" and change is not None and change < 0:
+        return f"{label} fell {-change:.0f} in the last minute"
+    return None
+
+
+def entry_block(coin: Coin, settings: Settings, data_age_seconds: float, trend: float | None = None) -> str | None:
+    """Why this coin is not bought, or None when it passes every rule. `trend` is the mode's one-minute change."""
     s = settings
+    mode = s["mode.pick_by"]
     if coin.price is None:
         return "no price"
     if data_age_seconds > s["entry.max_data_age_seconds"]:
@@ -78,7 +106,8 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float) -> str 
     if s["entry.max_age_minutes"] > 0 and coin.age_minutes is not None and coin.age_minutes > s["entry.max_age_minutes"]:
         return f"{coin.age_minutes:.0f} minutes old, over the limit"
     checks = (
-        _below(coin.score, s["entry.min_score"], "score"),
+        _below(mode_value(coin, mode), s[f"mode.{mode}_buy_at"], MODE_LABELS[mode]),
+        trend_block(trend, mode, s),
         _below(coin.gain_1m, s["entry.min_gain_1m_pct"], "1m gain", "%", off_at=-100),
         _below(coin.gain_5m, s["entry.min_gain_5m_pct"], "5m gain", "%", off_at=-100),
         _below(coin.viewers, s["entry.min_viewers"], "viewers"),
@@ -88,7 +117,6 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float) -> str 
         _below(coin.volume_5m, s["entry.min_volume_5m_usd"], "5m volume"),
         _below(coin.buy_share_pct, s["entry.min_buy_share_pct"], "buy share", "%"),
         _below(coin.age_minutes, s["entry.min_age_minutes"], "age in minutes"),
-        _below(coin.quality, s["entry.min_quality_score"], "quality score"),
         _below(float(coin.smart_holders), s["entry.min_smart_holders"], "smart holders"),
         _learned(coin.runner_chance, s["learned.min_runner_chance_pct"], "runner chance", s),
         _learned(coin.explode_chance, s["learned.min_explode_chance_pct"], "could-explode chance", s),
@@ -113,9 +141,11 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float) -> str 
 
 
 def conviction(coin: Coin, settings: Settings) -> float:
-    """0 at the minimum score, 1 at a perfect score; a learned chance can lift it."""
-    floor = settings["entry.min_score"]
-    from_score = 1.0 if floor >= 100 else min(1.0, max(0.0, (coin.score - floor) / (100 - floor)))
+    """0 at the mode's buy level, 1 at a perfect score or quality; a learned chance can lift it."""
+    mode = settings["mode.pick_by"]
+    floor = settings[f"mode.{mode}_buy_at"]
+    value = mode_value(coin, mode) or 0.0
+    from_score = 1.0 if floor >= 100 else min(1.0, max(0.0, (value - floor) / (100 - floor)))
     chances = [chance for chance in (coin.runner_chance, coin.explode_chance, coin.maker_chance) if chance is not None]
     return max([from_score, *(min(1.0, max(0.0, chance)) for chance in chances)])
 
@@ -191,8 +221,9 @@ def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: 
         if position.last_price <= position.peak_price * (1 - s["exit.trailing_stop_pct"] / 100):
             return Exit("Trailing stop", 1.0, True)
     if coin:
-        if s["exit.min_score"] > 0 and coin.score < s["exit.min_score"]:
-            return Exit(f"Score fell to {coin.score:.0f}", 1.0)
+        mode_exit = _mode_exit(position, coin, s)
+        if mode_exit is not None:
+            return mode_exit
         if s["exit.viewer_drop_pct"] > 0 and coin.viewers is not None and position.peak_viewers:
             if coin.viewers <= position.peak_viewers * (1 - s["exit.viewer_drop_pct"] / 100):
                 return Exit("Viewers fell", 1.0)
@@ -202,4 +233,27 @@ def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: 
         return Exit("Stalled", 1.0)
     if s["exit.max_hold_minutes"] > 0 and held >= s["exit.max_hold_minutes"]:
         return Exit("Held too long", 1.0)
+    return None
+
+
+def _mode_exit(position: Position, coin: Coin, settings: Settings) -> Exit | None:
+    """The sell rules of the mode the position was bought in."""
+    mode = mode_of(settings, position)
+    label = MODE_LABELS[mode].capitalize()
+    value = mode_value(coin, mode)
+    if value is not None:
+        floor = settings[f"mode.{mode}_sell_below"]
+        if floor > 0 and value < floor:
+            return Exit(f"{label} fell to {value:.0f}, under {floor:.0f}", 1.0)
+        drop = settings[f"mode.{mode}_drop_points"]
+        if drop > 0 and position.peak_mode is not None and value <= position.peak_mode - drop:
+            return Exit(f"{label} fell {position.peak_mode - value:.0f} points from its best of {position.peak_mode:.0f}", 1.0)
+    if mode == "quality" and settings["mode.quality_sell_on_new_fail"]:
+        before = position.entry.get("failedLabels")
+        if isinstance(before, list):
+            new = [check for check in coin.failed_labels if check not in before]
+        else:
+            new = list(coin.failed_labels) if coin.failed_checks > int(position.entry.get("failedChecks") or 0) else []
+        if new:
+            return Exit(f"Quality check failed: {new[0]}", 1.0)
     return None

@@ -21,6 +21,8 @@ from .prices import SOL_MINT, Quote, fetch_prices
 from .site import SiteError
 
 COMMAND_WINDOW_MS = 10 * 60_000
+TREND_WINDOW_MS = 60_000
+READINGS_KEPT_MS = 5 * 60_000
 REPORT_SECONDS = 15.0
 EQUITY_SECONDS = 60.0
 MARKET_SECONDS = 30.0
@@ -106,6 +108,7 @@ class Engine:
         self.feed_age_base: float | None = None
         self.feed_age_from = 0.0
         self.streaks: dict[str, int] = {}
+        self.readings: dict[str, list[tuple[int, float, float | None]]] = {}
         self.candidates: list[dict[str, Any]] = []
         self.buy_block: str | None = "Waiting for the Radar"
         self.error: str | None = None
@@ -363,16 +366,41 @@ class Engine:
         self.generated_at = number(payload.get("generatedAt")) or 0.0
         self.feed_live = payload.get("status") == "live"
         read_at = self.now() - int((self.feed_age() or 0.0) * 1000)
+        self._remember_readings(read_at)
         for position in self.positions:
             coin = self.coins.get(position.mint)
             if coin is None:
                 continue
             if coin.viewers is not None:
                 position.peak_viewers = max(position.peak_viewers or 0.0, coin.viewers)
+            value = strategy.mode_value(coin, strategy.mode_of(self.values, position))
+            if value is not None:
+                position.peak_mode = value if position.peak_mode is None else max(position.peak_mode, value)
             if coin.price is not None:
                 self._mark(position, coin.price, coin.liquidity_sol, read_at)
             else:
                 self.ledger.save(position)
+
+    def _remember_readings(self, read_at: int) -> None:
+        """Each coin's score and quality on recent pulls, so the bot can tell which way they are moving."""
+        kept: dict[str, list[tuple[int, float, float | None]]] = {}
+        for mint, coin in self.coins.items():
+            history = [reading for reading in self.readings.get(mint, []) if read_at - reading[0] <= READINGS_KEPT_MS and reading[0] < read_at]
+            history.append((read_at, coin.score, coin.quality))
+            kept[mint] = history
+        self.readings = kept
+
+    def trend(self, coin: Coin, mode: str) -> float | None:
+        """How far the mode's number moved over about the last minute of pulls, or None with fewer than two readings."""
+        history = self.readings.get(coin.mint) or []
+        if len(history) < 2:
+            return None
+        latest_at = history[-1][0]
+        earlier = next((reading for reading in reversed(history) if reading[0] <= latest_at - TREND_WINDOW_MS), history[0])
+        now_value, then_value = (history[-1][1], earlier[1]) if mode == "score" else (history[-1][2], earlier[2])
+        if now_value is None or then_value is None:
+            return None
+        return now_value - then_value
 
     def _mark(self, position: Position, price: float, liquidity: float | None, read_at: int) -> None:
         """Take a price reading unless the position already has a newer one."""
@@ -480,11 +508,13 @@ class Engine:
         held = {position.mint for position in self.positions}
         feed_age = self.feed_age() or 0.0
         considered: list[tuple[Coin, str]] = []
-        for coin in sorted(self.coins.values(), key=lambda item: item.score, reverse=True):
+        mode = s["mode.pick_by"]
+        ranked = sorted(self.coins.values(), key=lambda item: (strategy.mode_value(item, mode) or -1.0, item.score), reverse=True)
+        for coin in ranked:
             if coin.mint in held:
                 continue
             lag = max(0.0, self.generated_at - coin.snapshot_at) / 1000 if coin.snapshot_at and self.generated_at else 0.0
-            reason = strategy.entry_block(coin, s, feed_age + lag) or self._coin_limits(coin, now)
+            reason = strategy.entry_block(coin, s, feed_age + lag, self.trend(coin, mode)) or self._coin_limits(coin, now)
             if reason is not None:
                 self.streaks.pop(coin.mint, None)
                 considered.append((coin, reason))
@@ -506,7 +536,7 @@ class Engine:
             guard = self.buy_guard(self.account())
         self.streaks = {mint: count for mint, count in self.streaks.items() if mint in self.coins}
         self.buy_block = guard
-        self.candidates = [{"mint": coin.mint, "symbol": coin.symbol, "score": round(coin.score), "reason": reason} for coin, reason in considered[:8]]
+        self.candidates = [{"mint": coin.mint, "symbol": coin.symbol, "score": round(coin.score), "quality": None if coin.quality is None else round(coin.quality), "reason": reason} for coin, reason in considered[:8]]
 
     def _buy(self, coin: Coin, now: int) -> str | None:
         """Buy the coin. Returns why not when the bet is refused."""
@@ -528,6 +558,7 @@ class Engine:
         if size <= 0:
             return limit
         network = self.fee()
+        mode = s["mode.pick_by"]
         fill = broker.buy(spot, size, liquidity, s, network.total)
         if fill is None:
             return "fees would eat the whole buy"
@@ -535,12 +566,12 @@ class Engine:
             id=0, mint=coin.mint, symbol=coin.symbol, pair=coin.pair, opened_at=now, entry_spot=spot, entry_price=fill.price,
             qty=fill.qty, qty_open=fill.qty, cost=fill.net, proceeds=0.0, fees=fill.fee,
             entry_liquidity=liquidity, last_liquidity=liquidity, peak_price=spot, peak_viewers=coin.viewers,
-            last_price=spot, last_price_at=now, target_done=False, score=coin.score,
-            entry={**coin.entry_facts(), "sizeLimit": limit, "impactPct": round(fill.impact_pct, 3)},
+            last_price=spot, last_price_at=now, target_done=False, score=coin.score, peak_mode=strategy.mode_value(coin, mode),
+            entry={**coin.entry_facts(), "mode": mode, "sizeLimit": limit, "impactPct": round(fill.impact_pct, 3)},
         )
         self.ledger.record_buy(position, fill, now)
         self.positions.append(position)
-        self.ledger.event(now, "buy", f"Bought {coin.symbol}: {both(size, rate)} at score {coin.score:.0f} (size set by {limit}, price impact {fill.impact_pct:.1f}%, network fee {small_sol(network.total)}, {network.source})")
+        self.ledger.event(now, "buy", f"Bought {coin.symbol}: {both(size, rate)} in {mode} mode at score {coin.score:.0f}{'' if coin.quality is None else f', quality {coin.quality:.0f}'} (size set by {limit}, price impact {fill.impact_pct:.1f}%, network fee {small_sol(network.total)}, {network.source})")
         self._after_trade()
         return None
 

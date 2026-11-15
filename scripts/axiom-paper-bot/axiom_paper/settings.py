@@ -15,6 +15,7 @@ _SCHEMA = json.loads(Path(__file__).with_name("dials.json").read_text(encoding="
 GROUPS: list[dict[str, str]] = _SCHEMA["groups"]
 DIALS: list[dict[str, Any]] = _SCHEMA["dials"]
 DIAL_BY_KEY: dict[str, dict[str, Any]] = {dial["key"]: dial for dial in DIALS}
+RENAMED: dict[str, str] = _SCHEMA.get("renamed", {})
 
 Values = dict[str, Any]
 
@@ -75,7 +76,11 @@ def parse_value(key: str, text: str) -> Any:
 
 
 def normalize(raw: Mapping[str, Any] | None) -> Values:
-    source = raw if isinstance(raw, Mapping) else {}
+    """Every dial, cleaned. A dial that was renamed takes the old key's value when only that is present."""
+    source = dict(raw) if isinstance(raw, Mapping) else {}
+    for key, old in RENAMED.items():
+        if key not in source and old in source:
+            source[key] = source[old]
     return {dial["key"]: clean(dial["key"], source.get(dial["key"])) for dial in DIALS}
 
 
