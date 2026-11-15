@@ -174,7 +174,8 @@ export function countyRoadTexture(scene: Scene): DynamicTexture {
   g.fillStyle = 'rgba(150,148,140,0.3)'
   g.fillRect(0, 0, x(0.05), h)
   g.fillRect(x(0.95), 0, x(0.05), h)
-  g.fillStyle = 'rgba(30,30,32,0.25)'
+  // Wheel paths only a shade darker: deeper bands read as scorch marks down the lanes.
+  g.fillStyle = 'rgba(30,30,32,0.07)'
   for (const u of [0.2, 0.32, 0.68, 0.8]) g.fillRect(x(u), 0, x(0.05), h)
   g.fillStyle = '#e9e7df'
   g.fillRect(x(0.06), 0, 4, h)
@@ -199,7 +200,7 @@ export function streetCentreTexture(scene: Scene): DynamicTexture {
   const tex = new DynamicTexture('street-centre', { width: w, height: h }, scene, true)
   const g = tex.getContext() as CanvasRenderingContext2D
   paintAsphalt(g, w, h)
-  g.fillStyle = 'rgba(30,30,32,0.22)'
+  g.fillStyle = 'rgba(30,30,32,0.07)'
   for (const u of [0.24, 0.7]) g.fillRect(u * w, 0, 0.06 * w, h)
   g.fillStyle = '#e2b53c'
   g.fillRect(w / 2 - 3, 0, 6, h * 0.25)

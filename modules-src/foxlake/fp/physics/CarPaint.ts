@@ -38,9 +38,13 @@ import { microBump } from '../../../rackreel/world/MicroBump';
 
 /** How a finish looks: the paint layer's roughness and metal, and the clear coat over it. */
 export interface PaintFinish { rough: number; metal: number; coat: number; coatRough: number }
+/**
+ * The clear coat is a soft sheen rather than a mirror: a near-mirror coat over the grain bump caught the sun and the
+ * sky in single bright pixels that blinked on and off as the car or the camera moved.
+ */
 export const PAINT_FINISH: Record<'gloss' | 'metallic' | 'matte', PaintFinish> = {
-  gloss: { rough: 0.34, metal: 0.02, coat: 1, coatRough: 0.035 },
-  metallic: { rough: 0.3, metal: 0.22, coat: 1, coatRough: 0.05 },
+  gloss: { rough: 0.34, metal: 0.02, coat: 0.6, coatRough: 0.2 },
+  metallic: { rough: 0.3, metal: 0.22, coat: 0.6, coatRough: 0.22 },
   matte: { rough: 0.62, metal: 0, coat: 0.18, coatRough: 0.5 },
 };
 

@@ -145,7 +145,7 @@ function signWidth(len: number, text: string): number {
   return Math.min(len - 0.8, Math.max(3, text.length * 0.42))
 }
 
-export function buildStorefronts(root: TransformNode, mats: Mats, land: TelloLand, kit: ModelKit | null = null): DowntownStats {
+export async function buildStorefronts(root: TransformNode, mats: Mats, land: TelloLand, kit: ModelKit | null = null, pace?: () => Promise<void>): Promise<DowntownStats> {
   useKit(kit)
   const atlas = new SignAtlas()
   const fronts: Front[] = planFronts(land).map((p) => ({
@@ -156,7 +156,9 @@ export function buildStorefronts(root: TransformNode, mats: Mats, land: TelloLan
     blade: p.style.blade ? atlas.add({ ...p.style.blade, aspect: p.style.blade.round ? 1.3 : 1.25 / 0.78 }) : -1,
     oval: p.style.oval ? atlas.add({ text: p.style.oval.text, board: p.style.oval.board, ink: p.style.oval.ink, aspect: 2.6 }) : -1,
   }))
+  if (pace) await pace()
   atlas.pack()
+  if (pace) await pace()
   const M = {
     brick: mats.textured('h-brick', 'brick', { vcolor: true }),
     stucco: mats.textured('tello-stucco', 'stucco', { vcolor: true }),
@@ -172,9 +174,17 @@ export function buildStorefronts(root: TransformNode, mats: Mats, land: TelloLan
     signs: atlas.count ? atlas.material(mats, 'tello-storefront-signs') : null,
   }
   const chunks = new ChunkedBuilders(128)
-  for (const f of fronts) buildFront(f, chunks, M, atlas)
+  for (const f of fronts) {
+    if (pace) {
+      useKit(null)
+      await pace()
+      useKit(kit)
+    }
+    buildFront(f, chunks, M, atlas)
+  }
   useKit(null)
-  chunks.flush(root, 'tello-storefronts')
+  if (pace) await chunks.flushPaced(root, 'tello-storefronts', pace)
+  else chunks.flush(root, 'tello-storefronts')
   return { fronts: fronts.length, signs: atlas.count }
 }
 

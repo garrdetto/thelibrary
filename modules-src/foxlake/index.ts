@@ -11,7 +11,8 @@ import { store } from '../maplestreet/src/core/Storage'
 import { isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../maplestreet/shared/CustomVehicles'
 import { isValidRecord, registerCustomItems, type CustomItemRecord } from '../maplestreet/shared/CustomItems'
 import { BUNDLED_VEHICLES } from '../maplestreet/shared/BundledVehicles'
-import { FOX_LAKE_LOOK, FOX_LAKE_SHADOW_MAP } from './look'
+import { FOX_LAKE_LOOK, FOX_LAKE_SHADOWS, FOX_LAKE_SHADOW_MAP } from './look'
+import { setShadowProxies } from './fp/core/Geo'
 import { loadMap } from '../tello/data/MapData'
 import { TelloLand } from '../tello/region'
 import { FoxLakeTerrain, MontelloLink } from './montello/Link'
@@ -132,7 +133,8 @@ async function boot(): Promise<void> {
     if (roomCode) postRoom(roomCode)
     else inviteRequested = true
   })
-  const game = new Game(canvas, { terrain: new FoxLakeTerrain(north), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP })
+  setShadowProxies(FOX_LAKE_SHADOWS)
+  const game = new Game(canvas, { terrain: new FoxLakeTerrain(north), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS })
   window.__foxlake = { game, town }
   await game.start()
 }
