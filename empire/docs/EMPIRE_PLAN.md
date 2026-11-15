@@ -70,7 +70,7 @@ The goal for the first 30 days is one real product making its first sale, or a c
 
 **Week 4 and on: run it**
 
-- [ ] Daily (10 minutes): clear the Seal Queue, read the Treasury report, check any Inquisition flags.
+- [ ] Daily (10 minutes): clear the Seal Queue and anything in Needs You, read the Treasury report, check any Inquisition flags.
 - [ ] Weekly (30 minutes): hold the Court of Merit, review the venture against its kill criteria, and look at cost per verified task.
 - [ ] At the kill date: if there are no sales, kill it, keep the lessons, and charter the next-best brief. If it sells, add a second product for the same buyers before starting a new niche.
 
@@ -359,6 +359,26 @@ The empire runs on its own for research, building, testing and bookkeeping. It s
 - Pigeon reads the inbox, sorts it, and drafts replies. Replies to customers from approved templates send on their own; everything else waits for you.
 - Marketing email goes only to people who signed up, through an email service that handles unsubscribes.
 
+**Needs You: when only you can do it**
+
+Some things only you can do: open an account, pass an identity check, sign a tax form, approve an app on your organization, add a card. The agents ask for these in the Needs You tab, and only as a last resort. Before a Warlord files a request, the agents must have:
+
+1. Tried with their own tools and access.
+2. Checked the vault and the Archive for access or an answer that already exists.
+3. Asked their Warlord and Cipher for a route that needs nothing from you.
+
+Each request then says what they tried, why only you can do it, the smallest step, about how long it takes, what it unblocks, and how the agents get access afterwards. Cipher prepares the access options and marks one as recommended:
+
+| Access option | What you do | What the agents get |
+| --- | --- | --- |
+| A limited key in the vault | Make an API key that can do only what is listed, set it to expire, save it in the vault | Short-lived tokens from Cipher, never the key itself in a prompt or log |
+| Invite the agents' account | Invite the business's agent account with a limited role | Their own login, held by Cipher in the vault |
+| Approve an app | Approve it while signed in, granting only the listed permissions | App access you can take back any time |
+| Sign in inside the agents' browser | Type your own login into the agents' sandboxed browser | The signed-in page for up to an hour; the agent never sees the password |
+| A separate login in the vault | Only when a service has no keys or invites: make a separate login for the business and save it in the vault | Cipher signs in for them; the password is never shown to an agent or logged |
+
+Agents never ask for your personal password, sign-in codes, recovery codes or card numbers. You press Done when it's finished (Cipher then checks the access is as limited as promised), Not now to put it off for two hours, or Find another way to send it back for replanning. At most three requests are open at once.
+
 **Taxes and legal.** Income from the empire is your income. Plan on a business entity, sales-tax handling through your payment or storefront platform, and a short call with an accountant once revenue starts. I'm not a lawyer or accountant, so treat this list as the questions to bring them, not the answers.
 
 ## Where the money comes from
@@ -444,7 +464,7 @@ Claude Code builds a Python service called the Throne Engine that runs every age
 | Component | Job | Built with |
 | --- | --- | --- |
 | Throne Engine | Scheduler: picks the next task, starts the agent, parks and resumes parents, enforces caps | Python 3.12, asyncio, Claude Agent SDK |
-| Empire tools (MCP) | `delegate_task`, `submit_work`, `request_review`, `request_seal`, `petition`, `search_archive`, `write_lesson` | Custom tools in an in-process MCP server |
+| Empire tools (MCP) | `delegate_task`, `submit_work`, `request_review`, `request_seal`, `request_sovereign`, `petition`, `search_archive`, `write_lesson` | Custom tools in an in-process MCP server |
 | The Codex | Budget, permission and Seal checks before every tool call; kill switch | SDK PreToolUse hooks plus a policy module |
 | Task Ledger | Tasks, routing records, reviews, costs, merit, the append-only audit log | SQLite to start, Postgres later |
 | Agent Registry | One YAML file per agent: name, rank, department, persona, tools, model ceiling, stats | `empire/agents/*.yaml` |
@@ -475,22 +495,23 @@ empire/
   tests/
 ```
 
-**Events the UI listens to**: `task_assigned`, `agent_moved`, `tool_call`, `submitted`, `review_passed`, `review_failed`, `vetoed`, `promoted`, `demoted`, `seal_requested`, `seal_granted`, `cost_tick`, `lesson_written`. Each carries the agent, task, timestamp and a short human-readable line.
+**Events the UI listens to**: `task_assigned`, `agent_moved`, `tool_call`, `submitted`, `review_passed`, `review_failed`, `vetoed`, `promoted`, `demoted`, `seal_requested`, `seal_granted`, `needs_you_requested`, `needs_you_resolved`, `cost_tick`, `lesson_written`. Each carries the agent, task, timestamp and a short human-readable line.
 
 **Hosting path.** Phases 1–4 run on your computer or one small cloud server. When the empire needs to run around the clock at scale, the agent sessions can move to [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview), which hosts long-running agents with sandboxes and scheduling, while the Throne Engine keeps the ledger, Codex and UI.
 
 ## The Command Center interface
 
-The Command Center is a military-grade console: a personnel roster on the left to select any agent, a tactical view of the castle in the center, Intel and Command tabs on the right, a telemetry strip (throughput, pass rate, burn, seals, queue, model mix) and a command line with a live comms ticker, all framed in chase lights, LED strips and animated brackets. The castle is a concentric medieval fortress: The King's throne room sits in the exact center inside the keep, a ring hall circles it, North, East, West and Grand halls run out to the curtain wall, and an outer gallery runs inside the wall all the way around, with towers, a gatehouse, a drawbridge and a moat. The eight department rooms (an observatory, a war table, a tribunal, a forge, a library, a vault, a herald's beacon and a workshop) open onto those hallways, and the West and East Wards hold a training yard and a drone pad. The King wears gold armor and a crown, Warlords white armor, Servants gray, each with a department-colored cape. Themes switch from the top right (Obsidian and gold, black and gold, navy and light blue, or custom), and the Colors panel sets both the interface colors and the castle's colors: six castle styles plus walls, floors, hallways, courtyards, throne room, carpets, trim, towers, moat, grounds and lights. The console is hosted at https://kingdom.garrdetto.workers.dev. The prototype already does most of it in simulation mode; the full build swaps the simulator for the Throne Engine's live event feed.
+The Command Center is a military-grade console: a personnel roster on the left to select any agent, a tactical view of the castle in the center that zooms and pans (mouse wheel, pinch, double-click, the zoom buttons or the keyboard, with an overview map and a follow mode for the selected agent), Intel, Command and Sovereign tabs on the right (the Sovereign row holds the Seal Queue and Needs You), a telemetry strip (throughput, pass rate, burn, seals, queue, model mix) and a command line with a live comms ticker, all framed in chase lights, LED strips and animated brackets. The castle is a concentric medieval fortress: The King's throne room sits in the exact center inside the keep, a ring hall circles it, North, East, West and Grand halls run out to the curtain wall, and an outer gallery runs inside the wall all the way around, with towers, a gatehouse, a drawbridge and a moat. The eight department rooms (an observatory, a war table, a tribunal, a forge, a library, a vault, a herald's beacon and a workshop) open onto those hallways, and the West and East Wards hold a training yard and a drone pad. The King wears gold armor and a crown, Warlords white armor, Servants gray, each with a department-colored cape. Themes switch from the top right (Obsidian and gold, black and gold, navy and light blue, or custom), and the Colors panel sets both the interface colors and the castle's colors: six castle styles plus walls, floors, hallways, courtyards, throne room, carpets, trim, towers, moat, grounds and lights. The console is hosted at https://kingdom.garrdetto.workers.dev. The prototype already does most of it in simulation mode; the full build swaps the simulator for the Throne Engine's live event feed.
 
 | Feature | What you can do | Prototype |
 | --- | --- | --- |
-| Castle map | Watch knights walk the hallways between department rooms and animate as they work; Warlords report to The King at the center; task packets fly from manager to worker to reviewer; sentries patrol the outer gallery; day turns to night | Yes |
+| Castle map | Watch knights walk the hallways between department rooms and animate as they work; Warlords report to The King at the center; task packets fly from manager to worker to reviewer; sentries patrol the outer gallery; day turns to night; zoom up to 5× and pan, with an overview map and a follow mode | Yes |
 | Hover cards | See name, rank, model, effort and current task at a glance | Yes |
 | Agent dossier | Click any agent: rank, merit, Elo, model, current task with progress, accomplishments, lessons, chain of command | Yes |
 | Direct prompting | Chat with any agent in character, answered by a real Claude model matching its tier | Yes |
 | Decrees | Give The King a goal; he splits it into department tasks that appear on the map | Yes |
 | Seal Queue | Approve or deny spending, publishing and account requests | Yes, with simulated requests |
+| Needs You | Last-resort requests for things only you can do, each with what the agents tried, why it needs you, the steps, and a choice of how they get access afterwards; Done, Not now or Find another way | Yes, with simulated requests |
 | Ladder of Merit | Leaderboard by merit and Elo; hold the Court of Merit for promotions | Yes |
 | Chronicle | Live event log, filterable by event type | Yes |
 | Treasury HUD | Revenue, token spend, profit and the venture's stage | Yes, simulated numbers, clearly labeled |
@@ -508,7 +529,7 @@ The Command Center is a military-grade console: a personnel roster on the left t
 - The UI never fakes data once connected: simulated mode is a visible switch with a banner.
 - Every number links to its source in the ledger.
 - Prompting an agent from the UI goes through the same Codex as any other task, so a chat cannot be used to skip a Seal.
-- Keyboard: `/` opens the command bar, `D` issues a decree, `S` opens the Seal Queue, `Esc` closes panels.
+- Keyboard: `/` opens the command bar, `D` issues a decree, `S` opens the Seal Queue, `N` opens Needs You, `+` and `−` zoom the castle, `0` shows the whole castle, `F` follows the selected agent, the arrow keys pan, `Esc` closes panels.
 
 ## Build roadmap: prompts for Claude Code
 

@@ -11,7 +11,7 @@ model:
   default_effort: high
   ceiling: claude-opus-5-5
   ceiling_effort: high
-tools: [delegate_task, request_review, request_seal, search_archive, read_ledger]
+tools: [delegate_task, request_review, request_seal, request_sovereign, search_archive, read_ledger]
 budget:
   max_tokens_per_task: 800000
 stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
