@@ -2,13 +2,12 @@ import type { Env } from './env.js'
 import { IMAGE_MODEL, base64ToBytes, gemini } from './gemini.js'
 import { blockedResponse } from './studio-ai.js'
 import { closestAspect } from '../lib/image-editor'
-import { buildCompactPrompt, buildPrompt, diffusionParams } from '../lib/clipart'
+import { buildPrompt } from '../lib/clipart'
 import type { ClipartPreset, ClipartSettings, EngineId } from '../lib/clipart'
 
 export const ENGINE_MODELS: Record<EngineId, string> = {
   'flux-klein-9b': '@cf/black-forest-labs/flux-2-klein-9b',
   'flux-klein-4b': '@cf/black-forest-labs/flux-2-klein-4b',
-  'sd15-img2img': '@cf/runwayml/stable-diffusion-v1-5-img2img',
   gemini: IMAGE_MODEL,
 }
 
@@ -104,7 +103,8 @@ function workersAiFailure(error: unknown): never {
   console.error('Workers AI clipart failure', message)
   if (/4006|daily free allocation|neurons|quota/i.test(message)) throw new ClipartLimit('quota', 'Today’s free Workers AI allowance is used up. It resets at 00:00 UTC; switch engines or resume then.', 0)
   if (/3040|capacity|429|rate limit|too many/i.test(message)) throw new ClipartLimit('busy', 'Workers AI is busy. The queue will retry this image shortly.', 8)
-  if (/nsfw|safety|flagged/i.test(message)) throw new ClipartRefused('The engine declined this photo. Try another engine or a different photo.')
+  if (/3030|nsfw|safety|flagged/i.test(message)) throw new ClipartRefused('Cloudflare’s safety filter flagged the image made from this photo. Settings won’t change that; use a different photo or engine.')
+  if (/5018|5028|not allowed to access/i.test(message)) throw new ClipartRefused('Cloudflare has retired this model for this account. Pick another engine.')
   throw new Error('Workers AI could not generate this image.')
 }
 
@@ -118,23 +118,6 @@ async function runFlux(env: Env, input: GenerateInput, prompt: string) {
   const encoded = new Response(form)
   try {
     return await aiOutputBytes(await env.AI!.run(ENGINE_MODELS[input.engine], { multipart: { body: encoded.body, contentType: encoded.headers.get('content-type') ?? 'multipart/form-data' } }))
-  } catch (error) { workersAiFailure(error) }
-}
-
-async function runDiffusion(env: Env, input: GenerateInput, prompt: string, negative: string) {
-  const params = diffusionParams(input.settings, input.preset.finish)
-  try {
-    return await aiOutputBytes(await env.AI!.run(ENGINE_MODELS['sd15-img2img'], {
-      prompt,
-      negative_prompt: negative,
-      image: Array.from(input.photo.bytes),
-      strength: params.strength,
-      guidance: params.guidance,
-      num_steps: params.steps,
-      width: input.width,
-      height: input.height,
-      ...(input.seed === null ? {} : { seed: input.seed }),
-    }))
   } catch (error) { workersAiFailure(error) }
 }
 
@@ -156,6 +139,7 @@ async function runGemini(env: Env, input: GenerateInput, prompt: string) {
   } catch (error) {
     const status = typeof error === 'object' && error && 'status' in error ? Number((error as { status: unknown }).status) : 0
     console.error('Gemini clipart failure', error)
+    if (status === 429 && /free_tier[^]*limit: 0/.test(error instanceof Error ? error.message : String(error))) throw new ClipartLimit('quota', 'The site’s Gemini key is on Google’s free tier, which allows no image generation. Turn on billing for that key’s Google project, then resume.', 0)
     if (status === 429) throw new ClipartLimit('busy', 'Gemini is rate limiting requests. The queue will retry this image shortly.', 15)
     throw new Error('Gemini could not generate this image.')
   }
@@ -166,16 +150,8 @@ async function runGemini(env: Env, input: GenerateInput, prompt: string) {
 
 export async function generateClipart(env: Env, input: GenerateInput): Promise<GenerateResult> {
   const promptInput = { settings: input.settings, preset: input.preset, prompt: input.prompt, negative: input.negative, hasReference: Boolean(input.reference) }
-  let bytes: Uint8Array
-  let promptUsed: string
-  if (input.engine === 'sd15-img2img') {
-    const compact = buildCompactPrompt(promptInput)
-    promptUsed = `${compact.prompt}\nNegative: ${compact.negative}\n${JSON.stringify(diffusionParams(input.settings, input.preset.finish))}`
-    bytes = await runDiffusion(env, input, compact.prompt, compact.negative)
-  } else {
-    promptUsed = buildPrompt(promptInput)
-    bytes = input.engine === 'gemini' ? await runGemini(env, input, promptUsed) : await runFlux(env, input, promptUsed)
-  }
+  const promptUsed = buildPrompt(promptInput)
+  const bytes = input.engine === 'gemini' ? await runGemini(env, input, promptUsed) : await runFlux(env, input, promptUsed)
   const mime = sniffMime(bytes)
   const size = imageDimensions(bytes)
   if (!mime || !size) throw new Error('The engine returned an unreadable image.')

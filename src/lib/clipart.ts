@@ -94,15 +94,14 @@ export const CLIPART_PRESETS: ClipartPreset[] = [
 ]
 export const DEFAULT_PRESET_ID = 'realistic-hd'
 
-export const ENGINE_IDS = ['flux-klein-9b', 'flux-klein-4b', 'sd15-img2img', 'gemini'] as const
+export const ENGINE_IDS = ['flux-klein-9b', 'flux-klein-4b', 'gemini'] as const
 export type EngineId = (typeof ENGINE_IDS)[number]
-export type EngineInfo = { id: EngineId; label: string; provider: 'workers-ai' | 'gemini'; free: boolean; reference: boolean; numeric: boolean; inputEdge: number; resolutions: readonly number[]; concurrency: number; note: string }
+export type EngineInfo = { id: EngineId; label: string; provider: 'workers-ai' | 'gemini'; free: boolean; reference: boolean; inputEdge: number; resolutions: readonly number[]; concurrency: number; note: string }
 
 export const ENGINES: EngineInfo[] = [
-  { id: 'flux-klein-9b', label: 'FLUX.2 klein 9B', provider: 'workers-ai', free: true, reference: true, numeric: false, inputEdge: 496, resolutions: RESOLUTIONS, concurrency: 2, note: 'Free within the daily Workers AI allowance. Best free quality and follows the style reference.' },
-  { id: 'flux-klein-4b', label: 'FLUX.2 klein 4B', provider: 'workers-ai', free: true, reference: true, numeric: false, inputEdge: 496, resolutions: RESOLUTIONS, concurrency: 3, note: 'Free within the daily Workers AI allowance. Fastest; follows the style reference.' },
-  { id: 'sd15-img2img', label: 'Stable Diffusion 1.5 img2img', provider: 'workers-ai', free: true, reference: false, numeric: true, inputEdge: 1024, resolutions: [512, 768, 1024], concurrency: 3, note: 'Free within the daily Workers AI allowance. Sliders also set strength, guidance and steps; best at 512–768. No style reference.' },
-  { id: 'gemini', label: 'Gemini 3.1 Flash Image', provider: 'gemini', free: false, reference: true, numeric: false, inputEdge: 1536, resolutions: [1024, 2048], concurrency: 1, note: 'Uses the site’s Gemini key (billed by Google). Highest fidelity for signs and lettering; follows the style reference.' },
+  { id: 'flux-klein-9b', label: 'FLUX.2 klein 9B', provider: 'workers-ai', free: true, reference: true, inputEdge: 496, resolutions: RESOLUTIONS, concurrency: 2, note: 'Free within the daily Workers AI allowance. Best free quality and follows the style reference.' },
+  { id: 'flux-klein-4b', label: 'FLUX.2 klein 4B', provider: 'workers-ai', free: true, reference: true, inputEdge: 496, resolutions: RESOLUTIONS, concurrency: 3, note: 'Free within the daily Workers AI allowance. Fastest; follows the style reference.' },
+  { id: 'gemini', label: 'Gemini 3.1 Flash Image', provider: 'gemini', free: false, reference: true, inputEdge: 1536, resolutions: [1024, 2048], concurrency: 1, note: 'Uses the site’s Gemini key (billed by Google). Highest fidelity for signs and lettering; follows the style reference.' },
 ]
 export const DEFAULT_ENGINE: EngineId = 'flux-klein-9b'
 export const engineInfo = (id: EngineId) => ENGINES.find(engine => engine.id === id) ?? ENGINES[0]
@@ -176,38 +175,6 @@ export function buildPrompt(input: PromptInput) {
   const avoid = [negative.trim(), 'watermarks, borders, frames, added text'].filter(Boolean).join(', ')
   lines.push(`Avoid: ${avoid}.`)
   return lines.join('\n')
-}
-
-export function buildCompactPrompt({ settings, preset, prompt, negative }: PromptInput) {
-  const photo = preset.finish === 'photo'
-  const ranked = visibleSliders(preset.finish).map(slider => {
-    const value = settings[slider.key]
-    if (slider.kind === 'balance') {
-      const offset = value - 50
-      return { weight: Math.abs(offset), word: Math.abs(offset) >= 12 ? (offset > 0 ? slider.keywordUp : slider.keywordDown) : '' }
-    }
-    return { weight: value - 50, word: value >= 60 ? slider.keyword : '' }
-  }).filter(item => item.word).sort((a, b) => b.weight - a.weight).map(item => item.word)
-  const touch = photo && settings.clipartTouch > 0 ? 'subtle clean illustrated edges' : ''
-  const positive = [preset.sdStyle, prompt.trim().split(/[.\n]/)[0]?.slice(0, 160), ...ranked, touch, 'same composition as the photo'].filter(Boolean).join(', ')
-  const avoid = visibleSliders(preset.finish).flatMap(slider => slider.kind === 'level' && 'avoid' in slider && settings[slider.key] <= 25 ? [slider.avoid] : [])
-  const photoAvoid = photo ? [settings.clipartTouch <= 0 ? 'clipart, illustration, painting, vector art, outlines, flat colors' : 'outlines, flat colors', 'smooth plastic, waxy skin', settings.shadowBrightness >= 50 ? 'dark shadows' : ''].filter(Boolean) : []
-  return { prompt: positive.slice(0, 600), negative: [negative.trim(), 'cartoon, childish, watermark, text artifacts, altered text, garbled letters', ...photoAvoid, ...avoid].filter(Boolean).join(', ').slice(0, 600) }
-}
-
-export function diffusionParams(settings: ClipartSettings, finish: ClipartFinish = 'clipart') {
-  if (finish === 'photo') {
-    const strength = Math.round(clamp(0.18 + settings.clipartTouch / CLIPART_TOUCH_MAX * 0.12, 0.15, 0.32) * 100) / 100
-    const guidance = Math.round(clamp(5 + (settings.edgeDefinition + settings.textureDetail + settings.sharpness) / 300 * 4, 4, 10) * 2) / 2
-    const steps = Math.round(clamp(10 + settings.hdEnhancement / 100 * 6 + settings.clarity / 100 * 4, 8, 20))
-    return { strength, guidance, steps }
-  }
-  const style = (settings.clipartIntensity * 0.4 + settings.illustrationStrength * 0.3 + settings.digitalPainting * 0.2 + settings.outlineDefinition * 0.1) / 100
-  const realism = (settings.photoRealism * 0.6 + settings.materialRealism * 0.2 + settings.realisticTextures * 0.2) / 100
-  const strength = Math.round(clamp(0.3 + style * 0.45 - realism * 0.12, 0.25, 0.8) * 100) / 100
-  const guidance = Math.round(clamp(4.5 + (settings.overallDetail + settings.edgeDefinition + settings.sharpness) / 300 * 5, 4, 12) * 2) / 2
-  const steps = Math.round(clamp(8 + settings.hdEnhancement / 100 * 8 + settings.clarity / 100 * 4, 6, 20))
-  return { strength, guidance, steps }
 }
 
 export function normalizeSettings(input: Partial<Record<string, unknown>> | null | undefined, fallback: ClipartSettings = base): ClipartSettings {
