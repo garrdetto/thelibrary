@@ -83,10 +83,11 @@ The Trading bot tab also has the terminal's actions as buttons: pause or resume 
 | --- | --- |
 | Bot | Buying on or off, how often to pull, the fast feed, live price checks |
 | Account | Starting balance in SOL for the next reset |
-| When to buy | Radar signal, score, price gains, viewers, liquidity, market cap, volume, buy share, age, safety, quality, warnings, the Radar's buy advice, rebuys only above the old high, confirmation pulls, cooldown |
+| Pick coins by | Score (the Radar's live runner score) or Quality (the holder checklist score). Each mode has its own buy level, a trend rule (buy only while the number is climbing, not falling, or either way, read from the bot's own pulls over the last minute), a sell level and a sell when the number falls a set number of points from its best since buying. Quality mode can also sell when a checklist item that passed at the buy now fails. A position keeps the mode it was bought in |
+| When to buy | Radar signal, price gains, viewers, liquidity, market cap, volume, buy share, age, safety, failed quality checks, warnings, the Radar's buy advice, rebuys only above the old high, confirmation pulls, cooldown |
 | Learned predictions | Runner, could-explode and big-winner chances, and crash timing from the Radar's learner |
 | Risk and bet size | A fixed buy amount in SOL or a share of the account, the most SOL in one coin, risk strength, caps, open coins, exposure, daily loss limit, drawdown stop, loss-streak break, buys per hour |
-| When to sell | Stop loss, profit target and share sold, entry protection, trailing stop, time limits, score, viewers, warnings, the Radar's exit advice, fading momentum, coins that leave the Radar |
+| When to sell | Stop loss, profit target and share sold, entry protection, trailing stop, time limits, viewers, warnings, the Radar's exit advice, fading momentum, coins that leave the Radar |
 | Costs and realism | Trading fee, network fees (auto fee with a max fee, or your own priority fee and bribe), price impact, extra slippage, extra slippage on stop sells |
 
 **Buy amounts.** By default every buy is a fixed amount (**Buy amount**, 0.25 SOL), and **Most SOL in one coin** (0.5 SOL) caps what goes into any one coin across all its buys in 24 hours. Switch **How each buy is sized** to a share of the account to size buys by percentage instead.

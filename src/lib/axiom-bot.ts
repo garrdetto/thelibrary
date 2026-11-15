@@ -15,6 +15,14 @@ export type BotSettings = { values: BotValues; updatedAt: number | null }
 /** The bot's dials, shared with the Python bot (`scripts/axiom-paper-bot/axiom_paper/dials.json`). */
 export const botDialGroups = schema.groups as BotDialGroup[]
 export const botDials = schema.dials as unknown as BotDial[]
+/** New dial key to the old key it replaced, so values saved under the old name carry over. */
+const renamedDials = (schema as { renamed?: Record<string, string> }).renamed ?? {}
+
+function withRenamedDials(source: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...source }
+  for (const [key, old] of Object.entries(renamedDials)) if (!(key in out) && old in out) out[key] = out[old]
+  return out
+}
 
 export function cleanBotValue(dial: BotDial, value: unknown): BotDialValue {
   if (dial.type === 'toggle') return typeof value === 'boolean' ? value : dial.default
@@ -24,7 +32,7 @@ export function cleanBotValue(dial: BotDial, value: unknown): BotDialValue {
 }
 
 export function normalizeBotValues(input: unknown): BotValues {
-  const source = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  const source = withRenamedDials((input && typeof input === 'object' ? input : {}) as Record<string, unknown>)
   return Object.fromEntries(botDials.map(dial => [dial.key, cleanBotValue(dial, source[dial.key])]))
 }
 
@@ -32,14 +40,15 @@ export const defaultBotValues: BotValues = normalizeBotValues(null)
 
 /** Only the dials present in `input`, each cleaned; unknown keys are dropped. */
 export function cleanBotPatch(input: Record<string, unknown>): BotValues {
-  return Object.fromEntries(botDials.filter(dial => dial.key in input).map(dial => [dial.key, cleanBotValue(dial, input[dial.key])]))
+  const source = withRenamedDials(input)
+  return Object.fromEntries(botDials.filter(dial => dial.key in source).map(dial => [dial.key, cleanBotValue(dial, source[dial.key])]))
 }
 
 /** The dials shown first on the Trading bot tab. */
-export const botQuickDials = ['risk.strength', 'risk.buy_mode', 'risk.buy_amount_sol', 'risk.max_per_coin_sol', 'entry.signal', 'entry.min_score', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'costs.fee_mode', 'costs.max_fee_sol', 'account.starting_sol']
+export const botQuickDials = ['risk.strength', 'risk.buy_mode', 'risk.buy_amount_sol', 'risk.max_per_coin_sol', 'mode.pick_by', 'mode.score_buy_at', 'mode.quality_buy_at', 'entry.signal', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'costs.fee_mode', 'costs.max_fee_sol', 'account.starting_sol']
 
 const balancedStyle: BotValues = Object.fromEntries(
-  ['risk.strength', 'entry.signal', 'entry.min_score', 'entry.safety', 'entry.max_failed_checks', 'entry.radar_advice', 'risk.max_open_positions', 'exit.on_tighten', 'exit.left_radar'].map(key => [key, defaultBotValues[key]]),
+  ['risk.strength', 'entry.signal', 'mode.score_buy_at', 'mode.quality_buy_at', 'entry.safety', 'entry.max_failed_checks', 'entry.radar_advice', 'risk.max_open_positions', 'exit.on_tighten', 'exit.left_radar'].map(key => [key, defaultBotValues[key]]),
 )
 
 /** Starting points for the dials. Each style sets the same handful of dials and leaves the rest alone. */
@@ -48,14 +57,14 @@ export const botPresets: Array<{ id: string; label: string; summary: string; val
     id: 'careful',
     label: 'Careful',
     summary: 'Small bets on the cleanest recommended buys, three coins at most. Sells as soon as the Radar says momentum is fading.',
-    values: { ...balancedStyle, 'risk.strength': 3, 'entry.min_score': 75, 'entry.safety': 'safe', 'entry.max_failed_checks': 0, 'risk.max_open_positions': 3, 'exit.on_tighten': 'sell_all', 'exit.left_radar': 'sell' },
+    values: { ...balancedStyle, 'risk.strength': 3, 'mode.score_buy_at': 75, 'mode.quality_buy_at': 80, 'entry.safety': 'safe', 'entry.max_failed_checks': 0, 'risk.max_open_positions': 3, 'exit.on_tighten': 'sell_all', 'exit.left_radar': 'sell' },
   },
   { id: 'balanced', label: 'Balanced', summary: 'The defaults: recommended buys only, modest bets, wide stops, and a tighter stop when momentum fades.', values: balancedStyle },
   {
     id: 'bold',
     label: 'Bold',
     summary: 'Bigger bets on buys and watched coins, up to eight at once, and only the Radar\'s never-rebuy advice blocks a buy. Loses faster when wrong.',
-    values: { ...balancedStyle, 'risk.strength': 8, 'entry.signal': 'buy_or_watch', 'entry.min_score': 60, 'entry.max_failed_checks': 2, 'entry.radar_advice': 'never_only', 'risk.max_open_positions': 8 },
+    values: { ...balancedStyle, 'risk.strength': 8, 'entry.signal': 'buy_or_watch', 'mode.score_buy_at': 60, 'mode.quality_buy_at': 60, 'entry.max_failed_checks': 2, 'entry.radar_advice': 'never_only', 'risk.max_open_positions': 8 },
   },
 ]
 

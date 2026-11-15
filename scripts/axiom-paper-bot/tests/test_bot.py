@@ -124,12 +124,17 @@ class Harness:
 
 class SettingsTests(unittest.TestCase):
     def test_values_are_clamped_and_wrong_kinds_fall_back(self) -> None:
-        values = dials.normalize({"risk.strength": 99, "entry.min_score": "high", "bot.enabled": "yes", "entry.signal": "moon", "exit.stop_loss_pct": 7.5})
+        values = dials.normalize({"risk.strength": 99, "mode.score_buy_at": "high", "bot.enabled": "yes", "entry.signal": "moon", "exit.stop_loss_pct": 7.5})
         self.assertEqual(values["risk.strength"], 10)
-        self.assertEqual(values["entry.min_score"], 70)
+        self.assertEqual(values["mode.score_buy_at"], 70)
         self.assertIs(values["bot.enabled"], True)
         self.assertEqual(values["entry.signal"], "buy")
         self.assertEqual(values["exit.stop_loss_pct"], 7.5)
+
+    def test_a_renamed_dial_keeps_the_old_value(self) -> None:
+        self.assertEqual(dials.normalize({"entry.min_score": 82})["mode.score_buy_at"], 82)
+        self.assertEqual(dials.normalize({"entry.min_score": 82, "mode.score_buy_at": 64})["mode.score_buy_at"], 64)
+        self.assertNotIn("entry.min_score", dials.normalize({"entry.min_score": 82}))
 
     def test_file_round_trip_keeps_every_dial(self) -> None:
         values = dials.normalize({"risk.strength": 8, "entry.signal": "any", "bot.fast_feed": True, "costs.fee_pct": 1.25})
@@ -318,6 +323,117 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(self.fired(position(last_price=1.06), warned, minute), ("Radar warning: Price dumped 25% in 30s", 1.0))
         self.s["exit.viewer_drop_pct"] = 50
         self.assertEqual(self.fired(position(last_price=1.06), Coin.from_token(token(viewers=40)), minute), ("Viewers fell", 1.0))
+
+
+class ModeTests(unittest.TestCase):
+    """Score mode and quality mode each decide when to buy and when to sell."""
+
+    def setUp(self) -> None:
+        self.s = pinned()
+
+    def block(self, trend: float | None = None, **changes: Any) -> str | None:
+        return strategy.entry_block(Coin.from_token(token(**changes)), self.s, 5, trend)
+
+    def fired(self, held: Position, **changes: Any) -> str | None:
+        signal = strategy.exit_signal(held, Coin.from_token(token(**changes)), self.s, 60_000)
+        return None if signal is None else signal.reason
+
+    def test_quality_mode_buys_on_quality_not_score(self) -> None:
+        self.assertIn("score 40 under 70", self.block(score=40) or "")
+        self.s["mode.pick_by"] = "quality"
+        self.assertIsNone(self.block(score=40))
+        self.assertIn("quality score 60 under 70", self.block(quality={"score": 60, "checks": []}) or "")
+        self.assertEqual(self.block(quality={"score": None, "checks": []}), "no quality score yet")
+
+    def test_bet_size_follows_the_mode_number(self) -> None:
+        self.s["mode.pick_by"] = "quality"
+        weak, _ = strategy.position_size(Coin.from_token(token(score=100, quality={"score": 70, "checks": []})), self.s, 1000, 1000, 0)
+        strong, _ = strategy.position_size(Coin.from_token(token(score=0, quality={"score": 100, "checks": []})), self.s, 1000, 1000, 0)
+        self.assertAlmostEqual(weak, 15)
+        self.assertAlmostEqual(strong, 45)
+
+    def test_trend_rules(self) -> None:
+        self.assertIsNone(self.block(None))
+        self.assertIsNone(self.block(0))
+        self.assertEqual(self.block(-4), "score fell 4 in the last minute")
+        self.s["mode.score_trend"] = "rising"
+        self.assertEqual(self.block(None), "waiting to see the score climb")
+        self.assertIn("not climbing", self.block(0) or "")
+        self.assertIsNone(self.block(3))
+        self.s["mode.score_trend"] = "any"
+        self.assertIsNone(self.block(-30))
+        self.s["mode.pick_by"] = "quality"
+        self.assertEqual(self.block(-10), "quality score fell 10 in the last minute")
+
+    def test_score_mode_sells(self) -> None:
+        self.assertIsNone(self.fired(position(peak_mode=85.0), score=80))
+        self.assertEqual(self.fired(position(peak_mode=85.0), score=45), "Score fell to 45, under 50")
+        self.assertEqual(self.fired(position(peak_mode=90.0), score=70), "Score fell 20 points from its best of 90")
+        self.s["mode.score_drop_points"] = 0
+        self.s["mode.score_sell_below"] = 0
+        self.assertIsNone(self.fired(position(peak_mode=90.0), score=10))
+
+    def test_quality_mode_sells(self) -> None:
+        self.s["mode.pick_by"] = "quality"
+        held = position(peak_mode=95.0, entry={"mode": "quality", "failedLabels": ["Fees"]})
+        self.assertIsNone(self.fired(held, score=5, quality={"score": 90, "checks": [{"label": "Fees", "status": "fail"}]}))
+        self.assertEqual(self.fired(held, quality={"score": 40, "checks": []}), "Quality score fell to 40, under 50")
+        self.assertEqual(self.fired(held, quality={"score": 75, "checks": []}), "Quality score fell 20 points from its best of 95")
+        bundled = {"score": 90, "checks": [{"label": "Fees", "status": "fail"}, {"label": "Bundlers", "status": "fail"}]}
+        self.assertEqual(self.fired(held, quality=bundled), "Quality check failed: Bundlers")
+        self.s["mode.quality_sell_on_new_fail"] = False
+        self.assertIsNone(self.fired(held, quality=bundled))
+
+    def test_a_position_keeps_the_mode_it_was_bought_in(self) -> None:
+        held = position(peak_mode=90.0, entry={"mode": "quality"})
+        self.assertIsNone(self.fired(held, score=5, quality={"score": 90, "checks": []}))
+        self.s["mode.pick_by"] = "quality"
+        old = position(peak_mode=90.0, entry={"mode": "score"})
+        self.assertEqual(self.fired(old, score=45, quality={"score": 90, "checks": []}), "Score fell to 45, under 50")
+
+
+class EngineModeTests(unittest.TestCase):
+    def test_quality_mode_buys_by_quality_and_remembers_its_mode(self) -> None:
+        bot = Harness(**{"mode.pick_by": "quality", "risk.max_open_positions": 1})
+        bot.pull(token("Low", score=99, quality={"score": 75, "checks": []}), token("High", score=10, quality={"score": 95, "checks": []}))
+        self.assertEqual([held.mint for held in bot.engine.positions], ["High"])
+        held = bot.engine.positions[0]
+        self.assertEqual(held.entry["mode"], "quality")
+        self.assertEqual(held.peak_mode, 95)
+        bot.close()
+
+    def test_score_trend_comes_from_the_bots_own_pulls(self) -> None:
+        bot = Harness(**{"mode.score_trend": "rising", "entry.confirm_pulls": 1})
+        bot.pull(token(score=80))
+        self.assertEqual(bot.engine.positions, [])
+        self.assertIn("climb", bot.engine.candidates[0]["reason"])
+        bot.pull(token(score=79), seconds=20)
+        self.assertEqual(bot.engine.positions, [])
+        bot.pull(token(score=84), seconds=20)
+        self.assertEqual(len(bot.engine.positions), 1)
+        bot.close()
+
+    def test_score_drop_from_its_best_sells(self) -> None:
+        bot = Harness(**{"exit.trailing_stop_pct": 0, "exit.stall_minutes": 0})
+        bot.pull(token(score=80))
+        bot.pull(token(score=92))
+        self.assertEqual(bot.engine.positions[0].peak_mode, 92)
+        bot.pull(token(score=71))
+        self.assertEqual(bot.engine.positions, [])
+        reason = bot.ledger.db.execute("SELECT exit_reason FROM positions").fetchone()["exit_reason"]
+        self.assertEqual(reason, "Score fell 21 points from its best of 92")
+        bot.close()
+
+    def test_an_old_account_gets_the_peak_column(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "old.db"
+            first = Ledger(path)
+            first.db.execute("ALTER TABLE positions DROP COLUMN peak_mode")
+            first.close()
+            again = Ledger(path)
+            columns = {row["name"] for row in again.db.execute("PRAGMA table_info(positions)")}
+            again.close()
+            self.assertIn("peak_mode", columns)
 
 
 class EngineTests(unittest.TestCase):
