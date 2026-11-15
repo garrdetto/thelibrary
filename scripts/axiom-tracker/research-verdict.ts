@@ -2,7 +2,7 @@ import { quickDump, quickDumpMs, type PriceShape } from './price-shape.js'
 import type { TraitReading } from './rise-traits.js'
 
 /** A studied coin is negative when any share of supply, read before its peak, is above these. Percentages of supply. */
-export const researchLimits = { top10: 30, fresh: 10, dev: 5, bundlers: 25, insiders: 25, snipers: 20, linked: 25 }
+export const researchLimits = { top10: 35, fresh: 10, dev: 5, bundlers: 25, insiders: 25, snipers: 20, linked: 25 }
 
 /** A dev who has made at least this many coins and graduated under `serialGraduationRate` of them runs a coin factory. */
 export const serialLaunches = 20

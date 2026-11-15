@@ -103,7 +103,7 @@ test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0
     ['mint', { mintAuthority: true }],
     ['freeze', { freezeAuthority: true }],
     ['dev', { dev: 5.5, devSold: false }],
-    ['top10', { top10: 31 }],
+    ['top10', { top10: 36 }],
     ['bundlers', { bundlers: 36 }],
     ['pro traders', { proTraders: 76 }],
     ['dead', { buyers5m: 3 }],
@@ -122,11 +122,17 @@ test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0
   }
 })
 
-test('each point the top 10 hold above 15% costs one point', () => {
-  const at15 = scoreRunner(middling({ top10: 15 })).score
-  const at22 = scoreRunner(middling({ top10: 22 })).score
-  assert.equal(at15 - at22, 7)
-  assert.equal(scoreRunner(middling({ top10: 14 })).score, at15)
+test('a top 10 up to 35% costs nothing; over 35% makes it 0', () => {
+  const at10 = scoreRunner(middling({ top10: 10 })).score
+  assert.equal(scoreRunner(middling({ top10: 22 })).score, at10)
+  assert.equal(scoreRunner(middling({ top10: 35 })).score, at10)
+  assert.equal(scoreRunner(middling({ top10: 35.5 })).score, 0)
+})
+
+test('market cap and distance to migration never cost points', () => {
+  const early = scoreRunner(middling({ marketCap: 20_000, graduated: false })).score
+  assert.equal(scoreRunner(middling({ marketCap: 66_000, graduated: false })).score, early)
+  assert.equal(scoreRunner(middling({ marketCap: 3_000, graduated: false })).score, early)
 })
 
 test('a 30-50% pullback won back with higher lows earns the multi-wave points', () => {
@@ -266,8 +272,7 @@ test('the score trail records each move and says what changed', () => {
   assert.equal(moved.changes[0].from, clean.score)
   assert.equal(moved.changes[0].to, heavier.score)
   assert.ok(moved.changes[0].reasons.some(reason => reason.includes('Bundlers')), moved.changes[0].reasons.join(' | '))
-  assert.ok(moved.changes[0].reasons.some(reason => reason.includes('Top 10 over 15%')), moved.changes[0].reasons.join(' | '))
-  const failed = recordScore('coin', now + 3_000, scoreRunner(middling({ top10: 31 })).ledger)
+  const failed = recordScore('coin', now + 3_000, scoreRunner(middling({ top10: 36 })).ledger)
   assert.ok(failed.changes.at(-1)?.reasons.some(reason => reason.startsWith('Top 10 holders gate failed')))
 })
 

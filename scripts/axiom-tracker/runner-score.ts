@@ -1,14 +1,12 @@
 import type { RadarHolderRisk, RadarSafetyPlan, RadarScoreCap, RadarScoreCheck, RadarScoreGate, RadarScoreLedger, RadarScorePart, RadarScorePillar } from '../../src/lib/axiom-radar-types.js'
 
 /** Step 1: any of these makes the score 0. Percentages of supply. */
-export const disqualifyAbove = { dev: 5, top10: 30, bundlers: 35, fresh: 10, snipers: 30, insiders: 30, linked: 30, proTraders: 75 }
+export const disqualifyAbove = { dev: 5, top10: 35, bundlers: 35, fresh: 10, snipers: 30, insiders: 30, linked: 30, proTraders: 75 }
 export const serialLaunches = 20
 export const serialGraduationRate = 0.1
 /** A dev with at least this many graduated coins is a prolific launcher, not a serial rugger, however many coins they made. */
 export const serialGraduatedEnough = 10
 export const deadChartBuyers = 5
-/** Each percentage point the top 10 hold above this costs one point. */
-export const top10PenaltyFrom = 15
 export const unverifiedCap = 45
 export const fallingCap = 40
 export const learnedLimits = { minimum: -20, maximum: 15 }
@@ -50,7 +48,6 @@ export function movementSignal(change: RunnerInput['priceChange']) {
   }
   return weights ? { signal: weighted, readings, coverage: weights } : null
 }
-export const sweetSpots = { early: { low: 8_000, high: 60_000 }, graduated: { low: 30_000, high: 300_000 } }
 
 export type PricePoint = { t: number; price: number }
 export type RunnerLinks = { twitter: string | null; telegram: string | null; website: string | null }
@@ -268,10 +265,10 @@ const sum = (checks: RadarScoreCheck[]) => checks.reduce((total, item) => total 
 
 /**
  * The runner score out of 100, ranked on Axiom's own figures. Step 1 gates make it 0 (mint or freeze on, dev over 5%, top 10
- * over 30%, bundlers over 35%, fresh wallets over 10%, dead charts, bot climbs, a big holder sell-off right now); a serial
+ * over 35%, bundlers over 35%, fresh wallets over 10%, dead charts, bot climbs, a big holder sell-off right now); a serial
  * launcher is capped at 40 and a recycled name, copied links or small holder trims cost points. Then holder percentages (20), Axiom demand and growth: viewers, viewer and holder growth a
- * minute, buy share, holders, volume, fees (45), chart and liquidity (25, with movement over 5s, 30s, 1m and 5m weighted toward 5m) and hype (15); a falling move costs up to 10, raised by `scoreStretch`, less one
- * point for each percentage point the top 10 hold above 15%, plus or minus what past alerts taught. `ledger` lists every
+ * minute, buy share, holders, volume, fees (45), chart and liquidity (25, with movement over 5s, 30s, 1m and 5m weighted toward 5m) and hype (15); a falling move costs up to 10, raised by `scoreStretch`; a top 10 under 35% costs
+ * nothing unless it is falling fast (the sell watch), and market cap or distance to migration never costs points; plus or minus what past alerts taught. `ledger` lists every
  * gate, rule, adjustment and cap with the reading it used.
  */
 export function scoreRunner(input: RunnerInput): RunnerScore {
@@ -375,20 +372,15 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   if (movement && movement.signal >= 0.5) tags.push('moving-up')
   const shapePoints = Math.max(waves.points >= 15 ? 5 : waves.points ? 3 : 0, steps.points >= 10 ? 5 : steps.points ? 3 : 0)
   const shapeDetail = waves.points >= steps.points ? waves.detail : steps.detail
-  const inEarlySpot = input.marketCap !== null && input.marketCap >= sweetSpots.early.low && input.marketCap <= sweetSpots.early.high
-  const inGraduatedSpot = Boolean(input.graduated) && input.marketCap !== null && input.marketCap >= sweetSpots.graduated.low && input.marketCap <= sweetSpots.graduated.high
-  const inSpot = inEarlySpot || inGraduatedSpot
-  if (inSpot) tags.push(inGraduatedSpot && !inEarlySpot ? 'sweet-spot-graduated' : 'sweet-spot-early')
   const impact = sellImpact(1, input.marketCap, input.liquidity)
-  const depth = impact === null ? 0 : impact < 25 ? 4 : impact < 40 ? 2 : 0
-  if (depth === 4) tags.push('deep-liquidity')
+  const depth = impact === null ? 0 : impact < 25 ? 6 : impact < 40 ? 3 : 0
+  if (depth === 6) tags.push('deep-liquidity')
   const nearHigh = high !== null && latest !== null && latest >= high * 0.8
   const chartChecks = [
     check(`Moving up, weighted 5s ${movementWindows[0].weight * 100}%, 30s ${movementWindows[1].weight * 100}%, 1m ${movementWindows[2].weight * 100}%, 5m ${movementWindows[3].weight * 100}%`, movement ? `${movement.readings.join(', ')} (${movement.signal >= 0 ? '+' : ''}${Math.round(movement.signal * 100)}% of a strong move)` : 'not read yet', movementEarned, movementPoints, movement !== null),
     check('Steps up or won back a 30-55% pullback (3 if mostly or recovering)', shapeDetail, shapePoints, 5, input.ticks.length > 0),
-    check(`Market cap in the sweet spot ($8K-$60K, or $30K-$300K once graduated)`, input.marketCap === null ? 'not read yet' : money(input.marketCap), inSpot ? 4 : 0, 4, input.marketCap !== null),
-    check('Deep liquidity: selling 1% moves it under 25% (2 if under 40%)', impact === null ? `liquidity ${input.liquidity === null ? 'not read yet' : money(input.liquidity)}` : `selling 1% of supply moves it about ${impact}% (${money(input.liquidity as number)} liquidity)`, depth, 4, impact !== null),
-    check('Holding within 20% of its 10-minute high', high !== null && latest !== null ? `${Math.round((latest / high) * 100)}% of its high` : 'no recent high yet', nearHigh ? 2 : 0, 2, high !== null),
+    check('Deep liquidity: selling 1% moves it under 25% (3 if under 40%)', impact === null ? `liquidity ${input.liquidity === null ? 'not read yet' : money(input.liquidity)}` : `selling 1% of supply moves it about ${impact}% (${money(input.liquidity as number)} liquidity)`, depth, 6, impact !== null),
+    check('Holding within 20% of its 10-minute high', high !== null && latest !== null ? `${Math.round((latest / high) * 100)}% of its high` : 'no recent high yet', nearHigh ? 4 : 0, 4, high !== null),
   ]
   const chart = sum(chartChecks)
 
@@ -419,12 +411,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   ]
   const base = distribution + momentum + hype + chart
   const cuts: string[] = []
-  const penalty = input.top10 !== null && input.top10 > top10PenaltyFrom ? Math.round(input.top10 - top10PenaltyFrom) : 0
-  const adjustments: RadarScoreCheck[] = [{ label: `Top 10 over ${top10PenaltyFrom}%: one point off per point`, reading: share(input.top10), points: -penalty, max: 0, status: input.top10 === null ? 'unknown' : penalty ? 'missed' : 'earned' }]
-  if (penalty) {
-    cuts.push(`Top 10 hold ${pct(input.top10 as number)}: -${penalty}`)
-    parts.push({ key: 'penalty', label: 'Top 10 over 15%', points: -penalty, max: 0, detail: `One point off for each point above 15% (${pct(input.top10 as number)})`, available: true })
-  }
+  const adjustments: RadarScoreCheck[] = []
   const recycledCost = input.recycled === null ? 0 : input.recycled.startsWith('Copied links') ? softPenalties.copiedLinks : softPenalties.recycledName
   adjustments.push({ label: `Recycled name -${softPenalties.recycledName}, copied X or website -${softPenalties.copiedLinks}`, reading: input.recycled ?? (input.reusedLinks.length ? `${plural(input.reusedLinks.length, 'shared link')} (Telegram or a tweet, allowed)` : 'original'), points: -recycledCost, max: 0, status: recycledCost ? 'missed' : 'earned' })
   if (recycledCost) {
@@ -450,8 +437,8 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     parts.push({ key: 'learned', label: 'Learned from past alerts', points: learned, max: learnedLimits.maximum, detail: input.learned.map(item => `${item.label} ${item.points > 0 ? '+' : ''}${item.points}`).join(', '), available: true })
     cuts.push(...input.learned.filter(item => item.points < 0).map(item => `${item.label}: ${item.points}`))
   }
-  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch - penalty - recycledCost - sellingCost - movementCost)))
-  adjustments.push({ label: `Points raised by a quarter (x${scoreStretch}), top 10 deduction not raised`, reading: `${round1(base + learned)} points`, points: round1((base + learned) * (scoreStretch - 1)), max: 0, status: 'earned' })
+  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch - recycledCost - sellingCost - movementCost)))
+  adjustments.push({ label: `Points raised by a quarter (x${scoreStretch}), deductions not raised`, reading: `${round1(base + learned)} points`, points: round1((base + learned) * (scoreStretch - 1)), max: 0, status: 'earned' })
   let score = beforeCaps
   if (disqualified.length) score = 0
   const unverified = !disqualified.length && input.top10 === null && input.dev === null

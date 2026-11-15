@@ -209,7 +209,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       <section className="radar-drawer-section">
         <h3>{live.scoreLedger ? 'Safety plan and token settings' : 'Score breakdown'}</h3>
         {!live.scoreLedger && <>
-        {live.scoreParts && <p className="radar-note">Runner score, re-checked every second from Axiom's figures: holder percentages (20), Axiom demand and growth (45: viewers, viewers and holders gained a minute, buy share, holders, volume), chart and liquidity (20) and hype (15), raised by a quarter, less a point for each point the top 10 hold above 15%. Mint or freeze authority, dev over 5%, top 10 over 30%, bundles over 35%, a serial launcher with under 10 graduated coins or a copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling score 0.</p>}
+        {live.scoreParts && <p className="radar-note">Runner score, re-checked every second from Axiom's figures: holder percentages (20), Axiom demand and growth (45: viewers, viewers and holders gained a minute, buy share, holders, volume), chart and liquidity (25) and hype (15), raised by a quarter. A top 10 up to 35% costs nothing unless it is dropping fast while the price falls, and market cap or distance to migration never costs points. Mint or freeze authority, dev over 5%, top 10 over 35%, bundles over 35%, a serial launcher with under 10 graduated coins or a copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling score 0.</p>}
         <ul className="radar-factors">
           {live.scoreParts
             ? live.scoreParts.map(part => <li key={`${part.key}:${part.label}`} className={part.available ? '' : 'muted'}>

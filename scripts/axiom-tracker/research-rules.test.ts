@@ -14,12 +14,12 @@ test('a coin with clean holder numbers before its peak is positive', () => {
 })
 
 test('top 10, dev or bundlers over 30% before the peak is negative', () => {
-  for (const key of ['top10', 'dev', 'bundlers'] as const) {
-    const result = verdict({ rise: { ...clean, [key]: 31 } })
+  for (const [key, value] of [['top10', 36], ['dev', 31], ['bundlers', 31]] as const) {
+    const result = verdict({ rise: { ...clean, [key]: value } })
     assert.ok(result.negatives.length > 0, key)
   }
-  assert.ok(verdict({ rise: { ...clean, top10: 30.5 } }).kinds.includes('Concentrated holders'))
-  assert.deepEqual(verdict({ rise: { ...clean, top10: 30 } }).negatives, [])
+  assert.ok(verdict({ rise: { ...clean, top10: 35.5 } }).kinds.includes('Concentrated holders'))
+  assert.deepEqual(verdict({ rise: { ...clean, top10: 35 } }).negatives, [])
 })
 
 test('fresh wallets over 10% is never positive', () => {
