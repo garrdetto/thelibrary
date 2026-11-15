@@ -13,9 +13,25 @@ export const priceWindows: Array<{ key: RadarPriceWindow; ms: number; tolerance:
 
 const percent = (current: number, previous: number) => Math.round(((current - previous) / previous) * 10_000) / 100
 
+/** The longest gap between two readings the price at a window's start may be estimated across. */
+export const maxBridgeMs = (windowMs: number) => Math.max(60_000, windowMs * 4)
+
+/** The price at `target` read off the straight line between the last reading before it and the first after it. */
+function between(priced: Array<{ t: number; price: number }>, target: number, windowMs: number) {
+  let before: { t: number; price: number } | null = null
+  let after: { t: number; price: number } | null = null
+  for (const tick of priced) {
+    if (tick.t <= target) before = tick
+    else { after = tick; break }
+  }
+  if (!before || !after || after.t - before.t > maxBridgeMs(windowMs)) return null
+  return before.price + (after.price - before.price) * ((target - before.t) / (after.t - before.t))
+}
+
 /**
  * Price change over 5s, 30s, 1m, 5m and 10m for every coin with a price. A window uses the reading nearest its start when
- * there is one (`live`). Otherwise: a coin younger than the window shows its change since the first price seen
+ * there is one (`live`). Otherwise: a reading on each side of the window's start gives the price there on the line between
+ * them (`between-readings`); a coin younger than the window shows its change since the first price seen
  * (`since-launch`); the 5-minute window takes DexScreener's own 5-minute change (`dexscreener`); and a coin the tracker
  * only just started following shows its change since the oldest reading it has (`since-tracked`). `sources` names every
  * window that is not `live`.
@@ -36,6 +52,12 @@ export function priceWindowChanges(input: { ticks: PricedTick[]; price: number |
     }
     if (nearest) {
       changes[window.key] = percent(price, nearest.price)
+      continue
+    }
+    const estimated = between(priced, target, window.ms)
+    if (estimated !== null && estimated > 0) {
+      changes[window.key] = percent(price, estimated)
+      sources[window.key] = 'between-readings'
       continue
     }
     const younger = input.launchedAt !== null && now - input.launchedAt < window.ms

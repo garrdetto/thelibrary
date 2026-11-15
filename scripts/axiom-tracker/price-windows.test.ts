@@ -35,6 +35,16 @@ test('an older coin the tracker just started following uses DexScreener for 5m a
   assert.equal(sources.m10, 'since-tracked')
 })
 
+test('a gap at the start of a window is bridged from the readings on either side', () => {
+  const ticks: PricedTick[] = [{ t: now - 120_000, price: 1 }, ...everySecond(20, () => 2)]
+  const { changes, sources } = priceWindowChanges({ ticks, price: 2, now, launchedAt: now - 3_600_000, dexM5: null })
+  assert.equal(sources.s30, 'between-readings')
+  assert.equal(sources.m1, 'between-readings')
+  assert.ok((changes.m1 as number) > (changes.s30 as number) && (changes.s30 as number) > 0)
+  assert.equal(changes.s5, 0)
+  assert.equal(sources.s5, undefined)
+})
+
 test('no price means no windows', () => {
   const { changes } = priceWindowChanges({ ticks: [], price: null, now, launchedAt: null, dexM5: 5 })
   assert.deepEqual(changes, { s5: null, s30: null, m1: null, m5: null, m10: null })
