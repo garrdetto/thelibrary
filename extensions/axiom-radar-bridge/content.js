@@ -1,4 +1,5 @@
 const frames = []
+let pulseFeed = null
 const reportIntervalMs = 1000
 let sampleResolver = null
 
@@ -8,6 +9,7 @@ window.addEventListener('message', event => {
     frames.push(event.data.frame)
     if (frames.length > 400) frames.splice(0, frames.length - 400)
   }
+  if (event.data?.source === 'axiom-radar-bridge-pulse' && Array.isArray(event.data.rows)) pulseFeed = { usdPerSol: event.data.usdPerSol, rows: event.data.rows, at: event.data.at }
   if (event.data?.source === 'axiom-radar-bridge-sample' && sampleResolver) {
     sampleResolver(event.data.frames)
     sampleResolver = null
@@ -176,11 +178,12 @@ function report() {
   const pairAddress = pairFromUrl()
   const batch = frames.splice(0, 200)
   const cards = pairAddress ? [] : eyeCards()
-  if (!pairAddress && !batch.length && !cards.length) return
+  const pulse = !pairAddress && pulseFeed && Date.now() - pulseFeed.at < 5000 ? pulseFeed : null
+  if (!pairAddress && !batch.length && !cards.length && !pulse) return
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
   const stats = pairAddress ? pageStats() : null
   try {
-    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}) } }).catch(() => undefined)
+    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}) } }).catch(() => undefined)
   } catch {
     stopReporting()
   }

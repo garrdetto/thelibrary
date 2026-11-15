@@ -54,3 +54,27 @@ test('GeckoTerminal pacing widens after a limit answer and eases back after good
   assert.ok(geckoGapMs() < widened)
   resetGeckoPacing()
 })
+
+test('every coin in the Pulse worker feed becomes a Pulse coin with dollar figures and holder shares', async () => {
+  const { applyPulseFeed, pulseFeedSchema } = await import('./pulse-feed.js')
+  const mint = 'Feed1111111111111111111111111111111111pump'
+  const feed = pulseFeedSchema.parse({
+    usdPerSol: 70,
+    rows: [{ column: 'newPairs', pairAddress: '8joWpsrzJRYibU3Cp5hezATASCDRAGN4sJxe5QhmD4BX', tokenAddress: mint, tokenName: 'Feed Coin', tokenTicker: 'FEED', createdAt: new Date(now - 120_000).toISOString(), marketCap: 200, volume: '50', liquidityNative: '20', numHolders: 140, userCount: 44, numTxns: 300, numBuys: 210, numSells: 90, top10HoldersPercent: 18.5, devHoldsPercent: 0, devSold: true, bundlersHoldPercent: 4, freshWalletsHoldPercent: 3, proTradersHoldPercent: 12, swapParams: [3, '1', '2'] }],
+  })
+  assert.equal(applyPulseFeed(feed, now), 1)
+  const card = trackerState.pulseCards.get(mint)
+  assert.equal(card?.marketCap, 14_000)
+  assert.equal(card?.volume, 3_500)
+  assert.equal(card?.liquidityUsd, 2_800)
+  assert.equal(card?.freshPct, 3)
+  assert.equal(card?.devPct, 0)
+  assert.equal(trackerState.pulseNames.get(mint)?.symbol, 'FEED')
+  assert.equal(trackerState.pulseNames.get(mint)?.createdAt, now - 120_000)
+  assert.equal(trackerState.viewers.get(mint)?.count, 44)
+  assert.ok(trackerState.pulse.has(mint))
+  const market = withPulseMarket(mint, null, now)
+  assert.equal(market?.buys5m, 210)
+  assert.equal(market?.liquidityUsd, 2_800)
+  for (const map of [trackerState.pulseCards, trackerState.pulseNames, trackerState.viewers, trackerState.pulse]) map.delete(mint)
+})

@@ -64,17 +64,18 @@ export function withPulseMarket(mint: string, market: MarketReading | null, now:
   if (market && market.marketCap && market.marketCap > 0 && market.priceUsd) {
     const ratio = card.marketCap / market.marketCap
     if (ratio < 0.2 || ratio > 5) return market
-    return { ...market, priceUsd: market.priceUsd * ratio, marketCap: card.marketCap, readAt: card.seenAt }
+    return { ...market, priceUsd: market.priceUsd * ratio, marketCap: card.marketCap, liquidityUsd: market.liquidityUsd ?? card.liquidityUsd ?? null, readAt: card.seenAt }
   }
   const identity = trackerState.pulseNames.get(mint)
   const flow = pulseFlow5m(mint, now, identity?.createdAt ?? null)
-  const half = flow ? Math.round(flow.txns / 2) : market?.buys5m ?? 0
+  const buyShare = card.buyCount && card.txCount ? Math.max(0, Math.min(1, card.buyCount / card.txCount)) : 0.5
+  const half = flow ? Math.round(flow.txns * buyShare) : market?.buys5m ?? 0
   return {
     mint,
     pairAddress: market?.pairAddress ?? identity?.pairAddress ?? mint,
     priceUsd: card.marketCap / pumpSupply,
     marketCap: card.marketCap,
-    liquidityUsd: market?.liquidityUsd ?? null,
+    liquidityUsd: market?.liquidityUsd ?? card.liquidityUsd ?? null,
     volume5m: flow ? flow.volume : market?.volume5m ?? 0,
     buys5m: half,
     sells5m: flow ? flow.txns - half : market?.sells5m ?? 0,

@@ -196,6 +196,13 @@ export type RadarPulseMetrics = {
   txCount: number | null
   volume: number | null
   marketCap: number | null
+  freshPct?: number | null
+  proTradersPct?: number | null
+  buyCount?: number | null
+  sellCount?: number | null
+  liquidityUsd?: number | null
+  viewers?: number | null
+  column?: 'newPairs' | 'finalStretch' | 'migrated'
   seenAt: number
 }
 
