@@ -28,9 +28,9 @@ function strong(overrides: Partial<RunnerInput> = {}): RunnerInput {
     insiders: 2,
     bundlers: 3,
     linked: 1,
-    fresh: 4,
+    fresh: 1,
     proTraders: 20,
-    holders: 260,
+    holders: 360,
     mintAuthority: false,
     freezeAuthority: false,
     rugged: false,
@@ -48,8 +48,9 @@ function strong(overrides: Partial<RunnerInput> = {}): RunnerInput {
     links: { twitter: 'https://x.com/realcoin', telegram: 'https://t.me/realcoin', website: 'https://realcoin.fun' },
     reusedLinks: [],
     smartHolders: 2,
-    viewers: 120,
+    viewers: 320,
     viewersPerMin: 14,
+    holdersPerMin: 45,
     botReason: null,
     selling: [],
     devSelling: false,
@@ -63,9 +64,26 @@ test('a clean coin with every pillar scores as a runner', () => {
   assert.deepEqual(result.disqualified, [])
   assert.ok(result.score >= 90, `score ${result.score}`)
   const parts = Object.fromEntries(result.parts.map(part => [part.key, part.points]))
-  assert.equal(parts.distribution, 30)
-  assert.equal(parts.momentum, 30)
-  assert.equal(parts.hype, 25)
+  assert.equal(parts.distribution, 20)
+  assert.equal(parts.momentum, 45)
+  assert.equal(parts.hype, 15)
+})
+
+/** A clean coin with modest attention: scores in the 80s, so moves in either direction show. */
+function middling(overrides: Partial<RunnerInput> = {}): RunnerInput {
+  return strong({ viewers: 60, viewersPerMin: 3, holdersPerMin: 4, dexPaid: false, smartHolders: 0, ...overrides })
+}
+
+test('Axiom demand ranks coins: viewers, viewer growth and holder growth lift the score', () => {
+  const quiet = scoreRunner(middling({ viewers: 15, viewersPerMin: 0, holdersPerMin: 0 })).score
+  const watched = scoreRunner(middling()).score
+  const surging = scoreRunner(middling({ viewers: 320, viewersPerMin: 14, holdersPerMin: 45 })).score
+  assert.ok(quiet < watched && watched < surging, `${quiet} ${watched} ${surging}`)
+})
+
+test('a prolific dev with many graduated coins is not a serial launcher', () => {
+  assert.deepEqual(scoreRunner(strong({ devCreated: 850, devMigrated: 43 })).disqualified, [])
+  assert.ok(scoreRunner(strong({ devCreated: 570, devMigrated: 4 })).disqualified.some(reason => reason.startsWith('Serial launcher')))
 })
 
 test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0', () => {
@@ -73,7 +91,7 @@ test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0
     ['mint', { mintAuthority: true }],
     ['freeze', { freezeAuthority: true }],
     ['dev', { dev: 5.5, devSold: false }],
-    ['top10', { top10: 26 }],
+    ['top10', { top10: 31 }],
     ['bundlers', { bundlers: 36 }],
     ['pro traders', { proTraders: 51 }],
     ['serial', { devCreated: 400, devMigrated: 6 }],
@@ -94,11 +112,10 @@ test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0
 })
 
 test('each point the top 10 hold above 15% costs one point', () => {
-  const at15 = scoreRunner(strong({ top10: 15 })).score
-  const at22 = scoreRunner(strong({ top10: 22 })).score
+  const at15 = scoreRunner(middling({ top10: 15 })).score
+  const at22 = scoreRunner(middling({ top10: 22 })).score
   assert.equal(at15 - at22, 7)
-  const under = scoreRunner(strong({ top10: 14 })).score
-  assert.equal(under - at15, 15)
+  assert.equal(scoreRunner(middling({ top10: 14 })).score, at15)
 })
 
 test('a 30-50% pullback won back with higher lows earns the multi-wave points', () => {
@@ -225,20 +242,20 @@ test('bundlers may hold up to 35% and pro traders up to 50% before the gate fail
 
 test('the score trail records each move and says what changed', () => {
   resetScoreTrails()
-  const clean = scoreRunner(strong())
+  const clean = scoreRunner(middling())
   recordScore('coin', now, clean.ledger)
   const steady = recordScore('coin', now + 1_000, clean.ledger)
   assert.equal(steady.changes.length, 0)
   assert.equal(steady.points.length, 1)
-  const heavier = scoreRunner(strong({ top10: 19 }))
+  const heavier = scoreRunner(middling({ top10: 19, bundlers: 12 }))
   const moved = recordScore('coin', now + 2_000, heavier.ledger)
   assert.equal(moved.points.length, 2)
   assert.equal(moved.changes.length, 1)
   assert.equal(moved.changes[0].from, clean.score)
   assert.equal(moved.changes[0].to, heavier.score)
-  assert.ok(moved.changes[0].reasons.some(reason => reason.startsWith('-15 Top 10 hold under 15%')), moved.changes[0].reasons.join(' | '))
+  assert.ok(moved.changes[0].reasons.some(reason => reason.includes('Bundlers')), moved.changes[0].reasons.join(' | '))
   assert.ok(moved.changes[0].reasons.some(reason => reason.includes('Top 10 over 15%')), moved.changes[0].reasons.join(' | '))
-  const failed = recordScore('coin', now + 3_000, scoreRunner(strong({ top10: 30 })).ledger)
+  const failed = recordScore('coin', now + 3_000, scoreRunner(middling({ top10: 31 })).ledger)
   assert.ok(failed.changes.at(-1)?.reasons.some(reason => reason.startsWith('Top 10 holders gate failed')))
 })
 
@@ -246,9 +263,9 @@ test('a coin the radar just found is judged on its earlier chart, not on how lon
   const full = strongTicks()
   const tracked = full.slice(-3)
   const history = minuteClosesFrom(full.slice(0, -3).map(point => [Math.floor((point.t - 59_999) / 1000), point.price, point.price, point.price, point.price, 1] as [number, number, number, number, number, number]).reverse())
-  const justFound = scoreRunner(strong({ ticks: tracked }))
-  const backfilled = scoreRunner(strong({ ticks: withChartHistory(history, tracked) }))
-  const trackedLong = scoreRunner(strong({ ticks: full }))
+  const justFound = scoreRunner(middling({ ticks: tracked }))
+  const backfilled = scoreRunner(middling({ ticks: withChartHistory(history, tracked) }))
+  const trackedLong = scoreRunner(middling({ ticks: full }))
   assert.ok(backfilled.score > justFound.score, `${backfilled.score} vs ${justFound.score}`)
-  assert.equal(backfilled.ledger.pillars.find(pillar => pillar.key === 'momentum')?.points, trackedLong.ledger.pillars.find(pillar => pillar.key === 'momentum')?.points)
+  assert.equal(backfilled.ledger.pillars.find(pillar => pillar.key === 'chart')?.points, trackedLong.ledger.pillars.find(pillar => pillar.key === 'chart')?.points)
 })

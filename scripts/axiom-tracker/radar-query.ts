@@ -430,6 +430,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     smartHolders: runners,
     viewers,
     viewersPerMin: live.viewersPerMin,
+    holdersPerMin: live.holdersPerMin,
     botReason: botReason ?? remembered?.reason ?? null,
     selling: sellAlerts.map(alert => alert.text),
     devSelling: sellAlerts.some(alert => alert.dev),
