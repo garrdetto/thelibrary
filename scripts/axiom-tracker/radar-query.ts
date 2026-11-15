@@ -10,6 +10,7 @@ import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas 
 import { jupiterReading } from './jupiter.js'
 import { moverCaps, scoreMover } from './mover-score.js'
 import { pageStatsAt } from './page-stats.js'
+import { rankHolderWallets } from './wallet-ranking.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -479,11 +480,7 @@ function componentStatuses(database: TrackerDatabase) {
 }
 
 function smartWallets(database: TrackerDatabase, minRunnerHits: number): RadarWallet[] {
-  const holders = database.prepare(`
-    SELECT h.wallet, COUNT(*) AS runnerHits, MAX(h.updated_at) AS updatedAt FROM holders h
-    JOIN good_coins g ON g.mint = h.mint GROUP BY h.wallet HAVING COUNT(*) >= ?
-    ORDER BY runnerHits DESC, updatedAt DESC LIMIT 40
-  `).all(minRunnerHits) as Array<{ wallet: string; runnerHits: number; updatedAt: number }>
+  const holders = rankHolderWallets(database, minRunnerHits)
   const holdings = database.prepare(`
     SELECT h.mint, COALESCE(t.symbol, g.symbol, '???') AS symbol, t.pair_address AS pairAddress, h.pct, g.mint IS NOT NULL AS good, h.updated_at AS timestamp FROM holders h
     LEFT JOIN tokens t ON t.mint = h.mint LEFT JOIN good_coins g ON g.mint = h.mint
