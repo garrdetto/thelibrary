@@ -181,6 +181,7 @@ function adviceFor(token: RadarToken, lifecycle: { first_price: number; peak_pri
   const crashed = Boolean(lifecycle?.rugged_at) && price !== null && priceHigh !== null && price <= priceHigh * 0.7
   if (crashed) exitReasons.push(lifecycle?.rug_kind === 'liquidity pulled' ? 'Liquidity was pulled' : 'Already crashed 75% from its high')
   for (const alert of token.alerts) exitReasons.push(alert)
+  if (token.safetyPlan?.level === 'watch') tightenReasons.push(`Dump risk: ${token.safetyPlan.summary}`)
   if (price !== null && priceHigh !== null) {
     const moment: Moment = {
       price,

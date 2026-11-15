@@ -8,7 +8,10 @@ import { activeBotClimb, botClimbHoldMs, freshViewerCount, trackerState } from '
 import type { TrackerDatabase } from './db.js'
 import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
 import { jupiterReading } from './jupiter.js'
-import { moverCaps, scoreMover } from './mover-score.js'
+import { detectBotClimb } from './holder-limits.js'
+import { scoreRunner, type PricePoint, type RunnerLinks } from './runner-score.js'
+import { learnedEdge, learnedFor, runnerState } from './runner-state.js'
+import { forgetSells, watchSells } from './sell-watch.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -33,6 +36,9 @@ type TokenRow = {
   rugged: number | null
   traits_checked_at: number | null
   fresh_pct?: number | null
+  links_json?: string | null
+  graduated?: number | null
+  dex_paid?: number | null
 }
 
 type SnapshotRow = {
@@ -210,6 +216,7 @@ function classify(token: RadarToken, settings: RadarSettings, liquidityChange1m:
   if (token.safety.mintAuthority) alerts.push('Mint authority still enabled')
   if (token.safety.freezeAuthority) alerts.push('Freeze authority still enabled')
   if (token.holderTraits?.rugged) alerts.push('RugCheck marked it rugged')
+  for (const selling of token.safetyPlan?.selling ?? []) alerts.push(selling)
   const redFlags = token.quality.checks.filter(check => check.status === 'fail').map(check => check.label)
   const buyRules = settings.buy
   const buyChecks: Array<[boolean, string]> = [
@@ -299,7 +306,50 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
   return result
 }
 
-function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: SnapshotRow | undefined, runners: number, weights: RadarWeights, now: number, settings: RadarSettings, traits: RadarHolderTraits | null): BuiltToken {
+const noLinks: RunnerLinks = { twitter: null, telegram: null, website: null }
+const recycledCache = new Map<string, { at: number; linksJson: string | null; reason: string | null; reused: string[] }>()
+
+function parseLinks(json: string | null | undefined): RunnerLinks {
+  if (!json) return noLinks
+  try {
+    const value = JSON.parse(json) as Partial<RunnerLinks>
+    return { twitter: value.twitter ?? null, telegram: value.telegram ?? null, website: value.website ?? null }
+  } catch {
+    return noLinks
+  }
+}
+
+/** Metadata recycling: a ticker that two or more earlier coins crashed under, or an X account, community or website an older coin already used. */
+function recycledFor(database: TrackerDatabase, token: TokenRow, now: number) {
+  const links = token.links_json ? parseLinks(token.links_json) : socialLinks(token)
+  const cached = recycledCache.get(token.mint)
+  if (cached && now - cached.at < 5 * 60_000 && cached.linksJson === (token.links_json ?? null)) return { reason: cached.reason, reused: cached.reused, links }
+  const symbol = token.symbol.trim().toLowerCase()
+  let crashed = 0
+  if (lifecycleTableKnown) crashed = (database.prepare('SELECT COUNT(*) AS count FROM tokens t JOIN coin_lifecycles l ON l.mint = t.mint WHERE lower(trim(t.symbol)) = ? AND t.mint <> ? AND t.pair_created_at < ? AND l.rugged_at IS NOT NULL').get(symbol, token.mint, token.pair_created_at) as { count: number }).count
+  const older = database.prepare("SELECT 1 FROM tokens WHERE mint <> ? AND pair_created_at < ? AND (json_extract(links_json, '$.twitter') = ? OR json_extract(links_json, '$.website') = ? OR json_extract(links_json, '$.telegram') = ?) LIMIT 1")
+  const reused = [links.twitter, links.telegram, links.website].filter((link): link is string => Boolean(link) && Boolean(older.get(token.mint, token.pair_created_at, link, link, link)))
+  const copied = reused.filter(link => link !== links.telegram && !/\/status\/\d+/.test(link))
+  const reason = crashed >= 2 ? `Recycled name: ${crashed} earlier coins called ${token.symbol} crashed` : copied.length ? `Copied links: ${copied.length === 1 ? 'its' : 'its X and website'} ${copied.length === 1 ? (copied[0] === links.website ? 'website' : 'X link') : 'links'} came from an older coin` : null
+  recycledCache.set(token.mint, { at: now, linksJson: token.links_json ?? null, reason, reused })
+  if (recycledCache.size > 800) for (const [key, entry] of recycledCache) if (now - entry.at > 30 * 60_000) recycledCache.delete(key)
+  return { reason, reused, links }
+}
+
+function socialLinks(token: TokenRow): RunnerLinks {
+  const socials = parseSocials(token.socials_json)
+  return { twitter: socials.twitter ?? null, telegram: socials.telegram ?? null, website: socials.website ?? null }
+}
+
+/** One price a second from the live feed, preceded by the 10-second snapshots for the minutes before it. */
+function priceSeries(snapshots: SnapshotRow[], ticks: MarketTick[]): PricePoint[] {
+  const live = ticks.filter(tick => tick.price !== null && tick.price > 0).map(tick => ({ t: tick.t, price: tick.price as number }))
+  const startedAt = live[0]?.t ?? Infinity
+  const earlier = snapshots.filter(row => row.timestamp < startedAt && row.price_usd !== null && row.price_usd > 0).map(row => ({ t: row.timestamp, price: row.price_usd as number }))
+  return [...earlier, ...live]
+}
+
+function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: SnapshotRow[], fallback: SnapshotRow | undefined, runners: number, weights: RadarWeights, now: number, settings: RadarSettings, traits: RadarHolderTraits | null): BuiltToken {
   const latest = snapshots.at(-1) ?? fallback
   const live = liveFigures(token.mint, now)
   const stored = viewerDeltas(snapshots, now)
@@ -324,31 +374,60 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
       ? { holders: jupiter.holders, perMin: jupiter.holdersPerMin, change5mPct: jupiter.holderChange5mPct }
       : { holders: traits?.holders ?? null, perMin: live.holdersPerMin, change5mPct: null }
   const flow = snapshots.filter(row => row.timestamp >= now - 200_000).map(row => ({ t: row.timestamp, price: row.price_usd, volume5m: row.volume_5m, buys5m: row.buys_5m, sells5m: row.sells_5m }))
-  const mover = scoreMover({
+  const botReason = detectBotClimb({ now, ageMinutes, buys5m: buys, sells5m: sells, volume5m, traders5m: jupiter?.traders5m ?? null, netBuyers5m: jupiter?.netBuyers5m ?? null, flow })
+  const remembered = activeBotClimb(token.mint, now)
+  if (botReason) trackerState.botClimbs.set(token.mint, { until: now + botClimbHoldMs, reason: botReason })
+  const botClimb = botReason !== null || remembered !== null
+  const ticks = marketTicks.get(token.mint) ?? []
+  const pulseNow = live.pulse && now - live.pulse.seenAt < 10_000 ? live.pulse : null
+  const price = live.price ?? latest?.price_usd ?? null
+  const sellAlerts = watchSells(token.mint, pulseNow
+    ? { t: now, source: 'pulse', top10: pulseNow.top10Pct, bundlers: pulseNow.bundlersPct, insiders: pulseNow.insidersPct, dev: pulseNow.devSold ? 0 : pulseNow.devPct, price }
+    : { t: now, source: 'chain', top10: traits?.top10 ?? null, bundlers: traits?.bundlers ?? null, insiders: traits?.insiders ?? null, dev: traits?.dev ?? null, price }, now)
+  const recycled = recycledFor(database, token, now)
+  const card = live.pulse
+  const runnerInput: Parameters<typeof scoreRunner>[0] = {
     now,
-    ageMinutes,
     marketCap,
-    priceChange: live.priceChange,
+    liquidity: live.market?.liquidityUsd ?? latest?.liquidity_usd ?? null,
+    priceChange: { m1: live.priceChange.m1, m5: live.priceChange.m5 },
+    ticks: priceSeries(snapshots, ticks),
+    top10: traits?.top10 ?? null,
+    dev: traits?.dev ?? null,
+    devSold: card?.devSold ?? false,
+    snipers: traits?.snipers ?? null,
+    insiders: traits?.insiders ?? null,
+    bundlers: traits?.bundlers ?? null,
+    linked: traits?.linked ?? null,
+    fresh: traits?.fresh ?? null,
+    holders: holderSource.holders,
+    mintAuthority: safety.mintAuthority,
+    freezeAuthority: safety.freezeAuthority,
+    rugged: traits?.rugged ?? false,
+    devCreated: Math.max(card?.devCreated ?? -1, jupiter?.devMints ?? -1) >= 0 ? Math.max(card?.devCreated ?? 0, jupiter?.devMints ?? 0) : null,
+    devMigrated: Math.max(card?.devMigrated ?? -1, jupiter?.devMigrations ?? -1) >= 0 ? Math.max(card?.devMigrated ?? 0, jupiter?.devMigrations ?? 0) : null,
+    recycled: recycled.reason,
     buys5m: buys,
-    sells5m: sells,
     volume5m,
+    buyers5m: jupiter?.organicBuyers5m ?? null,
+    buyVolume5m: jupiter?.buyVolume5m ?? null,
+    sellVolume5m: jupiter?.sellVolume5m ?? null,
+    feesSol: card?.feesSol ?? null,
+    graduated: jupiter?.graduated ?? (token.graduated === null || token.graduated === undefined ? null : token.graduated === 1),
+    dexPaid: token.dex_paid === null || token.dex_paid === undefined ? null : token.dex_paid === 1,
+    links: recycled.links,
+    reusedLinks: recycled.reused,
+    smartHolders: runners,
     viewers,
     viewersPerMin: live.viewersPerMin,
-    viewersDelta5m: delta5m,
-    holders: holderSource.holders,
-    holdersPerMin: holderSource.perMin,
-    holderChange5mPct: holderSource.change5mPct,
-    smartHolders: runners,
-    traits,
-    rugged: traits?.rugged ?? false,
-    traders5m: jupiter?.traders5m ?? null,
-    netBuyers5m: jupiter?.netBuyers5m ?? null,
-    flow,
-  })
-  const remembered = activeBotClimb(token.mint, now)
-  if (mover.botClimb && mover.botReason) trackerState.botClimbs.set(token.mint, { until: now + botClimbHoldMs, reason: mover.botReason })
-  const botClimb = mover.botClimb || remembered !== null
-  const scoreCuts = remembered && !mover.botClimb ? [`Bot-driven climb: ${remembered.reason}`, ...mover.cuts] : mover.cuts
+    botReason: botReason ?? remembered?.reason ?? null,
+    selling: sellAlerts.map(alert => alert.text),
+    devSelling: sellAlerts.some(alert => alert.dev),
+    learned: [],
+  }
+  const firstPass = scoreRunner(runnerInput)
+  const learned = learnedFor(firstPass.tags)
+  const runner = learned.length ? scoreRunner({ ...runnerInput, learned }) : firstPass
   const built: RadarToken = {
     mint: token.mint,
     pairAddress: token.pair_address,
@@ -373,13 +452,13 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     sells5m: sells,
     buyRatio: transactions ? (buys ?? 0) / transactions : null,
     safety: { level: safetyLevel(safety), ...safety },
-    score: botClimb ? Math.min(mover.score, moverCaps.botClimb) : mover.score,
-    scoreCuts,
-    scoreParts: mover.parts,
+    score: runner.score,
+    scoreCuts: runner.cuts,
+    scoreParts: runner.parts,
     botClimb,
     researchScore: null,
-    rawScore: mover.base,
-    holderRisk: mover.holderRisk.reasons.length ? mover.holderRisk : null,
+    rawScore: runner.base,
+    holderRisk: runner.holderRisk.reasons.length ? runner.holderRisk : null,
     holderTraits: traits,
     factors,
     lastSnapshotAt: live.market?.readAt ?? latest?.timestamp ?? null,
@@ -398,6 +477,11 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     alerts: [],
     pinned: settings.pinned.includes(token.mint),
     onPulse: trackerState.pulse.has(token.mint),
+    safetyPlan: runner.safetyPlan,
+    runnerTags: runner.tags,
+    runnerThesis: runner.thesis,
+    learnedEdge: learnedEdge(runner.tags),
+    dexPaid: runnerInput.dexPaid,
   }
   return { token: built, liquidityChange1m: live.liquidityChange1m }
 }
@@ -412,8 +496,20 @@ function latestSnapshots(database: TrackerDatabase, mints: string[]) {
   return new Map(rows.map(row => [row.mint, row]))
 }
 
+let builtTokens: { at: number; tokens: RadarToken[] } | null = null
+
+/** Every tracked coin, scored. Built at most once a second; callers within the same second share the result. */
 export function buildRadarTokens(database: TrackerDatabase, weights: RadarWeights, now = Date.now()): RadarToken[] {
+  if (builtTokens && Math.abs(now - builtTokens.at) < 900) return builtTokens.tokens
+  const result = buildRadarTokensNow(database, weights, now)
+  builtTokens = { at: now, tokens: result }
+  return result
+}
+
+function buildRadarTokensNow(database: TrackerDatabase, weights: RadarWeights, now: number): RadarToken[] {
+  if (!lifecycleTableKnown) lifecycleTableKnown = Boolean(database.prepare("SELECT 1 FROM pragma_table_info('coin_lifecycles') WHERE name = 'traits_json'").get())
   const tokens = database.prepare('SELECT * FROM tokens WHERE last_seen_at >= ?').all(now - activeWindowMs) as TokenRow[]
+  forgetSells(new Set(tokens.map(token => token.mint)))
   if (!tokens.length) return []
   const mints = tokens.map(token => token.mint)
   const snapshotRows = database.prepare(`
@@ -429,7 +525,7 @@ export function buildRadarTokens(database: TrackerDatabase, weights: RadarWeight
   const fallbacks = latestSnapshots(database, mints.filter(mint => !byMint.has(mint)))
   const runners = runnerCounts(database, mints)
   const settings = radarSettings()
-  const entries = tokens.map(token => buildToken(token, byMint.get(token.mint) ?? [], fallbacks.get(token.mint), runners.get(token.mint) ?? 0, weights, now, settings, holderTraitsFor(database, token, now)))
+  const entries = tokens.map(token => buildToken(database, token, byMint.get(token.mint) ?? [], fallbacks.get(token.mint), runners.get(token.mint) ?? 0, weights, now, settings, holderTraitsFor(database, token, now)))
   return finalize(entries, settings).filter(token => !token.botClimb || token.pinned).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
 }
 
@@ -533,6 +629,7 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     explosions: learnerState.explosions,
     winners: learnerState.winners,
     adviceStudy: learnerState.adviceStudy,
+    runner: runnerState.summary,
   }
 }
 
@@ -560,7 +657,7 @@ export function buildTokenDetail(database: TrackerDatabase, mint: string, now = 
         NULL AS entryMcap, h.pct, h.updated_at AS timestamp FROM holders h WHERE h.mint = ?
     ) WHERE runnerHits >= ? ORDER BY runnerHits DESC LIMIT 20
   `).all(mint, settings.wallets.minRunnerHits) as RadarWalletEntry[]
-  const [built] = finalize([buildToken(token, recent, all.at(-1), runners, model.weights, now, settings, holderTraitsFor(database, token, now))], settings)
+  const [built] = finalize([buildToken(database, token, recent, all.at(-1), runners, model.weights, now, settings, holderTraitsFor(database, token, now))], settings)
   return {
     token: withLearning(built),
     history: toHistory(downsample(all, 360)),

@@ -7,6 +7,7 @@ import { formatCount, formatPercent, formatSigned, holderCount, relativeSeconds 
 import { EarlyRunners, ExplodeView, WatchListView } from './LearnedViews'
 import { MakerView, type MakerSort } from './MakerView'
 import { ResearchView } from './ResearchView'
+import { RunnersView } from './RunnersView'
 import { MoversView } from './MoversView'
 import { BotView } from './BotView'
 import { PaperTrades } from './PaperTrades'
@@ -21,12 +22,13 @@ import { WalletsView } from './WalletsView'
 import { useRadarAccess } from './access'
 import './axiom-radar.css'
 
-type RadarTab = 'picks' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'bot' | 'paper' | 'settings'
+type RadarTab = 'picks' | 'runners' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'bot' | 'paper' | 'settings'
 type RadarFilter = 'all' | 'surge' | 'buy' | 'watch' | 'holders' | 'clean' | 'pinned'
-type RadarToast = { id: string; kind: 'surge' | 'buy'; mint: string; text: string; at: number }
+type RadarToast = { id: string; kind: 'surge' | 'buy' | 'runner' | 'sell'; mint: string; text: string; at: number }
 
 const tabs: Array<{ id: RadarTab; label: string; icon: typeof Radar }> = [
   { id: 'picks', label: 'Picks', icon: Sparkles },
+  { id: 'runners', label: 'Runners', icon: Rocket },
   { id: 'coins', label: 'All coins', icon: List },
   { id: 'explode', label: 'Could explode', icon: Rocket },
   { id: 'maker', label: 'Millionaire Maker', icon: Gem },
@@ -56,7 +58,7 @@ const gainWindows: Array<{ id: RadarGainWindow; label: string; spoken: string; s
   { id: 'm1', label: '1m', spoken: 'minute', suffix: '/min' },
 ]
 
-const alertCooldownMs = { surge: 120_000, buy: 300_000 }
+const alertCooldownMs = { surge: 120_000, buy: 300_000, runner: 600_000, sell: 120_000 }
 const toastLifetimeMs = 25_000
 
 function playChime(context: AudioContext, high: boolean) {
@@ -107,7 +109,7 @@ export function AxiomRadar() {
   const [makerSort, setMakerSort] = useState<MakerSort>('match')
   const audioRef = useRef<AudioContext | null>(null)
   const seededRef = useRef(false)
-  const previousRef = useRef({ surge: new Set<string>(), buy: new Set<string>() })
+  const previousRef = useRef({ surge: new Set<string>(), buy: new Set<string>(), runner: new Set<string>(), sell: new Set<string>() })
   const alertedRef = useRef(new Map<string, number>())
   const lastSelectedRef = useRef<RadarToken | null>(null)
 
@@ -141,15 +143,18 @@ export function AxiomRadar() {
     if (!payload) return
     const surging = tokens.filter(token => token.viewerSurge)
     const buys = tokens.filter(token => token.signal === 'buy')
+    const threshold = payload.runner?.threshold ?? 75
+    const runners = tokens.filter(token => token.score >= threshold && !token.holderRisk?.blocked)
+    const selling = tokens.filter(token => (token.safetyPlan?.selling.length ?? 0) > 0)
     const previous = previousRef.current
-    previousRef.current = { surge: new Set(surging.map(token => token.mint)), buy: new Set(buys.map(token => token.mint)) }
+    previousRef.current = { surge: new Set(surging.map(token => token.mint)), buy: new Set(buys.map(token => token.mint)), runner: new Set(runners.map(token => token.mint)), sell: new Set(selling.map(token => token.mint)) }
     if (!seededRef.current) {
       seededRef.current = true
       return
     }
     const stamp = Date.now()
     const fresh: RadarToast[] = []
-    const consider = (kind: 'surge' | 'buy', token: RadarToken, text: string) => {
+    const consider = (kind: RadarToast['kind'], token: RadarToken, text: string) => {
       const key = `${kind}:${token.mint}`
       if (previous[kind].has(token.mint) || stamp - (alertedRef.current.get(key) ?? 0) < alertCooldownMs[kind]) return
       alertedRef.current.set(key, stamp)
@@ -157,11 +162,13 @@ export function AxiomRadar() {
     }
     for (const token of surging) consider('surge', token, `${token.symbol} is gaining viewers quickly: ${formatSigned(token.viewersPerMin)}/min, ${formatCount(token.viewers)} watching`)
     for (const token of buys) consider('buy', token, `${token.symbol} is now a recommended buy (score ${token.score})`)
+    for (const token of runners) consider('runner', token, `[SCORE: ${token.score}/100] ${token.name} ($${token.symbol}) | MC ${formatCount(token.marketCap)} | Top 10 ${token.holderTraits?.top10 ?? '—'}%${token.learnedEdge ? ` | ${token.learnedEdge}` : ''}`)
+    for (const token of selling) consider('sell', token, `${token.symbol}: ${token.safetyPlan?.selling[0] ?? 'holders are selling'}. Get out.`)
     if (!fresh.length) return
     setToasts(current => [...fresh, ...current].slice(0, 6))
     if (sound && audioRef.current) {
       const context = audioRef.current
-      void context.resume().then(() => playChime(context, fresh.some(toast => toast.kind === 'buy'))).catch(() => undefined)
+      void context.resume().then(() => playChime(context, fresh.some(toast => toast.kind === 'buy' || toast.kind === 'runner' || toast.kind === 'sell'))).catch(() => undefined)
     }
     if (desktopAlerts && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       for (const toast of fresh) {
@@ -324,6 +331,7 @@ export function AxiomRadar() {
         {tab === 'explode' && <ExplodeView payload={payload} tokens={tokens} now={now} onOpen={onOpen}/>}
         {tab === 'maker' && <MakerView payload={payload} tokens={tokens} onOpen={onOpen} filters={makerFilters} onFilters={setMakerFilters} sort={makerSort} onSort={setMakerSort}/>}
         {tab === 'research' && <ResearchView payload={payload} tokens={tokens} onOpen={onOpen}/>}
+        {tab === 'runners' && <RunnersView payload={payload} tokens={tokens} onOpen={onOpen}/>}
         {tab === 'watchlist' && <WatchListView payload={payload} tokens={tokens} now={now} onOpen={onOpen}/>}
         {tab === 'coins' && <>
           <div className="radar-filters">

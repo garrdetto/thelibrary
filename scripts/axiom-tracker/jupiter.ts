@@ -26,12 +26,16 @@ function jupiterFetch<T>(path: string, timeoutMs: number): Promise<T> {
   return run
 }
 
-type JupiterStats = { holderChange?: number; numBuys?: number; numSells?: number; numTraders?: number; numNetBuyers?: number }
+type JupiterStats = { holderChange?: number; numBuys?: number; numSells?: number; numTraders?: number; numNetBuyers?: number; numOrganicBuyers?: number; buyVolume?: number; sellVolume?: number; buyOrganicVolume?: number; sellOrganicVolume?: number }
 type JupiterToken = {
   id?: string
   holderCount?: number
   organicScore?: number
   launchpad?: string | null
+  graduatedPool?: string | null
+  twitter?: string | null
+  telegram?: string | null
+  website?: string | null
   stats5m?: JupiterStats
   audit?: { topHoldersPercentage?: number; devBalancePercentage?: number; devMigrations?: number; devMints?: number }
 }
@@ -39,6 +43,7 @@ type JupiterToken = {
 const holderHistory = new Map<string, Array<{ t: number; holders: number }>>()
 const moverList = { at: 0, mints: [] as string[] }
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null
+const link = (value: unknown) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()) ? value.trim().slice(0, 300) : null
 
 function holdersPerMinute(mint: string, holders: number | null, now: number) {
   if (holders === null) return null
@@ -74,6 +79,13 @@ function toReading(token: JupiterToken, now: number): JupiterReading {
     netBuyers5m: finite(token.stats5m?.numNetBuyers),
     organicScore: finite(token.organicScore),
     launchpad: typeof token.launchpad === 'string' ? token.launchpad : null,
+    organicBuyers5m: finite(token.stats5m?.numOrganicBuyers),
+    buyVolume5m: finite(token.stats5m?.buyOrganicVolume) ?? finite(token.stats5m?.buyVolume),
+    sellVolume5m: finite(token.stats5m?.sellOrganicVolume) ?? finite(token.stats5m?.sellVolume),
+    twitter: link(token.twitter),
+    telegram: link(token.telegram),
+    website: link(token.website),
+    graduated: typeof token.graduatedPool === 'string' && token.graduatedPool ? true : token.launchpad ? false : null,
     readAt: now,
   }
 }
@@ -118,6 +130,22 @@ export async function jupiterMoverMints(now = Date.now()) {
 /** Reads holder counts, holder growth, top-holder and dev shares and who is trading for every tracked coin, every few seconds, from Jupiter's public token feed. */
 export function startJupiter(database: TrackerDatabase, signal: AbortSignal) {
   logger.info('Reading holder growth and trader counts from Jupiter', { intervalMs: refreshMs })
+  const saveLinks = database.prepare('UPDATE tokens SET links_json = ?, graduated = ? WHERE mint = ?')
+  const saved = new Map<string, string>()
+  const remember = (mints: string[]) => {
+    database.transaction(() => {
+      for (const mint of mints) {
+        const reading = trackerState.jupiter.get(mint)
+        if (!reading) continue
+        const links = JSON.stringify({ twitter: reading.twitter, telegram: reading.telegram, website: reading.website })
+        const key = `${links}|${reading.graduated}`
+        if (saved.get(mint) === key) continue
+        saveLinks.run(links, reading.graduated === null ? null : reading.graduated ? 1 : 0, mint)
+        saved.set(mint, key)
+      }
+    })()
+    if (saved.size > 2_000) saved.clear()
+  }
   return (async () => {
     let failures = 0
     let lastHeartbeat = 0
@@ -126,6 +154,7 @@ export function startJupiter(database: TrackerDatabase, signal: AbortSignal) {
       try {
         const mints = activeCandidates(database).map(candidate => candidate.mint)
         const read = mints.length ? await refreshJupiter(mints, started) : 0
+        if (read) remember(mints)
         failures = 0
         if (started - lastHeartbeat >= 15_000) {
           recordHeartbeat(database, 'jupiter', 'ok', `${read} of ${mints.length} coins read`)
