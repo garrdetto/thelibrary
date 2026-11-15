@@ -85,6 +85,7 @@ The Trading bot tab also has the terminal's actions as buttons: pause or resume 
 | Account | Starting balance in SOL for the next reset |
 | Pick coins by | Score (the Radar's live runner score) or Quality (the holder checklist score). Each mode has its own buy level, a trend rule (buy only while the number is climbing, not falling, or either way, read from the bot's own pulls over the last minute), a sell level and a sell when the number falls a set number of points from its best since buying. Quality mode can also sell when a checklist item that passed at the buy now fails. A position keeps the mode it was bought in |
 | When to buy | Radar signal, price gains, viewers, liquidity, market cap, volume, buy share, age, safety, failed quality checks, warnings, the Radar's buy advice, rebuys only above the old high, confirmation pulls, cooldown |
+| Before buying | The last look at the chart with live data just before each buy: price fell since the Radar reading, dumped from its 10-minute high, a drop in the last 30 seconds, holder figures too old, holders falling, and live 5-minute volume, buy share and liquidity still meeting the When to buy limits |
 | Learned predictions | Runner, could-explode and big-winner chances, and crash timing from the Radar's learner |
 | Risk and bet size | A fixed buy amount in SOL or a share of the account, the most SOL in one coin, risk strength, caps, open coins, exposure, daily loss limit, drawdown stop, loss-streak break, buys per hour |
 | When to sell | Stop loss, profit target and share sold, entry protection, trailing stop, time limits, viewers, warnings, the Radar's exit advice, fading momentum, coins that leave the Radar |
@@ -94,13 +95,19 @@ The Trading bot tab also has the terminal's actions as buttons: pause or resume 
 
 **Risk strength** (1 to 10) scales how much of the account can be in coins at once, and every buy when buys are a share of the account. 5 uses the numbers as written, 10 doubles them, 1 uses a fifth. The largest-single-buy cap and the liquidity cap still apply at any strength.
 
+## Buying at the score
+
+On the defaults a coin is bought when it reaches the buy score and passes the When to buy limits. **Radar signal required** defaults to any tracked coin: the Radar's own buy call adds its own 1- and 5-minute gain, viewer and zero-failed-check rules on top, so coins over the buy score were skipped as "not a recommended buy". **Crash timing** defaults to off, since a guessed crash time held back coins that were still near their high with holders growing.
+
+Then, just before buying, the bot looks at the chart again (**Before buying**, on by default). It pulls a live DexScreener reading and skips the coin if it cannot get one, if the price fell more than 10% since the Radar reading, if it is more than 25% under its high from the last 10 minutes (the Radar's chart points) or dropped 8% in 30 seconds, if the holder figures (top 10, dev, bundlers, holder count) are more than 120 seconds old, if holders fell over the last minute, or if the live 5-minute volume, buy share or liquidity no longer meets the When to buy limits. Each skip is written to the activity log once per coin and reason, and shows in the coins closest to a buy as "chart check: ...".
+
 ## The Radar's advice
 
 Each coin carries `advice` from the tracker's own study of which warning signs came before falls (see `AXIOM_RADAR.md`, Exit and rebuy advice). The bot reads it and never hardcodes which signs matter:
 
 - `exit: 'exit'` sells the position (**Sell when the Radar says exit**).
 - `exit: 'tighten'`, or a held coin leaving the Radar, puts the position on the tighter **Trailing stop while tightened** at once (or sells it, or does nothing, by the dials). The bot never adds to a position.
-- `rebuy: 'never'` blocks a buy; `rebuy: 'wait'`, `exit` and `tighten` block it too under the default **Radar buy advice**. This applies to first buys as well as rebuys.
+- `rebuy: 'never'` blocks a buy. With **Radar buy advice** set to follow, `rebuy: 'wait'`, `exit` and `tighten` block it too; the default only follows `never`, because those softer signs held back coins that were over the buy score and still running. This applies to first buys as well as rebuys.
 - After the bot sells a coin it buys it again only above its high at the time of that sale (**Rebuy only above the old high**).
 
 That study found coins often bounce after a price dip and that stops rarely sell where they are set, so the default stop loss and trailing stop are wide (25%), the default bet is small (2% of the account), and stop sells pay extra slippage (5%).
@@ -127,7 +134,7 @@ The terminal view, `status` and the Radar page show what one trade pays right no
 
 - A buy spends the buy amount in total, fees included. The price paid is the market price plus price impact plus extra slippage.
 - Price impact follows a constant-product pool: a buy of B against a pool with Q on the quote side pays `spot x (1 + B/Q)`, and a sale worth V receives `spot / (1 + V/Q)`. Q is half the coin's liquidity figure. A pulled pool pays almost nothing.
-- With **Live prices for open positions** on, the bot checks the price on DexScreener at the moment of a buy and every few seconds while it holds a coin, so stops react between pulls. A buy is cancelled when the live price is already 15% under the Radar's reading.
+- With **Live prices for open positions** on, the bot checks the price on DexScreener at the moment of a buy and every few seconds while it holds a coin, so stops react between pulls. A buy is cancelled when the live price is already 15% under the Radar's reading (10% with **Before buying** on).
 - Stop loss, trailing stop, Radar exit and warning sells pay **Extra slippage on stop and exit sells** on top, because these coins fall faster than prices arrive.
 - Stops and targets measure the market price move since the buy. Profit and loss count everything: fees, impact and slippage on both sides.
 - Open positions are valued at what they would fetch if sold now.

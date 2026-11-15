@@ -122,6 +122,7 @@ class Engine:
         self._load_settings()
         if not ledger.started():
             ledger.reset(self.values["account.starting_sol"], self.now())
+        self.chart_notes: dict[str, str] = {}
         self.positions = ledger.open_positions()
         for position in self.positions:
             position.last_price_at = max(position.last_price_at, self.now())
@@ -545,13 +546,18 @@ class Engine:
         spot, liquidity = coin.price, coin.liquidity_sol
         if spot is None or not rate:
             return "no price"
-        if s["bot.live_prices"]:
-            quote = self.price_source({coin.mint: coin.pair}).get(coin.mint)
-            if quote is not None:
-                if quote.price / rate < spot * 0.85:
-                    return f"price fell {(1 - quote.price / rate / spot) * 100:.0f}% since the Radar reading"
-                spot = quote.price / rate
-                liquidity = quote.liquidity / rate if quote.liquidity is not None else liquidity
+        quote = self.price_source({coin.mint: coin.pair}).get(coin.mint) if s["bot.live_prices"] or s["verify.enabled"] else None
+        checked = strategy.verify_block(coin, quote, s, now, rate)
+        if checked is not None:
+            if self.chart_notes.get(coin.mint) != checked:
+                self.chart_notes[coin.mint] = checked
+                self.ledger.event(now, "skip", f"Skipped {coin.symbol} at score {coin.score:.0f}, chart check: {checked}")
+            return f"chart check: {checked}"
+        if quote is not None:
+            if quote.price / rate < spot * 0.85:
+                return f"price fell {(1 - quote.price / rate / spot) * 100:.0f}% since the Radar reading"
+            spot = quote.price / rate
+            liquidity = quote.liquidity / rate if quote.liquidity is not None else liquidity
         account = self.account()
         spent = self.ledger.spent_on(coin.mint, now - 86_400_000)
         size, limit = strategy.position_size(dataclasses.replace(coin, liquidity_sol=liquidity), s, account["equity"], account["cash"], account["exposure"], spent)

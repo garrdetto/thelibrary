@@ -25,6 +25,7 @@ PINNED = {
     "risk.position_pct": 3, "exit.stop_loss_pct": 12, "exit.trailing_stop_pct": 15, "exit.trailing_start_pct": 10, "costs.stop_slippage_pct": 0,
     "risk.buy_mode": "percent", "risk.max_per_coin_sol": 0, "risk.min_position_sol": 10, "account.starting_sol": 1000,
     "costs.fee_mode": "manual", "costs.priority_fee_sol": 0.1, "costs.bribe_sol": 0.099995,
+    "entry.signal": "buy", "entry.radar_advice": "follow", "learned.skip_phase": "overdue", "verify.enabled": False,
 }
 FEE = 0.2
 
@@ -128,7 +129,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(values["risk.strength"], 10)
         self.assertEqual(values["mode.score_buy_at"], 70)
         self.assertIs(values["bot.enabled"], True)
-        self.assertEqual(values["entry.signal"], "buy")
+        self.assertEqual(values["entry.signal"], "any")
         self.assertEqual(values["exit.stop_loss_pct"], 7.5)
 
     def test_a_renamed_dial_keeps_the_old_value(self) -> None:
