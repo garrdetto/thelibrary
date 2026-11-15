@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { CirclePause, CirclePlay, LoaderCircle, RotateCcw, XCircle } from 'lucide-react'
-import type { BotCommand } from '@/lib/axiom-bot'
+import type { BotCommand, BotReport } from '@/lib/axiom-bot'
 import { relativeSeconds } from './format'
 import type { useBot } from './useBot'
 import { useRadarAccess } from './access'
@@ -13,6 +13,28 @@ export const dollars = (value: number) => `$${value.toLocaleString(undefined, { 
 export const signedDollars = (value: number) => `${value >= 0 ? '+' : '-'}${dollars(Math.abs(value))}`
 export const signedPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
 export const toneOf = (value: number) => value > 0 ? 'up' : value < 0 ? 'down' : ''
+
+export function solAmount(value: number) {
+  const size = Math.abs(value)
+  const places = size >= 100 ? 2 : size >= 1 ? 3 : 4
+  return `${value.toLocaleString(undefined, { minimumFractionDigits: places, maximumFractionDigits: places })} SOL`
+}
+
+const smallSol = (value: number) => `${Number(value.toFixed(6))} SOL`
+
+/** SOL first with dollars in brackets. A report from a bot that still keeps dollars has no SOL figure and shows dollars alone. */
+export const money = (sol: number | undefined, usd: number) => sol === undefined ? dollars(usd) : `${solAmount(sol)} (${dollars(usd)})`
+export const signedMoney = (sol: number | undefined, usd: number) => `${(sol ?? usd) >= 0 ? '+' : '-'}${money(sol === undefined ? undefined : Math.abs(sol), Math.abs(usd))}`
+export const headline = (sol: number | undefined, usd: number) => sol === undefined ? dollars(usd) : solAmount(sol)
+export const signedHeadline = (sol: number | undefined, usd: number) => sol === undefined ? signedDollars(usd) : `${sol >= 0 ? '+' : '-'}${solAmount(Math.abs(sol))}`
+export const bracket = (sol: number | undefined, usd: number) => sol === undefined ? '' : `(${dollars(usd)}) · `
+
+/** One line on the SOL price and what a trade pays the network right now. */
+export function feeLine(report: BotReport) {
+  if (!report.fees) return ''
+  const price = report.solUsd ? `SOL is ${dollars(report.solUsd)}. ` : ''
+  return `${price}Network fee now ${smallSol(report.fees.totalSol)} a trade (${report.fees.source}: priority ${smallSol(report.fees.prioritySol)}, bribe ${smallSol(report.fees.bribeSol)}).`
+}
 
 /** What the bot is doing right now, for the status chip beside its name. */
 export function botStatus(bot: BotFeed, now: number): { tone: string; label: string } {

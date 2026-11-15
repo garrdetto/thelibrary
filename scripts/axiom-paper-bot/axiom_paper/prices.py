@@ -8,6 +8,7 @@ import urllib.request
 from dataclasses import dataclass
 
 API = "https://api.dexscreener.com/tokens/v1/solana/"
+SOL_MINT = "So11111111111111111111111111111111111111112"
 
 
 @dataclass(frozen=True)

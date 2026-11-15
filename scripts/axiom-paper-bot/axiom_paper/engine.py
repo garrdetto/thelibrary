@@ -12,25 +12,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import VERSION, broker, strategy
+from . import VERSION, broker, fees, strategy
 from . import settings as dials
 from .ledger import Ledger
 from .models import Coin, Position, number
-from .prices import Quote, fetch_prices
+from .money import both, signed, small_sol, usd
+from .prices import SOL_MINT, Quote, fetch_prices
 from .site import SiteError
 
 COMMAND_WINDOW_MS = 10 * 60_000
 REPORT_SECONDS = 15.0
 EQUITY_SECONDS = 60.0
+MARKET_SECONDS = 30.0
 PriceSource = Callable[[dict[str, str | None]], dict[str, Quote]]
-
-
-def _money(value: float) -> str:
-    return f"${value:,.2f}"
-
-
-def _signed(value: float) -> str:
-    return f"{'+' if value >= 0 else '-'}${abs(value):,.2f}"
 
 
 Sent = tuple[int | None, int | None]
@@ -54,14 +48,48 @@ class _Call:
         self.done.set()
 
 
+class _Worker:
+    """Runs one slow lookup off the main loop and hands back its latest answer."""
+
+    def __init__(self, function: Callable[[], Any]):
+        self.function = function
+        self.thread: threading.Thread | None = None
+        self.result: Any = None
+        self.ready = False
+
+    def start(self) -> None:
+        if self.thread is None or not self.thread.is_alive():
+            self.thread = threading.Thread(target=self._run, daemon=True, name="axiom-market")
+            self.thread.start()
+
+    def _run(self) -> None:
+        try:
+            self.result = self.function()
+        except Exception:
+            self.result = None
+        self.ready = True
+
+    def take(self) -> Any:
+        if not self.ready:
+            return None
+        self.ready = False
+        return self.result
+
+
 class Engine:
-    def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, clock: Callable[[], float] = time.time, background: bool = False, observer: bool = False):
+    def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, fee_source: Callable[[], fees.FeeLevels | None] = fees.fetch_levels, clock: Callable[[], float] = time.time, background: bool = False, observer: bool = False):
         self.ledger = ledger
         self.site = site
         self.settings_path = settings_path
         self.inbox_path = settings_path.with_suffix(".inbox.json") if settings_path else None
         self.price_source = price_source
+        self.fee_source = fee_source
         self.clock = clock
+        self.sol_usd: float | None = number(ledger.get("sol_usd"))
+        saved_levels = ledger.get("fee_levels")
+        self.fee_levels: fees.FeeLevels | None = fees.FeeLevels(saved_levels["priority"], saved_levels["bribe"]) if isinstance(saved_levels, dict) and "priority" in saved_levels and "bribe" in saved_levels else None
+        self.next_market = 0.0
+        self._market_worker = _Worker(self._market)
         self.background = background
         self.observer = observer
         self._call: _Call | None = None
@@ -90,13 +118,58 @@ class Engine:
         self.report_seq = 0
         self._load_settings()
         if not ledger.started():
-            ledger.reset(self.values["account.starting_cash"], self.now())
+            ledger.reset(self.values["account.starting_sol"], self.now())
         self.positions = ledger.open_positions()
         for position in self.positions:
             position.last_price_at = max(position.last_price_at, self.now())
 
     def now(self) -> int:
         return int(self.clock() * 1000)
+
+    def fee(self) -> fees.FeeQuote:
+        """What one trade pays the network right now, in SOL."""
+        return fees.quote(self.values, self.fee_levels)
+
+    def _market(self) -> tuple[float | None, fees.FeeLevels | None]:
+        quote = self.price_source({SOL_MINT: None}).get(SOL_MINT)
+        return (quote.price if quote else None), self.fee_source()
+
+    def _take_market(self, sol_usd: float | None, levels: fees.FeeLevels | None) -> None:
+        if sol_usd and sol_usd > 0:
+            self.sol_usd = sol_usd
+            self.ledger.set("sol_usd", sol_usd)
+        if levels is not None:
+            self.fee_levels = levels
+            self.ledger.set("fee_levels", {"priority": levels.priority, "bribe": levels.bribe})
+
+    def refresh_market(self) -> None:
+        """Keep the SOL price and the network's fee levels current without holding up the loop."""
+        if self.background:
+            result = self._market_worker.take()
+            if result is not None:
+                self._take_market(*result)
+            if self.clock() >= self.next_market:
+                self._market_worker.start()
+                self.next_market = self.clock() + MARKET_SECONDS
+        elif self.clock() >= self.next_market:
+            self._take_market(*self._market())
+            self.next_market = self.clock() + MARKET_SECONDS
+
+    def _convert_to_sol(self) -> None:
+        """An account kept in dollars before the move to SOL is converted once, at the current SOL price."""
+        rate = self.sol_usd
+        if not rate:
+            return
+        self.ledger.convert_to_sol(rate)
+        now = self.now()
+        self.positions = self.ledger.open_positions()
+        for position in self.positions:
+            position.last_price_at = max(position.last_price_at, now)
+        balance = float(self.ledger.get("starting_cash", 0.0))
+        self.ledger.event(now, "account", f"Account moved from dollars to SOL at {usd(rate)} a SOL. Its starting balance is now {both(balance, rate)}.")
+        if self.settings_path is not None:
+            self.change_setting("account.starting_sol", round(balance, 2), "the move to SOL")
+        self._report_soon()
 
     def site_time(self, local_ms: int | None = None) -> int:
         """A time on this PC expressed on the site's clock, so dial changes from both sides compare fairly."""
@@ -202,7 +275,7 @@ class Engine:
         if fresh(orders.get("flatten")):
             self.flatten("Closed from the command line")
         if fresh(orders.get("reset")):
-            self.reset_account(number(orders.get("cash")))
+            self.reset_account(number(orders.get("sol")))
 
     def feed_age(self) -> float | None:
         if self.feed_age_base is None:
@@ -269,7 +342,7 @@ class Engine:
             self.feed_age_from = self.clock()
         fresh = False
         payload = reply.get("payload")
-        if isinstance(payload, dict) and payload_at is not None and int(payload_at) != self.payload_at:
+        if isinstance(payload, dict) and payload_at is not None and int(payload_at) != self.payload_at and self.sol_usd:
             self.payload_at = int(payload_at)
             self._take_payload(payload)
             fresh = True
@@ -285,7 +358,7 @@ class Engine:
 
     def _take_payload(self, payload: dict[str, Any]) -> None:
         tokens = payload.get("tokens") if isinstance(payload.get("tokens"), list) else []
-        coins = (Coin.from_token(token) for token in tokens if isinstance(token, dict))
+        coins = (Coin.from_token(token, self.sol_usd or 1.0) for token in tokens if isinstance(token, dict))
         self.coins = {coin.mint: coin for coin in coins if coin.mint}
         self.generated_at = number(payload.get("generatedAt")) or 0.0
         self.feed_live = payload.get("status") == "live"
@@ -297,7 +370,7 @@ class Engine:
             if coin.viewers is not None:
                 position.peak_viewers = max(position.peak_viewers or 0.0, coin.viewers)
             if coin.price is not None:
-                self._mark(position, coin.price, coin.liquidity, read_at)
+                self._mark(position, coin.price, coin.liquidity_sol, read_at)
             else:
                 self.ledger.save(position)
 
@@ -314,16 +387,22 @@ class Engine:
         self.ledger.save(position)
 
     def update_live_prices(self) -> None:
-        quotes = self.price_source({position.mint: position.pair for position in self.positions})
+        quotes = self.price_source({**{position.mint: position.pair for position in self.positions}, SOL_MINT: None})
+        if SOL_MINT in quotes:
+            self._take_market(quotes[SOL_MINT].price, None)
+        rate = self.sol_usd
+        if not rate:
+            return
         now = self.now()
         for position in self.positions:
             quote = quotes.get(position.mint)
             if quote is not None:
-                self._mark(position, quote.price, quote.liquidity, now)
+                self._mark(position, quote.price / rate, None if quote.liquidity is None else quote.liquidity / rate, now)
 
     def account(self) -> dict[str, float]:
         cash = self.ledger.cash
-        positions_value = sum(broker.open_value(position, self.values) for position in self.positions)
+        network = self.fee().total
+        positions_value = sum(broker.open_value(position, self.values, network) for position in self.positions)
         equity = cash + positions_value
         starting = float(self.ledger.get("starting_cash", equity))
         peak = float(self.ledger.get("peak_equity", equity))
@@ -341,8 +420,8 @@ class Engine:
             "positionsValue": positions_value,
             "equity": equity,
             "exposure": sum(position.qty_open * position.last_price for position in self.positions),
-            "exposureLimit": strategy.exposure_limit_usd(equity, self.values),
-            "unrealizedPnl": sum(position.pnl_usd(broker.open_value(position, self.values)) for position in self.positions),
+            "exposureLimit": strategy.exposure_limit(equity, self.values),
+            "unrealizedPnl": sum(position.pnl(broker.open_value(position, self.values, network)) for position in self.positions),
             "totalPnl": equity - starting,
             "totalPnlPct": (equity / starting - 1) * 100 if starting else 0.0,
             "peakEquity": peak,
@@ -357,6 +436,8 @@ class Engine:
         now = self.now()
         if not s["bot.enabled"]:
             return "Buying is paused"
+        if not self.sol_usd:
+            return "Waiting for the SOL price"
         age = self.feed_age()
         if age is None:
             return "Waiting for the Radar"
@@ -430,33 +511,36 @@ class Engine:
     def _buy(self, coin: Coin, now: int) -> str | None:
         """Buy the coin. Returns why not when the bet is refused."""
         s = self.values
-        spot, liquidity = coin.price, coin.liquidity
-        if spot is None:
+        rate = self.sol_usd
+        spot, liquidity = coin.price, coin.liquidity_sol
+        if spot is None or not rate:
             return "no price"
         if s["bot.live_prices"]:
             quote = self.price_source({coin.mint: coin.pair}).get(coin.mint)
             if quote is not None:
-                if quote.price < spot * 0.85:
-                    return f"price fell {(1 - quote.price / spot) * 100:.0f}% since the Radar reading"
-                spot = quote.price
-                liquidity = quote.liquidity if quote.liquidity is not None else liquidity
+                if quote.price / rate < spot * 0.85:
+                    return f"price fell {(1 - quote.price / rate / spot) * 100:.0f}% since the Radar reading"
+                spot = quote.price / rate
+                liquidity = quote.liquidity / rate if quote.liquidity is not None else liquidity
         account = self.account()
-        size, limit = strategy.position_size(dataclasses.replace(coin, liquidity=liquidity), s, account["equity"], account["cash"], account["exposure"])
+        spent = self.ledger.spent_on(coin.mint, now - 86_400_000)
+        size, limit = strategy.position_size(dataclasses.replace(coin, liquidity_sol=liquidity), s, account["equity"], account["cash"], account["exposure"], spent)
         if size <= 0:
             return limit
-        fill = broker.buy(spot, size, liquidity, s)
+        network = self.fee()
+        fill = broker.buy(spot, size, liquidity, s, network.total)
         if fill is None:
-            return "fees would eat the whole bet"
+            return "fees would eat the whole buy"
         position = Position(
             id=0, mint=coin.mint, symbol=coin.symbol, pair=coin.pair, opened_at=now, entry_spot=spot, entry_price=fill.price,
-            qty=fill.qty, qty_open=fill.qty, cost_usd=fill.net_usd, proceeds_usd=0.0, fees_usd=fill.fee_usd,
+            qty=fill.qty, qty_open=fill.qty, cost=fill.net, proceeds=0.0, fees=fill.fee,
             entry_liquidity=liquidity, last_liquidity=liquidity, peak_price=spot, peak_viewers=coin.viewers,
             last_price=spot, last_price_at=now, target_done=False, score=coin.score,
             entry={**coin.entry_facts(), "sizeLimit": limit, "impactPct": round(fill.impact_pct, 3)},
         )
         self.ledger.record_buy(position, fill, now)
         self.positions.append(position)
-        self.ledger.event(now, "buy", f"Bought {coin.symbol}: {_money(size)} at score {coin.score:.0f} (size set by {limit}, price impact {fill.impact_pct:.1f}%)")
+        self.ledger.event(now, "buy", f"Bought {coin.symbol}: {both(size, rate)} at score {coin.score:.0f} (size set by {limit}, price impact {fill.impact_pct:.1f}%, network fee {small_sol(network.total)}, {network.source})")
         self._after_trade()
         return None
 
@@ -475,7 +559,7 @@ class Engine:
     def _sell(self, position: Position, share: float, reason: str, now: int, urgent: bool = False) -> None:
         whole = share >= 0.999
         qty = position.qty_open if whole else position.qty_open * share
-        fill = broker.sell(position.last_price, qty, position.last_liquidity, bool(position.entry_liquidity), self.values, urgent)
+        fill = broker.sell(position.last_price, qty, position.last_liquidity, bool(position.entry_liquidity), self.values, self.fee().total, urgent)
         if reason == "Profit target":
             position.target_done = True
         if whole:
@@ -485,11 +569,11 @@ class Engine:
         self.ledger.record_sell(position, fill, position.last_price, reason, now)
         if position.status == "closed":
             self.positions.remove(position)
-            profit = position.pnl_usd()
+            profit = position.pnl()
             self._count_streak(profit, now)
-            self.ledger.event(now, "sell", f"Sold {position.symbol}: {_signed(profit)} ({round(position.pnl_pct(), 2):+.1f}%) after {position.held_minutes(now):.0f} min. {reason}.")
+            self.ledger.event(now, "sell", f"Sold {position.symbol}: {signed(profit, self.sol_usd)} ({round(position.pnl_pct(), 2):+.1f}%) after {position.held_minutes(now):.0f} min. {reason}.")
         else:
-            self.ledger.event(now, "sell", f"Sold {share * 100:.0f}% of {position.symbol} at {gain:+.0f}% for {_money(fill.net_usd)}. {reason}.")
+            self.ledger.event(now, "sell", f"Sold {share * 100:.0f}% of {position.symbol} at {gain:+.0f}% for {both(fill.net, self.sol_usd)}. {reason}.")
         self._after_trade()
 
     def _count_streak(self, profit: float, now: int) -> None:
@@ -514,7 +598,7 @@ class Engine:
         return len(positions)
 
     def reset_account(self, cash: float | None = None) -> None:
-        self.ledger.reset(self.values["account.starting_cash"] if cash is None else dials.clean("account.starting_cash", cash), self.now())
+        self.ledger.reset(self.values["account.starting_sol"] if cash is None else dials.clean("account.starting_sol", cash), self.now())
         self.positions = []
         self.streaks = {}
         self._report_soon()
@@ -549,19 +633,20 @@ class Engine:
         return max(stops) if stops else None
 
     def position_rows(self) -> list[dict[str, Any]]:
+        """Open positions with amounts and prices in SOL."""
         rows = []
+        network = self.fee().total
         for position in self.positions:
-            value = broker.open_value(position, self.values)
+            value = broker.open_value(position, self.values, network)
             coin = self.coins.get(position.mint)
             rows.append({
                 "advice": "left" if self.left_radar(position) else coin.advice_exit if coin else None,
                 "id": position.id, "mint": position.mint, "symbol": position.symbol, "pairAddress": position.pair,
-                "openedAt": position.opened_at, "entryPrice": position.entry_spot, "price": position.last_price,
-                "costUsd": round(position.cost_usd, 2), "valueUsd": round(value, 2),
-                "pnlUsd": round(position.pnl_usd(value), 2), "pnlPct": round(position.pnl_pct(value), 2),
+                "openedAt": position.opened_at, "entry": position.entry_spot, "price": position.last_price, "stop": self.stop_price(position),
+                "cost": position.cost, "value": value, "pnl": position.pnl(value), "pnlPct": round(position.pnl_pct(value), 2),
                 "gainPct": round(position.gain() * 100, 2), "peakGainPct": round((position.peak_price / position.entry_spot - 1) * 100, 2),
                 "openPct": round(position.qty_open / position.qty * 100) if position.qty else 0,
-                "stopPrice": self.stop_price(position), "targetDone": position.target_done, "score": round(position.score),
+                "targetDone": position.target_done, "score": round(position.score),
             })
         return rows
 
@@ -569,8 +654,7 @@ class Engine:
         return [{
             "id": position.id, "mint": position.mint, "symbol": position.symbol, "pairAddress": position.pair,
             "openedAt": position.opened_at, "closedAt": position.closed_at,
-            "costUsd": round(position.cost_usd, 2), "proceedsUsd": round(position.proceeds_usd, 2),
-            "pnlUsd": round(position.pnl_usd(), 2), "pnlPct": round(position.pnl_pct(), 2),
+            "cost": position.cost, "proceeds": position.proceeds, "pnl": position.pnl(), "pnlPct": round(position.pnl_pct(), 2),
             "reason": position.exit_reason, "score": round(position.score), "holdMinutes": round(position.held_minutes(position.closed_at or 0), 1),
         } for position in self.ledger.closed_positions(limit)]
 
@@ -580,9 +664,25 @@ class Engine:
         return ("holding", self.buy_block) if self.buy_block else ("running", None)
 
     def report(self) -> dict[str, Any]:
+        """What the Radar page shows. Dollar figures are the SOL amounts at the current SOL price."""
         account = self.account()
         state, note = self.status()
         age = self.feed_age()
+        rate = self.sol_usd or 0.0
+        fee = self.fee()
+        stats = self.ledger.stats()
+        money = ("id", "mint", "symbol", "pairAddress", "openedAt", "pnlPct", "score")
+        positions = [{
+            **{key: row[key] for key in (*money, "gainPct", "peakGainPct", "openPct", "targetDone", "advice")},
+            "entryPrice": row["entry"] * rate, "price": row["price"] * rate, "stopPrice": None if row["stop"] is None else row["stop"] * rate,
+            "costUsd": round(row["cost"] * rate, 2), "valueUsd": round(row["value"] * rate, 2), "pnlUsd": round(row["pnl"] * rate, 2),
+            "costSol": round(row["cost"], 6), "valueSol": round(row["value"], 6), "pnlSol": round(row["pnl"], 6),
+        } for row in self.position_rows()]
+        trades = [{
+            **{key: row[key] for key in (*money, "closedAt", "reason", "holdMinutes")},
+            "costUsd": round(row["cost"] * rate, 2), "proceedsUsd": round(row["proceeds"] * rate, 2), "pnlUsd": round(row["pnl"] * rate, 2),
+            "costSol": round(row["cost"], 6), "proceedsSol": round(row["proceeds"], 6), "pnlSol": round(row["pnl"], 6),
+        } for row in self.trade_rows()]
         return {
             "version": VERSION,
             "at": self.now(),
@@ -590,11 +690,14 @@ class Engine:
             "status": state,
             "note": self.settings_error or note,
             "feed": {"ageSeconds": None if age is None else round(age), "live": self.feed_live, "coins": len(self.coins)},
-            "account": {key: round(value, 2) for key, value in account.items()},
-            "stats": self.ledger.stats(),
-            "positions": self.position_rows(),
-            "trades": self.trade_rows(),
-            "equity": self.ledger.equity_curve(),
+            "solUsd": self.sol_usd,
+            "fees": {"mode": self.values["costs.fee_mode"], "source": fee.source, "prioritySol": round(fee.priority, 9), "bribeSol": round(fee.bribe, 9), "totalSol": round(fee.total, 9)},
+            "account": {key: round(value if key.endswith("Pct") else value * rate, 2) for key, value in account.items()},
+            "accountSol": {key: round(value, 6) for key, value in account.items() if not key.endswith("Pct")},
+            "stats": {**stats, "realizedPnl": round(stats["realizedPnl"] * rate, 2), "feesPaid": round(stats["feesPaid"] * rate, 2), "realizedPnlSol": stats["realizedPnl"], "feesPaidSol": stats["feesPaid"]},
+            "positions": positions,
+            "trades": trades,
+            "equity": [{"t": point["t"], "equity": round(point["equity"] * rate, 2), "sol": point["equity"]} for point in self.ledger.equity_curve()],
             "events": self.ledger.events(30),
             "candidates": self.candidates,
             "strength": self.values["risk.strength"],
@@ -606,6 +709,9 @@ class Engine:
         moment = self.clock()
         self.check_settings_file()
         self.check_inbox()
+        self.refresh_market()
+        if self.sol_usd and not self.ledger.in_sol:
+            self._convert_to_sol()
         if self.background:
             fresh = self._sync_in_background()
         elif moment >= self.next_sync:
@@ -613,6 +719,9 @@ class Engine:
             self.next_sync = self.clock() + self.values["bot.poll_seconds"]
         else:
             fresh = False
+        if not self.sol_usd or not self.ledger.in_sol:
+            self.buy_block = "Waiting for the SOL price"
+            return
         if self.positions and self.values["bot.live_prices"] and self.clock() >= self.next_prices:
             self.update_live_prices()
             self.next_prices = self.clock() + self.values["bot.price_seconds"]

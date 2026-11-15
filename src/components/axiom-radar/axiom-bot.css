@@ -26,6 +26,7 @@
 .radar-bot-view .radar-bot-head { margin: 0; }
 .radar-bot-strip { margin-bottom: 0; }
 .radar-bot-strip .radar-bot-more { grid-column: 1 / -1; width: auto; justify-self: start; margin: 0; }
+.radar-bot-strip .radar-bot-fee { grid-column: 1 / -1; margin: 0; }
 .radar-bot-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .radar-bot-presets button { display: grid; align-content: start; gap: 5px; width: auto; text-align: left; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--tone-1); color: var(--tone-0); font-size: 12px; cursor: pointer; }
 .radar-bot-presets button strong { font-size: 13px; }

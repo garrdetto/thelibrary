@@ -12,9 +12,10 @@ from typing import Any
 
 from . import VERSION
 from . import settings as dials
-from .dashboard import Keys, PlainLog, Screen, build, enable_ansi, money, signed_money
+from .dashboard import Keys, PlainLog, Screen, build, enable_ansi
 from .engine import Engine
 from .ledger import Ledger
+from .money import both, signed, small_sol, sol
 from .site import FileSite, Site, find_credentials
 
 REPO = Path(__file__).resolve().parents[3]
@@ -33,7 +34,7 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--offline", type=Path, help="use a saved Radar payload (JSON) instead of the site")
     parser.add_argument("--no-dashboard", action="store_true", help="print one line per event instead of the live view")
     parser.add_argument("--once", action="store_true", help="pull once, act on it, print the account and stop")
-    parser.add_argument("--cash", type=float, help="with reset: the new starting cash")
+    parser.add_argument("--sol", type=float, help="with reset: the new starting balance in SOL")
     parser.add_argument("--yes", action="store_true", help="with reset: do not ask first")
     parser.add_argument("--port", type=int, default=8793, help="with console: the local port (default 8793)")
     parser.add_argument("--no-open", action="store_true", help="with console: do not open the browser")
@@ -63,13 +64,16 @@ def hold_lock(db: Path) -> Any:
 def print_account(engine: Engine) -> None:
     account = engine.account()
     stats = engine.ledger.stats()
-    print(f"Account {money(account['equity'])}  {signed_money(account['totalPnl'])} ({account['totalPnlPct']:+.1f}%)  cash {money(account['cash'])}")
+    rate = engine.sol_usd
+    fee = engine.fee()
+    print(f"Account {both(account['equity'], rate)}  {signed(account['totalPnl'], rate)} ({account['totalPnlPct']:+.1f}%)  cash {both(account['cash'], rate)}")
     win_rate = "-" if stats["winRate"] is None else f"{stats['winRate'] * 100:.0f}%"
-    print(f"Closed trades {stats['trades']}  wins {win_rate}  fees {money(stats['feesPaid'])}  drawdown {account['drawdownPct']:.1f}%")
+    print(f"Closed trades {stats['trades']}  wins {win_rate}  fees {both(stats['feesPaid'], rate)}  drawdown {account['drawdownPct']:.1f}%")
+    print(f"Network fee {small_sol(fee.total)} a trade ({fee.source})")
     for row in engine.position_rows():
-        print(f"  open   {row['symbol']:<12} cost {money(row['costUsd']):>10}  value {money(row['valueUsd']):>10}  {signed_money(row['pnlUsd'])} ({row['pnlPct']:+.1f}%)")
+        print(f"  open   {row['symbol']:<12} cost {both(row['cost'], rate)}  value {both(row['value'], rate)}  {signed(row['pnl'], rate)} ({row['pnlPct']:+.1f}%)")
     for trade in engine.trade_rows(10):
-        print(f"  closed {trade['symbol']:<12} {signed_money(trade['pnlUsd']):>10} ({trade['pnlPct']:+.1f}%)  {trade['reason']}")
+        print(f"  closed {trade['symbol']:<12} {signed(trade['pnl'], rate)} ({trade['pnlPct']:+.1f}%)  {trade['reason']}")
     if engine.candidates:
         print("Closest to a buy:")
         for candidate in engine.candidates[:6]:
@@ -143,6 +147,9 @@ def status(args: argparse.Namespace) -> int:
         return 0
     ledger = Ledger(args.db)
     try:
+        if not ledger.in_sol:
+            print("This account is still kept in dollars. Start the bot once and it converts to SOL at the current price.")
+            return 0
         print_account(Engine(ledger, None, args.settings if args.settings.exists() else None, observer=True))
     finally:
         ledger.close()
@@ -167,20 +174,20 @@ def send_to_running_bot(settings: Path, order: dict[str, Any]) -> None:
 
 def reset(args: argparse.Namespace) -> int:
     values = dials.load_file(args.settings) if args.settings.exists() else dials.defaults()
-    cash = dials.clean("account.starting_cash", args.cash) if args.cash is not None else values["account.starting_cash"]
+    cash = dials.clean("account.starting_sol", args.sol) if args.sol is not None else values["account.starting_sol"]
     if not args.yes and input("This wipes every pretend trade and starts the account again. Type RESET to go ahead: ").strip() != "RESET":
         print("Nothing was changed.")
         return 0
     now = int(time.time() * 1000)
     lock = hold_lock(args.db)
     if lock is None:
-        send_to_running_bot(args.settings, {"reset": now, "cash": cash})
-        print(f"Sent. The running bot starts the account again with {money(cash)} within a second or two.")
+        send_to_running_bot(args.settings, {"reset": now, "sol": cash})
+        print(f"Sent. The running bot starts the account again with {sol(cash)} within a second or two.")
         return 0
     ledger = Ledger(args.db)
     try:
         ledger.reset(cash, now)
-        print(f"The account starts again with {money(cash)}.")
+        print(f"The account starts again with {sol(cash)}.")
     finally:
         ledger.close()
         lock.close()
@@ -199,6 +206,9 @@ def flatten(args: argparse.Namespace) -> int:
             return 0
         ledger = Ledger(args.db)
         try:
+            if not ledger.in_sol:
+                print("This account is still kept in dollars. Start the bot once and it converts to SOL at the current price.")
+                return 0
             closed = Engine(ledger, None, args.settings if args.settings.exists() else None, observer=True).flatten("Closed from the command line")
             print(f"Sold {closed} position{'' if closed == 1 else 's'} at the last known prices." if closed else "The bot holds no coins.")
         finally:

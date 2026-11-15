@@ -36,7 +36,7 @@ export function cleanBotPatch(input: Record<string, unknown>): BotValues {
 }
 
 /** The dials shown first on the Trading bot tab. */
-export const botQuickDials = ['risk.strength', 'entry.signal', 'entry.min_score', 'risk.position_pct', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'account.starting_cash']
+export const botQuickDials = ['risk.strength', 'risk.buy_mode', 'risk.buy_amount_sol', 'risk.max_per_coin_sol', 'entry.signal', 'entry.min_score', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'costs.fee_mode', 'costs.max_fee_sol', 'account.starting_sol']
 
 const balancedStyle: BotValues = Object.fromEntries(
   ['risk.strength', 'entry.signal', 'entry.min_score', 'entry.safety', 'entry.max_failed_checks', 'entry.radar_advice', 'risk.max_open_positions', 'exit.on_tighten', 'exit.left_radar'].map(key => [key, defaultBotValues[key]]),
@@ -79,6 +79,9 @@ export type BotPosition = {
   score: number
   /** The Radar's exit advice for the coin: hold, tighten or exit, or `left` once it is off the Radar. */
   advice?: string | null
+  costSol?: number
+  valueSol?: number
+  pnlSol?: number
 }
 
 export type BotTrade = {
@@ -95,7 +98,26 @@ export type BotTrade = {
   reason: string | null
   score: number
   holdMinutes: number
+  costSol?: number
+  proceedsSol?: number
+  pnlSol?: number
 }
+
+/** The account's amounts in SOL. The bot's money is SOL; the dollar fields are these at the current SOL price. */
+export type BotAccountSol = {
+  startingCash: number
+  cash: number
+  positionsValue: number
+  equity: number
+  exposure: number
+  exposureLimit: number
+  unrealizedPnl: number
+  totalPnl: number
+  peakEquity: number
+  dayPnl: number
+}
+
+export type BotFees = { mode: string; source: string; prioritySol: number; bribeSol: number; totalSol: number }
 
 export type BotReport = {
   version: string
@@ -119,6 +141,9 @@ export type BotReport = {
     dayPnl: number
     dayPnlPct: number
   }
+  accountSol?: BotAccountSol
+  solUsd?: number | null
+  fees?: BotFees
   stats: {
     trades: number
     wins: number
@@ -131,10 +156,12 @@ export type BotReport = {
     profitFactor: number | null
     averageHoldMinutes: number | null
     feesPaid: number
+    realizedPnlSol?: number
+    feesPaidSol?: number
   }
   positions: BotPosition[]
   trades: BotTrade[]
-  equity: Array<{ t: number; equity: number }>
+  equity: Array<{ t: number; equity: number; sol?: number }>
   events: Array<{ id: number; t: number; kind: string; text: string }>
   candidates: Array<{ mint: string; symbol: string; score: number; reason: string }>
   strength: number

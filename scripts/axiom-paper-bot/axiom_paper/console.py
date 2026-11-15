@@ -89,9 +89,9 @@ def _bot_step(text: str, words: list[str], settings: Path, db: Path) -> Step:
     if command == "flatten" and not rest:
         return Step(text, "bot", [*base, "flatten", *paths], True, "Sells every coin the bot holds.")
     if command == "reset":
-        cash = [word.lstrip("$").replace(",", "") for word in rest if word != "--cash"]
-        if len(cash) <= 1 and all(re.fullmatch(r"\d+(\.\d+)?", word) for word in cash):
-            return Step(text, "bot", [*base, "reset", "--yes", *(["--cash", cash[0]] if cash else []), *paths], True, "Wipes every pretend trade and starts the account again.")
+        amount = [word.replace(",", "") for word in rest if word.casefold() not in ("--sol", "sol")]
+        if len(amount) <= 1 and all(re.fullmatch(r"\d+(\.\d+)?", word) for word in amount):
+            return Step(text, "bot", [*base, "reset", "--yes", *(["--sol", amount[0]] if amount else []), *paths], True, "Wipes every pretend trade and starts the account again.")
     return Step(text, "error", note=BOT_HELP)
 
 
@@ -165,7 +165,7 @@ def build_system(values: dials.Values) -> str:
         current = values.get(dial["key"], dial["default"])
         current = ("on" if current else "off") if isinstance(current, bool) else current
         lines.append(f"{dial['key']} | {dial['label']}. {dial.get('help', '')} | {allowed} | {current}")
-    return f"""You turn one request from the owner of a paper-trading bot into commands that a local console runs on their Windows PC. The bot trades pretend money only and never places a real order.
+    return f"""You turn one request from the owner of a paper-trading bot into commands that a local console runs on their Windows PC. The bot trades pretend SOL only and never places a real order. Its account, buys and fees are in SOL; a dollar amount the owner gives for a SOL dial must be turned into SOL first, and if you cannot, ask in "say" instead.
 
 Answer only through the structured output: "say" (one or two plain sentences telling the owner what the commands do, or the answer itself when no command is needed) and "commands" (zero to {MAX_COMMANDS} command lines, in the order to run them).
 
@@ -174,7 +174,7 @@ Commands you can use:
 - bot set <dial> <value> [<dial> <value> ...]: change one or more dials. Use the dial keys exactly as listed below.
 - bot pause / bot resume: stop or allow new buys. Open positions are still managed while paused.
 - bot flatten: sell every coin the bot holds.
-- bot reset [--cash <dollars>]: wipe every pretend trade and start the account again.
+- bot reset [--sol <amount>]: wipe every pretend trade and start the account again, with that many SOL when given.
 - bot settings: print every dial and its value.
 - bot logs [<lines>]: the bot's most recent log lines.
 - pm2 status: show which background processes are running.
@@ -187,6 +187,8 @@ Rules:
 - When the request is a question that the dial list below answers, answer it in "say" and leave "commands" empty.
 - When the request is unclear, or no command can do it, say so in "say" and leave "commands" empty.
 - Write "say" in plain words with no markdown.
+
+The current values below were read from the bot's settings a moment ago, so state them plainly.
 
 Dials (key | what it is | allowed values | current value):
 """ + "\n".join(lines)

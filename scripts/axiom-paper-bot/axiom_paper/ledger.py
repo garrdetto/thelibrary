@@ -1,4 +1,4 @@
-"""The pretend account on disk (SQLite): cash, positions, every fill, the equity curve and an activity log."""
+"""The pretend account on disk (SQLite), in SOL: cash, positions, every fill, the equity curve and an activity log."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .broker import Fill
+from .money import sol
 from .models import Position
 
 SCHEMA = """
@@ -17,7 +18,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT N
 CREATE TABLE IF NOT EXISTS positions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, mint TEXT NOT NULL, symbol TEXT NOT NULL, pair TEXT,
   opened_at INTEGER NOT NULL, entry_spot REAL NOT NULL, entry_price REAL NOT NULL, qty REAL NOT NULL, qty_open REAL NOT NULL,
-  cost_usd REAL NOT NULL, proceeds_usd REAL NOT NULL DEFAULT 0, fees_usd REAL NOT NULL DEFAULT 0,
+  cost REAL NOT NULL, proceeds REAL NOT NULL DEFAULT 0, fees REAL NOT NULL DEFAULT 0,
   entry_liquidity REAL, last_liquidity REAL, peak_price REAL NOT NULL, peak_viewers REAL,
   last_price REAL NOT NULL, last_price_at INTEGER NOT NULL, target_done INTEGER NOT NULL DEFAULT 0, score REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'open', closed_at INTEGER, exit_reason TEXT, exit_high REAL, entry_json TEXT NOT NULL DEFAULT '{}'
@@ -26,15 +27,25 @@ CREATE INDEX IF NOT EXISTS positions_status ON positions (status, closed_at);
 CREATE INDEX IF NOT EXISTS positions_mint ON positions (mint, opened_at);
 CREATE TABLE IF NOT EXISTS fills (
   id INTEGER PRIMARY KEY AUTOINCREMENT, position_id INTEGER NOT NULL, at INTEGER NOT NULL, side TEXT NOT NULL,
-  spot REAL NOT NULL, price REAL NOT NULL, qty REAL NOT NULL, gross_usd REAL NOT NULL, fee_usd REAL NOT NULL, net_usd REAL NOT NULL,
+  spot REAL NOT NULL, price REAL NOT NULL, qty REAL NOT NULL, gross REAL NOT NULL, fee REAL NOT NULL, net REAL NOT NULL,
   impact_pct REAL NOT NULL, reason TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS equity (t INTEGER PRIMARY KEY NOT NULL, equity REAL NOT NULL, cash REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
 """
 
+LEGACY_COLUMNS = {
+    "positions": {"cost_usd": "cost", "proceeds_usd": "proceeds", "fees_usd": "fees"},
+    "fills": {"gross_usd": "gross", "fee_usd": "fee", "net_usd": "net"},
+}
+MONEY_COLUMNS = {
+    "positions": ("entry_spot", "entry_price", "cost", "proceeds", "fees", "entry_liquidity", "last_liquidity", "peak_price", "last_price", "exit_high"),
+    "fills": ("spot", "price", "gross", "fee", "net"),
+    "equity": ("equity", "cash"),
+}
+
 POSITION_COLUMNS = (
-    "mint", "symbol", "pair", "opened_at", "entry_spot", "entry_price", "qty", "qty_open", "cost_usd", "proceeds_usd", "fees_usd",
+    "mint", "symbol", "pair", "opened_at", "entry_spot", "entry_price", "qty", "qty_open", "cost", "proceeds", "fees",
     "entry_liquidity", "last_liquidity", "peak_price", "peak_viewers", "last_price", "last_price_at", "target_done", "score",
     "status", "closed_at", "exit_reason", "exit_high",
 )
@@ -57,10 +68,34 @@ class Ledger:
         self.db = sqlite3.connect(str(path), isolation_level=None)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode = WAL")
+        self._rename_dollar_columns()
         self.db.executescript(SCHEMA)
 
     def close(self) -> None:
         self.db.close()
+
+    def _rename_dollar_columns(self) -> None:
+        """Accounts made before the move to SOL named their amounts in dollars."""
+        for table, renames in LEGACY_COLUMNS.items():
+            have = {row["name"] for row in self.db.execute(f"PRAGMA table_info({table})")}
+            for old, new in renames.items():
+                if old in have:
+                    self.db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+
+    @property
+    def in_sol(self) -> bool:
+        return self.get("unit") == "SOL"
+
+    def convert_to_sol(self, sol_usd: float) -> None:
+        """Turn an account kept in dollars into SOL, once, at one price for every amount."""
+        with self._transaction():
+            for table, columns in MONEY_COLUMNS.items():
+                self.db.execute(f"UPDATE {table} SET " + ", ".join(f"{column} = {column} / :rate" for column in columns), {"rate": sol_usd})
+            for key in ("cash", "starting_cash", "peak_equity", "day_start_equity"):
+                value = self.get(key)
+                if isinstance(value, (int, float)):
+                    self.set(key, value / sol_usd)
+            self.set("unit", "SOL")
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -98,11 +133,12 @@ class Ledger:
                 self.db.execute(f"DELETE FROM {table}")
             for key in ("loss_streak", "pause_until", "day", "day_start_equity"):
                 self.db.execute("DELETE FROM meta WHERE key = ?", (key,))
+        self.set("unit", "SOL")
         self.set("starting_cash", starting_cash)
         self.set("cash", starting_cash)
         self.set("peak_equity", starting_cash)
         self.set("account_started_at", now)
-        self.event(now, "account", f"Account reset with ${starting_cash:,.2f} of pretend cash")
+        self.event(now, "account", f"Account reset with {sol(starting_cash)} of pretend SOL")
 
     def open_positions(self) -> list[Position]:
         return [_position(row) for row in self.db.execute("SELECT * FROM positions WHERE status = 'open' ORDER BY opened_at")]
@@ -118,6 +154,9 @@ class Ledger:
     def last_closed_at(self, mint: str) -> int | None:
         return self.db.execute("SELECT MAX(closed_at) FROM positions WHERE mint = ? AND status = 'closed'", (mint,)).fetchone()[0]
 
+    def spent_on(self, mint: str, since: int) -> float:
+        return float(self.db.execute("SELECT COALESCE(SUM(cost), 0) FROM positions WHERE mint = ? AND opened_at >= ?", (mint, since)).fetchone()[0])
+
     def last_exit_high(self, mint: str) -> float | None:
         row = self.db.execute("SELECT exit_high FROM positions WHERE mint = ? AND status = 'closed' ORDER BY closed_at DESC, id DESC LIMIT 1", (mint,)).fetchone()
         return row["exit_high"] if row else None
@@ -130,13 +169,13 @@ class Ledger:
             )
             position.id = int(cursor.lastrowid or 0)
             self._fill(position.id, now, "buy", position.entry_spot, fill, "Buy")
-            self.set("cash", self.cash - fill.net_usd)
+            self.set("cash", self.cash - fill.net)
         return position
 
     def record_sell(self, position: Position, fill: Fill, spot: float, reason: str, now: int) -> None:
         position.qty_open = max(0.0, position.qty_open - fill.qty)
-        position.proceeds_usd += fill.net_usd
-        position.fees_usd += fill.fee_usd
+        position.proceeds += fill.net
+        position.fees += fill.fee
         if position.qty_open <= position.qty * 1e-9:
             position.qty_open = 0.0
             position.status = "closed"
@@ -144,7 +183,7 @@ class Ledger:
             position.exit_reason = reason
         with self._transaction():
             self._fill(position.id, now, "sell", spot, fill, reason)
-            self.set("cash", self.cash + fill.net_usd)
+            self.set("cash", self.cash + fill.net)
             self._save(position)
 
     def save(self, position: Position) -> None:
@@ -152,14 +191,14 @@ class Ledger:
 
     def _save(self, position: Position) -> None:
         self.db.execute(
-            "UPDATE positions SET qty_open = ?, proceeds_usd = ?, fees_usd = ?, last_liquidity = ?, peak_price = ?, peak_viewers = ?, last_price = ?, last_price_at = ?, target_done = ?, status = ?, closed_at = ?, exit_reason = ?, exit_high = ? WHERE id = ?",
-            (position.qty_open, position.proceeds_usd, position.fees_usd, position.last_liquidity, position.peak_price, position.peak_viewers, position.last_price, position.last_price_at, int(position.target_done), position.status, position.closed_at, position.exit_reason, position.exit_high, position.id),
+            "UPDATE positions SET qty_open = ?, proceeds = ?, fees = ?, last_liquidity = ?, peak_price = ?, peak_viewers = ?, last_price = ?, last_price_at = ?, target_done = ?, status = ?, closed_at = ?, exit_reason = ?, exit_high = ? WHERE id = ?",
+            (position.qty_open, position.proceeds, position.fees, position.last_liquidity, position.peak_price, position.peak_viewers, position.last_price, position.last_price_at, int(position.target_done), position.status, position.closed_at, position.exit_reason, position.exit_high, position.id),
         )
 
     def _fill(self, position_id: int, now: int, side: str, spot: float, fill: Fill, reason: str) -> None:
         self.db.execute(
-            "INSERT INTO fills (position_id, at, side, spot, price, qty, gross_usd, fee_usd, net_usd, impact_pct, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (position_id, now, side, spot, fill.price, fill.qty, fill.gross_usd, fill.fee_usd, fill.net_usd, fill.impact_pct, reason),
+            "INSERT INTO fills (position_id, at, side, spot, price, qty, gross, fee, net, impact_pct, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (position_id, now, side, spot, fill.price, fill.qty, fill.gross, fill.fee, fill.net, fill.impact_pct, reason),
         )
 
     def event(self, now: int, kind: str, text: str) -> None:
@@ -180,26 +219,26 @@ class Ledger:
         if len(rows) > limit:
             step = len(rows) / limit
             rows = [rows[min(len(rows) - 1, round(index * step))] for index in range(limit - 1)] + [rows[-1]]
-        return [{"t": row["t"], "equity": round(row["equity"], 2)} for row in rows]
+        return [{"t": row["t"], "equity": round(row["equity"], 6)} for row in rows]
 
     def stats(self) -> dict[str, Any]:
-        rows = self.db.execute("SELECT cost_usd, proceeds_usd, opened_at, closed_at FROM positions WHERE status = 'closed'").fetchall()
-        returns = [(row["proceeds_usd"] - row["cost_usd"]) / row["cost_usd"] * 100 for row in rows if row["cost_usd"]]
-        profits = [row["proceeds_usd"] - row["cost_usd"] for row in rows]
+        rows = self.db.execute("SELECT cost, proceeds, opened_at, closed_at FROM positions WHERE status = 'closed'").fetchall()
+        returns = [(row["proceeds"] - row["cost"]) / row["cost"] * 100 for row in rows if row["cost"]]
+        profits = [row["proceeds"] - row["cost"] for row in rows]
         wins = sum(1 for profit in profits if profit > 0)
         gained = sum(profit for profit in profits if profit > 0)
         lost = -sum(profit for profit in profits if profit < 0)
-        fees = self.db.execute("SELECT COALESCE(SUM(fee_usd), 0) FROM fills").fetchone()[0]
+        fees = self.db.execute("SELECT COALESCE(SUM(fee), 0) FROM fills").fetchone()[0]
         return {
             "trades": len(rows),
             "wins": wins,
             "losses": len(rows) - wins,
             "winRate": wins / len(rows) if rows else None,
-            "realizedPnl": round(sum(profits), 2),
+            "realizedPnl": round(sum(profits), 6),
             "averageReturnPct": round(sum(returns) / len(returns), 2) if returns else None,
             "bestPct": round(max(returns), 2) if returns else None,
             "worstPct": round(min(returns), 2) if returns else None,
             "profitFactor": round(gained / lost, 2) if lost > 0 else None,
             "averageHoldMinutes": round(sum((row["closed_at"] - row["opened_at"]) / 60_000 for row in rows) / len(rows), 1) if rows else None,
-            "feesPaid": round(fees, 2),
+            "feesPaid": round(fees, 6),
         }

@@ -29,17 +29,25 @@ const reportInput = z.object({
   }),
   stats: z.object({
     trades: finite, wins: finite, losses: finite, winRate: maybe, realizedPnl: finite, averageReturnPct: maybe, bestPct: maybe, worstPct: maybe,
-    profitFactor: maybe, averageHoldMinutes: maybe, feesPaid: finite,
+    profitFactor: maybe, averageHoldMinutes: maybe, feesPaid: finite, realizedPnlSol: finite.optional(), feesPaidSol: finite.optional(),
   }),
+  accountSol: z.object({
+    startingCash: finite, cash: finite, positionsValue: finite, equity: finite, exposure: finite, exposureLimit: finite, unrealizedPnl: finite,
+    totalPnl: finite, peakEquity: finite, dayPnl: finite,
+  }).optional(),
+  solUsd: maybe.optional(),
+  fees: z.object({ mode: text(20), source: text(80), prioritySol: finite, bribeSol: finite, totalSol: finite }).optional(),
   positions: z.array(z.object({
     id: finite, mint: text(60), symbol: text(40), pairAddress: text(60).nullable(), openedAt: finite, entryPrice: finite, price: finite, costUsd: finite,
     valueUsd: finite, pnlUsd: finite, pnlPct: finite, gainPct: finite, peakGainPct: finite, openPct: finite, stopPrice: maybe, targetDone: z.boolean(), score: finite, advice: text(20).nullable().optional(),
+    costSol: finite.optional(), valueSol: finite.optional(), pnlSol: finite.optional(),
   })).max(60),
   trades: z.array(z.object({
     id: finite, mint: text(60), symbol: text(40), pairAddress: text(60).nullable(), openedAt: finite, closedAt: maybe, costUsd: finite, proceedsUsd: finite,
     pnlUsd: finite, pnlPct: finite, reason: text(200).nullable(), score: finite, holdMinutes: finite,
+    costSol: finite.optional(), proceedsSol: finite.optional(), pnlSol: finite.optional(),
   })).max(80),
-  equity: z.array(z.object({ t: finite, equity: finite })).max(200),
+  equity: z.array(z.object({ t: finite, equity: finite, sol: finite.optional() })).max(200),
   events: z.array(z.object({ id: finite, t: finite, kind: text(20), text: text(400) })).max(60),
   candidates: z.array(z.object({ mint: text(60), symbol: text(40), score: finite, reason: text(200) })).max(20),
   strength: finite,

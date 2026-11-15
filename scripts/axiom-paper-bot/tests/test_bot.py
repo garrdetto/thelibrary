@@ -13,15 +13,20 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from axiom_paper import broker, cli, strategy
+from axiom_paper import broker, cli, fees, strategy
 from axiom_paper import settings as dials
 from axiom_paper.engine import Engine
 from axiom_paper.ledger import Ledger
 from axiom_paper.models import Coin, Position
-from axiom_paper.prices import Quote
+from axiom_paper.prices import SOL_MINT, Quote
 
 
-PINNED = {"risk.position_pct": 3, "exit.stop_loss_pct": 12, "exit.trailing_stop_pct": 15, "exit.trailing_start_pct": 10, "costs.stop_slippage_pct": 0}
+PINNED = {
+    "risk.position_pct": 3, "exit.stop_loss_pct": 12, "exit.trailing_stop_pct": 15, "exit.trailing_start_pct": 10, "costs.stop_slippage_pct": 0,
+    "risk.buy_mode": "percent", "risk.max_per_coin_sol": 0, "risk.min_position_sol": 10, "account.starting_sol": 1000,
+    "costs.fee_mode": "manual", "costs.priority_fee_sol": 0.1, "costs.bribe_sol": 0.099995,
+}
+FEE = 0.2
 
 
 def pinned() -> dict[str, Any]:
@@ -43,7 +48,7 @@ def token(mint: str = "MintA", **changes: Any) -> dict[str, Any]:
 def position(**changes: Any) -> Position:
     base: dict[str, Any] = dict(
         id=1, mint="MintA", symbol="MINTA", pair=None, opened_at=0, entry_spot=1.0, entry_price=1.02, qty=100.0, qty_open=100.0,
-        cost_usd=103.0, proceeds_usd=0.0, fees_usd=1.0, entry_liquidity=50_000.0, last_liquidity=50_000.0, peak_price=1.0,
+        cost=103.0, proceeds=0.0, fees=1.0, entry_liquidity=50_000.0, last_liquidity=50_000.0, peak_price=1.0,
         peak_viewers=100.0, last_price=1.0, last_price_at=0, target_done=False, score=80.0,
     )
     base.update(changes)
@@ -95,12 +100,13 @@ class Harness:
         dials.save_file(self.settings_path, dials.normalize(values))
         self.clock = Clock()
         self.site = FakeSite(self.clock)
-        self.quotes: dict[str, Quote] = {}
+        self.quotes: dict[str, Quote] = {SOL_MINT: Quote(1.0, None)}
+        self.fee_levels: fees.FeeLevels | None = None
         self.ledger = Ledger(":memory:")
         self.engine = self.start()
 
     def start(self, background: bool = False) -> Engine:
-        return Engine(self.ledger, self.site, self.settings_path, price_source=lambda wanted: {mint: self.quotes[mint] for mint in wanted if mint in self.quotes}, clock=self.clock, background=background)
+        return Engine(self.ledger, self.site, self.settings_path, price_source=lambda wanted: {mint: self.quotes[mint] for mint in wanted if mint in self.quotes}, fee_source=lambda: self.fee_levels, clock=self.clock, background=background)
 
     def pull(self, *tokens: dict[str, Any], seconds: float = 5) -> None:
         self.clock.t += seconds
@@ -156,33 +162,33 @@ class BrokerTests(unittest.TestCase):
         self.s = pinned()
 
     def test_stop_sells_pay_extra_slippage(self) -> None:
-        calm = broker.sell(1.0, 100.0, 50_000.0, True, self.s)
+        calm = broker.sell(1.0, 100.0, 50_000.0, True, self.s, FEE)
         self.s["costs.stop_slippage_pct"] = 5
-        self.assertAlmostEqual(broker.sell(1.0, 100.0, 50_000.0, True, self.s).net_usd, calm.net_usd)
-        rushed = broker.sell(1.0, 100.0, 50_000.0, True, self.s, urgent=True)
-        self.assertAlmostEqual(rushed.gross_usd, calm.gross_usd * 0.95)
+        self.assertAlmostEqual(broker.sell(1.0, 100.0, 50_000.0, True, self.s, FEE).net, calm.net)
+        rushed = broker.sell(1.0, 100.0, 50_000.0, True, self.s, FEE, urgent=True)
+        self.assertAlmostEqual(rushed.gross, calm.gross * 0.95)
 
     def test_buy_pays_fees_impact_and_slippage(self) -> None:
-        fill = broker.buy(1.0, 100.0, 20_000.0, self.s)
+        fill = broker.buy(1.0, 100.0, 20_000.0, self.s, FEE)
         assert fill is not None
-        self.assertAlmostEqual(fill.fee_usd, 1.2)
+        self.assertAlmostEqual(fill.fee, 1.2)
         self.assertAlmostEqual(fill.impact_pct, 98.8 / 10_000 * 100)
         self.assertAlmostEqual(fill.price, 1.0 * (1 + 98.8 / 10_000) * 1.01)
         self.assertAlmostEqual(fill.qty * fill.price, 98.8)
 
     def test_round_trip_at_the_same_price_loses_money(self) -> None:
-        bought = broker.buy(1.0, 100.0, 20_000.0, self.s)
+        bought = broker.buy(1.0, 100.0, 20_000.0, self.s, FEE)
         assert bought is not None
-        sold = broker.sell(1.0, bought.qty, 20_000.0, True, self.s)
-        self.assertLess(sold.net_usd, 97.0)
-        self.assertGreater(sold.net_usd, 93.0)
+        sold = broker.sell(1.0, bought.qty, 20_000.0, True, self.s, FEE)
+        self.assertLess(sold.net, 97.0)
+        self.assertGreater(sold.net, 93.0)
 
     def test_pulled_liquidity_pays_almost_nothing(self) -> None:
-        self.assertEqual(broker.sell(1.0, 100.0, 0.0, True, self.s).net_usd, 0.0)
-        self.assertLess(broker.sell(1.0, 100.0, 40.0, True, self.s).net_usd, 20.0)
+        self.assertEqual(broker.sell(1.0, 100.0, 0.0, True, self.s, FEE).net, 0.0)
+        self.assertLess(broker.sell(1.0, 100.0, 40.0, True, self.s, FEE).net, 20.0)
 
     def test_tiny_bets_are_refused_when_fees_eat_them(self) -> None:
-        self.assertIsNone(broker.buy(1.0, 0.2, 20_000.0, self.s))
+        self.assertIsNone(broker.buy(1.0, 0.2, 20_000.0, self.s, FEE))
 
 
 class StrategyTests(unittest.TestCase):
@@ -323,8 +329,8 @@ class EngineTests(unittest.TestCase):
         bot.pull(token())
         self.assertEqual(len(bot.engine.positions), 1)
         held = bot.engine.positions[0]
-        self.assertAlmostEqual(held.cost_usd, 1000 * 0.03 * (0.5 + 1 / 3))
-        self.assertAlmostEqual(bot.ledger.cash, 1000 - held.cost_usd)
+        self.assertAlmostEqual(held.cost, 1000 * 0.03 * (0.5 + 1 / 3))
+        self.assertAlmostEqual(bot.ledger.cash, 1000 - held.cost)
         self.assertLess(bot.engine.account()["equity"], 1000)
         bot.pull(token())
         self.assertEqual(len(bot.engine.positions), 1)
@@ -337,13 +343,13 @@ class EngineTests(unittest.TestCase):
         held = bot.engine.positions[0]
         self.assertTrue(held.target_done)
         self.assertAlmostEqual(held.qty_open, held.qty / 2)
-        self.assertGreater(held.proceeds_usd, held.cost_usd * 0.6)
+        self.assertGreater(held.proceeds, held.cost * 0.6)
         bot.pull(token(priceUsd=0.00099))
         self.assertEqual(bot.engine.positions, [])
         trade = bot.engine.trade_rows()[0]
         self.assertEqual(trade["reason"], "Back to entry after target")
-        self.assertGreater(trade["pnlUsd"], 0)
-        self.assertAlmostEqual(bot.ledger.cash, 1000 + trade["pnlUsd"], places=1)
+        self.assertGreater(trade["pnl"], 0)
+        self.assertAlmostEqual(bot.ledger.cash, 1000 + trade["pnl"], places=1)
         bot.close()
 
     def test_stop_loss_uses_live_prices_between_pulls(self) -> None:

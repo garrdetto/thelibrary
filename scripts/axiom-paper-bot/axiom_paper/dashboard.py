@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from .engine import Engine
+from .money import both, signed, small_sol, sol, usd
 
 RESET = "\x1b[0m"
 STYLES = {"dim": "\x1b[2m", "bold": "\x1b[1m", "up": "\x1b[32m", "down": "\x1b[31m", "warn": "\x1b[33m", "accent": "\x1b[36m", "": ""}
@@ -39,14 +40,6 @@ def enable_ansi() -> bool:
 
 def clock(timestamp: int | float, seconds: bool = False) -> str:
     return datetime.fromtimestamp(timestamp / 1000).strftime("%H:%M:%S" if seconds else "%H:%M")
-
-
-def money(value: float) -> str:
-    return f"${value:,.2f}"
-
-
-def signed_money(value: float) -> str:
-    return f"{'+' if value >= 0 else '-'}${abs(value):,.2f}"
 
 
 def price(value: float | None) -> str:
@@ -91,26 +84,34 @@ class Screen:
         return "".join(output)
 
 
+def buy_plan(values: dict[str, Any]) -> str:
+    if values["risk.buy_mode"] == "fixed":
+        cap = values["risk.max_per_coin_sol"]
+        return f"{sol(values['risk.buy_amount_sol'])} a buy" + (f", {sol(cap)} a coin at most" if cap > 0 else "")
+    return f"{values['risk.position_pct']}% of the account a buy, at risk strength {values['risk.strength']}/10"
+
+
 def build(engine: Engine, settings_path: str, keys: bool) -> list[list[Segment]]:
     account = engine.account()
     stats = engine.ledger.stats()
     state, note = engine.status()
     age = engine.feed_age()
     now = engine.now()
+    rate = engine.sol_usd
+    fee = engine.fee()
     lines: list[list[Segment]] = []
     label = {"running": ("● buying", "up"), "paused": ("● paused", "warn"), "holding": ("● not buying", "warn")}[state]
     radar = "waiting for the first reading" if age is None else f"{'live' if engine.feed_live else 'not live'}, {age:.0f}s old, {len(engine.coins)} coins"
-    lines.append([(" AXIOM PAPER BOT ", "bold"), ("  ", ""), label, ("   Radar: ", "dim"), (radar, "" if engine.feed_live else "warn"), ("   Risk strength ", "dim"), (f"{engine.values['risk.strength']}/10", "accent"), ("   ", ""), (clock(now, True), "dim")])
+    lines.append([(" AXIOM PAPER BOT ", "bold"), ("  ", ""), label, ("   Radar: ", "dim"), (radar, "" if engine.feed_live else "warn"), ("   SOL ", "dim"), (usd(rate) if rate else "waiting", "accent"), ("   ", ""), (clock(now, True), "dim")])
     problem = engine.error or engine.settings_error or note
-    lines.append([(f" {problem}" if problem else " Pretend money only. No real orders are placed.", "warn" if problem else "dim")])
+    lines.append([(f" {problem}" if problem else " Pretend SOL only. No real orders are placed.", "warn" if problem else "dim")])
     lines.append([])
     lines.append([
-        (" Account  ", "dim"), (money(account["equity"]), "bold"), ("  ", ""),
-        (f"{signed_money(account['totalPnl'])} ({account['totalPnlPct']:+.1f}%)", tone(account["totalPnl"])),
-        ("   Today ", "dim"), (f"{signed_money(account['dayPnl'])} ({account['dayPnlPct']:+.1f}%)", tone(account["dayPnl"])),
-        ("   Cash ", "dim"), (money(account["cash"]), ""),
-        ("   In coins ", "dim"), (f"{money(account['exposure'])} of {money(account['exposureLimit'])} allowed", ""),
+        (" Account  ", "dim"), (both(account["equity"], rate), "bold"), ("  ", ""),
+        (f"{signed(account['totalPnl'], rate)} ({account['totalPnlPct']:+.1f}%)", tone(account["totalPnl"])),
+        ("   Today ", "dim"), (f"{signed(account['dayPnl'], rate)} ({account['dayPnlPct']:+.1f}%)", tone(account["dayPnl"])),
     ])
+    lines.append([(" Cash     ", "dim"), (both(account["cash"], rate), ""), ("   In coins ", "dim"), (f"{sol(account['exposure'])} of {sol(account['exposureLimit'])} allowed", "")])
     win_rate = "-" if stats["winRate"] is None else f"{stats['winRate'] * 100:.0f}% wins"
     average = "-" if stats["averageReturnPct"] is None else f"{stats['averageReturnPct']:+.1f}%"
     best = "-" if stats["bestPct"] is None else f"{stats['bestPct']:+.1f}%"
@@ -118,7 +119,11 @@ def build(engine: Engine, settings_path: str, keys: bool) -> list[list[Segment]]
     lines.append([
         (" Trades   ", "dim"), (f"{stats['trades']} closed", ""), ("   ", ""), (win_rate, ""),
         ("   average ", "dim"), (average, ""), ("   best ", "dim"), (best, "up" if stats["bestPct"] else ""), ("   worst ", "dim"), (worst, "down" if stats["worstPct"] else ""),
-        ("   fees ", "dim"), (money(stats["feesPaid"]), ""), ("   drawdown ", "dim"), (f"{account['drawdownPct']:.1f}%", ""),
+        ("   fees ", "dim"), (sol(stats["feesPaid"]), ""), ("   drawdown ", "dim"), (f"{account['drawdownPct']:.1f}%", ""),
+    ])
+    lines.append([
+        (" Buys     ", "dim"), (buy_plan(engine.values), ""),
+        ("   Network fee ", "dim"), (f"{small_sol(fee.total)} a trade", ""), (f" ({fee.source}: priority {small_sol(fee.priority)}, bribe {small_sol(fee.bribe)})", "dim"),
     ])
     lines.append([])
     lines.append([(f" OPEN POSITIONS ({len(engine.positions)} of {engine.values['risk.max_open_positions']})", "bold")])
@@ -126,17 +131,17 @@ def build(engine: Engine, settings_path: str, keys: bool) -> list[list[Segment]]
     if not rows:
         lines.append([("  None right now.", "dim")])
     else:
-        lines.append([("  " + fit("Coin", 12) + fit("Held", 7) + fit("Cost", 11, True) + fit("Value", 11, True) + fit("Profit", 22, True) + fit("Move", 9, True) + fit("Peak", 9, True) + "   Stop", "dim")])
+        lines.append([("  " + fit("Coin", 12) + fit("Held", 7) + fit("Cost", 13, True) + fit("Value", 13, True) + fit("Profit", 34, True) + fit("Move", 9, True) + fit("Peak", 9, True) + "   Stop", "dim")])
         for row in rows:
             held = minutes((now - row["openedAt"]) / 60_000)
             name = row["symbol"] + (" ½" if row["targetDone"] else "")
             radar = {"tighten": "  Radar: fading", "exit": "  Radar: exit", "left": "  left the Radar"}.get(row["advice"], "")
             lines.append([
-                ("  " + fit(name, 12) + fit(held, 7) + fit(money(row["costUsd"]), 11, True) + fit(money(row["valueUsd"]), 11, True), ""),
-                (fit(f"{signed_money(row['pnlUsd'])} ({row['pnlPct']:+.1f}%)", 22, True), tone(row["pnlUsd"])),
+                ("  " + fit(name, 12) + fit(held, 7) + fit(sol(row["cost"]), 13, True) + fit(sol(row["value"]), 13, True), ""),
+                (fit(f"{signed(row['pnl'], rate)} ({row['pnlPct']:+.1f}%)", 34, True), tone(row["pnl"])),
                 (fit(f"{row['gainPct']:+.1f}%", 9, True), tone(row["gainPct"])),
                 (fit(f"{row['peakGainPct']:+.1f}%", 9, True), "dim"),
-                ("   " + price(row["stopPrice"]), "dim"),
+                ("   " + price(None if row["stop"] is None or not rate else row["stop"] * rate), "dim"),
                 (radar, "warn"),
             ])
     lines.append([])
@@ -147,7 +152,7 @@ def build(engine: Engine, settings_path: str, keys: bool) -> list[list[Segment]]
     for trade in trades:
         lines.append([
             ("  " + clock(trade["closedAt"]) + "  " + fit(trade["symbol"], 12), ""),
-            (fit(f"{signed_money(trade['pnlUsd'])} ({trade['pnlPct']:+.1f}%)", 22, True), tone(trade["pnlUsd"])),
+            (fit(f"{signed(trade['pnl'], rate)} ({trade['pnlPct']:+.1f}%)", 34, True), tone(trade["pnl"])),
             ("   " + fit(minutes(trade["holdMinutes"]), 7) + (trade["reason"] or ""), "dim"),
         ])
     lines.append([])
@@ -229,4 +234,4 @@ class PlainLog:
             self.next_summary = time.time() + 300
             account = self.engine.account()
             state, note = self.engine.status()
-            print(f"[{clock(self.engine.now(), True)}] Account {money(account['equity'])} ({account['totalPnlPct']:+.1f}%), {len(self.engine.positions)} open, {note or state}", flush=True)
+            print(f"[{clock(self.engine.now(), True)}] Account {both(account['equity'], self.engine.sol_usd)} ({account['totalPnlPct']:+.1f}%), {len(self.engine.positions)} open, {note or state}", flush=True)

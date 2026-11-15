@@ -196,7 +196,7 @@ What the history says about stops: price stops rarely sell where they are set. W
 
 ## Paper-trading bot
 
-`scripts/axiom-paper-bot/` is a Python bot that trades this Radar with pretend money: its own cash balance, automatic buys and sells, fees, slippage and price impact. It never places a real order. Start it on the PC that runs the tracker:
+`scripts/axiom-paper-bot/` is a Python bot that trades this Radar with pretend SOL: its own SOL balance, buy amounts in SOL, automatic buys and sells, Axiom-style network fees (auto fee or your own priority fee and bribe), slippage and price impact. Amounts show as SOL with dollars in brackets. It never places a real order. Start it on the PC that runs the tracker:
 
 ```bash
 python scripts/axiom-paper-bot/run.py
