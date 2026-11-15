@@ -8,15 +8,20 @@ const windowMs = 60_000
 const confirmMs = 4_000
 const alertHoldMs = 5 * 60_000
 
-export const sellTriggers = { bundlers: 2, top10: 3, top10PriceDrop: 0.05, insiders: 3, dev: 1 }
+/**
+ * The top 10 normally thins out as a coin runs and new buyers arrive, so it only counts as selling once it has lost half
+ * of its share (about 20% to 10%) over the last few minutes, at least `top10MinPoints`, while the price falls. Losing
+ * `top10Severe` of it is a dump that zeroes the score.
+ */
+export const sellTriggers = { bundlers: 2, top10Share: 0.5, top10MinPoints: 8, top10Severe: 0.7, top10PriceDrop: 0.05, insiders: 3, dev: 1 }
 /** A drop this many times the trigger (or any dev sell) is a dump that zeroes the score; smaller ones only cost points. */
 export const severeMultiple = 2
 
 const states = new Map<string, SellState>()
 
-function dropIn(readings: ShareReading[], key: 'top10' | 'bundlers' | 'insiders' | 'dev', now: number) {
+function dropIn(readings: ShareReading[], key: 'top10' | 'bundlers' | 'insiders' | 'dev', now: number, lookbackMs = windowMs) {
   const source = readings[readings.length - 1]?.source
-  const recent = readings.filter(reading => reading.source === source && now - reading.t <= windowMs && reading[key] !== null)
+  const recent = readings.filter(reading => reading.source === source && now - reading.t <= lookbackMs && reading[key] !== null)
   if (recent.length < 2) return null
   const latest = recent[recent.length - 1][key] as number
   const confirmed = recent.filter(reading => now - reading.t <= confirmMs).every(reading => (reading[key] as number) <= latest + 0.5)
@@ -52,9 +57,10 @@ export function watchSells(mint: string, reading: ShareReading, now = reading.t)
   }
   const bundlers = dropIn(state.readings, 'bundlers', now)
   if (bundlers && bundlers.drop >= sellTriggers.bundlers) raise(`Bundlers are selling: ${share(bundlers.from)} to ${share(bundlers.to)} of supply in ${bundlers.seconds}s`, false, bundlers.drop >= sellTriggers.bundlers * severeMultiple)
-  const top10 = dropIn(state.readings, 'top10', now)
+  const top10 = dropIn(state.readings, 'top10', now, keepMs)
   const falling = priceDrop(state.readings, now)
-  if (top10 && top10.drop >= sellTriggers.top10 && falling >= sellTriggers.top10PriceDrop) raise(`Top holders are selling: top 10 ${share(top10.from)} to ${share(top10.to)} in ${top10.seconds}s, price down ${Math.round(falling * 100)}%`, false, top10.drop >= sellTriggers.top10 * severeMultiple)
+  const top10Lost = top10 && top10.from > 0 ? top10.drop / top10.from : 0
+  if (top10 && top10Lost >= sellTriggers.top10Share && top10.drop >= sellTriggers.top10MinPoints && falling >= sellTriggers.top10PriceDrop) raise(`Top holders are selling: top 10 ${share(top10.from)} to ${share(top10.to)} in ${top10.seconds}s, price down ${Math.round(falling * 100)}%`, false, top10Lost >= sellTriggers.top10Severe)
   const insiders = dropIn(state.readings, 'insiders', now)
   if (insiders && insiders.drop >= sellTriggers.insiders) raise(`Insiders are selling: ${share(insiders.from)} to ${share(insiders.to)} in ${insiders.seconds}s`, false, insiders.drop >= sellTriggers.insiders * severeMultiple)
   const dev = dropIn(state.readings, 'dev', now)
