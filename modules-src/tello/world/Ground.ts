@@ -74,7 +74,7 @@ export function groundSink(clear: number): number {
   return 0.03 + 0.15 * (1 - smoothstep(-0.5, 1.8, clear))
 }
 
-export function buildGround(scene: Scene, land: TelloLand): Mesh[] {
+export async function buildGround(scene: Scene, land: TelloLand, pace?: () => Promise<void>): Promise<Mesh[]> {
   const mat = new StandardMaterial('tello-ground-mat', scene)
   mat.diffuseTexture = detailTexture(scene)
   mat.specularColor = Color3.Black()
@@ -85,6 +85,7 @@ export function buildGround(scene: Scene, land: TelloLand): Mesh[] {
   const step = land.cell
   for (let cj = 0; cj < cells; cj += GROUND_CHUNK) {
     for (let ci = 0; ci < cells; ci += GROUND_CHUNK) {
+      if (pace) await pace()
       const nx = Math.min(GROUND_CHUNK, cells - ci)
       const nz = Math.min(GROUND_CHUNK, cells - cj)
       const vx = nx + 1

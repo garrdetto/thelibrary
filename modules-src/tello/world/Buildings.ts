@@ -103,7 +103,7 @@ export interface ApartBuilding {
  * Every building, merged per material and cell; those in `apart` (building indexes: houses on lots a player can buy)
  * are built on their own and returned, so they can be taken down when the lot is bought.
  */
-export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticSink, land: TelloLand, apart: ReadonlySet<number> = new Set()): BuildStats & { apart: Map<number, ApartBuilding> } {
+export async function buildBuildings(root: TransformNode, mats: Mats, physics: StaticSink, land: TelloLand, apart: ReadonlySet<number> = new Set(), pace?: () => Promise<void>): Promise<BuildStats & { apart: Map<number, ApartBuilding> }> {
   const merged = new ChunkedBuilders(BUILDING_CELL)
   const separate = new Map<number, { chunks: ChunkedBuilders; solids: unknown[] }>()
   const M = {
@@ -129,6 +129,7 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
   if (!mats.nightGlow.some((g) => g.m === M.lit)) mats.nightGlow.push({ m: M.lit, k: 1.7 })
   let colliders = 0
   for (const [index, b] of land.doc.buildings.entries()) {
+    if (pace) await pace()
     const edges = edgesOf(b.p)
     if (edges.length < 3) continue
     const own = apart.has(index) ? { chunks: new ChunkedBuilders(128), solids: [] as unknown[] } : null
@@ -255,7 +256,8 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
       colliders++
     }
   }
-  merged.flush(root, 'tello-buildings')
+  if (pace) await merged.flushPaced(root, 'tello-buildings', pace)
+  else merged.flush(root, 'tello-buildings')
   const built = new Map<number, ApartBuilding>()
   for (const [index, own] of separate) {
     const node = new TransformNode(`tello-house-${index}`, root.getScene())

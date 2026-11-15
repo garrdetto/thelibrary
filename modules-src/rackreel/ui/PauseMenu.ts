@@ -58,6 +58,8 @@ export interface PauseHooks {
   sensitivity(): Sensitivity
   setSensitivity(s: Sensitivity): void
   graphics(): Graphics
+  /** True when the host world fixes the graphics settings (Fox Lake has no shadows): the section is left out. */
+  graphicsLocked?(): boolean
   setGraphics(g: Graphics): void
   /** A host world's own keys, listed after Rack & Reel's (Fox Lake's map, garage and go-home). */
   controls?(): ControlRow[]
@@ -217,7 +219,7 @@ export class PauseMenu {
     respawn.addEventListener('click', () => this.hooks.respawn())
     actions.append(inventory, records, respawn)
 
-    card.append(head, keys, look, graphics, this.party, this.note, actions)
+    card.append(head, keys, look, ...(hooks.graphicsLocked?.() ? [] : [graphics]), this.party, this.note, actions)
     this.root.append(card)
     document.body.append(this.root)
     this.root.addEventListener('keydown', (e) => {

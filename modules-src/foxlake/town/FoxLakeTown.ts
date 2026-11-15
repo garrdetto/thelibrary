@@ -828,21 +828,17 @@ export class FoxLakeTown implements GameExtension {
     return true
   }
 
-  private montelloWait = 6
+  private montelloWait = 1.5
 
   /**
-   * Builds Montello once the game is running: a few seconds after you start, at once if you head for Highway 23 or
-   * your home is in Montello. Until then a barrier closes the highway at Montello's edge.
+   * Builds Montello once the game is running: a moment after you start, in small slices between frames (Montello.ts),
+   * so it is usually done before you could drive there. Highway 23 is open from the start; Montello's ground is solid.
    */
   private startMontello(dt: number): void {
     const north = this.north
-    if (!north || north.townReady || !this.host.playing) return
+    if (!north || north.townStarted || !this.host.playing) return
     this.montelloWait -= dt
-    const at = this.host.driving?.position ?? this.host.player
-    const home = this.homeLot()
-    const near = at.x < TOWN_SQUARE.x0 + 400 || (home?.y !== undefined)
-    if (this.montelloWait > 0 && !near) return
-    this.montelloWait = Infinity
+    if (this.montelloWait > 0) return
     void north.buildTown().catch((e) => console.warn('[foxlake] Montello could not be built', e))
   }
 
@@ -878,7 +874,7 @@ export class FoxLakeTown implements GameExtension {
   }
 
   debug(): Record<string, unknown> {
-    return { net: this.net?.label ?? null, status: this.netStatus, neighbors: this.neighbors?.count ?? 0, colliders: this.physics?.streamStats(), cars: [...(this.cars?.list.keys() ?? [])], culled: this.culler.stats() }
+    return { net: this.net?.label ?? null, status: this.netStatus, neighbors: this.neighbors?.count ?? 0, colliders: this.physics?.streamStats(), cars: [...(this.cars?.list.keys() ?? [])], culled: this.culler.stats(), montello: this.north ? { ready: this.north.townReady, ...this.north.montello.buildStats } : null }
   }
 }
 

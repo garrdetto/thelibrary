@@ -174,6 +174,8 @@ export interface GameOptions {
   look?: LightingLook
   /** Shadow map size in texels (Rack & Reel's own is `SHADOW_MAP_SIZE`, 2048); a host world with more casters can pass less. */
   shadowMapSize?: number
+  /** False: no sun or moon shadows at all, for everyone, and no Shadows switch in the menu (Fox Lake). */
+  shadows?: boolean
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -516,7 +518,7 @@ export class Game {
     this.online.id = this.sessionKey
     this.online.carry(this.avatar.root)
     this.ctx.sensitivity = loadSensitivity()
-    this.ctx.shadowLayers.setEnabled(loadGraphics().shadows)
+    this.ctx.shadowLayers.setEnabled(this.options.shadows !== false && loadGraphics().shadows)
     const cam = this.ctx.camera
     cam.keysUp = []
     cam.keysDown = []
@@ -822,8 +824,11 @@ export class Game {
       },
       controls: () => this.ext?.controls?.() ?? [],
       graphics: () => ({ shadows: this.ctx.shadowLayers.enabled }),
+      graphicsLocked: () => this.options.shadows === false,
       setGraphics: (g) => {
+        if (this.options.shadows === false) return
         this.ctx.shadowLayers.setEnabled(g.shadows)
+        this.foliage.forceShadowRefresh()
         saveGraphics(g)
       },
       party: {
@@ -1827,6 +1832,16 @@ export class Game {
     if (!this.ext?.drawMinimap?.(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.markersNow)) this.minimap.draw(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.markersNow)
     this.updateHud(dt, locked)
     this.foliage.updateGrass(focus)
+    if (this.ctx.shadowLayers.enabled) this.updateCasters(focus)
+    if (this.heroRig) {
+      this.heroClock += dt
+      this.heroRig.root.rotation.y = Math.PI / 2 + Math.sin(this.heroClock * 0.8) * 0.35
+      const tail = this.heroRig.joints.get('tail')
+      if (tail) tail.rotation.y = Math.sin(this.heroClock * 9) * 0.35
+    }
+  }
+
+  private updateCasters(focus: Vector3): void {
     this.ctx.setShadowFocus(focus)
     const casterList = this.casterScratch
     const own = this.casters
@@ -1840,12 +1855,6 @@ export class Game {
     this.wildlife.collectCasters(casterList, focus, SHADOW_CASTER_REACH)
     this.online.collectCasters(casterList, focus, SHADOW_CASTER_REACH)
     this.foliage.updateShadowCasters(focus, casterList)
-    if (this.heroRig) {
-      this.heroClock += dt
-      this.heroRig.root.rotation.y = Math.PI / 2 + Math.sin(this.heroClock * 0.8) * 0.35
-      const tail = this.heroRig.joints.get('tail')
-      if (tail) tail.rotation.y = Math.sin(this.heroClock * 9) * 0.35
-    }
   }
 
   private walk(dt: number, active: boolean, sprint: boolean): void {

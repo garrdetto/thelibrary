@@ -80,38 +80,62 @@ export class Montello {
     this.nameIndex = roadIndex(land.doc.roads, NAME_CELL)
   }
 
-  /** Builds everything, a frame between the big steps so a host world can build it while the game runs. */
+  private solidsBuilt = false
+  /** How the last `build` was cut up: slices run and the longest one (ms of work in one frame). */
+  readonly buildStats = { slices: 0, longestMs: 0, longest: '' }
+
+  /**
+   * Montello's ground and edge walls in the physics world only. Quick, and a host world calls it while loading, so
+   * cars can drive into Montello before its buildings are drawn (`build` adds the rest as the game runs).
+   */
+  buildSolids(): void {
+    if (this.solidsBuilt) return
+    this.solidsBuilt = true
+    this.addGround()
+    this.addWalls()
+  }
+
+  /**
+   * Builds everything while a host world keeps running: the work is cut into slices of a few milliseconds with a frame
+   * between them (`pace`), so driving and turning stay smooth while Montello goes up.
+   */
   async build(progress: (share: number, text: string) => void = () => {}): Promise<void> {
     const { land, s } = this
     const { scene } = s.host.ctx
+    const pace = paced(SLICE_MS, this.buildStats)
     progress(0, 'Surveying Montello…')
-    this.addGround()
-    this.addWalls()
-    await frame()
-    const ground = buildGround(scene, land)
-    await frame()
+    this.buildSolids()
+    await pace('buildSolids')
+    const kits = Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
+    const ground = await buildGround(scene, land, () => pace())
+    await pace('buildGround')
     this.water = new Water(s.host.ctx, land)
-    await frame()
+    await pace('water')
     const roads = [...buildRoads(scene, land), ...buildStreetPaint(scene, land)]
-    await frame()
+    await pace('buildRoads')
     const bridges = buildBridges(scene, land, (mesh) => s.gfx.addCaster(mesh))
     for (const b of bridgeSolids(land)) this.sink.addStaticBox({ cx: b.x, cy: b.y, cz: -b.z, hx: b.across, hy: b.up, hz: b.along, rotY: Math.atan2(Math.sin(b.heading), -Math.cos(b.heading)) })
     progress(0.4, 'Raising the town…')
-    const [downtownKit, quarryKit] = await Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
-    this.lotHouses = buildBuildings(this.root, s.mats, this.sink, land, s.lotHouses).apart
+    await pace('buildBridges')
+    this.lotHouses = (await buildBuildings(this.root, s.mats, this.sink, land, s.lotHouses, () => pace())).apart
     for (const index of this.cleared) this.clearHouse(index)
-    await frame()
+    const [downtownKit, quarryKit] = await kits
+    await pace('kits')
     buildBarricades(this.root, s.mats, this.sink, land, s.openExit)
-    buildStorefronts(this.root, s.mats, land, downtownKit)
-    await frame()
+    await pace('buildBarricades')
+    await buildStorefronts(this.root, s.mats, land, downtownKit, () => pace())
+    await pace('buildStorefronts')
     buildLandmarks(this.root, s.mats, this.sink, land)
     buildCornerGarage(this.root, s.mats, this.sink, land)
+    await pace('buildCornerGarage')
     buildStreetDressing(this.root, s.mats, this.sink, land)
+    await pace('buildStreetDressing')
     this.junction = buildIntersection(this.root, s.mats, this.sink, land)
+    await pace('buildIntersection')
     this.falls = buildFalls(this.root, s.mats, this.sink, land, quarryKit)
     progress(0.8, 'Planting the trees…')
-    await frame()
-    this.plantTrees()
+    await pace('buildFalls')
+    await this.plantTrees(() => pace())
     const chunk = GROUND_CHUNK * land.cell
     for (const m of [...ground, ...this.water.meshes]) {
       const c = m.getBoundingInfo().boundingBox.centerWorld
@@ -177,22 +201,30 @@ export class Montello {
     }
   }
 
-  private plantTrees(): void {
+  private async plantTrees(pace?: () => Promise<void>): Promise<void> {
     const land = this.land
     const { treeX, treeZ, treeS } = land.grids
-    const spots: { x: number; y: number; z: number; kind: 'pine' | 'hardwood' | 'birch'; scale: number; yaw: number }[] = []
+    const stands = new Map<number, { x: number; y: number; z: number; kind: 'pine' | 'hardwood' | 'birch'; scale: number; yaw: number }[]>()
     for (let i = 0; i < treeX.length; i++) {
       const x = land.x0 + treeX[i] / 10
       const z = land.z0 + treeZ[i] / 10
       const kind = Math.min(2, treeS[i] >> 6)
       const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453
-      spots.push({ x: land.toSceneX(x), y: land.groundAt(x, z), z: land.toSceneZ(z), kind: TREE_KINDS[kind], scale: this.treeScale(i), yaw: (h - Math.floor(h)) * Math.PI * 2 })
+      const spot = { x: land.toSceneX(x), y: land.groundAt(x, z), z: land.toSceneZ(z), kind: TREE_KINDS[kind], scale: this.treeScale(i), yaw: (h - Math.floor(h)) * Math.PI * 2 }
+      const stand = (Math.floor(spot.x / TREE_STAND) + 4096) * 8192 + Math.floor(spot.z / TREE_STAND) + 4096
+      let spots = stands.get(stand)
+      if (!spots) stands.set(stand, (spots = []))
+      spots.push(spot)
       const key = treeKey(x, z)
       let list = this.treeCells.get(key)
       if (!list) this.treeCells.set(key, (list = []))
       list.push(i)
     }
-    this.s.host.foliage.plantTrees(spots, TREE_STAND)
+    // One stand at a time (Foliage groups by stand anyway), so planting never holds up a frame for long.
+    for (const spots of stands.values()) {
+      if (pace) await pace()
+      this.s.host.foliage.plantTrees(spots, TREE_STAND)
+    }
   }
 
   /** The model scale that makes tree `i` its measured height. */
@@ -319,6 +351,26 @@ function treeKey(x: number, z: number): number {
 
 function frame(): Promise<void> {
   return new Promise((r) => requestAnimationFrame(() => r()))
+}
+
+/** Work slices while Montello builds in a running game: about a third of a 60 fps frame each. */
+const SLICE_MS = 8
+
+/** Yields a frame whenever more than `ms` of work has run since the last one; `stats` records the slices. */
+function paced(ms: number, stats: { slices: number; longestMs: number; longest: string }): (step?: string) => Promise<void> {
+  let since = performance.now()
+  return async (step?: string) => {
+    const always = step !== undefined
+    const ran = performance.now() - since
+    if (ran < ms && !always) return
+    stats.slices++
+    if (ran > stats.longestMs) {
+      stats.longestMs = Math.round(ran)
+      stats.longest = step ?? 'slice'
+    }
+    await frame()
+    since = performance.now()
+  }
 }
 
 export type { Mesh }

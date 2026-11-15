@@ -671,8 +671,9 @@ class View implements VehicleView {
       m.metallic = f.metal * (1 - wear * 0.4);
       m.roughness = 1 - Math.max(0.1, f.gloss - wear * 0.35) * 0.96;
       m.clearCoat.isEnabled = true;
-      m.clearCoat.intensity = f.cc * (1 - wear * 0.8);
-      m.clearCoat.roughness = 0.08;
+      m.clearCoat.intensity = f.cc * 0.6 * (1 - wear * 0.8);
+      m.clearCoat.roughness = 0.22;
+      m.enableSpecularAntiAliasing = true;
     }
   }
 

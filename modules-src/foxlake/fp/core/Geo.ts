@@ -453,6 +453,10 @@ export function disposeNode(n: Node | null | undefined) { n?.dispose(false, fals
 export const SHADOW_ONLY_LAYER = 0x10000000;
 
 let proxyMat: Material | null = null;
+let proxiesOn = true;
+
+/** Off: no shadow proxies are built at all (a world drawn without shadows, Fox Lake), saving their meshes and memory. */
+export function setShadowProxies(on: boolean) { proxiesOn = on; }
 /**
  * Merges static shadow casters into one depth-only mesh per cell. The shadow
  * pass draws these instead of every textured part, so a block of buildings
@@ -476,6 +480,7 @@ export class ShadowProxies {
   /** Builds the proxies (static, shadow-only casters) under `parent`; returns them. */
   flush(parent: TransformNode | null, name: string): Mesh[] {
     const scene = R().scene, out: Mesh[] = [];
+    if (!proxiesOn) { this.cells.clear(); return out; }
     proxyMat ??= (() => { const m = new StandardMaterial('shadow-proxy', scene); m.disableLighting = true; return m; })();
     for (const [key, c] of this.cells) {
       if (!c.idx.length) continue;
@@ -515,15 +520,34 @@ export class ChunkedBuilders {
     return e.b;
   }
   flush(parent: TransformNode, name: string) {
+    for (const step of this.steps(parent, name)) step();
+  }
+  /** `flush` with `pace` awaited before each mesh, so a host building while the game runs spreads the work over frames. */
+  async flushPaced(parent: TransformNode, name: string, pace: () => Promise<void>) {
+    for (const step of this.steps(parent, name)) {
+      await pace();
+      step();
+    }
+  }
+  /** One step per merged mesh, then the shadow proxies; the builders are released as the last step runs. */
+  private steps(parent: TransformNode, name: string): (() => void)[] {
     const proxies = new ShadowProxies(this.cell);
+    const out: (() => void)[] = [];
     for (const [key, e] of this.map) {
       if (e.b.empty) continue;
-      const mesh = e.b.toMesh(`${name}:${key}`, e.colors, e.uv1Kind ?? VertexBuffer.UV2Kind);
-      mesh.parent = parent;
-      finishMesh(mesh, e.mat, { cast: false, static: true });
-      if (e.cast) proxies.addTo(e.cell, e.b);
+      out.push(() => {
+        const mesh = e.b.toMesh(`${name}:${key}`, e.colors, e.uv1Kind ?? VertexBuffer.UV2Kind);
+        mesh.parent = parent;
+        finishMesh(mesh, e.mat, { cast: false, static: true });
+        if (e.cast) proxies.addTo(e.cell, e.b);
+      });
     }
-    proxies.flush(parent, name);
-    this.map.clear();
+    const map = this.map;
+    this.map = new Map();
+    out.push(() => {
+      proxies.flush(parent, name);
+      map.clear();
+    });
+    return out;
   }
 }

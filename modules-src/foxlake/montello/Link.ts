@@ -26,6 +26,11 @@ const MEET_NEAR = 30
 const MEET_FAR = 120
 /** The road's name where it runs. */
 export const LINK_NAME = 'State Highway 23'
+/** Montello's ground under Highway 23 is graded flat to the road out to this far past its edge, then eased back to the survey over `GRADE_BLEND`. */
+const GRADE_SHOULDER = 2
+const GRADE_BLEND = 8
+/** Grass keeps this far (metres) off Highway 23's edge, so blades never lean over the asphalt. */
+const GRASS_CLEAR = 1.5
 
 export interface RoadPoint {
   x: number
@@ -90,6 +95,45 @@ export class MontelloLink {
     this.along = new Float32Array(this.fw * this.fh)
     this.width = new Float32Array(this.fw * this.fh).fill(LINK_ROAD.width)
     this.stampAll()
+    this.gradeHighway()
+  }
+
+  /**
+   * Grades Montello's surveyed ground under the stretch of Highway 23 that runs over Montello's land: the bake's ground
+   * there is the old, cut highway's surroundings, up to 60 cm above the new road in places, and it showed through the
+   * asphalt as humps of grass. Under the road (and its 1.5 m shoulders) the ground takes the road's own profile, easing
+   * back to the survey over `GRADE_BLEND` metres, and the road is written into the clearance grid, so Montello's ground
+   * mesh, its physics heightfield and its grass all agree with the road.
+   */
+  private gradeHighway(): void {
+    const land = this.land
+    const { ground, clear, fineSide } = land.grids
+    const near: Near = { d: 0, s: 0, w: 0 }
+    const reach = GRADE_SHOULDER + GRADE_BLEND
+    const touch = (side: number, step: number, write: (k: number, clear: number, s: number) => void) => {
+      for (let j = 0; j < side; j++) {
+        const mz = land.z0 + j * step
+        const z = land.toSceneZ(mz)
+        if (z < this.box.z0 || z > this.box.z1) continue
+        for (let i = 0; i < side; i++) {
+          const mx = land.x0 + i * step
+          const x = land.toSceneX(mx)
+          if (x < this.box.x0 || x > this.box.x1) continue
+          const n = this.near(x, z, near)
+          const c = n.d - n.w / 2
+          if (c > reach || n.s > this.sJoin) continue
+          write(j * side + i, c, n.s)
+        }
+      }
+    }
+    touch(land.side, land.cell, (k, c, s) => {
+      const keep = smoothstep(GRADE_SHOULDER, reach, c)
+      ground[k] = Math.max(0, Math.round((this.roadY(s) + (ground[k] / 100 - this.roadY(s)) * keep) * 100))
+    })
+    touch(fineSide, land.frame.fine, (k, c) => {
+      const q = Math.max(-127, Math.min(127, Math.round(c * 4)))
+      if (q < clear[k]) clear[k] = q
+    })
   }
 
   /** The distance field: for every cell near the road, the distance to its centreline, how far along it, and its width. */
@@ -212,11 +256,13 @@ export class MontelloLink {
   }
 
   grassAt(x: number, z: number): boolean {
-    if (this.owns(x, z)) return this.montello.grassAt?.(x, z) ?? false
-    if (x >= TOWN_SQUARE.x0) return TOWN_LAND.grassAt?.(x, z) ?? false
     const n = this.near(x, z, this._n)
     const clear = n.d - n.w / 2
-    if (clear < 1.2 || n.d > LINK_SEEN) return false
+    if (clear < GRASS_CLEAR) return false
+    if (this.owns(x, z)) return this.montello.grassAt?.(x, z) ?? false
+    // Highway 23 runs a few hundred metres inside Fox Plains' square too: no grass on it or its shoulders there either.
+    if (x >= TOWN_SQUARE.x0) return TOWN_LAND.grassAt?.(x, z) ?? false
+    if (n.d > LINK_SEEN) return false
     if (clear < 14) return true
     const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453
     return h - Math.floor(h) < 0.3

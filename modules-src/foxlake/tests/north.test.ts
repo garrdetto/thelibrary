@@ -4,6 +4,7 @@ import { gunzipSync } from 'node:zlib'
 import { test } from 'node:test'
 import { isGzip, parseGrids, type MapDoc } from '../../tello/data/MapData'
 import { TelloLand } from '../../tello/region'
+import { groundSink } from '../../tello/world/Ground'
 import { FoxLakeTerrain, LINK_NAME, LINK_WALK, MontelloLink } from '../montello/Link'
 import { MAIN_WEST_X } from '../../maplestreet/shared/WorldLayout'
 import { LINK_ROAD, MONTELLO_AT, TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, linkRoadPath, outsideHeight, townToScene } from '../region'
@@ -128,4 +129,50 @@ test('Montello\'s water answers for Fox Lake\'s terrain', () => {
   }
   assert.ok(found, 'open water near Lake Montello')
   assert.ok(linkRoadPath(4).length > 100)
+})
+
+test('no grass grows on Highway 23 or its shoulders, inside Fox Plains\' square as well as beyond it', () => {
+  let checked = 0
+  for (let i = 1; i < link.road.length - 1; i++) {
+    const p = link.road[i]
+    const a = link.road[i - 1]
+    const b = link.road[i + 1]
+    const len = Math.hypot(b.x - a.x, b.z - a.z) || 1
+    const nx = (b.z - a.z) / len
+    const nz = -(b.x - a.x) / len
+    if (!link.inCorridor(p.x, p.z, 0) && p.x < TOWN_SQUARE.x0) continue
+    for (const k of [-1, -0.5, 0, 0.5, 1]) {
+      const r = k * (p.w / 2 + 1.2)
+      const x = p.x + nx * r
+      const z = p.z + nz * r
+      assert.equal(link.grassAt(x, z), false, `grass on the highway at ${x.toFixed(1)}, ${z.toFixed(1)}`)
+      checked++
+    }
+  }
+  assert.ok(checked > 500)
+  const inside = link.road.find((p) => p.x > TOWN_SQUARE.x0 + 40 && p.x < TOWN_SQUARE.x0 + 200)!
+  assert.ok(link.grassAt(inside.x, inside.z + 40) || link.grassAt(inside.x, inside.z - 40), 'grass still grows away from the road')
+})
+
+test('the ground never shows through Highway 23, Montello\'s surveyed ground included', () => {
+  const r = link.road
+  const rows: string[] = []
+  let worst = 0
+  for (let i = 1; i < r.length - 1; i++) {
+    const p = r[i], a = r[i - 1], b = r[i + 1]
+    const len = Math.hypot(b.x - a.x, b.z - a.z) || 1
+    const sx = -(b.z - a.z) / len, sz = (b.x - a.x) / len
+    const lx = p.x - sx * p.w / 2, lz = p.z - sz * p.w / 2, rx = p.x + sx * p.w / 2, rz = p.z + sz * p.w / 2
+    const hl = terrain.heightAt(lx, lz) + 0.06, hr = terrain.heightAt(rx, rz) + 0.06
+    for (let t = 0; t <= 1.0001; t += 0.1) {
+      const x = lx + (rx - lx) * t, z = lz + (rz - lz) * t
+      const road = hl + (hr - hl) * t
+      const mx = land.toMapX(x), mz = land.toMapZ(z)
+      let poke = -9, who = ''
+      if (land.holdsScene(x, z) && land.seen(mx, mz, -8)) { const m = land.groundAt(mx, mz) - groundSink(land.clearAt(mx, mz)); if (m - road > poke) { poke = m - road; who = 'montello' } }
+      const c = terrain.heightAt(x, z) - 0.04; if (c - road > poke) { poke = c - road; who = 'corridor' }
+      if (poke > worst) { worst = poke; rows.push(`${who} ground ${poke.toFixed(2)} m above the road at ${x.toFixed(1)}, ${z.toFixed(1)}`) }
+    }
+  }
+  assert.ok(worst <= 0.02, rows[rows.length - 1])
 })

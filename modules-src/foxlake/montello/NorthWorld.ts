@@ -55,24 +55,28 @@ export class NorthWorld {
     this.montello = new Montello(land, { host: s.host, physics: s.physics, shift, mats: s.mats, gfx: s.gfx, culler: s.culler, openExit: link.exit, lotHouses: new Set(MONTELLO_LOTS.map((l) => l.scan ?? -1)) })
   }
 
-  /** A barrier across the highway at Montello's edge while the town is still being built (cars would fall through). */
-  private gate: unknown = null
   private town: Promise<void> | null = null
+  private built = false
 
   /** True once Montello itself is built. */
   get townReady(): boolean {
-    return this.gate === null && this.town !== null
+    return this.built
+  }
+
+  /** True once Montello has started building (it then finishes on its own). */
+  get townStarted(): boolean {
+    return this.town !== null
   }
 
   /**
    * Builds Montello itself (buildings, storefronts, its ground, water and trees), once, after the game has started, so
-   * the loading screen only waits for Fox Plains and the highway. The barrier across the highway comes down when done.
+   * the loading screen only waits for Fox Plains and the highway. Its ground and walls are already solid (`build`), so
+   * Highway 23 is open the whole time; if a step fails the rest of the game carries on.
    */
   buildTown(progress: (share: number, text: string) => void = () => {}): Promise<void> {
     this.town ??= this.montello.build(progress).then(() => {
       this.montello.ready()
-      if (this.gate) this.s.physics.removeStatic(this.gate as Parameters<Physics['removeStatic']>[0])
-      this.gate = null
+      this.built = true
     })
     return this.town
   }
@@ -90,11 +94,7 @@ export class NorthWorld {
       const b = m.getBoundingInfo().boundingBox
       this.s.culler.addGroup([m], b.centerWorld.x, b.centerWorld.z, Math.hypot(b.extendSizeWorld.x, b.extendSizeWorld.z))
     }
-    const end = this.link.road[this.link.road.length - 1]
-    const before = this.link.road[this.link.road.length - 3]
-    const len = Math.hypot(end.x - before.x, end.z - before.z) || 1
-    const across = { x: (end.z - before.z) / len, z: -(end.x - before.x) / len }
-    this.gate = this.wall({ x: end.x - across.x * LINK_WALL, z: end.z - across.z * LINK_WALL }, { x: end.x + across.x * LINK_WALL, z: end.z + across.z * LINK_WALL })
+    this.montello.buildSolids()
     progress(1, 'Highway 23 is open')
   }
 
