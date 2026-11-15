@@ -2,19 +2,19 @@ import { AxiomLink, CoinName } from './AxiomLink'
 import { memo, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, ExternalLink, Globe, Send, Star, TriangleAlert, Twitter } from 'lucide-react'
 import { Line, LineChart, YAxis } from 'recharts'
-import type { RadarHistoryPoint, RadarSafetyLevel, RadarToken } from '@/lib/axiom-radar-types'
+import type { RadarHistoryPoint, RadarPriceWindow, RadarPriceWindowSource, RadarSafetyLevel, RadarToken } from '@/lib/axiom-radar-types'
 import { dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd, holderCount } from './format'
 import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
 import { useRadarAccess } from './access'
 import { scoreModeLabel, useScoreMode } from './score-mode'
 
-export type RadarSortKey = 'score' | 'quality' | 'viewers' | 'viewersPerMin' | 'holders' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
+export type RadarSortKey = 'score' | 'quality' | 'viewers' | 'viewersPerMin' | 'holders' | 's5' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
 export type RadarSort = { key: RadarSortKey; direction: 'asc' | 'desc' }
 
 const safetyLabels: Record<RadarSafetyLevel, string> = { safe: 'Safe', caution: 'Caution', risky: 'Risky', unknown: 'Unchecked' }
 
 export function sortValue(token: RadarToken, key: RadarSortKey, scoreOf: (token: RadarToken) => number = item => item.score) {
-  const value = key === 'score' ? scoreOf(token) : key === 's30' || key === 'm1' || key === 'm5' || key === 'm10' ? token.priceChange[key] : key === 'holders' ? holderCount(token) : key === 'quality' ? token.quality.score : token[key]
+  const value = key === 'score' ? scoreOf(token) : key === 's5' || key === 's30' || key === 'm1' || key === 'm5' || key === 'm10' ? token.priceChange[key] : key === 'holders' ? holderCount(token) : key === 'quality' ? token.quality.score : token[key]
   return typeof value === 'number' ? value : Number.NEGATIVE_INFINITY
 }
 
@@ -25,6 +25,23 @@ export function scoreTier(score: number) {
 export function formatChange(value: number | null) {
   if (value === null || !Number.isFinite(value)) return '—'
   return `${value > 0 ? '+' : ''}${Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(1)}%`
+}
+
+const windowSourceNotes: Record<RadarPriceWindowSource, string> = {
+  'since-launch': 'The coin is younger than this window: change since its first price',
+  'since-tracked': 'The tracker started following this coin inside this window: change since its first reading',
+  dexscreener: "DexScreener's own 5-minute change: the tracker has no reading from 5 minutes ago",
+}
+
+export function windowSourceNote(source: RadarPriceWindowSource | undefined) {
+  return source ? windowSourceNotes[source] : undefined
+}
+
+/** One price-change window; a stand-in reading is marked with ~ and says where it came from. */
+export function WindowChange({ token, window }: { token: RadarToken; window: RadarPriceWindow }) {
+  const value = token.priceChange[window] ?? null
+  const source = token.priceChangeSources?.[window]
+  return <span className={`radar-delta tabular ${changeClass(value)} ${source ? 'estimated' : ''}`} title={windowSourceNote(source)}>{source && value !== null ? '~' : ''}{formatChange(value)}</span>
 }
 
 export function changeClass(value: number | null) {
@@ -202,6 +219,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
           <SortHeader label="Viewers" sortKey="viewers" sort={sort} onSort={onSort}/>
           <SortHeader label="Viewers / min" sortKey="viewersPerMin" sort={sort} onSort={onSort}/>
           <SortHeader label="Holders" sortKey="holders" sort={sort} onSort={onSort}/>
+          <SortHeader label="5s" sortKey="s5" sort={sort} onSort={onSort} className="radar-col-change"/>
           <SortHeader label="30s" sortKey="s30" sort={sort} onSort={onSort} className="radar-col-change"/>
           <SortHeader label="1m" sortKey="m1" sort={sort} onSort={onSort} className="radar-col-change"/>
           <SortHeader label="5m" sortKey="m5" sort={sort} onSort={onSort} className="radar-col-change"/>
@@ -236,7 +254,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
           <td><div className="radar-viewers">{token.viewerRank && <span className="radar-rank-chip tabular">#{token.viewerRank}</span>}<span className="tabular">{formatCount(token.viewers)}</span>{token.viewerSurge && <span className="radar-surge" title="Gaining viewers quickly" role="img" aria-label="Gaining viewers quickly">🔥</span>}<ViewerSparkline history={token.history}/></div></td>
           <td><div className="radar-stack tabular"><strong className={`radar-delta ${changeClass(token.viewersPerMin)}`}>{formatSigned(token.viewersPerMin)}</strong><small>{formatSigned(token.viewersDelta5m)} in 5m</small></div></td>
           <td><div className="radar-stack tabular"><strong>{formatCount(holderCount(token))}</strong><small className={`radar-delta ${changeClass(token.holdersPerMin ?? null)}`}>{token.holdersPerMin === null || token.holdersPerMin === undefined ? '—' : `${formatSigned(token.holdersPerMin)}/min`}</small></div></td>
-          {(['s30', 'm1', 'm5', 'm10'] as const).map(window => <td key={window} className="radar-col-change"><span className={`radar-delta tabular ${changeClass(token.priceChange[window])}`}>{formatChange(token.priceChange[window])}</span></td>)}
+          {(['s5', 's30', 'm1', 'm5', 'm10'] as const).map(window => <td key={window} className="radar-col-change"><WindowChange token={token} window={window}/></td>)}
           <td><PriceSpark points={sparkPoints(token, chartWindow)} width={112} height={32}/></td>
           <td><div className="radar-stack tabular"><strong>{formatUsd(token.marketCap)}</strong><small>{formatUsd(token.liquidityUsd)} liq</small></div></td>
           <td><div className="radar-stack tabular"><strong>{formatUsd(token.volume5m)}</strong><BuySellBar buys={token.buys5m} sells={token.sells5m}/></div></td>

@@ -1,5 +1,5 @@
 import type { RadarToken } from '@/lib/axiom-radar-types'
-import { changeClass, formatChange } from './RadarTable'
+import { WindowChange } from './RadarTable'
 
 const moveWindows = [['s5', '5s'], ['s30', '30s'], ['m1', '1m'], ['m5', '5m']] as const
 
@@ -9,7 +9,7 @@ export function DexScoreBreakdown({ token }: { token: RadarToken }) {
   if (!dex) return <p className="radar-muted">The tracker has not sent a DexScreener score for this coin yet. It appears after the tracker update that adds it.</p>
   return <>
     <dl className="radar-facts">
-      {moveWindows.map(([key, label]) => <div key={key}><dt>Price, {label}</dt><dd className={`tabular radar-delta ${changeClass(dex.moves[key])}`}>{formatChange(dex.moves[key])}</dd></div>)}
+      {moveWindows.map(([key, label]) => <div key={key}><dt>Price, {label}</dt><dd><WindowChange token={token} window={key}/></dd></div>)}
     </dl>
     <ul className="radar-factors">
       {dex.checks.map(item => <li key={item.label} className={item.points < 0 ? 'radar-factor-penalty' : ''}>

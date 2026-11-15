@@ -10,6 +10,7 @@ import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas 
 import { jupiterReading } from './jupiter.js'
 import { detectBotClimb } from './holder-limits.js'
 import { scoreDex } from './dex-score.js'
+import { priceWindowChanges } from './price-windows.js'
 import { scoreRunner, type PricePoint, type RunnerLinks } from './runner-score.js'
 import { learnedEdge, learnedFor, runnerState } from './runner-state.js'
 import { forgetSells, watchSells } from './sell-watch.js'
@@ -157,10 +158,11 @@ function holderGainPerMinute(ticks: MarketTick[], holders: number | null, now: n
   return Math.round(((holders - (earliest.holders as number)) / ((now - earliest.t) / 60_000)) * 10) / 10
 }
 
-function liveFigures(mint: string, now: number) {
+function liveFigures(mint: string, now: number, launchedAt: number | null) {
   const ticks = marketTicks.get(mint) ?? []
   const latest = ticks.at(-1)
-  const price = latest?.price ?? null
+  const lastPriced = latest?.price !== null && latest?.price !== undefined ? latest : [...ticks].reverse().find(tick => tick.price !== null && now - tick.t <= 120_000)
+  const price = lastPriced?.price ?? null
   const viewers = freshViewerCount(mint, now)
   const card = trackerState.pulseCards.get(mint)
   const pulse = card && now - card.seenAt < 120_000 ? card : null
@@ -171,25 +173,17 @@ function liveFigures(mint: string, now: number) {
     const before = current === null ? null : tickAt(ticks, now - spanMs, tolerance, field)
     return current === null || before === null ? null : current - before
   }
+  const market = trackerState.market.get(mint) ?? null
+  const windows = priceWindowChanges({ ticks, price: price ?? market?.priceUsd ?? null, now, launchedAt, dexM5: market?.change5m ?? null })
   const gainsFor = (field: 'viewers' | 'holders', current: number | null) => ({ s5: gainOver(field, current, 5_000, 2_000), s15: gainOver(field, current, 15_000, 3_000), s30: gainOver(field, current, 30_000, 4_000), m1: gainOver(field, current, 60_000, 8_000) })
   return {
     price,
     viewers,
     pulse,
-    market: trackerState.market.get(mint) ?? null,
-    dexMoves: {
-      s5: percentChange(price, tickAt(ticks, now - 5_000, 2_000, 'price')),
-      s30: percentChange(price, tickAt(ticks, now - 30_000, 4_000, 'price')),
-      m1: percentChange(price, tickAt(ticks, now - 60_000, 6_000, 'price')),
-      m5: percentChange(price, tickAt(ticks, now - 300_000, 20_000, 'price')),
-    },
-    priceChange: {
-      s5: percentChange(price, tickAt(ticks, now - 5_000, 2_000, 'price')),
-      s30: percentChange(price, tickAt(ticks, now - 30_000, 4_000, 'price')),
-      m1: percentChange(price, tickAt(ticks, now - 60_000, 6_000, 'price')),
-      m5: percentChange(price, tickAt(ticks, now - 300_000, 20_000, 'price')),
-      m10: percentChange(price, tickAt(ticks, now - 600_000, 30_000, 'price')),
-    },
+    market,
+    dexMoves: { s5: windows.changes.s5, s30: windows.changes.s30, m1: windows.changes.m1, m5: windows.changes.m5 },
+    priceChange: windows.changes,
+    priceChangeSources: windows.sources,
     liquidityChange1m: percentChange(latest?.liquidity ?? null, tickAt(ticks, now - 60_000, 6_000, 'liquidity')),
     viewersPerMin: viewerGainPerMinute(ticks, viewers, now),
     viewersDelta1m: viewers !== null && minuteAgo !== null ? viewers - minuteAgo : null,
@@ -365,7 +359,7 @@ function priceSeries(snapshots: SnapshotRow[], ticks: MarketTick[]): PricePoint[
 
 function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: SnapshotRow[], fallback: SnapshotRow | undefined, runners: number, weights: RadarWeights, now: number, settings: RadarSettings, traits: RadarHolderTraits | null): BuiltToken {
   const latest = snapshots.at(-1) ?? fallback
-  const live = liveFigures(token.mint, now)
+  const live = liveFigures(token.mint, now, token.pair_created_at > 0 ? token.pair_created_at : null)
   const stored = viewerDeltas(snapshots, now)
   const viewers = live.viewers ?? stored.viewers
   const delta1m = live.viewers !== null ? live.viewersDelta1m : stored.delta1m
@@ -495,6 +489,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     factors,
     lastSnapshotAt: live.market?.readAt ?? latest?.timestamp ?? null,
     priceChange: live.priceChange,
+    priceChangeSources: live.priceChangeSources,
     spark: sparkSeries(marketTicks.get(token.mint) ?? [], now),
     viewersPerMin: live.viewersPerMin,
     viewerSurge: false,
