@@ -12,9 +12,10 @@
  *   sidewalks, the approaches are filled to it and the channel is dug out under it (`fixBridge`).
  */
 import { COVER, type BridgeData, type BuildingData, type MapDoc, type MapGrids, type RoadData } from './MapData'
-import { BUILDING_HEIGHTS, CORNER_GARAGE, EXTRA_BUILDINGS } from './Downtown'
+import { BUILDING_HEIGHTS, CORNER_GARAGE, EXTRA_BUILDINGS, REMOVED_BUILDINGS } from './Downtown'
 import { pointInRing, resample } from '../world/Poly'
 import { fixRoadLines, repaveMoved } from './RoadFixes'
+import { addForecourts } from './Forecourts'
 
 /** Lane and parking lane, metres: one lane each way plus a parking lane along each curb. */
 export const LANE = 3.3
@@ -331,7 +332,7 @@ function buildingEdges(doc: MapDoc): Edge[] {
     const p = b.p
     let inside = false
     for (let k = 0; k < p.length; k += 2) if (inCore(p[k], p[k + 1])) inside = true
-    if (!inside || b.k === 'canopy') continue
+    if (!inside || b.k === 'canopy' || b.x) continue
     const n = p.length / 2
     for (let k = 0; k < n; k++) {
       const j = (k + 1) % n
@@ -401,6 +402,7 @@ export function fixStreets(doc: MapDoc, grids: MapGrids): void {
   fixBridge(doc, grids)
   fixBuildings(doc, grids)
   addLots(doc, grids)
+  addForecourts(doc, grids)
   repaveMoved(doc, grids, fixRoadLines(doc).moved)
   paveProfiles(doc, grids, townProfiles(doc))
 }
@@ -409,6 +411,10 @@ export function fixStreets(doc: MapDoc, grids: MapGrids): void {
 
 /** Raises the buildings the lidar measured low and adds the ones the footprint data is missing. */
 export function fixBuildings(doc: MapDoc, grids: MapGrids): void {
+  for (const [x, z] of REMOVED_BUILDINGS) {
+    const b = doc.buildings.find((y) => Math.hypot(y.r[0][0] - x, y.r[0][1] - z) < 1)
+    if (b) b.x = 1
+  }
   for (const t of BUILDING_HEIGHTS) {
     const b = doc.buildings.find((x) => Math.hypot(x.r[0][0] - t.at[0], x.r[0][1] - t.at[1]) < 1)
     if (!b) continue

@@ -35,7 +35,8 @@ export type BuildingKind = 'house' | 'garage' | 'shed' | 'store' | 'industrial' 
  * roofs and colliders: centre x, centre z, half size along its first axis, half size along its second, yaw of the
  * first axis, roof type (see `ROOF`), eave and ridge in metres above the floor.
  */
-export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string; m?: 1; rc?: string }
+/** `x`: removed at load (`REMOVED_BUILDINGS`): nothing stands there, so it is never built, solid or in a road's way. */
+export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string; m?: 1; rc?: string; x?: 1 }
 /** Roof types: a gable's ridge runs along the rectangle's first or second axis; a shed's high side is toward the named axis. */
 export const ROOF = { unmeasured: -1, flat: 0, gableFirst: 1, gableSecond: 2, hip: 3, shedPlusSecond: 4, shedMinusSecond: 5, shedPlusFirst: 6, shedMinusFirst: 7 } as const
 export interface LotData { f: number; p: number[] }

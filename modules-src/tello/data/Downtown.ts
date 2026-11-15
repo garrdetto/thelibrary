@@ -463,6 +463,12 @@ export const EXTRA_BUILDINGS: readonly { at: [number, number]; half: [number, nu
   { at: [150.99, -91.21], half: [5, 7], yaw: -1.323, h: 4.2, roof: '#7a7772' },
 ]
 
+/** Footprints with no building on the ground (map coordinates of the first block's centre): removed at load. */
+export const REMOVED_BUILDINGS: readonly [number, number][] = [
+  // The long white block set at an angle on the West Montello Street corner west of downtown (the owner: it isn't there).
+  [-77.6, -14.2],
+]
+
 /** Buildings the lidar measured lower than they stand from the street (eave above the floor, metres). */
 export const BUILDING_HEIGHTS: readonly { at: [number, number]; h: number }[] = [
   // The mural building steps down to the river; from West Montello Street it is two full storeys.

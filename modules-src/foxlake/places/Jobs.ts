@@ -7,6 +7,7 @@
  * and you are still south of it), tells the authority when you arrive, and
  * for a fire sets the house burning until you hold the hose on it (hold E).
  */
+import { isBlocked } from '../../tello/world/Clearance'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
@@ -223,7 +224,7 @@ export class Jobs {
     let best: { x: number; z: number; y: number; a: number; b: number; yaw: number } | null = null
     let bd = 40
     for (const b of land.doc.buildings) {
-      if (b.k !== 'house' && b.k !== 'garage') continue
+      if ((b.k !== 'house' && b.k !== 'garage') || isBlocked(land, b)) continue
       for (const r of b.r) {
         const d = Math.hypot(r[0] - mx, r[1] - mz)
         if (d >= bd) continue

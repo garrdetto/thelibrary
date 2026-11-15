@@ -22,6 +22,8 @@ export const TREE_STAND = 384
 export const PLANT_RADIUS = 720
 export const INFILL_SPACING = 6
 export const INFILL_GAP = 7.5
+/** Baked trunks closer than this to pavement or a wall (metres, from the pavement field) are left out. */
+const TRUNK_CLEAR = 0.6
 /** Infill trunks keep this far from pavement and walls (the bake keeps its own 1.3 m). */
 export const INFILL_ROAD = 3.5
 export const INFILL_CANOPY = 0.55
@@ -75,6 +77,8 @@ export class Forest {
     for (let i = 0; i < this.baked; i++) {
       const x = land.x0 + treeX[i] / this.units
       const z = land.z0 + treeZ[i] / this.units
+      // A trunk on pavement (a road, a lot, a fuel forecourt) or inside a wall is a stray in the data: left out.
+      if (land.clearAt(x, z) < TRUNK_CLEAR) continue
       this.add(this.cells, treeKey(x, z), i)
       this.add(this.stands, this.standOf(land.toSceneX(x), land.toSceneZ(z)), i)
     }

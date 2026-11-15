@@ -5,6 +5,7 @@
  * roads and buildings itself as vectors, so they stay sharp at any zoom. Map coordinates (x east, z north).
  */
 import type { TelloLand } from '../region'
+import { isBlocked } from '../world/Clearance'
 
 export const BASE_PX = 2048
 export const COVER_RGB: readonly (readonly [number, number, number])[] = [[132, 142, 82], [112, 140, 78], [72, 104, 60], [104, 118, 80], [188, 172, 134], [128, 126, 120], [170, 158, 104], [58, 96, 124]]
@@ -55,7 +56,8 @@ export function paintMontelloBase(land: TelloLand, opts: { vectors: boolean; fad
       const k = j * n + i
       const c = COVER_RGB[cover[k]] ?? COVER_RGB[0]
       let r = c[0], gg = c[1], b = c[2]
-      const wet = water[k] > ground[k]
+      // 0 is dry (Fox Lake moves heights below the lake's level, so dry ground can be under 0).
+      const wet = water[k] !== 0 && water[k] > ground[k]
       if (wet) {
         const d = Math.min(1, (water[k] - ground[k]) / 300)
         r = 86 - d * 38; gg = 128 - d * 44; b = 150 - d * 30
@@ -105,6 +107,7 @@ export function paintMontelloBase(land: TelloLand, opts: { vectors: boolean; fad
       }
     }
     for (const b of land.doc.buildings) {
+      if (isBlocked(land, b)) continue
       g.fillStyle = buildingFill(b.k)
       g.strokeStyle = 'rgba(40,34,28,.55)'
       g.lineWidth = 0.6

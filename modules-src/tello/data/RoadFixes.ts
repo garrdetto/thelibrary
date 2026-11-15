@@ -96,7 +96,7 @@ export class WallIndex {
 
   constructor(buildings: readonly BuildingData[]) {
     for (const b of buildings) {
-      if (b.k === 'canopy') continue
+      if (b.k === 'canopy' || b.x) continue
       const p = b.p
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
       for (let k = 0; k < p.length; k += 2) {

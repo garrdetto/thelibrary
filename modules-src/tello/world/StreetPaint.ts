@@ -16,8 +16,15 @@ import { CURB, CURB_WALK, isMainLeg, LANE, LEG_WIDTH, townProfiles, type StreetP
 import { detailTexture } from '../../rackreel/world/World'
 import type { TelloLand } from '../region'
 import { batchOf, CELL, stationsOf, toMesh, type Batch } from './Roads'
+import { pavementOf } from './Clearance'
+import { FORECOURT } from '../data/Forecourts'
+import { pointInRing } from './Poly'
 
 const LIFT = 0.085
+/** A piece of sidewalk whose centre is this far onto a road's pavement lies across that road, and is left out. */
+const WALK_OVER_ROAD = 0.35
+/** A flat piece of walk this close to another road's pavement (or onto it) is left out too, so no slab juts into a junction. */
+const WALK_NEAR_ROAD = -0.3
 const LINE = 0.11
 const STALL = 6.7
 const TICK = 1.9
@@ -32,7 +39,15 @@ interface Gap { x: number; z: number; r: number; full: boolean }
 export function buildStreetPaint(scene: Scene, land: TelloLand): Mesh[] {
   const profiles = townProfiles(land.doc)
   const batches = new Map<string, Batch>()
+  const pavement = pavementOf(land)
+  const forecourts = land.doc.lots.filter((l) => FORECOURT.test((l as { n?: string }).n ?? ''))
   const quad: Quad = (paint, c, lift = LIFT, ys) => {
+    if (paint === 'walk' || paint === 'apron' || paint === 'curb') {
+      // Sidewalks stop where another street or lane crosses them, and open onto fuel forecourts.
+      const cx = (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4, cz = (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4
+      if (pavement.inside(cx, cz) > (paint === 'curb' ? WALK_OVER_ROAD : WALK_NEAR_ROAD)) return
+      if (forecourts.some((l) => pointInRing(l.p, cx, cz))) return
+    }
     const b = batchOf(batches, `${paint}|${Math.floor(c[0][0] / CELL)},${Math.floor(c[0][1] / CELL)}`)
     const v = b.positions.length / 3
     c.forEach(([x, z], k) => {

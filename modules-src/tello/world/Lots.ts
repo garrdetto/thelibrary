@@ -4,9 +4,11 @@
  * themselves are the slabs Roads.ts lays; the aerial-photo lots (schools, Freitag's, the club) are in the JSON `lots`
  * with a name. Planning is in LotPlan.ts.
  */
+import { isBlocked } from './Clearance'
 import { place } from './Kit'
 import { hexRGB } from '../../foxlake/fp/core/Geo'
 import type { LotData } from '../data/MapData'
+import { FORECOURT } from '../data/Forecourts'
 import type { TelloLand } from '../region'
 import { Decals } from './Decals'
 import { planLot, type LotPlan, type Obstacles } from './LotPlan'
@@ -19,9 +21,10 @@ const POLE = hexRGB(0x3d4146)
 const UNSTRIPED = /bus lot|paved court|south-west|service yard/
 
 export function buildLots(decals: Decals, layer: PlaceLayer, sink: StaticSink, land: TelloLand): LotsBuilt {
-  const obstacles: Obstacles = { roads: land.doc.roads, blocks: land.doc.buildings.filter((b) => b.k !== 'canopy').map((b) => b.p) }
+  const obstacles: Obstacles = { roads: land.doc.roads, blocks: land.doc.buildings.filter((b) => b.k !== 'canopy' && !isBlocked(land, b)).map((b) => b.p) }
   const out: LotsBuilt = { lots: 0, stalls: 0, lights: 0, plans: new Map() }
   land.doc.lots.forEach((lot: LotData, index) => {
+    if (FORECOURT.test((lot as { n?: string }).n ?? '')) return
     const plan = planLot(lot.p, obstacles, { stripes: !UNSTRIPED.test((lot as { n?: string }).n ?? '') })
     out.plans.set(index, plan)
     out.lots++

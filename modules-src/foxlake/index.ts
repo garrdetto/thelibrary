@@ -140,6 +140,6 @@ async function boot(): Promise<void> {
 
 boot().catch((error: unknown) => {
   const status = document.getElementById('load-text')
-  if (status) status.textContent = 'Fox Lake could not start on this device. It needs WebGPU or WebGL2.'
+  if (status) status.textContent = 'Life Sim could not start on this device. It needs WebGPU or WebGL2.'
   console.error(error)
 })
