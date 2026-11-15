@@ -72,7 +72,7 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
       <div className="panel-heading"><h2>Biggest jumps studied</h2><span className="panel-caption">{winners.positives} POSITIVE · {winners.negatives} NEGATIVE</span></div>
       <p className="radar-note">Every coin that grew {winners.minimumMultiple}x or more is kept permanently and sorted into two groups. Nearly every coin dumps in the end, good or bad, so an ordinary dump after the peak is not held against a coin: it is judged on the traits and the demand behind its run, read before its peak. A coin is negative if any of these is true, however big a gain it showed:</p>
       <ul className="radar-learn-list radar-verdict-rules">
-        <li>Before its peak, its top 10 wallets held over 30%, fresh wallets (first used within a day of launch, with a short history) over 10%, the dev over 5%, bundlers or insiders over 25%, snipers over 20% or linked wallet groups over 25%.</li>
+        <li>Before its peak, its top 10 wallets held over 35%, fresh wallets (first used within a day of launch, with a short history) over 10%, the dev over 5%, bundlers or insiders over 25%, snipers over 20% or linked wallet groups over 25%.</li>
         <li>It fell half below its peak within 15 minutes of its breakout (a pump and dump).</li>
         <li>It climbed in an even, steady line and then slid down in an even, steady line (the rug pattern).</li>
         <li>Its run had no real demand behind it: holders did not grow by half again (to at least 100), or fewer than 50 different wallets traded it in any 5 minutes.</li>

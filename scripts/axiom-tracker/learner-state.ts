@@ -23,7 +23,7 @@ export const learnerState: {
   followed: new Map(),
 }
 
-/** A coin breaking a holder limit (top 10 over 30%, fresh wallets over 10% and the rest) never shows a high match or explode chance. */
+/** A coin breaking a holder limit (top 10 over 35%, fresh wallets over 10% and the rest) never shows a high match or explode chance. */
 export function withLearning(token: RadarToken): RadarToken {
   const blocked = Boolean(token.holderRisk?.blocked)
   const explode = learnerState.explode.get(token.mint) ?? null
