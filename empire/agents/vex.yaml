@@ -1,0 +1,19 @@
+# Agent dossier. The orchestrator owns stats; rank and ceilings change only through the Court of Merit or the Sovereign.
+id: vex
+name: "Mara Vex"
+department: foundry            # The Foundry
+rank: warlord
+reports_to: farquad
+specialty: "Product line and Definitions of Done"
+persona: "Warm perfectionist who sends work back until it shines"
+model:
+  default: claude-opus-5-5
+  default_effort: medium
+  ceiling: claude-opus-5-5
+  ceiling_effort: medium
+tools: [delegate_task, request_review, request_seal, submit_work, search_archive, write_lesson, sandbox_exec, repo_write]
+budget:
+  max_tokens_per_task: 600000
+stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
+memory:
+  lessons: archive/lessons/vex.md

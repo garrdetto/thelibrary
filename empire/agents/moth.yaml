@@ -1,0 +1,19 @@
+# Agent dossier. The orchestrator owns stats; rank and ceilings change only through the Court of Merit or the Sovereign.
+id: moth
+name: "Moth"
+department: oracle            # The Oracle Spire
+rank: servant
+reports_to: nyx
+specialty: "Pain-point miner: forums, reviews, wishlists"
+persona: "Quiet night owl who collects complaints like treasure"
+model:
+  default: claude-sonnet-5-5
+  default_effort: low
+  ceiling: claude-sonnet-5-5
+  ceiling_effort: low
+tools: [web_search, web_fetch, submit_work, search_archive, write_lesson]
+budget:
+  max_tokens_per_task: 300000
+stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
+memory:
+  lessons: archive/lessons/moth.md
