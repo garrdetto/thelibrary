@@ -21,7 +21,7 @@ const percent = (value: number) => `${Math.round(value * 100)}%`
 function researchFilters(payload: RadarPayload): MakerFilter[] {
   const rules = payload.winners?.rules ?? []
   return [
-    ...rules.map(rule => ({ key: rule.key, label: rule.label, detail: `${percent(rule.winnerRate)} of coins like this became big winners, vs ${percent(rule.otherRate)} otherwise`, test: (token: RadarToken) => token.maker?.passes.includes(rule.key) ?? false })),
+    ...rules.map(rule => ({ key: rule.key, label: rule.label, detail: `${percent(rule.winnerRate)} of coins like this became positive winners, vs ${percent(rule.otherRate)} otherwise`, test: (token: RadarToken) => token.maker?.passes.includes(rule.key) ?? false })),
     { key: 'winner-wallets', label: 'Wallets from past winners are in', detail: 'At least one top holder also held a Watch List coin', test: token => (token.maker?.winnerWallets ?? 0) > 0 },
     { key: 'explosion-wallets', label: 'Wallets from past explosions are in', detail: 'At least one top holder was in a coin before it exploded', test: token => (token.explode?.earlyWallets ?? 0) > 0 },
     { key: 'jumping', label: 'Jumping right now', detail: 'Viewers or buys are spiking, from the Could explode study', test: token => token.explode !== null && token.explode !== undefined },
@@ -93,6 +93,6 @@ export function MakerView({ payload, tokens, onOpen, filters, onFilters, sort, o
       <div className="radar-pick-grid">{closest.map(card)}</div>
     </section>}
     {shown.length === 0 && closest.length === 0 && <div className="radar-empty"><Gem size={34} strokeWidth={1}/><h3>No current coin matches any filter that is on.</h3><p>Leave this open: coins appear the moment they match.</p></div>}
-    <p className="radar-note">{summary.ready ? summary.flaggedHitRate !== null && summary.winnerRate !== null ? `In its own test on coins it had not seen, coins it rated a likely match became big winners ${Math.round(summary.flaggedHitRate * 100)}% of the time, against ${Math.round(summary.winnerRate * 100)}% for all coins.` : 'Still measuring how often its matches are right.' : 'Needs more finished coins before it can score matches.'}</p>
+    <p className="radar-note">{summary.ready ? summary.flaggedHitRate !== null && summary.winnerRate !== null ? `In its own test on coins it had not seen, coins it rated a likely match became positive winners ${Math.round(summary.flaggedHitRate * 100)}% of the time, against ${Math.round(summary.winnerRate * 100)}% for all coins.` : 'Still measuring how often its matches are right.' : 'Needs more finished coins before it can score matches.'}</p>
   </div>
 }

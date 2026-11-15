@@ -119,7 +119,7 @@ let connection: TrackerDatabase | null = null
 export function initializeTrackerSchema(database: TrackerDatabase) {
   database.exec(trackerSchema)
   const columns = new Set((database.prepare('PRAGMA table_info(tokens)').all() as Array<{ name: string }>).map(column => column.name))
-  for (const [name, type] of [['holders_total', 'INTEGER'], ['dev_pct', 'REAL'], ['insider_pct', 'REAL'], ['rugged', 'INTEGER'], ['traits_checked_at', 'INTEGER']]) {
+  for (const [name, type] of [['holders_total', 'INTEGER'], ['dev_pct', 'REAL'], ['insider_pct', 'REAL'], ['rugged', 'INTEGER'], ['traits_checked_at', 'INTEGER'], ['fresh_pct', 'REAL'], ['fresh_checked_at', 'INTEGER']]) {
     if (!columns.has(name)) database.exec(`ALTER TABLE tokens ADD COLUMN ${name} ${type}`)
   }
   const weights = database.prepare('SELECT COUNT(*) AS count FROM model_weights').get() as { count: number }

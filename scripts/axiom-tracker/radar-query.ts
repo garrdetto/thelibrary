@@ -33,6 +33,7 @@ type TokenRow = {
   insider_pct: number | null
   rugged: number | null
   traits_checked_at: number | null
+  fresh_pct?: number | null
 }
 
 type SnapshotRow = {
@@ -269,7 +270,7 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
   if (cached && now - cached.at < 2_000) return cached.traits
   if (!lifecycleTableKnown) lifecycleTableKnown = Boolean(database.prepare("SELECT 1 FROM pragma_table_info('coin_lifecycles') WHERE name = 'traits_json'").get())
   const stored = lifecycleTableKnown ? database.prepare('SELECT traits_json FROM coin_lifecycles WHERE mint = ?').get(token.mint) as { traits_json: string | null } | undefined : undefined
-  const worst = stored?.traits_json ? JSON.parse(stored.traits_json) as Partial<Record<'top10' | 'dev' | 'snipers' | 'insiders' | 'bundlers' | 'linked', number | null>> : null
+  const worst = stored?.traits_json ? JSON.parse(stored.traits_json) as Partial<Record<'top10' | 'dev' | 'snipers' | 'insiders' | 'bundlers' | 'linked' | 'fresh', number | null>> : null
   const card = trackerState.pulseCards.get(token.mint)
   const fresh = card && now - card.seenAt < 120_000 ? card : null
   const cardDev = (source: typeof card | null) => source ? (source.devSold ? 0 : source.devPct) : null
@@ -288,12 +289,12 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
     insiders: first(fresh?.insidersPct, page.recent?.insiders, card?.insidersPct, page.kept?.insiders, worst?.insiders),
     bundlers: first(fresh?.bundlersPct, page.recent?.bundlers, card?.bundlersPct, page.kept?.bundlers, worst?.bundlers),
     linked: first(token.insider_pct, worst?.linked),
-    fresh: page.kept?.fresh ?? null,
+    fresh: first(page.kept?.fresh, token.fresh_pct, worst?.fresh),
     holders: first(fresh?.holders, jupiter?.holders, token.holders_total, card?.holders),
     rugged: token.rugged === 1,
     checkedAt,
   }
-  const known = [traits.top10, traits.dev, traits.snipers, traits.insiders, traits.bundlers, traits.linked, traits.fresh, traits.holders].some(value => value !== null && value !== undefined)
+  const known = [traits.top10, traits.dev, traits.snipers, traits.insiders, traits.bundlers, traits.linked, traits.fresh, traits.holders].some(value => value !== null)
   const result = known ? traits : null
   traitsCache.set(token.mint, { at: now, traits: result })
   if (traitsCache.size > 800) for (const [key, entry] of traitsCache) if (now - entry.at > 120_000) traitsCache.delete(key)

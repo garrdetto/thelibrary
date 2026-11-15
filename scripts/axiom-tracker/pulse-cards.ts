@@ -84,11 +84,11 @@ export function assessQuality(input: QualityInput) {
   const holderCount = traits ? traits.holders : pulse?.holders ?? null
   if (top10 !== null && top10 !== undefined) checks.push({ label: 'Top 10 holders', status: band(top10, 20, holderLimits.top10), detail: `${top10.toFixed(0)}% of supply (limit ${holderLimits.top10}%)`, weight: 2 })
   if (dev !== null) checks.push({ label: 'Dev holding', status: dev >= 0.01 && dev > holderLimits.dev ? 'fail' : 'pass', detail: pulse?.devSold ? 'Dev has sold' : dev >= 0.01 ? `${dev < 1 ? dev.toFixed(2) : dev.toFixed(0)}% (any dev holding scores low)` : 'Dev holds none', weight: 1.5 })
-  if (fresh !== null) checks.push({ label: 'Fresh wallets', status: band(fresh, 5, holderLimits.fresh), detail: `${fresh.toFixed(0)}% held by newly created wallets (limit ${holderLimits.fresh}%)`, weight: 1.5 })
   if (snipers !== null) checks.push({ label: 'Snipers', status: band(snipers, 5, holderLimits.snipers), detail: `${snipers.toFixed(0)}% (limit ${holderLimits.snipers}%)`, weight: 1 })
   if (insiders !== null) checks.push({ label: 'Insiders', status: band(insiders, 5, holderLimits.insiders), detail: `${insiders.toFixed(0)}% (limit ${holderLimits.insiders}%)`, weight: 1.5 })
   if (bundlers !== null) checks.push({ label: 'Bundlers', status: band(bundlers, 5, holderLimits.bundlers), detail: `${bundlers.toFixed(0)}% (limit ${holderLimits.bundlers}%)`, weight: 1.5 })
   if (linked !== null) checks.push({ label: 'Linked wallets', status: band(linked, 5, holderLimits.linked), detail: `${linked.toFixed(0)}% held by wallet groups funded together (limit ${holderLimits.linked}%)`, weight: 1.5 })
+  if (fresh !== null) checks.push({ label: 'Fresh wallets', status: band(fresh, 5, holderLimits.fresh), detail: `${fresh.toFixed(0)}% held by wallets made within a day of launch (limit ${holderLimits.fresh}%)`, weight: 1.5 })
   const marketCap = pulse?.marketCap ?? input.marketCap
   if (pulse?.feesSol !== null && pulse?.feesSol !== undefined && marketCap && marketCap > 0) {
     const perHundredK = pulse.feesSol / (marketCap / 100_000)

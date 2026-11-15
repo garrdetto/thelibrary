@@ -1,7 +1,7 @@
 import type { RadarHolderRisk, RadarScorePart } from '../../src/lib/axiom-radar-types.js'
 
 /** A coin scores low when any of these is exceeded. Percentages of supply. */
-export const holderLimits = { top10: 30, dev: 0, fresh: 10, snipers: 10, insiders: 10, bundlers: 10, linked: 10 }
+export const holderLimits = { top10: 30, dev: 0, snipers: 10, insiders: 10, bundlers: 10, linked: 10, fresh: 10 }
 
 export const moverCaps = { holderLimit: 15, botClimb: 10, rugged: 5, unverified: 45, fewHolders: 40, noGrowthData: 50 }
 
@@ -89,11 +89,11 @@ export function holderLimitBreaks(traits: MoverTraits | null) {
   const breaks: string[] = []
   if (traits.top10 !== null && traits.top10 > holderLimits.top10) breaks.push(`Top 10 wallets hold ${round1(traits.top10)}% (limit ${holderLimits.top10}%)`)
   if (traits.dev !== null && traits.dev > holderLimits.dev && traits.dev >= 0.01) breaks.push(`Dev still holds ${traits.dev < 1 ? traits.dev.toFixed(2) : round1(traits.dev)}%`)
-  if (traits.fresh !== null && traits.fresh !== undefined && traits.fresh > holderLimits.fresh) breaks.push(`Fresh wallets hold ${round1(traits.fresh)}% (limit ${holderLimits.fresh}%)`)
   if (traits.snipers !== null && traits.snipers > holderLimits.snipers) breaks.push(`Snipers hold ${round1(traits.snipers)}% (limit ${holderLimits.snipers}%)`)
   if (traits.insiders !== null && traits.insiders > holderLimits.insiders) breaks.push(`Insiders hold ${round1(traits.insiders)}% (limit ${holderLimits.insiders}%)`)
   if (traits.bundlers !== null && traits.bundlers > holderLimits.bundlers) breaks.push(`Bundlers hold ${round1(traits.bundlers)}% (limit ${holderLimits.bundlers}%)`)
   if (traits.linked !== null && traits.linked > holderLimits.linked) breaks.push(`Linked wallet groups hold ${round1(traits.linked)}% (limit ${holderLimits.linked}%)`)
+  if (typeof traits.fresh === 'number' && traits.fresh > holderLimits.fresh) breaks.push(`Fresh wallets hold ${round1(traits.fresh)}% (limit ${holderLimits.fresh}%)`)
   return breaks
 }
 

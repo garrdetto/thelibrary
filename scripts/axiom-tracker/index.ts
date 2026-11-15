@@ -5,6 +5,7 @@ import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartb
 import { startDiscovery } from './discovery.js'
 import { startExtensionIntake } from './extension-intake.js'
 import { startFollowUp } from './follow-up.js'
+import { startFreshWallets } from './fresh-wallets.js'
 import { startHolderRefresh } from './holder-refresh.js'
 import { startJupiter } from './jupiter.js'
 import { startLearner } from './learner.js'
@@ -48,6 +49,7 @@ const tasks = [
   startFollowUp(database, controller.signal),
   startHolderRefresh(database, controller.signal),
   startJupiter(database, controller.signal),
+  startFreshWallets(database, controller.signal),
   startAdvice(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {
     const removed = pruneSnapshots(database)
