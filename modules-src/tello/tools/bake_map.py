@@ -784,9 +784,13 @@ def load_lidar(cache, keep_mask):
 def cell_dem(dem):
     """The bare-earth height at every one-metre cell centre."""
     c = X0 + np.arange(N1) + 0.5
-    r = Z0 + np.arange(N1) + 0.5
-    gx, gz = np.meshgrid(c, r)
-    return sample(dem, gx.ravel(), gz.ravel()).reshape(N1, N1).astype(np.float32)
+    out = np.empty((N1, N1), np.float32)
+    rows = 512
+    for j0 in range(0, N1, rows):
+        r = Z0 + np.arange(j0, min(N1, j0 + rows)) + 0.5
+        gx, gz = np.meshgrid(c, r)
+        out[j0:j0 + len(r)] = sample(dem, gx.ravel(), gz.ravel()).reshape(len(r), N1)
+    return out
 
 # Roof types: 0 flat, 1 gable with the ridge along the rectangle's first axis, 2 gable with the ridge along its second
 # axis, 3 hip, 4..7 a single slope whose high side is toward +second, -second, +first, -first axis. -1 = not measured.
@@ -1088,6 +1092,7 @@ def collect_pois(osm, bodies):
 
 PLAY_PAD = 1609.344  # how far past the city limits you may walk and drive: a mile, so the roads out of town reach places like Foxtails
 LINK_ROAD = 'State Highway 23'
+EAST_PAD = 40.0      # how far past the highway's exit the playable area reaches east (Fox Plains' side)
 VIS_PAD = 240.0      # how far past that the ground, water and woods are still drawn
 CITY_PAD = 8.0       # buildings whose footprint centre lies this close to the playable area are built
 
@@ -1105,7 +1110,11 @@ def city_limits(osm):
 def playable_area(city, roads):
     """The city limits widened by a mile; State Highway 23 (`link`) is where Fox Lake's road comes in at its edge."""
     link = max((r for r in roads if LINK_ROAD in (r['name'], r['ref'])), key=lambda r: max(x for x, _z in r['pts']))
-    area = city.buffer(PLAY_PAD).intersection(WORLD)
+    ring = city.buffer(PLAY_PAD)
+    # Fox Plains lies east, where the highway leaves: nothing of the ring reaches further east than the highway's exit.
+    cross = LineString(link['pts']).intersection(ring.exterior)
+    east = max((g.x for g in getattr(cross, 'geoms', [cross]) if g.geom_type == 'Point'), default=X1)
+    area = ring.intersection(box(X0, Z0, east + EAST_PAD, Z1)).intersection(WORLD)
     if area.geom_type != 'Polygon':
         area = max(area.geoms, key=lambda g: g.area)
     return Polygon(area.exterior).simplify(1.0), link

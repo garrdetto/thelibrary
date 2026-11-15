@@ -37,11 +37,19 @@ test('Highway 23 meets the real State Highway 23 where the baked map ends it', (
   assert.ok(land.playable(land.toMapX(into.x), land.toMapZ(into.z)), 'and on inside the city limits')
 })
 
-test('Montello sits a whole map width west of the origin, south-west of Fox Plains', () => {
-  assert.equal(land.offset.x + land.x0 + land.size / 2, -land.size)
-  assert.equal(land.offset.z + land.z0 + land.size / 2, 0)
-  assert.ok(land.toSceneX(land.x0 + land.size) < TOWN_SQUARE.x0 - 600, 'a stretch of woods between the town and Montello')
-  assert.ok(land.toSceneZ(0) < (TOWN_SQUARE.z0 + TOWN_SQUARE.z1) / 2, 'downtown Montello lies south of Fox Plains')
+test('Montello lies west of Fox Plains, a short drive away, its land clear of the town and the lake country', () => {
+  const rects = [TOWN_SQUARE, { x0: -512, x1: 512, z0: -512, z1: 512 }]
+  for (let z = land.z0; z < land.z0 + land.size; z += 24) {
+    for (let x = land.x0; x < land.x0 + land.size; x += 24) {
+      if (!land.seen(x, z)) continue
+      const sx = land.toSceneX(x)
+      const sz = land.toSceneZ(z)
+      for (const r of rects) assert.ok(!(sx > r.x0 && sx < r.x1 && sz > r.z0 && sz < r.z1), `Montello's land at ${sx.toFixed(0)}, ${sz.toFixed(0)} is inside Fox Lake`)
+    }
+  }
+  assert.ok(land.toSceneX(0) < TOWN_SQUARE.x0, 'downtown Montello lies west of Fox Plains')
+  const into = link.inward.find((p) => land.playable(land.toMapX(p.x), land.toMapZ(p.z)))!
+  assert.ok(into.s < 1600, `from Main Street to Montello's edge is ${into.s.toFixed(0)} m`)
   // Tello's town frame is Fox Plains' moved, never turned: the physics shift is a translation.
   const a = townToScene(land.offset.x - TOWN_OFFSET.x + 10, 0, TOWN_OFFSET.z - land.offset.z - 20)
   assert.ok(Math.abs(a.x - land.toSceneX(10)) < 1e-9 && Math.abs(a.z - land.toSceneZ(20)) < 1e-9)
@@ -70,11 +78,16 @@ test('no step in the ground where the corridor meets Fox Plains and Montello', (
     assert.ok(Math.abs(a - b) < 0.4, `z ${z.toFixed(0)}: ${a.toFixed(2)} / ${b.toFixed(2)}`)
     assert.equal(a, outsideHeight(TOWN_SQUARE.x0 + 0.5, z))
   }
-  const edge = land.toSceneX(land.x0 + land.size)
-  for (let z = link.box.z0 + 20; z < link.box.z1 - 20; z += 41) {
-    const a = terrain.heightAt(edge - 0.3, z)
-    const b = terrain.heightAt(edge + 0.3, z)
-    assert.ok(Math.abs(a - b) < 0.6, `z ${z.toFixed(0)}: ${a.toFixed(2)} / ${b.toFixed(2)}`)
+  // Where the highway meets Montello, across its width and the verges either side.
+  const end = link.road[link.road.length - 1]
+  const before = link.road[link.road.length - 6]
+  const len = Math.hypot(end.x - before.x, end.z - before.z)
+  for (let off = -20; off <= 20; off += 4) {
+    const x = end.x + ((end.z - before.z) / len) * off
+    const z = end.z - ((end.x - before.x) / len) * off
+    const a = terrain.heightAt(x - (end.x - before.x) / len, z - (end.z - before.z) / len)
+    const b = terrain.heightAt(x + (end.x - before.x) / len, z + (end.z - before.z) / len)
+    assert.ok(Math.abs(a - b) < 0.6, `across ${off}: ${a.toFixed(2)} / ${b.toFixed(2)}`)
   }
 })
 

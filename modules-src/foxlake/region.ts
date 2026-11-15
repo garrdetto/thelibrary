@@ -29,12 +29,11 @@ export const TOWN_Y = 2
 export const TOWN_OFFSET = { x: -356, y: TOWN_Y, z: HALF + WORLD_HALF } as const
 
 /**
- * Where the middle of Montello's map lies in the scene: a whole map width (4096 m) west of the origin, which puts the
- * city south-west of Fox Plains (Rack & Reel's water shader reads Montello's depth map through a repeating texture, so
- * the map must sit a whole number of map widths from the origin). scripts/montello-places.mjs keeps its own copy; a
- * test keeps them equal.
+ * Where the middle of Montello's map lies in the scene: west of Fox Plains, as close as Montello's land (the city and a
+ * mile round it, and the woods seen past that) can come without touching Fox Plains' square or the lake country, so
+ * Highway 23 between them is a short drive. north.test.ts checks the clearance; scripts/montello-places.mjs keeps its own copy and a test keeps them equal.
  */
-export const MONTELLO_AT = { x: -4096, z: 0 } as const
+export const MONTELLO_AT = { x: -4751, z: 818 } as const
 
 export interface XYZ {
   x: number
@@ -133,15 +132,15 @@ function connectorSamples(): { x: number; z: number; w: number }[] {
 
 /**
  * State Highway 23 between Fox Plains and Montello (modules-src/tello): from Main Street's west end at Hollow Bend it
- * runs west out through the forest ring, swings south-west through the woods and comes into Montello from the east,
- * where it becomes the real State Highway 23 at the end of the baked road just past the map's east edge. `join` and
- * `joinDir` are that last baked point and the road's direction there, pointing out of Montello, in scene coordinates
- * (with Montello at `MONTELLO_AT`); a test keeps them in step with montello.json.
+ * runs west out through the forest ring and a short stretch of woods into Montello from the east, where it becomes the
+ * real State Highway 23 at the edge of the land Montello draws. `join` and `joinDir` are that point and the highway's
+ * direction there, pointing out of Montello, in scene coordinates (with Montello at `MONTELLO_AT`); a test keeps them
+ * in step with montello.json.
  */
 export const LINK_ROAD = (() => {
   const start = townToScene(MAIN_WEST_X, 0, 0)
   const leave = { x: -WORLD_HALF + TOWN_OFFSET.x - 30, z: start.z }
-  return { start, leave, join: { x: -2018, z: -257.2 }, joinDir: { x: 0.7193, z: 0.6946 }, width: 10, joinWidth: 9.4, reach: 620 }
+  return { start, leave, join: { x: -1368, z: 1170.6 }, joinDir: { x: 0.7778, z: 0.6285 }, width: 10, joinWidth: 9.4, reach: 620 }
 })()
 
 /** Points along Highway 23 from Main Street to Montello's map edge, every `step` metres, with the road's width there. */
@@ -149,8 +148,9 @@ export function linkRoadPath(step = 4): { x: number; z: number; w: number }[] {
   const { start, leave, join, joinDir, width, joinWidth, reach } = LINK_ROAD
   const out: { x: number; z: number; w: number }[] = []
   for (let x = start.x; x > leave.x; x -= step) out.push({ x, z: start.z, w: width })
-  const c1 = { x: leave.x - reach, z: leave.z }
-  const c2 = { x: join.x + joinDir.x * reach, z: join.z + joinDir.z * reach }
+  const bend = Math.min(reach, Math.hypot(join.x - leave.x, join.z - leave.z) * 0.45)
+  const c1 = { x: leave.x - bend, z: leave.z }
+  const c2 = { x: join.x + joinDir.x * bend, z: join.z + joinDir.z * bend }
   const n = Math.max(8, Math.ceil((Math.hypot(join.x - leave.x, join.z - leave.z) * 1.4) / step))
   for (let i = 0; i <= n; i++) {
     const t = i / n

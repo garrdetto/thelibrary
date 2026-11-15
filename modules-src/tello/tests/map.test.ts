@@ -76,7 +76,7 @@ test('water: Buffalo Lake, Lake Montello and the Fox River lie at their own leve
   let wet = 0
   for (let k = 0; k < grids.ground.length; k++) if (grids.water[k] > grids.ground[k]) wet++
   const share = wet / grids.ground.length
-  assert.ok(share > 0.12 && share < 0.3, `water covers ${(share * 100).toFixed(1)} % of the map`)
+  assert.ok(share > 0.06 && share < 0.3, `water covers ${(share * 100).toFixed(1)} % of the map`)
   const bytes = depthBytes(land)
   let texels = 0
   for (let k = 0; k < bytes.length; k += 4) if (bytes[k]) texels++
@@ -88,7 +88,7 @@ test('roads: the named streets are there, level across, clear of the lakes, and 
   const names = new Set(doc.roads.map((r) => r.n))
   for (const name of ['Main Street', 'West Montello Street', 'East Montello Street', 'Church Street', 'Lake Avenue', 'Underwood Avenue', 'West Park Street']) assert.ok(names.has(name), `${name} is on the map`)
   const km = doc.roads.reduce((sum, r) => sum + polylineLength(r.p), 0) / 1000
-  assert.ok(km > 60 && km < 110, `${km.toFixed(1)} km of roads and paths`)
+  assert.ok(km > 100 && km < 220, `${km.toFixed(1)} km of roads and paths`)
   let checked = 0
   let worst = 0
   for (const road of doc.roads) {
@@ -251,7 +251,7 @@ test('directions follow the road network, and streets answer to their names', ()
   assert.ok(junctions(land).length > 100)
 })
 
-test('only the City of Montello is built: buildings inside the limits, the edge walled, roads closed where they leave', () => {
+test('only Montello and a mile round it are built: buildings inside the limits, the edge walled, roads closed where they leave', () => {
   const limits = doc.limits
   assert.ok(limits.city.length >= 60 && limits.play.length >= 60, 'the limits are real outlines')
   const city = limits.city
@@ -259,21 +259,22 @@ test('only the City of Montello is built: buildings inside the limits, the edge 
     const at = pointInRing(city, b.r[0][0], b.r[0][1])
     if (!at) assert.ok(land.playAt(b.r[0][0], b.r[0][1]) > -12, `building ${b.n ?? b.k} at ${b.r[0][0]}, ${b.r[0][1]} hugs the limits`)
   }
-  assert.ok(doc.buildings.length > 1000 && doc.buildings.length < 1500, `${doc.buildings.length} buildings in town`)
+  assert.ok(doc.buildings.length > 1800 && doc.buildings.length < 2800, `${doc.buildings.length} buildings in town and the mile round it`)
   assert.ok(doc.buildings.filter((b) => b.rc).length > doc.buildings.length * 0.85, 'roof colours from the aerial photo')
   assert.ok(limits.exits.length >= 8, 'roads leaving town are closed')
   for (const e of limits.exits) assert.ok(Math.abs(land.playAt(e.x, e.z)) < 6, 'each closure sits on the edge')
   // The play grid agrees with the outline.
   let checked = 0
   for (let i = 0; i < 2000; i++) {
-    const x = land.x0 + 20 + ((i * 7919) % 4056)
-    const z = land.z0 + 20 + ((i * 104729) % 4056)
+    const x = land.x0 + 20 + ((i * 7919) % (land.size - 40))
+    const z = land.z0 + 20 + ((i * 104729) % (land.size - 40))
     const d = land.playAt(x, z)
     if (Math.abs(d) < 12) continue
     assert.equal(d > 0, pointInRing(limits.play, x, z), `play grid at ${x}, ${z}`)
     checked++
   }
   assert.ok(checked > 1500)
-  assert.ok(!terrain.inBounds(land.toSceneX(-2300), land.toSceneZ(2400)), 'Kilby Lake country is outside the city')
+  assert.ok(!terrain.inBounds(land.toSceneX(land.x0 + 60), land.toSceneZ(land.z0 + 60)), 'the far corner of the map is outside Montello')
+  assert.ok(!terrain.inBounds(land.toSceneX((limits.east ?? land.x0 + land.size) + 120), land.toSceneZ(0)), 'nothing east of where the highway leaves toward Fox Lake')
   assert.ok(terrain.inBounds(land.toSceneX(0), land.toSceneZ(0), 2), 'downtown is in town')
 })

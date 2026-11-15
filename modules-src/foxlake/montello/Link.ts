@@ -21,6 +21,9 @@ export const LINK_SEEN = 150
 const FIELD_CELL = 2
 /** Metres inside Montello's playable area that the corridor reaches along the highway, so you can walk on into town. */
 const INTO_CITY = 40
+/** Within `MEET_NEAR` metres of where the highway meets Montello the corridor's ground is Montello's; by `MEET_FAR` it is its own. */
+const MEET_NEAR = 30
+const MEET_FAR = 120
 /** The road's name where it runs. */
 export const LINK_NAME = 'State Highway 23'
 
@@ -64,6 +67,7 @@ export class MontelloLink {
 
   constructor(land: TelloLand) {
     this.land = land
+    cutHighway(land)
     this.montello = land.outside()
     this.edgeX = land.toSceneX(land.x0 + land.size)
     this.road = withArc(linkRoadPath(2))
@@ -71,8 +75,7 @@ export class MontelloLink {
     this.sJoin = last.s
     const exit = this.road.find((p) => p.x < TOWN_SQUARE.x0)
     this.sExit = exit ? exit.s : this.sJoin * 0.4
-    const edge = land.x0 + land.size - 2
-    this.joinY = land.heightAt(edge, land.toMapZ(LINK_ROAD.join.z - LINK_ROAD.joinDir.z * ((LINK_ROAD.join.x - land.toSceneX(edge)) / LINK_ROAD.joinDir.x)))
+    this.joinY = land.heightAt(land.toMapX(LINK_ROAD.join.x), land.toMapZ(LINK_ROAD.join.z))
     this.inward = highwayInward(land, last)
     const out = this.inward.find((p) => land.playable(land.toMapX(p.x), land.toMapZ(p.z)))
     this.exit = out ? { x: land.toMapX(out.x), z: land.toMapZ(out.z), r: LINK_WALL + 4 } : { x: land.toMapX(last.x), z: land.toMapZ(last.z), r: 0 }
@@ -163,13 +166,10 @@ export class MontelloLink {
     const settle = Math.max(smoothstep(12, 60, clear), 1 - smoothstep(0, 40, fromTown))
     const base = this.roadY(n.s) + (TOWN_Y - this.roadY(n.s)) * (1 - smoothstep(0, 140, fromTown)) * settle
     let h = base + woodsHills(x, z) * smoothstep(0, 1, (clear - 10) / 75)
-    const east = x - this.edgeX
-    if (east < 160) {
-      const land = this.land
-      const k = 1 - smoothstep(40, 160, east)
-      const mz = Math.min(land.z0 + land.size - 4, Math.max(land.z0 + 4, land.toMapZ(z)))
-      h += (land.groundAt(land.x0 + land.size - 2, mz) - h) * k
-    }
+    // Near where the highway meets Montello the land off the road settles onto Montello's own surveyed ground.
+    const land = this.land
+    const k = land.holdsScene(x, z) ? (1 - smoothstep(MEET_NEAR, MEET_FAR, Math.hypot(x - LINK_ROAD.join.x, z - LINK_ROAD.join.z))) * smoothstep(3, 18, clear) : 0
+    if (k > 0) h += (land.groundAt(land.toMapX(x), land.toMapZ(z)) - h) * k
     return h
   }
 
@@ -260,6 +260,43 @@ function withArc(points: { x: number; z: number; w: number }[]): RoadPoint[] {
     if (i > 0) s += Math.hypot(p.x - points[i - 1].x, p.z - points[i - 1].z)
     return { ...p, s }
   })
+}
+
+/**
+ * Ends the baked State Highway 23 at `LINK_ROAD.join`, where Fox Lake's own road takes over, so Montello draws it only
+ * up to there (the rest would lie under the corridor's road, or out in the woods). Safe to call twice.
+ */
+function cutHighway(land: TelloLand): void {
+  const jx = land.toMapX(LINK_ROAD.join.x)
+  const jz = land.toMapZ(LINK_ROAD.join.z)
+  let best: { road: { p: number[] }; k: number; d: number } | null = null
+  for (const road of land.doc.roads) {
+    if (road.n !== LINK_NAME) continue
+    for (let k = 0; k + 3 < road.p.length; k += 2) {
+      const ax = road.p[k], az = road.p[k + 1], bx = road.p[k + 2], bz = road.p[k + 3]
+      const dx = bx - ax, dz = bz - az
+      const t = Math.min(1, Math.max(0, ((jx - ax) * dx + (jz - az) * dz) / (dx * dx + dz * dz || 1)))
+      const d = Math.hypot(ax + dx * t - jx, az + dz * t - jz)
+      if (!best || d < best.d) best = { road, k, d }
+    }
+  }
+  if (!best || best.d > 3) return
+  const p = best.road.p
+  // Keep the side of the cut that runs back into town (toward the playable area).
+  const head = [...p.slice(0, best.k + 2), jx, jz]
+  const tail = [jx, jz, ...p.slice(best.k + 2)]
+  const inTown = (pts: number[]) => pts.some((_v, i) => i % 2 === 0 && land.playable(pts[i], pts[i + 1]))
+  const keep = inTown(head) ? head : tail
+  // The kept end is always the join, last.
+  const ordered = keep === head ? head : reversePairs(tail)
+  p.length = 0
+  p.push(...ordered.map((v) => Math.round(v * 10) / 10))
+}
+
+function reversePairs(p: number[]): number[] {
+  const out: number[] = []
+  for (let k = p.length - 2; k >= 0; k -= 2) out.push(p[k], p[k + 1])
+  return out
 }
 
 /**

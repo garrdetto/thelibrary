@@ -12,7 +12,7 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 /** Fox Lake's town origin in the scene (modules-src/foxlake/region.ts TOWN_OFFSET); a test keeps them equal. */
 export const TOWN_OFFSET = { x: -356, y: 2, z: 1152 }
 /** Where the middle of Montello's map lies in Fox Lake's scene (modules-src/foxlake/region.ts MONTELLO_AT); a test keeps them equal. */
-export const MONTELLO_AT = { x: -4096, z: 0 }
+export const MONTELLO_AT = { x: -4751, z: 818 }
 
 /**
  * The neighbourhoods where Montello's house parcels are for sale in Fox Lake (map rectangles, x0, z0, x1, z1): up along
