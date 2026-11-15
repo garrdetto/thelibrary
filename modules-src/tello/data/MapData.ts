@@ -37,7 +37,7 @@ export interface BuildingData { k: BuildingKind; h: number; f: number; l: number
 /** Roof types: a gable's ridge runs along the rectangle's first or second axis; a shed's high side is toward the named axis. */
 export const ROOF = { unmeasured: -1, flat: 0, gableFirst: 1, gableSecond: 2, hip: 3, shedPlusSecond: 4, shedMinusSecond: 5, shedPlusFirst: 6, shedMinusFirst: 7 } as const
 export interface LotData { f: number; p: number[] }
-export interface Poi { n: string; k: string; x: number; z: number }
+export interface Poi { n: string; k: string; x: number; z: number; /** The front door: x, z and the way it faces. */ d?: [number, number, number] }
 /** A road leaving the playable area: where it crosses the edge and the way out (heading, 0 = north). */
 export interface RoadExit { x: number; z: number; h: number; w: number }
 /**

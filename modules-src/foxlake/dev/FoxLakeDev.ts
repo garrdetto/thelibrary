@@ -21,7 +21,8 @@ import type { ClientMsg, PlayerSnap, ServerMsg, VehicleKind } from '../../maples
 import { TUNING, isBuiltinVehicleKind } from '../../maplestreet/shared/Vehicles'
 import { TOWN_OFFSET, sceneToTown, townToScene } from '../region'
 import { DevPanel, type DevActions, type Outcome, type PlayerChoice, type VehicleChoice } from './DevPanel'
-import { FOX_LAKE_PLACES, type Place } from './Places'
+import type { FoxLakeTerrain } from '../montello/Link'
+import { FOX_LAKE_PLACES, montelloPlaces, type Place } from './Places'
 import { restingPose, spotsAround, yawFromHeading, yawFromTownYaw } from './Placement'
 import { SharedCars, type SpawnedRow } from './SharedCars'
 import { WindowTrace } from './WindowTrace'
@@ -53,6 +54,7 @@ export class FoxLakeDev implements DevActions {
   private snaps: PlayerSnap[] = []
   private dev = false
   private offline = false
+  private allPlaces: Place[] | null = null
 
   constructor(private readonly hooks: DevHooks) {
     this.cars = new SharedCars(hooks)
@@ -156,8 +158,13 @@ export class FoxLakeDev implements DevActions {
     return this.cars.rows()
   }
 
+  /** Fox Plains and the lake country, plus Montello's places once its map has loaded. */
   places(): Place[] {
-    return FOX_LAKE_PLACES
+    if (this.allPlaces) return this.allPlaces
+    const link = (this.hooks.host.terrain as Partial<FoxLakeTerrain>).link
+    if (!link) return FOX_LAKE_PLACES
+    this.allPlaces = [...FOX_LAKE_PLACES, ...montelloPlaces(link.land, link.inward[link.inward.length - 1])]
+    return this.allPlaces
   }
 
   // ------------------------------------------------------------ requests
@@ -193,7 +200,7 @@ export class FoxLakeDev implements DevActions {
   }
 
   goToPlace(id: string): Outcome {
-    const place = FOX_LAKE_PLACES.find((p) => p.id === id)
+    const place = this.places().find((p) => p.id === id)
     return place ? this.goTo(place.x, place.z, this.hooks.host.facing, place.label) : { state: 'refused', text: 'That place is not on the list any more.' }
   }
 
