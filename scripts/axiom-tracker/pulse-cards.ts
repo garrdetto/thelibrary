@@ -80,9 +80,11 @@ export function assessQuality(input: QualityInput) {
   const insiders = traits ? traits.insiders : pulse?.insidersPct ?? null
   const bundlers = traits ? traits.bundlers : pulse?.bundlersPct ?? null
   const linked = traits?.linked ?? null
+  const fresh = traits?.fresh ?? null
   const holderCount = traits ? traits.holders : pulse?.holders ?? null
   if (top10 !== null && top10 !== undefined) checks.push({ label: 'Top 10 holders', status: band(top10, 20, holderLimits.top10), detail: `${top10.toFixed(0)}% of supply (limit ${holderLimits.top10}%)`, weight: 2 })
   if (dev !== null) checks.push({ label: 'Dev holding', status: dev >= 0.01 && dev > holderLimits.dev ? 'fail' : 'pass', detail: pulse?.devSold ? 'Dev has sold' : dev >= 0.01 ? `${dev < 1 ? dev.toFixed(2) : dev.toFixed(0)}% (any dev holding scores low)` : 'Dev holds none', weight: 1.5 })
+  if (fresh !== null) checks.push({ label: 'Fresh wallets', status: band(fresh, 5, holderLimits.fresh), detail: `${fresh.toFixed(0)}% held by newly created wallets (limit ${holderLimits.fresh}%)`, weight: 1.5 })
   if (snipers !== null) checks.push({ label: 'Snipers', status: band(snipers, 5, holderLimits.snipers), detail: `${snipers.toFixed(0)}% (limit ${holderLimits.snipers}%)`, weight: 1 })
   if (insiders !== null) checks.push({ label: 'Insiders', status: band(insiders, 5, holderLimits.insiders), detail: `${insiders.toFixed(0)}% (limit ${holderLimits.insiders}%)`, weight: 1.5 })
   if (bundlers !== null) checks.push({ label: 'Bundlers', status: band(bundlers, 5, holderLimits.bundlers), detail: `${bundlers.toFixed(0)}% (limit ${holderLimits.bundlers}%)`, weight: 1.5 })
@@ -102,8 +104,8 @@ export function assessQuality(input: QualityInput) {
   if (input.freezeAuthority !== null) checks.push({ label: 'Freeze authority', status: input.freezeAuthority ? 'fail' : 'pass', detail: input.freezeAuthority ? 'Still enabled: wallets can be frozen' : 'Revoked', weight: 2 })
   const totalWeight = checks.reduce((total, check) => total + check.weight, 0)
   const earned = checks.reduce((total, check) => total + check.weight * (check.status === 'pass' ? 1 : check.status === 'warn' ? 0.5 : 0), 0)
-  const holderLabels: Record<string, string> = { 'Top 10 holders': 'Top 10 wallets hold', 'Dev holding': 'Dev holds', Snipers: 'Snipers hold', Insiders: 'Insiders hold', Bundlers: 'Bundlers hold', 'Linked wallets': 'Linked wallet groups hold' }
-  const values: Record<string, number | null> = { 'Top 10 holders': top10, 'Dev holding': dev, Snipers: snipers, Insiders: insiders, Bundlers: bundlers, 'Linked wallets': linked }
+  const holderLabels: Record<string, string> = { 'Top 10 holders': 'Top 10 wallets hold', 'Dev holding': 'Dev holds', Snipers: 'Snipers hold', Insiders: 'Insiders hold', Bundlers: 'Bundlers hold', 'Linked wallets': 'Linked wallet groups hold', 'Fresh wallets': 'Fresh wallets hold' }
+  const values: Record<string, number | null> = { 'Top 10 holders': top10, 'Dev holding': dev, Snipers: snipers, Insiders: insiders, Bundlers: bundlers, 'Linked wallets': linked, 'Fresh wallets': fresh }
   const risky = checks.filter(check => check.label in holderLabels && check.status !== 'pass')
   const blocked = risky.some(check => check.status === 'fail')
   const multiplier = Math.max(0.2, risky.reduce((total, check) => total * (check.status === 'fail' ? 0.45 : 0.8), 1))

@@ -2,6 +2,7 @@ import type { TrackerDatabase } from './db.js'
 import type { RadarPulseMetrics } from '../../src/lib/axiom-radar-types.js'
 import type { MarketReading } from './dexscreener.js'
 import { trackerConfig } from './runtime.js'
+import type { PageStats } from './page-stats.js'
 
 export type ActiveCandidate = { mint: string; pairAddress: string; symbol: string; momentum: number }
 
@@ -27,6 +28,7 @@ export const botClimbHoldMs = 30 * 60_000
 export const trackerState = {
   jupiter: new Map<string, JupiterReading>(),
   botClimbs: new Map<string, { until: number; reason: string }>(),
+  pageStats: new Map<string, PageStats>(),
   active: [] as ActiveCandidate[],
   market: new Map<string, MarketReading>(),
   viewers: new Map<string, { count: number; at: number; source: 'websocket' | 'page' | 'extension' }>(),

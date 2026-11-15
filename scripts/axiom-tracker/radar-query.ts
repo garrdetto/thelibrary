@@ -9,6 +9,7 @@ import type { TrackerDatabase } from './db.js'
 import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
 import { jupiterReading } from './jupiter.js'
 import { moverCaps, scoreMover } from './mover-score.js'
+import { pageStatsAt } from './page-stats.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -262,7 +263,7 @@ function finalize(entries: BuiltToken[], settings: RadarSettings) {
 const traitsCache = new Map<string, { at: number; traits: RadarHolderTraits | null }>()
 let lifecycleTableKnown = false
 
-/** The current holder numbers for one coin: the Pulse card while it is fresh, otherwise the higher of the latest RugCheck and Jupiter readings, then the last card or the worst numbers on record. */
+/** The current holder numbers for one coin: the Pulse card while it is fresh, then Axiom's own coin page read in the last two minutes, otherwise the highest of an older page reading and the latest RugCheck and Jupiter readings, then the last card or the worst numbers on record. */
 function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number): RadarHolderTraits | null {
   const cached = traitsCache.get(token.mint)
   if (cached && now - cached.at < 2_000) return cached.traits
@@ -278,19 +279,21 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
     return known.length ? Math.max(...known) : null
   }
   const jupiter = jupiterReading(token.mint, now)
-  const checkedAt = Math.max(fresh?.seenAt ?? 0, token.traits_checked_at ?? 0, card?.seenAt ?? 0) || null
+  const page = pageStatsAt(trackerState.pageStats.get(token.mint), now)
+  const checkedAt = Math.max(fresh?.seenAt ?? 0, page.recent?.seenAt ?? 0, token.traits_checked_at ?? 0, card?.seenAt ?? 0) || null
   const traits: RadarHolderTraits = {
-    top10: first(fresh?.top10Pct, highest(token.top10_pct, jupiter?.top10Pct), card?.top10Pct, worst?.top10),
-    dev: first(cardDev(fresh), highest(token.dev_pct, jupiter?.devPct), cardDev(card), worst?.dev),
-    snipers: first(card?.snipersPct, worst?.snipers),
-    insiders: first(card?.insidersPct, worst?.insiders),
-    bundlers: first(card?.bundlersPct, worst?.bundlers),
+    top10: first(fresh?.top10Pct, page.live?.top10, highest(page.recent?.top10, token.top10_pct, jupiter?.top10Pct), card?.top10Pct, page.kept?.top10, worst?.top10),
+    dev: first(cardDev(fresh), page.live?.dev, highest(page.recent?.dev, token.dev_pct, jupiter?.devPct), cardDev(card), page.kept?.dev, worst?.dev),
+    snipers: first(fresh?.snipersPct, page.recent?.snipers, card?.snipersPct, page.kept?.snipers, worst?.snipers),
+    insiders: first(fresh?.insidersPct, page.recent?.insiders, card?.insidersPct, page.kept?.insiders, worst?.insiders),
+    bundlers: first(fresh?.bundlersPct, page.recent?.bundlers, card?.bundlersPct, page.kept?.bundlers, worst?.bundlers),
     linked: first(token.insider_pct, worst?.linked),
+    fresh: page.kept?.fresh ?? null,
     holders: first(fresh?.holders, jupiter?.holders, token.holders_total, card?.holders),
     rugged: token.rugged === 1,
     checkedAt,
   }
-  const known = [traits.top10, traits.dev, traits.snipers, traits.insiders, traits.bundlers, traits.linked, traits.holders].some(value => value !== null)
+  const known = [traits.top10, traits.dev, traits.snipers, traits.insiders, traits.bundlers, traits.linked, traits.fresh, traits.holders].some(value => value !== null && value !== undefined)
   const result = known ? traits : null
   traitsCache.set(token.mint, { at: now, traits: result })
   if (traitsCache.size > 800) for (const [key, entry] of traitsCache) if (now - entry.at > 120_000) traitsCache.delete(key)
