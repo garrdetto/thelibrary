@@ -56,9 +56,9 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
 
     {winners && <section className="radar-card">
       <div className="panel-heading"><h2>Research findings</h2><span className="panel-caption">{winners.rules.length} FOUND</span></div>
-      <p className="radar-note">Each finding compares coins on one early number. These are the same findings you can switch on as filters in Millionaire Maker.</p>
+      <p className="radar-note">Each finding compares coins on one early number. Only positive winners count as winners here and in the Millionaire Maker match score, so coins with bad holder numbers never teach it. These are the same findings you can switch on as filters in Millionaire Maker.</p>
       {winners.rules.length === 0 ? <p className="radar-muted">No early number separates winners from the rest clearly enough yet.</p> : <div className="radar-table-wrap"><table className="radar-mini-table">
-        <thead><tr><th scope="col">Early sign</th><th scope="col">Became big winners</th><th scope="col">Otherwise</th><th scope="col">Edge</th></tr></thead>
+        <thead><tr><th scope="col">Early sign</th><th scope="col">Became positive winners</th><th scope="col">Otherwise</th><th scope="col">Edge</th></tr></thead>
         <tbody>{winners.rules.map(rule => <tr key={rule.key}>
           <td>{rule.label}</td>
           <td className="tabular radar-delta up">{percent(rule.winnerRate)}</td>
@@ -70,7 +70,16 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
 
     {winners && <section className="radar-card">
       <div className="panel-heading"><h2>Biggest jumps studied</h2><span className="panel-caption">{winners.positives} POSITIVE · {winners.negatives} NEGATIVE</span></div>
-      <p className="radar-note">Every coin that grew {winners.minimumMultiple}x or more is kept permanently and sorted into two groups. A coin is negative if it crashed, gave back most of its gain, was bundled, sniped or insider heavy, had a few wallets holding most of the supply, or had risky token settings, however many holders or however big a gain it showed. Open a coin to see what was recorded about it.</p>
+      <p className="radar-note">Every coin that grew {winners.minimumMultiple}x or more is kept permanently and sorted into two groups. Nearly every coin dumps in the end, good or bad, so an ordinary dump after the peak is not held against a coin: it is judged on the traits and the demand behind its run, read before its peak. A coin is negative if any of these is true, however big a gain it showed:</p>
+      <ul className="radar-learn-list radar-verdict-rules">
+        <li>Before its peak, its top 10 wallets held over 30%, fresh wallets (first used within a day of launch, with a short history) over 10%, the dev over 5%, bundlers or insiders over 25%, snipers over 20% or linked wallet groups over 25%.</li>
+        <li>It fell half below its peak within 15 minutes of its breakout (a pump and dump).</li>
+        <li>It climbed in an even, steady line and then slid down in an even, steady line (the rug pattern).</li>
+        <li>Its run had no real demand behind it: holders did not grow by half again (to at least 100), or fewer than 50 different wallets traded it in any 5 minutes.</li>
+        <li>Its dev had made 20 or more coins and fewer than 1 in 10 graduated (a serial launcher).</li>
+        <li>Its holders, top 10 or fresh wallets were never checked before its peak, or it had risky token settings.</li>
+      </ul>
+      <p className="radar-note">Open a coin to see what was recorded about it.</p>
       {winners.negativeBreakdown.length > 0 && <p className="radar-verdict-breakdown">{winners.negativeBreakdown.map(item => <span key={item.label} className="radar-tag">{item.label} <strong className="tabular">{item.count}</strong></span>)}</p>}
       {winners.separators.length > 0 && <div className="radar-verdict-separators">
         <h3>What separated the positives from the negatives</h3>
@@ -81,7 +90,7 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
           const group = winners.jumps.filter(coin => coin.verdict === verdict)
           return <div key={verdict} className={`radar-verdict-group ${verdict}`}>
             <h3>{verdict === 'positive' ? 'Positive coins' : 'Negative coins'} <span className="tabular">{group.length}</span></h3>
-            <p className="radar-note">{verdict === 'positive' ? 'Grew and showed none of the negative traits. These are the patterns worth finding again.' : 'Grew, but with traits that mark a coin to avoid or to get out of early.'}</p>
+            <p className="radar-note">{verdict === 'positive' ? 'Grew with clean holder numbers all the way to its peak. These are the patterns worth finding again, and the only ones the scores learn from.' : 'Grew, but with holder numbers or settings that mark a coin to avoid.'}</p>
             {group.length === 0 ? <p className="radar-muted">{verdict === 'positive' ? 'No studied coin has stayed clean yet.' : 'None yet.'}</p> : <ul className="radar-study-list">{group.map(coin => <li key={coin.mint}>
               <details>
                 <summary>
@@ -97,9 +106,9 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
                   <ul className="radar-learn-list">
                     <li>First seen {formatClock(coin.firstSeenAt)} at {formatUsd(coin.firstMcap)}, peaked at {formatUsd(coin.peakMcap)} after {coin.minutesToPeak} minutes ({coin.multiple}x).</li>
                     <li>One minute in: {earlyLine(coin.early)}.</li>
-                    <li>{coin.holdersPeak ? `Most holders seen: ${formatCount(coin.holdersPeak)}.` : 'Holder count was not recorded (the coin was not on your Pulse).'}{coin.topHoldersPct !== null ? ` Its top 10 wallets held ${Math.round(coin.topHoldersPct)}% of supply.` : ''}</li>
+                    <li>{coin.holdersPeak ? `Most holders seen: ${formatCount(coin.holdersPeak)}.` : 'Holder count was not recorded (the coin was not on your Pulse).'}{coin.topHoldersPct !== null ? ` Before its peak its top 10 wallets held up to ${Math.round(coin.topHoldersPct)}% of supply.` : ''}{coin.freshPct !== null && coin.freshPct !== undefined ? ` Fresh wallets held ${Math.round(coin.freshPct)}%.` : ''}</li>
                     <li>{coin.status === 'crashed' ? `Crashed${coin.lifeMinutes !== null ? ` ${coin.lifeMinutes} minutes after launch` : ''}${coin.crashKind ? ` (${coin.crashKind})` : ''}.` : coin.status === 'running' ? 'Still being tracked and has not crashed.' : coin.status === 'holding' ? 'Held its value for the 4 hours it was watched.' : 'Faded off the radar without a sharp crash.'}</li>
-                    <li>{coin.winnerWallets ? `${coin.winnerWallets} of its top holders also held another winner.` : 'None of its recorded top holders held another winner.'}</li>
+                    <li>{coin.winnerWallets ? `${coin.winnerWallets} of its top holders also held another positive winner.` : 'None of its recorded top holders held another positive winner.'}</li>
                     <li>{coin.matched.length ? `Research findings it matched early: ${coin.matched.join('; ')}.` : 'It matched none of the current research findings early on, so it is a pattern the research does not explain yet.'}</li>
                   </ul>
                 </div>

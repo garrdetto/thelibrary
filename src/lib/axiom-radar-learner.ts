@@ -105,6 +105,7 @@ export type RadarWinner = {
   negatives: string[]
   holdersPeak: number | null
   topHoldersPct: number | null
+  freshPct?: number | null
 }
 
 export type RadarWinnerWallet = { wallet: string; hits: number; averagePct: number | null; coins: Array<{ mint: string; symbol: string; pairAddress: string | null }> }

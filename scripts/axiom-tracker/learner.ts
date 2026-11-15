@@ -2,9 +2,11 @@ import type { RadarLearnerSummary, RadarOutlook, RadarOutlookPhase } from '../..
 import type { RadarToken } from '../../src/lib/axiom-radar-types.js'
 import { recordHeartbeat, type TrackerDatabase } from './db.js'
 import { learnerState } from './learner-state.js'
+import { trackerState } from './state.js'
 import { chanceOf, holdoutAccuracy, median, nearestRows, splitInsights, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues } from './logistic.js'
 import { buildRadarTokens, loadModelState } from './radar-query.js'
 import { researchResetAt } from './research-meta.js'
+import { parseTraits, stepRise, worstOf, type TraitReading } from './rise-traits.js'
 import { createLogger, runLoop } from './runtime.js'
 import { loadWinnersModel, runWinnersCycle } from './winners.js'
 
@@ -90,6 +92,8 @@ export type LifecycleRow = {
   last_mcap: number | null
   traits_json: string | null
   holders_peak: number | null
+  rise_traits_json?: string | null
+  rise_pending_json?: string | null
 }
 type Sample = { values: FeatureValues; runner: boolean; rugged: boolean; lifeMinutes: number | null; peakMinutes: number; peakMultiple: number }
 type Model = { classifier: Classifier; samples: Sample[]; holdout: ReturnType<typeof holdoutAccuracy> }
@@ -256,19 +260,36 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
   const close = database.prepare('UPDATE coin_lifecycles SET outcome = ?, closed_at = ?, rugged_at = COALESCE(rugged_at, ?), rug_kind = COALESCE(rug_kind, ?) WHERE mint = ?')
   const grow = database.prepare('UPDATE coin_lifecycles SET peak_mcap_at = CASE WHEN ? > COALESCE(peak_mcap, 0) THEN ? ELSE peak_mcap_at END, peak_mcap = MAX(COALESCE(peak_mcap, 0), ?), last_mcap = ? WHERE mint = ?')
   const traits = database.prepare('UPDATE coin_lifecycles SET traits_json = ?, holders_peak = ? WHERE mint = ?')
+  const riseUpdate = database.prepare('UPDATE coin_lifecycles SET rise_traits_json = ?, rise_pending_json = ? WHERE mint = ?')
+  const stepRow = (row: LifecycleRow, seen: TraitReading | null, newPeak: boolean) => {
+    const next = stepRise({ rise: parseTraits(row.rise_traits_json), pending: parseTraits(row.rise_pending_json) }, seen, newPeak)
+    const rise = JSON.stringify(next.rise)
+    const pending = JSON.stringify(next.pending)
+    if (rise !== (row.rise_traits_json ?? '{}') || pending !== (row.rise_pending_json ?? '{}')) riseUpdate.run(rise, pending, row.mint)
+  }
   let closed = 0
   database.transaction(() => {
     for (const token of tokens) {
       const price = token.priceUsd
       if (!price || price <= 0) continue
       const row = find.get(token.mint) as LifecycleRow | undefined
-      if (row && token.holderTraits) {
-        const seen = token.holderTraits
-        const known = row.traits_json ? JSON.parse(row.traits_json) as Record<string, number | null> : {}
-        const worst = (key: string, value: number | null) => value === null ? known[key] ?? null : Math.max(known[key] ?? 0, value)
-        const next = { top10: worst('top10', seen.top10), dev: worst('dev', seen.dev), snipers: worst('snipers', seen.snipers), insiders: worst('insiders', seen.insiders), bundlers: worst('bundlers', seen.bundlers), linked: worst('linked', seen.linked) }
-        const holdersPeak = Math.max(row.holders_peak ?? 0, seen.holders ?? 0) || null
-        const encoded = JSON.stringify(next)
+      const holderReading: TraitReading | null = token.holderTraits ? { top10: token.holderTraits.top10, dev: token.holderTraits.dev, snipers: token.holderTraits.snipers, insiders: token.holderTraits.insiders, bundlers: token.holderTraits.bundlers, linked: token.holderTraits.linked, fresh: token.holderTraits.fresh ?? null } : null
+      const jupiter = trackerState.jupiter.get(token.mint)
+      const recentJupiter = jupiter && now - jupiter.readAt < 60_000 ? jupiter : null
+      const highest = (...values: Array<number | null | undefined>) => values.reduce<number | null>((best, value) => typeof value === 'number' && Number.isFinite(value) ? Math.max(best ?? value, value) : best, null)
+      const reading: TraitReading = {
+        ...holderReading,
+        rugScore: token.safety?.rugScore ?? null,
+        holders: token.holderTraits?.holders ?? token.pulse?.holders ?? null,
+        traders: recentJupiter?.traders5m ?? null,
+        liquidity: token.liquidityUsd,
+        viewers: token.viewers,
+        devCreated: highest(token.pulse?.devCreated, jupiter?.devMints),
+        devMigrated: highest(token.pulse?.devMigrated, jupiter?.devMigrations),
+      }
+      if (row && token.holderTraits && holderReading) {
+        const holdersPeak = Math.max(row.holders_peak ?? 0, token.holderTraits.holders ?? 0) || null
+        const encoded = JSON.stringify(worstOf(parseTraits(row.traits_json), holderReading))
         if (encoded !== row.traits_json || holdersPeak !== row.holders_peak) traits.run(encoded, holdersPeak, token.mint)
       }
       if (!row) {
@@ -277,6 +298,7 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
       }
       if (row.outcome !== 'open') {
         const laterMcap = token.marketCap === null ? null : Math.min(token.marketCap, row.last_mcap ?? token.marketCap)
+        stepRow(row, reading, laterMcap !== null && laterMcap > (row.peak_mcap ?? 0))
         if (laterMcap !== null) grow.run(laterMcap, now, laterMcap, token.marketCap, token.mint)
         continue
       }
@@ -288,6 +310,7 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
       const capture = row.features_json === null && now - row.first_seen_at >= featureDelayMs ? JSON.stringify(readFeatures(token)) : null
       const recovered = row.rugged_at !== null && held > row.peak_price
       const kind = row.rugged_at === null ? crashKind(price, peak, token.liquidityUsd, maxLiquidity) : null
+      stepRow(row, reading, peakMcap !== null && peakMcap > (row.peak_mcap ?? 0))
       if (kind) logger.info('Coin crashed', { mint: token.mint, symbol: token.symbol, kind, minutesAlive: Math.round((now - lifecycleStart(row)) / 60_000) })
       update.run(peak, held > row.peak_price ? now : row.peak_at, maxLiquidity, price, now, capture, recovered ? null : row.rugged_at ?? (kind ? now : null), recovered ? null : row.rug_kind ?? kind, token.marketCap, peakMcap, peakMcap !== null && peakMcap > (row.peak_mcap ?? 0) ? now : row.peak_mcap_at, token.marketCap ?? row.last_mcap, token.mint)
     }
@@ -303,6 +326,7 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
       const maxLiquidity = Math.max(row.max_liquidity ?? 0, reading.liquidity ?? 0) || null
       const recovered = row.rugged_at !== null && held > row.peak_price
       const kind = row.rugged_at === null ? crashKind(reading.price, peak, reading.liquidity, maxLiquidity) : null
+      stepRow(row, null, peakMcap !== null && peakMcap > (row.peak_mcap ?? 0))
       if (kind) logger.info('Coin crashed after leaving the radar', { mint, symbol: row.symbol, kind, minutesAlive: Math.round((now - lifecycleStart(row)) / 60_000) })
       update.run(peak, held > row.peak_price ? reading.at : row.peak_at, maxLiquidity, reading.price, reading.at, null, recovered ? null : row.rugged_at ?? (kind ? reading.at : null), recovered ? null : row.rug_kind ?? kind, reading.marketCap, peakMcap, peakMcap !== null && peakMcap > (row.peak_mcap ?? 0) ? reading.at : row.peak_mcap_at, reading.marketCap ?? row.last_mcap, mint)
     }
@@ -357,6 +381,9 @@ export function prepareLearner(database: TrackerDatabase) {
   const columns = new Set((database.prepare('PRAGMA table_info(coin_lifecycles)').all() as Array<{ name: string }>).map(column => column.name))
   if (!columns.has('traits_json')) database.exec('ALTER TABLE coin_lifecycles ADD COLUMN traits_json TEXT')
   if (!columns.has('holders_peak')) database.exec('ALTER TABLE coin_lifecycles ADD COLUMN holders_peak INTEGER')
+  if (!columns.has('rise_traits_json')) database.exec('ALTER TABLE coin_lifecycles ADD COLUMN rise_traits_json TEXT')
+  if (!columns.has('rise_pending_json')) database.exec('ALTER TABLE coin_lifecycles ADD COLUMN rise_pending_json TEXT')
+  if (!columns.has('shape_json')) database.exec('ALTER TABLE coin_lifecycles ADD COLUMN shape_json TEXT')
   const added = backfill(database)
   if (added) logger.info('Learned from stored history', { coins: added })
   return loadModel(database)
