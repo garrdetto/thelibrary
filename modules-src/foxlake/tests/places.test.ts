@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 // @ts-expect-error plain ES module script
-import { TOWN_OFFSET as SCRIPT_OFFSET } from '../../../scripts/montello-places.mjs'
-import { TOWN_OFFSET } from '../region'
+import { MONTELLO_AT as SCRIPT_MONTELLO_AT, TOWN_OFFSET as SCRIPT_OFFSET } from '../../../scripts/montello-places.mjs'
+import { MONTELLO_AT, TOWN_OFFSET } from '../region'
 import { PUMPS } from '../places/Fuel'
 import { PLACES } from '../places/Places'
 import { SHOP_ITEMS } from '../../maplestreet/shared/Economy'
@@ -11,6 +11,7 @@ import { MONTELLO_PUMPS } from '../../maplestreet/shared/MontelloPlaces'
 
 test('the Montello table is written in the same town frame Fox Lake places the town in', () => {
   assert.deepEqual(SCRIPT_OFFSET, TOWN_OFFSET)
+  assert.deepEqual(SCRIPT_MONTELLO_AT, MONTELLO_AT)
 })
 
 test('every pump in Fox Lake belongs to a station, with a side to park on', () => {

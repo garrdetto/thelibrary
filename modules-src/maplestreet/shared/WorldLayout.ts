@@ -19,6 +19,9 @@ export interface LotDef {
   /** Willow Bend lots: the curved street in front, and the lawn strip between the lot and the curb at the driveway. */
   bend?: BendId;
   setback?: number;
+  /** Fox Lake's Montello lots: the parcel's floor above the town's ground (metres), and the scanned house on it (Tello's building index). */
+  y?: number;
+  scan?: number;
 }
 
 export type BendId = 'willow' | 'lake';
@@ -115,7 +118,7 @@ export const CURVES: CurveRoad[] = [
 ];
 
 /** Where Main Street meets Hollow Bend (the centerline crossing z = 0). */
-const MAIN_WEST_X = (() => {
+export const MAIN_WEST_X = (() => {
   const h = CURVES[1].pts;
   for (let i = 1; i < h.length; i++) if (Math.sign(h[i - 1].z) !== Math.sign(h[i].z)) return Math.round(h[i].x);
   return -360;

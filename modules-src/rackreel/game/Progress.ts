@@ -84,10 +84,10 @@ export class Progress {
     return error
   }
 
-  /** The one free change of face, hair and build for a character made earlier, on the server when signed in. */
-  async makeover(appearance: Appearance): Promise<string | null> {
+  /** The one free change of face, hair, build and outfit for a character made earlier, on the server when signed in. */
+  async makeover(appearance: Appearance, look?: Look): Promise<string | null> {
     if (this.signedIn) {
-      const data = await this.post({ action: 'makeover', appearance }).catch(() => ({ error: 'The cabin could not be reached. Try again.' }) as PostReply)
+      const data = await this.post({ action: 'makeover', appearance, look }).catch(() => ({ error: 'The cabin could not be reached. Try again.' }) as PostReply)
       if (data.error) {
         await this.load()
         return owedMakeover(this.profile) ? data.error : null
@@ -95,7 +95,7 @@ export class Progress {
       this.adopt(data.profile)
       return null
     }
-    const error = makeover(this.profile, appearance)
+    const error = makeover(this.profile, appearance, look)
     this.onChange?.()
     return error
   }

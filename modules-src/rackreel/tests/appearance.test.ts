@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { APPEARANCE_VERSION, BEARDS, DEFAULT_APPEARANCE, FACES, HAIR, bodyScale, normalizeAppearance, packAppearance, sameAppearance, unpackAppearance } from '../shared/Appearance'
 import type { Appearance } from '../shared/Appearance'
-import { createCharacter, defaultProfile, lookOf, makeover, normalizeProfile, owedMakeover } from '../shared/Economy'
+import { createCharacter, defaultProfile, lookOf, makeover, normalizeProfile, outfitChoices, owedMakeover } from '../shared/Economy'
 import { SHAPE_REACH, isNeutral, shapeFace } from '../systems/FaceShape'
 import type { HeadFrame } from '../systems/FaceShape'
 
@@ -121,4 +121,18 @@ test('face sliders move the face a little, evenly on both sides, and never the n
   const tip = base.length - 3
   const long = shapeFace(base, FRAME, { jaw: 0, chin: 0, nose: 1, brow: 0, cheeks: 0 }, new Float32Array(base.length))
   assert.ok(long[tip + 2] > base[tip + 2] + 0.005, 'a bigger nose reaches further forward')
+})
+
+test('the free change of look can pick any outfit in the catalog, which is then owned and worn', () => {
+  const p = defaultProfile()
+  assert.equal(createCharacter(p, { jacket: 'jacket-camo', vest: 'vest-blaze', cap: 'cap-blaze', pants: 'pants-camo', pack: 'pack-none' }), null)
+  p.fitted = APPEARANCE_VERSION - 1
+  const look = { jacket: outfitChoices('jacket').at(-1)!, vest: 'vest-none', cap: outfitChoices('cap').at(-1)!, pants: outfitChoices('pants').at(-1)!, pack: outfitChoices('pack').at(-1)! }
+  assert.equal(makeover(p, DEFAULT_APPEARANCE, { ...look, jacket: 'rod-heavy' }), 'That outfit is not in the catalog.')
+  assert.equal(makeover(p, DEFAULT_APPEARANCE, look), null)
+  for (const slot of ['jacket', 'vest', 'cap', 'pants', 'pack'] as const) {
+    assert.equal(p.loadout[slot], look[slot])
+    assert.ok(p.owned.includes(look[slot]))
+  }
+  assert.equal(makeover(p, DEFAULT_APPEARANCE, look), 'You have already updated your look.')
 })

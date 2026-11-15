@@ -5,6 +5,7 @@
  * parking lane with a tick at every stall, or a white edge line where there's no room to park. Lines stop short of
  * every cross street and break for alleys and driveways. At the light where Main Street meets State Highway 23 there
  * are stop bars on each approach and ladder crosswalks across West Montello Street and both of Main Street's legs.
+ * Every other street in town is one lane each way split only by a dashed yellow centre line: no median, no island.
  */
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
@@ -46,6 +47,7 @@ export function buildStreetPaint(scene: Scene, land: TelloLand): Mesh[] {
     sidewalks(prof, gaps, quad, road.n === 'West Montello Street')
   }
   for (const m of junctionMarks(land)) quad('white', m)
+  for (const road of land.doc.roads) if (isOrdinaryStreet(road) && !profiles.has(road)) centreDashes(road, gapsFor(land, road), quad)
   const concrete = detailTexture(scene)
   const mats: Record<Paint, StandardMaterial> = {
     white: paint(scene, 'white', new Color3(0.86, 0.86, 0.84)),
@@ -94,6 +96,47 @@ function gapsFor(land: TelloLand, road: RoadData): Gap[] {
 }
 
 type Quad = (paint: Paint, c: [number, number][], lift?: number, ys?: number[]) => void
+
+/** Dashes on an ordinary street's centre line: ten feet of paint, thirty feet of gap. */
+const DASH = 3.05
+const DASH_GAP = 9.15
+
+/** A town street that isn't downtown's or Main Street's legs: one lane each way, wide enough for a centre line. */
+export function isOrdinaryStreet(road: RoadData): boolean {
+  return road.k === 1 && road.w >= 5.5 && !isMainLeg(road)
+}
+
+/** The dashed yellow centre line along an ordinary street, stopping short of its ends and of every cross street. */
+function centreDashes(road: RoadData, gaps: Gap[], quad: Quad): void {
+  const p = road.p
+  const total = (() => {
+    let t = 0
+    for (let k = 0; k + 3 < p.length; k += 2) t += Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1])
+    return t
+  })()
+  const clearOf = (x: number, z: number) => gaps.every((g) => !g.full || Math.hypot(g.x - x, g.z - z) > g.r)
+  const at = (d: number) => {
+    let left = d
+    for (let k = 0; k + 3 < p.length; k += 2) {
+      const ex = p[k + 2] - p[k], ez = p[k + 3] - p[k + 1]
+      const l = Math.hypot(ex, ez)
+      if (left <= l || k + 4 >= p.length) {
+        const t = l ? Math.min(1, left / l) : 0
+        return { x: p[k] + ex * t, z: p[k + 1] + ez * t, tx: ex / (l || 1), tz: ez / (l || 1) }
+      }
+      left -= l
+    }
+    return { x: p[0], z: p[1], tx: 1, tz: 0 }
+  }
+  const half = LINE / 2
+  for (let d = 6; d + DASH < total - 6; d += DASH + DASH_GAP) {
+    const a = at(d), b = at(d + DASH)
+    if (!clearOf(a.x, a.z) || !clearOf(b.x, b.z)) continue
+    const sx = -a.tz * half, sz = a.tx * half
+    const ex = -b.tz * half, ez = b.tx * half
+    quad('yellow', [[a.x - sx, a.z - sz], [b.x - ex, b.z - ez], [b.x + ex, b.z + ez], [a.x + sx, a.z + sz]], ROAD + 0.03)
+  }
+}
 
 function paintStreet(prof: StreetProfile, gaps: Gap[], quad: Quad): void {
   const { pts, half, parking } = prof

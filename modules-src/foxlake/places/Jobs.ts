@@ -3,7 +3,7 @@
  * progressJob): Fox Plains deliveries from the freight depot, Montello
  * deliveries from Kwik Trip, and Montello fire calls from the fire station.
  * The page shows the job on a HUD chip and a beacon you can see from far off,
- * routes you there on the map (County Road F first when the job is in Montello
+ * routes you there on the map (Highway 23 first when the job is in Montello
  * and you are still south of it), tells the authority when you arrive, and
  * for a fire sets the house burning until you hold the hose on it (hold E).
  */
@@ -20,7 +20,7 @@ import type { TelloLand } from '../../tello/region'
 import type { TelloMap } from '../../tello/town/TelloMap'
 import type { Cars } from '../town/Cars'
 import type { WorldMap } from '../town/WorldMap'
-import { NORTH_ROAD, sceneToTown, townToScene } from '../region'
+import { LINK_ROAD, sceneToTown, townToScene } from '../region'
 import { FireFx, type Blaze } from './FireFx'
 
 /** How close the page goes before telling the authority (a little inside the authority's own reach). */
@@ -37,7 +37,7 @@ export interface JobHooks {
   land: TelloLand | null
   map: () => WorldMap | null
   northMap: () => TelloMap | null
-  inNorth(): boolean
+  beyondTown(): boolean
 }
 
 type Routed = 'none' | 'south' | 'north'
@@ -240,11 +240,11 @@ export class Jobs {
   }
 
   /**
-   * Directions on the map: Montello's own map once you are north of Fox Plains' square, Fox Lake's map to County Road
-   * F while a Montello job is still ahead of you to the north, and Fox Lake's map for Fox Plains jobs.
+   * Directions on the map: Montello's roads once you are west of Fox Plains' square, Fox Lake's map to Highway 23
+   * while a Montello job is still ahead of you, and Fox Lake's map for Fox Plains jobs.
    */
   private route(job: Job): void {
-    const north = this.hooks.inNorth()
+    const north = this.hooks.beyondTown()
     const montello = job.area === 'montello'
     const key = `${job.id}:${job.stage}:${montello && north ? 'n' : 's'}`
     if (key === this.routedKey || job.stage === 'onScene') return
@@ -264,7 +264,7 @@ export class Jobs {
     }
     const map = this.hooks.map()
     if (!map) return
-    if (montello) map.routeToScene(NORTH_ROAD.start.x, NORTH_ROAD.start.z, 'County Road F to Montello')
+    if (montello) map.routeToScene(LINK_ROAD.start.x, LINK_ROAD.start.z, 'Highway 23 to Montello')
     else map.routeToScene(s.x, s.z, label)
     this.routed = 'south'
   }

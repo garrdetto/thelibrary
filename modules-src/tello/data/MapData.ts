@@ -45,7 +45,7 @@ export interface RoadExit { x: number; z: number; h: number; w: number }
  * widened by `pad`, plus County Highway F out to the map's south edge, where Fox Lake's road comes in), and the
  * ground, water and woods are drawn `seen` metres past that.
  */
-export interface Limits { city: number[]; play: number[]; exits: RoadExit[]; link: number[]; pad: number; seen: number }
+export interface Limits { city: number[]; play: number[]; exits: RoadExit[]; link: number[]; pad: number; seen: number; /** Where the playable area stops on its east side, by the highway toward Fox Lake (map x). */ east?: number }
 
 export interface MapDoc {
   version: number

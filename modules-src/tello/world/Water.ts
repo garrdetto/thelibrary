@@ -13,7 +13,7 @@ import { ShaderLanguage } from '@babylonjs/core/Materials/shaderLanguage'
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Vector2, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import type { EngineContext } from '../../rackreel/core/EngineSetup'
@@ -58,14 +58,13 @@ export class Water {
 
   constructor(private readonly ctx: EngineContext, land: TelloLand) {
     const { scene } = ctx
-    if (Math.abs(land.offset.x + land.x0 + land.size / 2) > 1e-6 || Math.abs(((land.offset.z + land.z0 + land.size / 2) / land.size) % 1) > 1e-6) throw new Error('Tello must sit a whole map width from the origin')
     const cells = land.side - 1
     const depthMap = RawTexture.CreateRGBATexture(depthBytes(land), cells, cells, scene, false, false, Texture.BILINEAR_SAMPLINGMODE)
     depthMap.wrapU = Texture.WRAP_ADDRESSMODE
     depthMap.wrapV = Texture.WRAP_ADDRESSMODE
     const material = new ShaderMaterial('tello-water-mat', scene, 'rrWater', {
       attributes: ['position'],
-      uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
+      uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'mapOrigin', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
       samplers: ['depthMap'],
       needAlphaBlending: true,
       shaderLanguage: ctx.engine.isWebGPU ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
@@ -83,6 +82,7 @@ export class Water {
     material.setColor3('fogColor', FOG_COLOR)
     material.setFloat('fogDensity', FOG_DENSITY)
     material.setFloat('worldSize', land.size)
+    material.setVector2('mapOrigin', new Vector2(land.offset.x + land.x0 + land.size / 2, land.offset.z + land.z0 + land.size / 2))
     material.alphaMode = Constants.ALPHA_COMBINE
     material.backFaceCulling = false
     this.material = material
@@ -106,7 +106,7 @@ export class Water {
         for (let j = cj; j < Math.min(cells, cj + CHUNK); j++) {
           for (let i = ci; i < Math.min(cells, ci + CHUNK); i++) {
             if (!water[j * n + i] || !water[j * n + i + 1] || !water[(j + 1) * n + i] || !water[(j + 1) * n + i + 1]) continue
-            if (!land.seen(land.x0 + i * land.cell, land.z0 + j * land.cell, -20)) continue
+            if (!land.seen(land.x0 + i * land.cell, land.z0 + j * land.cell)) continue
             const a = vertex(i, j)
             const b = vertex(i + 1, j)
             const c = vertex(i, j + 1)

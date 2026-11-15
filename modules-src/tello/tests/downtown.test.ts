@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { test } from 'node:test'
 import { isGzip, parseGrids, type MapDoc } from '../data/MapData'
-import { ALL_FRONTS, defaultFront } from '../data/Downtown'
+import { ALL_FRONTS, CORNER_GARAGE, NORTH_WEST_MONTELLO_FRONTS, defaultFront } from '../data/Downtown'
 import { LEG_WIDTH, MAIN_SPLIT, mainIsland, PARKING_MIN_HALF, signalPhase, STREET_HALF, townProfiles } from '../data/Streets'
 import { pointInRing } from '../world/Poly'
 import { TelloLand } from '../region'
@@ -36,12 +36,13 @@ test('every photographed front matches a store building on its downtown street',
 
 test('the downtown block is lined with fronts, each facing the street', () => {
   assert.ok(plan.length >= 15, `${plan.length} fronts`)
-  const street = doc.roads.filter((r) => r.n === 'West Montello Street' || r.n === 'East Montello Street' || r.n === 'Main Street').flatMap((r) => {
+  const pointsOf = (name: string) => doc.roads.filter((r) => r.n === name).flatMap((r) => {
     const pts: [number, number][] = []
     for (let i = 0; i < r.p.length; i += 2) pts.push([r.p[i], -r.p[i + 1]])
     return pts
   })
   for (const p of plan) {
+    const street = pointsOf(p.street)
     const mx = p.ax + p.dx * p.len / 2, mz = p.az + p.dz * p.len / 2
     const out = { x: -p.dz, z: p.dx }
     const near = street.reduce((a, b) => (Math.hypot(b[0] - mx, b[1] - mz) < Math.hypot(a[0] - mx, a[1] - mz) ? b : a))
@@ -49,6 +50,24 @@ test('the downtown block is lined with fronts, each facing the street', () => {
     assert.ok(toward > 0, `${p.b.n || 'a store'} faces the street`)
     assert.ok(p.len >= 3 && p.height >= 4.5 && p.height <= 12)
   }
+})
+
+test('the north side of West Montello Street runs east from West Street in the order of the photos', () => {
+  const north = NORTH_WEST_MONTELLO_FRONTS.filter((k) => k.street === 'West Montello Street' && k.at[0] > -40)
+  const fronts = north.map((k) => plan.find((p) => p.style === k.style)!)
+  assert.ok(fronts.every(Boolean), 'every photographed shop has its front')
+  const mid = fronts.map((p) => p.ax + p.dx * p.len / 2)
+  for (let i = 1; i < mid.length; i++) assert.ok(mid[i] > mid[i - 1], north[i].note)
+  const weezies = fronts.find((p) => p.b.n === "Weezie's Town Pump")
+  assert.ok(weezies && weezies.height > 6, "Weezie's is two storeys")
+  assert.ok(plan.some((p) => p.street === 'West Street'), 'the block across West Street faces it')
+  // The garage sits back behind its lot: no storefront, the lot paved from the sidewalks to its door.
+  assert.ok(!plan.some((p) => Math.hypot(p.b.r[0][0] - CORNER_GARAGE.at[0], p.b.r[0][1] - CORNER_GARAGE.at[1]) < 1))
+  const lot = doc.lots.find((l) => l.p[0] === CORNER_GARAGE.lot[0] && l.p[1] === CORNER_GARAGE.lot[1])
+  assert.ok(lot, 'the corner lot is paved')
+  assert.ok(pointInRing(lot.p, -22, -1) && land.clearAt(-22, -1) < 0)
+  const garage = doc.buildings.find((b) => Math.hypot(b.r[0][0] - CORNER_GARAGE.at[0], b.r[0][1] - CORNER_GARAGE.at[1]) < 1)!
+  for (let k = 0; k < garage.p.length; k += 2) assert.ok(!pointInRing(lot.p, garage.p[k] + (CORNER_GARAGE.at[0] - garage.p[k]) * 0.1, garage.p[k + 1] + (CORNER_GARAGE.at[1] - garage.p[k + 1]) * 0.1), 'the lot stops at the garage walls')
 })
 
 test('fronts nobody photographed are picked from the seed and carry the business name', () => {

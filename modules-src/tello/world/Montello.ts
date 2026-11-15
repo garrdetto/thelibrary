@@ -9,7 +9,7 @@
  * scene position (the map centre a whole map width north of the origin), which Rack & Reel's water shader needs.
  */
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
-import type { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { GameHost } from '../../rackreel/game/Game'
 import type { Mats } from '../../foxlake/fp/core/Tex'
 import type { Physics } from '../../foxlake/fp/physics/Physics'
@@ -20,12 +20,13 @@ import { buildGround, GROUND_CHUNK } from './Ground'
 import { Water } from './Water'
 import { bridgeSolids, buildBridges, buildRoads } from './Roads'
 import { buildStreetPaint } from './StreetPaint'
-import { buildBuildings } from './Buildings'
+import { BUILDING_CELL, buildBuildings, type ApartBuilding } from './Buildings'
 import { buildBarricades } from './Barricades'
 import { buildStorefronts } from './Storefronts'
 import { buildStreetDressing } from './StreetDressing'
 import { buildIntersection, type Intersection } from './Intersection'
 import { buildFalls, type Falls } from './Falls'
+import { buildCornerGarage } from './CornerGarage'
 import { buildLandmarks } from './Landmarks'
 import { KIT_URL, ModelKit } from './Kit'
 import { roadIndex, roadNameAt } from '../town/Routes'
@@ -36,10 +37,13 @@ const TREE_RADIUS = [0.34, 0.42, 0.25]
 /** Each tree model's height at scale 1, so a tree stands as tall as the lidar measured it. */
 const TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]
 const TREE_CELL = 16
+/** Montello's woods reach a mile round the city: its trees are planted in wide stands so they are a few thousand meshes, not tens of thousands. */
+const TREE_STAND = 384
 const NAME_CELL = 64
-/** Ends of the walls at the playable area's edge closer than this to the map's south edge leave County Highway F open. */
-const LINK_EDGE = 0.8
 const WALL_HEIGHT = 30
+/** How far past what is seen the ground stays solid (the play grid reads no further out than 254 m), and how deep it sinks beyond. */
+const GROUND_REACH = 8
+const SUNK = 80
 
 export interface MontelloSetup {
   host: GameHost
@@ -49,8 +53,10 @@ export interface MontelloSetup {
   mats: Mats
   gfx: TownGfx
   culler: RegionCuller
-  /** Leaves the playable area open where County Highway F meets the map's south edge (Fox Lake's road comes in there). */
-  openLink: boolean
+  /** Leaves the playable area's edge open within `r` metres of this spot (map coordinates), where a host world's road comes in. */
+  openExit: { x: number; z: number; r: number } | null
+  /** Houses (Tello building indexes) on lots a player can buy: built on their own, so they come down when bought. */
+  lotHouses?: ReadonlySet<number>
 }
 
 export class Montello {
@@ -62,6 +68,8 @@ export class Montello {
   private readonly treeCells = new Map<number, number[]>()
   private readonly treeSolid = new Set<number>()
   private readonly nameIndex: Map<number, number[]>
+  private lotHouses = new Map<number, ApartBuilding>()
+  private readonly cleared = new Set<number>()
 
   constructor(readonly land: TelloLand, private readonly s: MontelloSetup) {
     this.root = new TransformNode('tello-town', s.host.ctx.scene)
@@ -72,24 +80,32 @@ export class Montello {
     this.nameIndex = roadIndex(land.doc.roads, NAME_CELL)
   }
 
-  /** Builds everything (call while the host world loads, before Rack & Reel lays out its tree stands). */
+  /** Builds everything, a frame between the big steps so a host world can build it while the game runs. */
   async build(progress: (share: number, text: string) => void = () => {}): Promise<void> {
     const { land, s } = this
     const { scene } = s.host.ctx
     progress(0, 'Surveying Montello…')
     this.addGround()
     this.addWalls()
+    await frame()
     const ground = buildGround(scene, land)
+    await frame()
     this.water = new Water(s.host.ctx, land)
+    await frame()
     const roads = [...buildRoads(scene, land), ...buildStreetPaint(scene, land)]
+    await frame()
     const bridges = buildBridges(scene, land, (mesh) => s.gfx.addCaster(mesh))
     for (const b of bridgeSolids(land)) this.sink.addStaticBox({ cx: b.x, cy: b.y, cz: -b.z, hx: b.across, hy: b.up, hz: b.along, rotY: Math.atan2(Math.sin(b.heading), -Math.cos(b.heading)) })
     progress(0.4, 'Raising the town…')
     const [downtownKit, quarryKit] = await Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
-    buildBuildings(this.root, s.mats, this.sink, land)
-    buildBarricades(this.root, s.mats, this.sink, land)
+    this.lotHouses = buildBuildings(this.root, s.mats, this.sink, land, s.lotHouses).apart
+    for (const index of this.cleared) this.clearHouse(index)
+    await frame()
+    buildBarricades(this.root, s.mats, this.sink, land, s.openExit)
     buildStorefronts(this.root, s.mats, land, downtownKit)
+    await frame()
     buildLandmarks(this.root, s.mats, this.sink, land)
+    buildCornerGarage(this.root, s.mats, this.sink, land)
     buildStreetDressing(this.root, s.mats, this.sink, land)
     this.junction = buildIntersection(this.root, s.mats, this.sink, land)
     this.falls = buildFalls(this.root, s.mats, this.sink, land, quarryKit)
@@ -109,7 +125,10 @@ export class Montello {
 
   /** Hands the town's static meshes to the culler (call once the builders have frozen them). */
   ready(): void {
-    this.s.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), 192)
+    const still = this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen)
+    this.s.culler.addByCell(still, BUILDING_CELL)
+    // Once on the GPU, the town's still, unpickable meshes need no copy of their vertices in memory.
+    for (const m of still) if (!m.isPickable && m instanceof Mesh) m.geometry?.clearCachedData()
   }
 
   update(dt: number): void {
@@ -118,13 +137,22 @@ export class Montello {
     this.falls?.update(dt)
   }
 
-  /** The ground as one Rapier heightfield. */
+  /**
+   * The ground as one Rapier heightfield, sunk out of the way past what is seen of Montello, so a host world's own land
+   * can lie inside the map's square there.
+   */
   private addGround(): void {
     const land = this.land
     const n = land.side - 1
     const heights = new Float32Array(land.side * land.side)
     const ground = land.grids.ground
-    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) heights[i + j * land.side] = ground[(n - j) * land.side + i] / 100
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        const row = n - j
+        const seen = land.seen(land.x0 + i * land.cell, land.z0 + row * land.cell, -GROUND_REACH)
+        heights[i + j * land.side] = ground[row * land.side + i] / 100 - (seen ? 0 : SUNK)
+      }
+    }
     this.sink.addHeightfield(n, land.size, heights, land.x0 + land.size / 2, -(land.z0 + land.size / 2))
   }
 
@@ -133,17 +161,17 @@ export class Montello {
     const land = this.land
     const ring = land.doc.limits.play
     const n = ring.length / 2
-    const south = land.z0
+    const open = this.s.openExit
     for (let k = 0; k < n; k++) {
       const ax = ring[k * 2]
       const az = ring[k * 2 + 1]
       const bx = ring[((k + 1) % n) * 2]
       const bz = ring[((k + 1) % n) * 2 + 1]
-      if (this.s.openLink && az - south < LINK_EDGE && bz - south < LINK_EDGE) continue
       const len = Math.hypot(bx - ax, bz - az)
       if (len < 0.05) continue
       const mx = (ax + bx) / 2
       const mz = (az + bz) / 2
+      if (open && Math.hypot(mx - open.x, mz - open.z) < open.r) continue
       const ground = Math.min(land.groundAt(ax, az), land.groundAt(bx, bz), land.groundAt(mx, mz))
       this.sink.addStaticBox({ cx: mx, cy: ground - 4 + WALL_HEIGHT / 2, cz: -mz, hx: len / 2 + 0.4, hy: WALL_HEIGHT / 2, hz: 0.5, rotY: Math.atan2(bz - az, bx - ax) })
     }
@@ -164,7 +192,7 @@ export class Montello {
       if (!list) this.treeCells.set(key, (list = []))
       list.push(i)
     }
-    this.s.host.foliage.plantTrees(spots)
+    this.s.host.foliage.plantTrees(spots, TREE_STAND)
   }
 
   /** The model scale that makes tree `i` its measured height. */
@@ -179,6 +207,16 @@ export class Montello {
   }
 
   /** Trunks become solid for cars as anything that drives comes within about 50 m of them (points in the physics frame). */
+  /** Takes down the scanned house on a lot that has been bought (a building index from `lotHouses`), solids and all. */
+  clearHouse(index: number): void {
+    this.cleared.add(index)
+    const house = this.lotHouses.get(index)
+    if (!house) return
+    house.node.setEnabled(false)
+    for (const solid of house.solids) this.sink.removeStatic(solid)
+    house.solids.length = 0
+  }
+
   solidTrees(points: readonly { x: number; z: number }[]): void {
     const { shift } = this.s
     for (const p of points) {

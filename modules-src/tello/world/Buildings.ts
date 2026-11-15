@@ -13,14 +13,14 @@
  * Built in town coordinates (x east, z south) under the mirrored town root.
  */
 import type { Material } from '@babylonjs/core/Materials/material'
-import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { ChunkedBuilders, hexRGB, type MeshBuilder, type RGB } from '../../foxlake/fp/core/Geo'
 import type { Mats } from '../../foxlake/fp/core/Tex'
 import type { StaticSink } from './Sink'
 import { ROOF, type BuildingData } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { triangulate } from './Poly'
-import { knownFronts } from '../data/Downtown'
+import { dressedWalls, knownFronts } from '../data/Downtown'
 
 const SIDING = [0xf1eee6, 0xe6dfcf, 0xd9d4c7, 0xbfc6c9, 0x9db199, 0x8fa3b5, 0xc9b79a, 0xd8c98f, 0x9c4a3c, 0x6f7f8c, 0xb7b0a2, 0xe9e2c8, 0x7d8f7a, 0xa8998a]
 const BRICK = [0xb8573f, 0xa5503c, 0xc27a5a, 0xe2d6c2]
@@ -90,8 +90,22 @@ function edgesOf(p: number[]): Edge[] {
 
 export interface BuildStats { buildings: number; colliders: number }
 
-export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticSink, land: TelloLand): BuildStats {
-  const chunks = new ChunkedBuilders(128)
+/** Buildings are merged per material in squares this wide (metres): a few hundred meshes for the whole town. */
+export const BUILDING_CELL = 384
+
+/** A building built on its own (not merged into its cell) so it can come down: its node and its solids. */
+export interface ApartBuilding {
+  node: TransformNode
+  solids: unknown[]
+}
+
+/**
+ * Every building, merged per material and cell; those in `apart` (building indexes: houses on lots a player can buy)
+ * are built on their own and returned, so they can be taken down when the lot is bought.
+ */
+export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticSink, land: TelloLand, apart: ReadonlySet<number> = new Set()): BuildStats & { apart: Map<number, ApartBuilding> } {
+  const merged = new ChunkedBuilders(BUILDING_CELL)
+  const separate = new Map<number, { chunks: ChunkedBuilders; solids: unknown[] }>()
   const M = {
     siding: mats.textured('h-siding', 'siding', { vcolor: true }),
     brick: mats.textured('h-brick', 'brick', { vcolor: true }),
@@ -114,14 +128,18 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
   }
   if (!mats.nightGlow.some((g) => g.m === M.lit)) mats.nightGlow.push({ m: M.lit, k: 1.7 })
   let colliders = 0
-  for (const b of land.doc.buildings) {
+  for (const [index, b] of land.doc.buildings.entries()) {
     const edges = edgesOf(b.p)
     if (edges.length < 3) continue
+    const own = apart.has(index) ? { chunks: new ChunkedBuilders(128), solids: [] as unknown[] } : null
+    if (own) separate.set(index, own)
+    const chunks = own ? own.chunks : merged
+    const solid = own ? { ...physics, addStaticBox: (box: Parameters<StaticSink['addStaticBox']>[0]) => { const c = physics.addStaticBox(box); own.solids.push(c); return c } } : physics
     const cx = b.r[0][0]
     const cz = -b.r[0][1]
     const get = (m: Material, colors = false, cast = true) => chunks.get(cx, cz, m, { colors, cast })
     // A building matched to the owner's photos wears its front's finish and colour all round (Storefronts.ts dresses the front).
-    const known = b.k === 'store' || b.k === 'civic' || b.k === 'house' ? knownFronts(b.r[0][0], b.r[0][1])[0]?.style : undefined
+    const known = b.k === 'store' || b.k === 'civic' || b.k === 'house' ? knownFronts(b.r[0][0], b.r[0][1])[0]?.style ?? dressedWalls(b.r[0][0], b.r[0][1]) : undefined
     const facade = !known && (b.k === 'store' || b.k === 'civic')
     const commercial = facade || b.k === 'industrial'
     const floor = b.f
@@ -141,7 +159,7 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
     let wall: MeshBuilder
     let color: RGB
     if (known) {
-      const finish = { brick: M.brick, stucco: M.stucco, paint: M.paint, stone: M.stone, siding: M.siding }[known.upper]
+      const finish = { brick: M.brick, stucco: M.stucco, paint: M.paint, stone: M.stone, siding: M.siding, boards: M.boards }[known.upper]
       wall = get(finish, true)
       color = hexRGB(known.wall)
     } else if (facade) {
@@ -233,12 +251,19 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
     // Solid for walkers and cars.
     for (const r of roofs) {
       const top = floor + r.eave
-      physics.addStaticBox({ cx: r.cx, cy: (bottom + top) / 2, cz: r.cz, hx: r.hx, hy: (top - bottom) / 2, hz: r.hz, rotY: r.yaw })
+      solid.addStaticBox({ cx: r.cx, cy: (bottom + top) / 2, cz: r.cz, hx: r.hx, hy: (top - bottom) / 2, hz: r.hz, rotY: r.yaw })
       colliders++
     }
   }
-  chunks.flush(root, 'tello-buildings')
-  return { buildings: land.doc.buildings.length, colliders }
+  merged.flush(root, 'tello-buildings')
+  const built = new Map<number, ApartBuilding>()
+  for (const [index, own] of separate) {
+    const node = new TransformNode(`tello-house-${index}`, root.getScene())
+    node.parent = root
+    own.chunks.flush(node, `tello-house-${index}`)
+    built.set(index, { node, solids: own.solids })
+  }
+  return { buildings: land.doc.buildings.length, colliders, apart: built }
 }
 
 /** One covering rectangle with its roof, in town coordinates: `u` is its first axis, `v` its second. */

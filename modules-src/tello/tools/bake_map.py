@@ -21,7 +21,7 @@ Outputs (committed, read by the page and by the tests):
 The frame: x east and z north in metres from the origin (near City Hall), UTM zone 16N, 1 unit = 1 m.
 Needs numpy, scipy, pillow, pyproj, shapely and laspy[lazrs].
 """
-import argparse, gzip, json, math, os, struct, sys, urllib.request
+import argparse, gzip, json, math, os, struct, sys, time, urllib.request
 import xml.etree.ElementTree as ET
 import numpy as np
 import shapely
@@ -35,13 +35,13 @@ from shapely import affinity
 # ---------------------------------------------------------------- frame
 ORIGIN_LONLAT = (-89.3288, 43.7919)
 E0, N0 = 312637, 4851396            # the origin in UTM 16N (EPSG:26916), whole metres
-X0, X1, Z0, Z1 = -2500, 1596, -1560, 2536
-SIZE = X1 - X0                      # 4096 m square
+X0, X1, Z0, Z1 = -4600, 3592, -3500, 4692
+SIZE = X1 - X0                      # 8192 m square: the city and a mile round it, and the woods seen past that
 FINE = 2                            # working rasters
 CELL = 4                            # shipped grids
-NF = SIZE // FINE + 1               # 2049 fine nodes a side
-NC = SIZE // CELL + 1               # 1025 shipped nodes a side
-FETCH_BBOX = (-89.375, 43.762, -89.275, 43.822)   # lon0, lat0, lon1, lat1 (wider than the world)
+NF = SIZE // FINE + 1               # 4097 fine nodes a side
+NC = SIZE // CELL + 1               # 2049 shipped nodes a side
+FETCH_BBOX = (-89.40, 43.750, -89.265, 43.845)   # lon0, lat0, lon1, lat1 (wider than the world)
 WORLD = box(X0, Z0, X1, Z1)
 MS_QUADKEYS = ['030222020', '030222021']
 MS_INDEX = 'https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv'
@@ -57,7 +57,7 @@ def fetch(url, path, timeout=240):
         return path
     os.makedirs(os.path.dirname(path), exist_ok=True)
     last = None
-    for _ in range(4):
+    for attempt in range(8):
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'thelibrary-tello-bake/1.0'})
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -67,6 +67,7 @@ def fetch(url, path, timeout=240):
             return path
         except Exception as e:  # noqa: BLE001
             last = e
+            time.sleep(5 * (attempt + 1))
     raise SystemExit(f'could not download {url}: {last}')
 
 # ---------------------------------------------------------------- rasters
@@ -725,7 +726,7 @@ def lidar_tiles(cache):
             if len(tile) == 11 and tile.startswith('16TCP') and (int(tile[5:8]), int(tile[8:11]) + 4000) in want:
                 out.append(fetch(url, f"{cache}/lidar/{url.rsplit('/', 1)[-1]}", timeout=1500))
     if len(out) != len(want):
-        raise SystemExit(f'expected {len(want)} lidar tiles, found {len(out)}')
+        print(f'  {len(want) - len(out)} of {len(want)} lidar tiles are not in the survey; the bare-earth model stands in there', flush=True)
     return out
 
 def cell_reduce(idx, values, size, fn, fill):
@@ -783,9 +784,13 @@ def load_lidar(cache, keep_mask):
 def cell_dem(dem):
     """The bare-earth height at every one-metre cell centre."""
     c = X0 + np.arange(N1) + 0.5
-    r = Z0 + np.arange(N1) + 0.5
-    gx, gz = np.meshgrid(c, r)
-    return sample(dem, gx.ravel(), gz.ravel()).reshape(N1, N1).astype(np.float32)
+    out = np.empty((N1, N1), np.float32)
+    rows = 512
+    for j0 in range(0, N1, rows):
+        r = Z0 + np.arange(j0, min(N1, j0 + rows)) + 0.5
+        gx, gz = np.meshgrid(c, r)
+        out[j0:j0 + len(r)] = sample(dem, gx.ravel(), gz.ravel()).reshape(len(r), N1)
+    return out
 
 # Roof types: 0 flat, 1 gable with the ridge along the rectangle's first axis, 2 gable with the ridge along its second
 # axis, 3 hip, 4..7 a single slope whose high side is toward +second, -second, +first, -first axis. -1 = not measured.
@@ -1085,10 +1090,11 @@ def collect_pois(osm, bodies):
 
 # ---------------------------------------------------------------- city limits
 
-PLAY_PAD = 30.0      # how far past the city limits you may walk and drive
-LINK_PAD = 32.0      # half-width of the strip along County Highway F out to the map's south edge (Fox Lake's road comes in there)
+PLAY_PAD = 1609.344  # how far past the city limits you may walk and drive: a mile, so the roads out of town reach places like Foxtails
+LINK_ROAD = 'State Highway 23'
+EAST_PAD = 40.0      # how far past the highway's exit the playable area reaches east (Fox Plains' side)
 VIS_PAD = 240.0      # how far past that the ground, water and woods are still drawn
-CITY_PAD = 8.0       # buildings whose footprint centre lies this close to the limits are built
+CITY_PAD = 8.0       # buildings whose footprint centre lies this close to the playable area are built
 
 def city_limits(osm):
     """The City of Montello's boundary (OpenStreetMap relation, admin level 8): its largest part, holes filled."""
@@ -1102,10 +1108,13 @@ def city_limits(osm):
     raise SystemExit('The City of Montello boundary is missing from the OpenStreetMap extract')
 
 def playable_area(city, roads):
-    """The city limits widened a little, plus County Highway F from the limits out to the map's south edge."""
-    link = next(r for r in roads if (r['name'] or r['ref']) == 'County Highway F' and min(z for _x, z in r['pts']) < Z0 + 10)
-    road = LineString(link['pts']).intersection(WORLD)
-    area = unary_union([city.buffer(PLAY_PAD), road.difference(city).buffer(LINK_PAD)]).intersection(WORLD)
+    """The city limits widened by a mile; State Highway 23 (`link`) is where Fox Lake's road comes in at its edge."""
+    link = max((r for r in roads if LINK_ROAD in (r['name'], r['ref'])), key=lambda r: max(x for x, _z in r['pts']))
+    ring = city.buffer(PLAY_PAD)
+    # Fox Plains lies east, where the highway leaves: nothing of the ring reaches further east than the highway's exit.
+    cross = LineString(link['pts']).intersection(ring.exterior)
+    east = max((g.x for g in getattr(cross, 'geoms', [cross]) if g.geom_type == 'Point'), default=X1)
+    area = ring.intersection(box(X0, Z0, east + EAST_PAD, Z1)).intersection(WORLD)
     if area.geom_type != 'Polygon':
         area = max(area.geoms, key=lambda g: g.area)
     return Polygon(area.exterior).simplify(1.0), link
@@ -1398,7 +1407,7 @@ def main():
     play, link = playable_area(city, roads)
     play_sd = signed_distance(play)
     seen = play.buffer(VIS_PAD)
-    near_city = city.buffer(CITY_PAD)
+    near_city = play.buffer(CITY_PAD)
     buildings = [b for b in buildings if near_city.contains(b['poly'].representative_point())]
     for b in buildings:
         b['roof_rgb'] = roof_colour(b['poly'], naip, ndvi)

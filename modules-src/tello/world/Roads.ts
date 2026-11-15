@@ -12,7 +12,7 @@ import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import type { Scene } from '@babylonjs/core/scene'
-import { asphaltTexture, countyRoadTexture } from '../../rackreel/world/Highway'
+import { asphaltTexture, countyRoadTexture, streetCentreTexture } from '../../rackreel/world/Highway'
 import { detailTexture } from '../../rackreel/world/World'
 import type { BridgeData, RoadKind } from '../data/MapData'
 import type { TelloLand } from '../region'
@@ -22,6 +22,10 @@ import { resample, triangulate } from './Poly'
 export const CELL = 512
 /** How far each kind of surface sits above the ground it is draped on. */
 const LIFT: Record<RoadKind, number> = { 0: 0.06, 1: 0.05, 2: 0.04, 3: 0.035, 4: 0.15, 5: 0.03 }
+/** Streets at least this wide (metres) get the neighbourhood street's centre line. */
+const NEIGHBOURHOOD_MIN_WIDTH = 5.5
+/** Roads are drawn out to this far inside the edge of what is seen past the playable area (the ground stops at the edge). */
+const ROAD_SEEN = 16
 const JUNCTION_LIFT = 0.07
 
 export interface Batch { positions: number[]; uvs: number[]; indices: number[] }
@@ -93,7 +97,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
   const lined = countyRoadTexture(scene)
   lined.wrapV = Texture.WRAP_ADDRESSMODE
   const detail = detailTexture(scene)
-  const mats: Record<RoadKind | 6, StandardMaterial> = {
+  const mats: Record<RoadKind | 6 | 7, StandardMaterial> = {
     0: surface(scene, 'highway', lined),
     1: surface(scene, 'street', asphaltTexture(scene, 10)),
     2: surface(scene, 'lane', asphaltTexture(scene, 8), new Color3(0.92, 0.92, 0.92)),
@@ -101,6 +105,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
     4: surface(scene, 'walk', detail, new Color3(0.7, 0.69, 0.66)),
     5: surface(scene, 'trail', detail, new Color3(0.5, 0.41, 0.29)),
     6: surface(scene, 'junction', asphaltTexture(scene, 10)),
+    7: surface(scene, 'neighbourhood', streetCentreTexture(scene)),
   }
   const batches = new Map<string, Batch>()
   const h = (x: number, z: number) => land.heightAt(x, z)
@@ -112,9 +117,10 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
     const pts = prof ? prof.pts : resample(road.p, town ? PROFILE_STEP : 4)
     const n = pts.length / 2
     const halfAt = (i: number) => (prof ? prof.half[i] : road.w / 2)
-    const kind: RoadKind = town ? 1 : road.k
+    // Every ordinary street is one lane each way divided by a dashed centre line (narrow lanes and alleys stay plain).
+    const kind: RoadKind | 7 = town ? 1 : road.k === 1 && road.w >= NEIGHBOURHOOD_MIN_WIDTH ? 7 : road.k
     const lift = LIFT[road.k]
-    const worldUv = kind !== 0
+    const worldUv = kind !== 0 && kind !== 7
     const stations: { x: number; z: number; sx: number; sz: number; along: number }[] = []
     let along = 0
     for (let i = 0; i < n; i++) {
@@ -131,7 +137,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
     // Pieces of up to 64 m, each in the batch of the cell it starts in, so far stretches of a long road are culled.
     for (let s0 = 0; s0 < n - 1; s0 += 16) {
       const s1 = Math.min(n - 1, s0 + 16)
-      if (!land.seen(stations[s0].x, stations[s0].z, -40) && !land.seen(stations[s1].x, stations[s1].z, -40)) continue
+      if (!land.seen(stations[s0].x, stations[s0].z, ROAD_SEEN) && !land.seen(stations[s1].x, stations[s1].z, ROAD_SEEN)) continue
       const batch = batchOf(batches, `${kind}|${Math.floor(stations[s0].x / CELL)},${Math.floor(stations[s0].z / CELL)}`)
       for (let i = s0; i <= s1; i++) {
         const st = stations[i]
@@ -169,7 +175,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
   }
   // Junction patches: a disc as wide as the widest road meeting there.
   for (const j of junctions(land)) {
-    if (!land.seen(j.x, j.z, -40)) continue
+    if (!land.seen(j.x, j.z, ROAD_SEEN)) continue
     const b = batchOf(batches, `6|${Math.floor(j.x / CELL)},${Math.floor(j.z / CELL)}`)
     const c = b.positions.length / 3
     const r = j.r + 0.15
@@ -198,7 +204,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
   const out: Mesh[] = []
   for (const [key, b] of batches) {
     if (!b.indices.length) continue
-    const kind = Number(key.split('|')[0]) as RoadKind | 6
+    const kind = Number(key.split('|')[0]) as RoadKind | 6 | 7
     out.push(toMesh(scene, `tello-road:${key}`, b, mats[kind]))
   }
   return out

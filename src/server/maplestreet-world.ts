@@ -56,9 +56,9 @@ function parseIdentity(header: string | null): Identity | null {
 export class MapleStreetWorld {
   private readonly world: WorldServer
 
-  constructor(state: DurableState, private readonly env: Env, table = 'maplestreet_world', devTools = false) {
+  constructor(state: DurableState, private readonly env: Env, table = 'maplestreet_world', foxLake = false) {
     const storage = d1Storage(env, table)
-    this.world = new WorldServer(storage, { devTools })
+    this.world = new WorldServer(storage, { devTools: foxLake, foxLake })
     void state.blockConcurrencyWhile(async () => {
       registerCustomItems(await listStoreItems(env))
       registerCustomVehicles(await listStoreVehicles(env))

@@ -72,7 +72,7 @@ export interface Appearance extends Record<ShapeSlider | BodySlider, number> {
  * Bumped whenever the options change enough that everyone deserves one more look in the mirror: a profile whose
  * `fitted` is lower is offered the character screen once.
  */
-export const APPEARANCE_VERSION = 1
+export const APPEARANCE_VERSION = 2
 
 export const DEFAULT_APPEARANCE: Appearance = { face: 'base', hair: 'base', beard: 'base', jaw: 0, chin: 0, nose: 0, brow: 0, cheeks: 0, height: 0, build: 0, shoulders: 0 }
 

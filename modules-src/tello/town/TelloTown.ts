@@ -121,7 +121,7 @@ export class TelloTown implements GameExtension {
     this.physics = await Physics.create()
     this.assets = new Assets(scene)
     this.mats = new Mats(scene)
-    this.montello = new Montello(land, { host, physics: this.physics, shift: { x: 0, y: 0, z: 0 }, mats: this.mats, gfx: this.gfx, culler: this.culler, openLink: false })
+    this.montello = new Montello(land, { host, physics: this.physics, shift: { x: 0, y: 0, z: 0 }, mats: this.mats, gfx: this.gfx, culler: this.culler, openExit: null })
     await this.montello.build((share, text) => host.hud.setLoading(0.7 + share * 0.1, text))
     this.models = new VehicleModels(this.assets)
     host.foliage.hostCasters = (focus) => (land.holdsScene(focus.x, focus.z) ? this.gfx.near(focus) : EMPTY)

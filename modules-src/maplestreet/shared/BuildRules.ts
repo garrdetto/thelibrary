@@ -60,6 +60,8 @@ export interface WorldState {
   version: number;
   /** Which starter-house roster this world was seeded with (shared/Seed.ts); missing means the first. */
   seedVersion?: number;
+  /** The last one-time release of every player's lot (Fox Lake), so it runs once per `RELEASE_LOTS`. */
+  released?: number;
 }
 
 type Seg = { gx: number; gz: number; dir: WallDir };
