@@ -16,7 +16,11 @@
   let pulseChangedAt = 0
   const keepFields = item => {
     const row = {}
-    for (const key of pulseFields) if (item[key] !== undefined) row[key] = item[key]
+    for (const key of pulseFields) {
+      const value = item[key]
+      if (value === undefined) continue
+      row[key] = value instanceof Date ? value.getTime() : value
+    }
     return row
   }
   const applyPulseOperations = message => {

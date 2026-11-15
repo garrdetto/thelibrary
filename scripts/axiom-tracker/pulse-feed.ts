@@ -14,7 +14,7 @@ export const pulseRowSchema = z.object({
   tokenAddress: z.string().regex(solanaAddressPattern),
   tokenName: text,
   tokenTicker: text,
-  createdAt: z.union([z.string().max(40), z.number()]).nullable().optional(),
+  createdAt: z.unknown().optional(),
   marketCap: numeric,
   volume: numeric,
   liquidityNative: numeric,
@@ -43,9 +43,10 @@ export const pulseRowSchema = z.object({
   website: text,
 }).passthrough()
 
-export const pulseFeedSchema = z.object({ usdPerSol: z.number().positive().max(100_000), rows: z.array(pulseRowSchema).max(300) })
+/** Rows are checked one at a time in `applyPulseFeed`, so one coin with an odd field never costs the whole report. */
+export const pulseFeedSchema = z.object({ usdPerSol: z.number().positive().max(100_000), rows: z.array(z.unknown()).max(300) })
 
-export type PulseFeed = z.infer<typeof pulseFeedSchema>
+export type PulseFeed = { usdPerSol: number; rows: unknown[] }
 export type PulseRow = z.infer<typeof pulseRowSchema>
 
 const num = (value: unknown) => {
@@ -95,12 +96,16 @@ export function metricsFromRow(row: PulseRow, usdPerSol: number, seenAt: number)
  */
 export function applyPulseFeed(feed: PulseFeed, now: number) {
   let taken = 0
-  for (const row of feed.rows) {
+  let skipped = 0
+  for (const raw of feed.rows) {
+    const parsed = pulseRowSchema.safeParse(raw)
+    if (!parsed.success) { skipped += 1; continue }
+    const row = parsed.data
     const mint = row.tokenAddress
     const metrics = metricsFromRow(row, feed.usdPerSol, now)
     trackerState.pulseCards.set(mint, metrics)
     notePulseFlow(mint, metrics)
-    const created = typeof row.createdAt === 'number' ? row.createdAt : row.createdAt ? Date.parse(row.createdAt) : NaN
+    const created = typeof row.createdAt === 'number' ? row.createdAt : typeof row.createdAt === 'string' ? Date.parse(row.createdAt) : NaN
     trackerState.pulseNames.set(mint, {
       symbol: (row.tokenTicker ?? '???').slice(0, 24),
       name: (row.tokenName ?? row.tokenTicker ?? 'Unknown').slice(0, 80),
@@ -114,7 +119,8 @@ export function applyPulseFeed(feed: PulseFeed, now: number) {
   }
   pulseFeedSeen.at = now
   pulseFeedSeen.count = taken
+  pulseFeedSeen.skipped = skipped
   return taken
 }
 
-export const pulseFeedSeen = { at: 0, count: 0 }
+export const pulseFeedSeen = { at: 0, count: 0, skipped: 0 }
