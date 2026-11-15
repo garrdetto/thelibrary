@@ -95,7 +95,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div><dt>Viewers</dt><dd className="tabular">{formatCount(live.viewers)} <small className={`radar-delta ${changeClass(live.viewersPerMin)}`}>{formatSigned(live.viewersPerMin)}/min</small></dd></div>
           <div><dt>Price</dt><dd className="tabular">{formatPrice(live.priceUsd)}</dd></div>
           <div><dt>Market cap</dt><dd className="tabular">{formatUsd(live.marketCap)}</dd></div>
-          {windows.map(([key, label]) => <div key={key}><dt>Price, {label}</dt><dd className={`tabular radar-delta ${changeClass(live.priceChange[key])}`}>{formatChange(live.priceChange[key])}</dd></div>)}
+          {windows.map(([key, label]) => <div key={key}><dt>Price, {label}</dt><dd className={`tabular radar-delta ${changeClass(live.priceChange[key] ?? null)}`}>{formatChange(live.priceChange[key] ?? null)}</dd></div>)}
           <div><dt>Liquidity</dt><dd className="tabular">{formatUsd(live.liquidityUsd)}</dd></div>
           <div><dt>5m buy share</dt><dd className="tabular">{formatPercent(live.buyRatio, 0)}</dd></div>
         </dl>
