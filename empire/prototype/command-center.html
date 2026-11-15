@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
 @property --chase{syntax:'<angle>';inherits:false;initial-value:0deg}
+@property --fxa{syntax:'<number>';inherits:false;initial-value:1}
 :root{
   --bg:#111214; --bg2:#16171a; --panel:#1b1c1f; --panel2:#232428; --line:#3d3627;
   --ink:#e8d08f; --dim:#9e8e66; --accent:#d4a640; --gold:#f1c96b; --good:#7fd17a; --bad:#ec6a5f; --violet:#b9a0ff; --info:#6cb6ff;
@@ -38,14 +39,29 @@ body::before{content:"";position:fixed;left:0;right:0;top:0;height:120px;pointer
 @keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @keyframes glint{0%,70%{transform:translateX(-120%)}100%{transform:translateX(220%)}}
 @keyframes caret{50%{opacity:0}}
-.chase{--cb:var(--panel);border:1px solid transparent!important;
+.chase{--cb:var(--panel);--fxc:var(--accent);--fxc2:var(--gold);--fxs:1;--fxi:1;--fxw:1px;--fxbase:7s;
+  --fxci:color-mix(in srgb,var(--fxc) calc(min(var(--fxi),1) * 100%),transparent);
+  --fxc2i:color-mix(in srgb,var(--fxc2) calc(min(var(--fxi),1) * 100%),transparent);
+  border:var(--fxw) solid transparent!important;
   background:linear-gradient(var(--cb),var(--cb)) padding-box,
-    conic-gradient(from var(--chase),transparent 0deg 30deg,var(--accent) 62deg,var(--gold) 68deg,transparent 76deg 200deg,var(--accent) 232deg,var(--gold) 238deg,transparent 246deg) border-box,
+    conic-gradient(from var(--chase),transparent 0deg 30deg,var(--fxci) 62deg,var(--fxc2i) 68deg,transparent 76deg 200deg,var(--fxci) 232deg,var(--fxc2i) 238deg,transparent 246deg) border-box,
     linear-gradient(var(--line),var(--line)) border-box;
-  animation:chase 7s linear infinite}
-.chase.slow{animation-duration:12s}
-.chase.fast{animation-duration:3.4s}
+  animation:chase calc(var(--fxbase) / var(--fxs)) linear infinite}
+.chase.slow{--fxbase:12s}
+.chase.fast{--fxbase:3.4s}
 .chase.rev{animation-direction:reverse}
+.chase[data-fx=comet]{background:linear-gradient(var(--cb),var(--cb)) padding-box,conic-gradient(from var(--chase),transparent 0deg 150deg,color-mix(in srgb,var(--fxc) calc(min(var(--fxi),1) * 22%),transparent) 290deg,var(--fxci) 350deg,var(--fxc2i) 356deg,transparent 360deg) border-box,linear-gradient(var(--line),var(--line)) border-box;animation-duration:calc(var(--fxbase) * .55 / var(--fxs))}
+.chase[data-fx=pulse],.chase[data-fx=heartbeat]{background:linear-gradient(var(--cb),var(--cb)) padding-box,linear-gradient(color-mix(in srgb,var(--fxc) calc(var(--fxa) * min(var(--fxi),1) * 100%),var(--line)),color-mix(in srgb,var(--fxc) calc(var(--fxa) * min(var(--fxi),1) * 100%),var(--line))) border-box;box-shadow:0 0 calc(var(--fxa) * var(--fxi) * 14px) color-mix(in srgb,var(--fxc) calc(var(--fxa) * 50%),transparent),inset 0 0 calc(var(--fxa) * var(--fxi) * 10px) color-mix(in srgb,var(--fxc) calc(var(--fxa) * 24%),transparent);animation:fxpulse calc(2.6s / var(--fxs)) ease-in-out infinite}
+.chase[data-fx=heartbeat]{animation:fxbeat calc(1.6s / var(--fxs)) linear infinite}
+.chase[data-fx=electric]{background:linear-gradient(var(--cb),var(--cb)) padding-box,repeating-conic-gradient(from var(--chase),var(--fxci) 0deg 1.6deg,transparent 1.6deg 6deg,var(--fxc2i) 6deg 7deg,transparent 7deg 17deg) border-box,linear-gradient(color-mix(in srgb,var(--fxc) calc(var(--fxa) * 45%),var(--line)),color-mix(in srgb,var(--fxc) calc(var(--fxa) * 45%),var(--line))) border-box;box-shadow:0 0 calc(var(--fxa) * var(--fxi) * 13px) color-mix(in srgb,var(--fxc) calc(var(--fxa) * 65%),transparent),inset 0 0 calc(var(--fxa) * var(--fxi) * 8px) color-mix(in srgb,var(--fxc2) calc(var(--fxa) * 30%),transparent);animation:chase calc(1.2s / var(--fxs)) steps(10) infinite,fxzap calc(1.9s / var(--fxs)) linear infinite}
+.chase[data-fx=flow]{background:linear-gradient(var(--cb),var(--cb)) padding-box,linear-gradient(90deg,var(--fxci),var(--fxc2i),color-mix(in srgb,var(--fxc) 12%,var(--line)),var(--fxci)) border-box;background-size:auto,300% 100%;animation:fxflow calc(5s / var(--fxs)) linear infinite}
+.chase[data-fx=spectrum]{background:linear-gradient(var(--cb),var(--cb)) padding-box,conic-gradient(from var(--chase),#ff3b5c,#ffb347,#f2e14e,#4ade80,#38e1ff,#a78bfa,#ff3b5c) border-box;animation-duration:calc(var(--fxbase) * .8 / var(--fxs));box-shadow:0 0 calc(var(--fxi) * 6px) rgba(167,139,250,.25)}
+.chase[data-fx=static]{background:linear-gradient(var(--cb),var(--cb)) padding-box,linear-gradient(var(--fxci),var(--fxci)) border-box;box-shadow:0 0 calc(var(--fxi) * 8px) color-mix(in srgb,var(--fxc) 30%,transparent);animation:none}
+.chase[data-fx=off]{background:linear-gradient(var(--cb),var(--cb)) padding-box,linear-gradient(var(--line),var(--line)) border-box;animation:none}
+@keyframes fxpulse{0%,100%{--fxa:.12}50%{--fxa:1}}
+@keyframes fxbeat{0%{--fxa:.15}8%{--fxa:1}16%{--fxa:.35}24%{--fxa:.95}40%,100%{--fxa:.12}}
+@keyframes fxzap{0%{--fxa:.25}6%{--fxa:1}8%{--fxa:.3}21%{--fxa:.35}22%{--fxa:.95}24%{--fxa:.25}47%{--fxa:.3}48%{--fxa:1}50%{--fxa:.45}52%{--fxa:1}54%{--fxa:.25}79%{--fxa:.4}80%{--fxa:.85}82%{--fxa:.25}100%{--fxa:.25}}
+@keyframes fxflow{from{background-position:0 0,0% 0}to{background-position:0 0,300% 0}}
 .cut{clip-path:polygon(var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%,0 var(--cut))}
 .bk{position:relative}
 .bk::before{content:"";position:absolute;inset:3px;pointer-events:none;z-index:2;opacity:.9;animation:bk 3.2s ease-in-out infinite;
@@ -53,7 +69,7 @@ body::before{content:"";position:fixed;left:0;right:0;top:0;height:120px;pointer
     linear-gradient(var(--gold),var(--gold)) 100% 0/12px 2px,linear-gradient(var(--gold),var(--gold)) 100% 0/2px 12px,
     linear-gradient(var(--gold),var(--gold)) 0 100%/12px 2px,linear-gradient(var(--gold),var(--gold)) 0 100%/2px 12px,
     linear-gradient(var(--gold),var(--gold)) 100% 100%/12px 2px,linear-gradient(var(--gold),var(--gold)) 100% 100%/2px 12px;background-repeat:no-repeat}
-.ledstrip{height:3px;flex:none;background:repeating-linear-gradient(90deg,var(--accent) 0 5px,transparent 5px 16px);opacity:.55;animation:led 1.1s linear infinite}
+.ledstrip{height:3px;flex:none;background:repeating-linear-gradient(90deg,var(--accent) 0 5px,transparent 5px 16px);opacity:.55;animation:led calc(1.1s / var(--led-speed,1)) linear infinite}
 .ledstrip.rev{animation-direction:reverse}
 .ledstrip.gold{background:repeating-linear-gradient(90deg,var(--gold) 0 3px,transparent 3px 16px)}
 .leds{display:inline-flex;gap:4px;align-items:center}
@@ -140,7 +156,7 @@ textarea{width:100%;resize:vertical;min-height:96px}
 .armor.gold{background:linear-gradient(160deg,#fff0b8,#d9a92e 45%,#8a6410)}
 .armor.white{background:linear-gradient(160deg,#fff,#e6e9ef 45%,#9aa3b5)}
 .armor.gray{background:linear-gradient(160deg,#c9ced6,#8a919c 45%,#545a64)}
-#mapWrap{position:relative;min-height:0;overflow:hidden;--cb:#0b0d10;border-width:2px!important}
+#mapWrap{position:relative;min-height:0;overflow:hidden;--cb:#0b0d10;--fxw:2px}
 #map{width:100%;height:100%;display:block}
 body.scan #mapWrap::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 3px)}
 .maphud{position:absolute;left:30px;right:30px;display:flex;justify-content:space-between;gap:10px;pointer-events:none;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;color:var(--dim);z-index:3}
@@ -270,9 +286,32 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
 #boot .bar{height:4px;background:var(--line);margin-top:12px;overflow:hidden}
 #boot .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--gold));transition:width .25s}
 #boot .caret{display:inline-block;width:8px;height:13px;background:var(--gold);vertical-align:-2px;animation:caret .8s steps(1) infinite}
+body.fx-noleds .ledstrip{animation:none;opacity:.3}
+body.fx-noblink .leds i,body.fx-noblink .live,body.fx-noblink .tg-label::before,body.fx-noblink .classbar b,body.fx-noblink .light.working{animation:none;opacity:.9}
+body.fx-noscan::before{display:none}
+body.fx-noglint .stat::after{display:none}
+body.fx-nobrackets .bk::before{animation:none}
+body.fx-nostripes .classbar::before,body.fx-nostripes .classbar::after{animation:none}
+body.fx-nosweep header::after,body.fx-nosweep .tabs button[aria-selected=true]::after{animation:none}
+.fxlist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:6px 0 10px}
+.fxitem{--cb:var(--panel2);display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;text-align:left;clip-path:none;text-transform:none;letter-spacing:.04em;font-size:12.5px}
+.fxitem small{font-family:var(--f-mono);font-size:10.5px;color:var(--dim);letter-spacing:.06em;font-weight:400}
+.fxitem[aria-pressed=true]{outline:2px solid var(--gold);outline-offset:1px}
+.fxitem.all{grid-column:1/-1}
+.fxedit{border:1px solid var(--line);border-left:2px solid var(--accent);padding:6px 12px 10px;background:color-mix(in srgb,var(--panel2) 60%,transparent)}
+.fxedit .formrow{grid-template-columns:96px 1fr}
+.fxedit input[type=range]{width:100%}
+.rangev{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:center}
+.rangev span{font-family:var(--f-mono);font-size:11px;color:var(--gold);text-align:right}
+.toggles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px}
+.toggles label{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:3px 0}
+.segs{display:flex;gap:4px}
+.segs button{padding:4px 10px;font-size:11px}
+.segs button[aria-pressed=true]{border-color:var(--accent);color:var(--gold);background:color-mix(in srgb,var(--accent) 14%,var(--panel2))}
+@media (prefers-reduced-motion: reduce){.chase[data-fx]{animation:none!important}}
 @media (prefers-reduced-motion: reduce){.chase,header::after,.classbar b,.classbar::before,.classbar::after,.live,.light.working,.toast div,.ledstrip,.leds i,.bk::before,.stat::after,.sigil .r1,.sigil .r2,.tabs button::after,.tg-label::before,.ticker .track,body::before{animation:none}}
-@media (max-width:1680px){.brand{min-width:0}.brand h1{font-size:18px;letter-spacing:.12em}.brand small{display:none}.sigil{width:38px;height:38px}.stat{padding:3px 8px 4px}.stat b{font-size:13px}.stat canvas{width:70px}.topright button{padding:6px 10px}.topright select{max-width:168px}.stat.wide{max-width:220px}}
-@media (max-width:1500px){#main{grid-template-columns:246px minmax(0,1fr) 364px}#telemetry{grid-template-columns:repeat(4,minmax(0,1fr))}#telemetry .tel:nth-child(n+5){display:none}.hud .stat:nth-child(5){display:none}.stat canvas{width:60px}#themeSel{display:none}}
+@media (max-width:1680px){#themeSel{display:none}.brand{min-width:0}.brand h1{font-size:18px;letter-spacing:.12em}.brand small{display:none}.sigil{width:38px;height:38px}.stat{padding:3px 8px 4px}.stat b{font-size:13px}.stat canvas{width:70px}.topright button{padding:6px 10px}.topright select{max-width:168px}.stat.wide{max-width:220px}}
+@media (max-width:1500px){.topright button{padding:6px 8px;font-size:11.5px;letter-spacing:.1em}#main{grid-template-columns:246px minmax(0,1fr) 364px}#telemetry{grid-template-columns:repeat(4,minmax(0,1fr))}#telemetry .tel:nth-child(n+5){display:none}.hud .stat:nth-child(5){display:none}.stat canvas{width:60px}#themeSel{display:none}}
 @media (max-width:1400px){.stat.wide{max-width:180px}.hud .stat:nth-child(3){display:none}}
 @media (max-width:1180px){#main{grid-template-columns:232px minmax(0,1fr) 344px}.ticker{display:none}}
 @media (max-width:960px){
@@ -289,10 +328,10 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
 </style>
 </head>
 <body class="theme-obsidian">
-<div id="boot" role="status" aria-live="polite"><div class="box chase fast cut"><h2>The King's Empire</h2><div id="bootLines"></div><div class="bar"><i id="bootBar"></i></div></div></div>
+<div id="boot" role="status" aria-live="polite" data-section="dialogs"><div class="box chase fast cut"><h2>The King's Empire</h2><div id="bootLines"></div><div class="bar"><i id="bootBar"></i></div></div></div>
 <div id="root">
 <div class="classbar" role="note"><span>THE KING'S EMPIRE</span><b>// ROYAL COMMAND NET · SIMULATION //</b><span class="cb-clock" id="cbClock">--:--:--</span></div>
-<header class="chase slow bk">
+<header class="chase slow bk" data-section="header">
   <div class="brand">
     <svg class="sigil" viewBox="0 0 44 44" aria-hidden="true">
       <circle class="r1" cx="22" cy="22" r="20" fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="10 4 2 4"/>
@@ -303,7 +342,7 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
     </svg>
     <div><h1>The King's Empire</h1><small>Royal command console · v4 · Keep-01</small></div>
   </div>
-  <div class="hud" aria-live="polite">
+  <div class="hud" aria-live="polite" data-section="hud">
     <div class="stat chase slow cut"><span>Empire time</span><b id="hClock">Day 1 · 08:00</b><div class="meter" id="hLoad" title="Work waiting in department queues"></div></div>
     <div class="stat chase slow cut"><span>Revenue · sim</span><b id="hRev">$0.00</b><canvas id="spRev" width="192" height="28"></canvas></div>
     <div class="stat chase slow cut"><span>Token spend · sim</span><b id="hSpend">$0.00</b><canvas id="spSpend" width="192" height="28"></canvas></div>
@@ -315,13 +354,14 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
     <button id="bPlay" title="Pause or resume the simulation (Space)">Pause</button>
     <label for="themeSel" class="vh">Theme</label>
     <select id="themeSel" title="Theme"><option value="obsidian">Obsidian · Gold</option><option value="blackgold">Black · Gold</option><option value="naval">Navy · Light blue</option><option value="custom">Custom colors</option></select>
-    <button id="bColors" title="Interface and castle colors">Colors</button>
+    <button id="bColors" title="Interface and castle colors (C)">Colors</button>
+    <button id="bFx" title="Border effects and animation (E)">Effects</button>
     <button id="bSettings" title="Simulation options">Settings</button>
   </div>
 </header>
 
 <div id="main">
-  <aside id="left" class="frame chase slow bk" aria-label="Personnel roster">
+  <aside id="left" class="frame chase slow bk" aria-label="Personnel roster" data-section="left">
     <div class="frame-head"><span class="ttl"><span class="leds"><i></i><i></i><i></i></span>Personnel</span><span class="code" id="rosterCount">—</span></div>
     <div class="ledstrip"></div>
     <div class="strength" id="strength" title="Share of each department at work"></div>
@@ -332,7 +372,7 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
     <div id="rosterList" class="frame-body"></div>
   </aside>
 
-  <section id="mapWrap" class="chase" aria-label="Castle tactical view">
+  <section id="mapWrap" class="chase" aria-label="Castle tactical view" data-section="map">
     <canvas id="map" role="img" aria-label="Tactical view of the castle: the King's throne room at the center, hallways, department rooms and the knights working in them"></canvas>
     <div class="maphud top">
       <div><span class="live"></span><span>TACTICAL // <b>KEEP-01</b></span><span id="bannerText">SIM · CHAT LIVE</span></div>
@@ -345,7 +385,7 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
     <div id="tip" role="tooltip"></div>
   </section>
 
-  <aside id="side" class="frame chase slow rev bk" aria-label="Intel and command">
+  <aside id="side" class="frame chase slow rev bk" aria-label="Intel and command" data-section="side">
     <div class="tabgroups">
       <div class="tg"><span class="tg-label">INTEL</span><div class="tabs" role="tablist">
         <button role="tab" aria-selected="true" data-tab="dossier">Dossier</button>
@@ -387,7 +427,7 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
   </aside>
 </div>
 
-<div id="telemetry" aria-label="Telemetry">
+<div id="telemetry" aria-label="Telemetry" data-section="tel">
   <div class="tel chase slow cut"><span>Throughput / hr</span><b id="tThru">0</b><div class="gauge"><i id="gThru"></i></div></div>
   <div class="tel chase slow cut"><span>Pass rate</span><b id="tPass">—</b><div class="gauge"><i id="gPass"></i></div></div>
   <div class="tel chase slow cut"><span>Burn / hr · sim</span><b id="tBurn">$0.00</b><div class="gauge"><i id="gBurn"></i></div></div>
@@ -397,16 +437,16 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
   <div class="tel chase slow cut"><span>Routing mix</span><b id="tMix">—</b><div class="gauge"><i id="gMix"></i></div></div>
 </div>
 
-<footer class="chase slow bk">
+<footer class="chase slow bk" data-section="footer">
   <label for="cmd">&gt;</label>
-  <input id="cmd" type="text" autocomplete="off" placeholder="/decree launch a product for dog groomers · /find Wren · /court · /castle sandstone · /help">
+  <input id="cmd" type="text" autocomplete="off" placeholder="/decree launch a product for dog groomers · /find Wren · /court · /castle sandstone · /fx electric · /help">
   <span id="cmdOut"></span>
   <div class="ticker" aria-hidden="true"><div class="track" id="ticker"></div></div>
   <span class="leds g" title="Link status"><i></i><i></i><i></i></span>
 </footer>
 </div>
 
-<div class="modal" id="mSettings" role="dialog" aria-modal="true" aria-labelledby="stTitle">
+<div class="modal" id="mSettings" data-section="dialogs" role="dialog" aria-modal="true" aria-labelledby="stTitle">
   <div class="box chase cut">
     <header><h2 id="stTitle">Settings</h2><button class="mini" data-close>Close</button></header>
     <div class="formrow"><label for="sSpeed">Sim speed</label><div><input id="sSpeed" type="range" min="0.25" max="4" step="0.25" value="1"> <span id="sSpeedV" class="muted">1×</span></div></div>
@@ -424,7 +464,7 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
   </div>
 </div>
 
-<div class="modal drawer" id="mColors" role="dialog" aria-modal="false" aria-labelledby="clTitle">
+<div class="modal drawer" id="mColors" data-section="dialogs" role="dialog" aria-modal="false" aria-labelledby="clTitle">
   <div class="box chase cut">
     <header><h2 id="clTitle">Colors</h2><button class="mini" data-close>Close</button></header>
     <div class="colorcols">
@@ -443,6 +483,26 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
         <div class="btnrow"><button class="mini" id="castleReset">Reset castle colors</button><button class="mini primary" data-close>Done</button></div>
       </section>
     </div>
+  </div>
+</div>
+
+<div class="modal drawer" id="mFx" data-section="dialogs" role="dialog" aria-modal="false" aria-labelledby="fxTitle">
+  <div class="box chase cut">
+    <header><h2 id="fxTitle">Effects</h2><button class="mini" data-close>Close</button></header>
+    <h3 style="margin-top:0">Quick looks</h3>
+    <div class="presets" id="fxPresets"></div>
+    <h3>Section borders</h3>
+    <p class="muted" style="font-size:12px;margin-top:0">Pick a section, then its border effect, color, speed, glow and width. Each tile previews its section.</p>
+    <div class="fxlist" id="fxList"></div>
+    <div class="fxedit" id="fxEdit"></div>
+    <h3>Motion extras</h3>
+    <div class="toggles" id="fxExtras"></div>
+    <div class="formrow"><label for="fxLed">LED strip speed</label><div class="rangev"><input id="fxLed" type="range" min="0.25" max="3" step="0.25"><span id="fxLedV"></span></div></div>
+    <h3>Castle lights</h3>
+    <div class="formrow"><label for="fxCastle">Effect</label><select id="fxCastle"></select></div>
+    <div class="formrow"><label for="fxCastleSpeed">Speed</label><div class="rangev"><input id="fxCastleSpeed" type="range" min="0.25" max="3" step="0.25"><span id="fxCastleSpeedV"></span></div></div>
+    <div class="toggles" id="fxCastleToggles"></div>
+    <div class="btnrow"><button class="mini" id="fxReset">Reset effects</button><button class="mini primary" data-close>Done</button></div>
   </div>
 </div>
 
@@ -549,7 +609,7 @@ const LESSONS_OK = ['Reused the {skill} skill and saved a revision.','Starting f
 const LESSONS_BAD = ['Check platform file limits before exporting.','Cite the exact listing URL, never a search results page.','Run the mobile checkout test before submitting.','Reconcile totals against the ledger before claiming done.','State assumptions with their source next to each number.'];
 
 /* ---------- state ---------- */
-const settings = Object.assign({theme:'obsidian', speed:1, labels:'leaders', scan:false, trails:true, scenery:true, grid:true, boot:true, tod:'auto', sound:false, custom:null, castlePreset:'granite', castle:null, castleFollow:true}, store.get('settings5', {}));
+const settings = Object.assign({theme:'obsidian', speed:1, labels:'leaders', scan:false, trails:true, scenery:true, grid:true, boot:true, tod:'auto', sound:false, custom:null, castlePreset:'granite', castle:null, castleFollow:true, fx:null}, store.get('settings5', {}));
 const saved = store.get('state', null);
 let clock = saved && saved.clock || 8 * 60;  // empire minutes
 let simT = 0, running = true, taskSeq = saved && saved.taskSeq || 0, sealSeq = 0;
@@ -1582,7 +1642,31 @@ function agentUI(a) {
 const deptDone = id => deptAgents(id).reduce((n, a) => n + a.done, 0);
 const busyIn = id => deptAgents(id).filter(a => a.state === 'working' && !a.paused && !(a.path && a.path.length)).length;
 function glow(x, y, r, col, a) { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, hexA(col, a)); g.addColorStop(1, hexA(col, 0)); ctx.fillStyle = g; circle(ctx, x, y, r); ctx.fill(); }
+function castleFx() { return settings.fx ? settings.fx.castle : {mode: 'chase', speed: 1, torches: true, moat: true, radar: true, brackets: true}; }
+function neonStill(draw, col, t, key) {
+  const m = castleFx().mode;
+  if (m === 'off') return true;
+  if (m === 'static') { ctx.strokeStyle = hexA(col, 0.5); ctx.lineWidth = 1.2; draw(); return true; }
+  if (m === 'pulse') {
+    const a = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(t * 2.4 + key * 0.0007));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = hexA(col, 0.22 * a); ctx.lineWidth = 5; draw(); ctx.strokeStyle = hexA(col, 0.9 * a); ctx.lineWidth = 1.4; draw();
+    ctx.restore(); return true;
+  }
+  if (m === 'electric') {
+    const step = Math.floor(t * 14), R = mulberry32(step * 7919 + Math.round(key));
+    ctx.strokeStyle = hexA(col, 0.14); ctx.lineWidth = 1; draw();
+    const flick = R() < 0.12 ? 0.25 : 0.65 + R() * 0.35;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.setLineDash([1 + R() * 4, 3 + R() * 12, 1 + R() * 2, 4 + R() * 18]); ctx.lineDashOffset = R() * 200;
+    ctx.strokeStyle = hexA(col, 0.3 * flick); ctx.lineWidth = 4; draw();
+    ctx.strokeStyle = hexA(lite(col, 0.4), 0.95 * flick); ctx.lineWidth = 1.2; draw();
+    ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.restore(); return true;
+  }
+  return false;
+}
 function neonRect(x, y, w, h, col, t, speed, comets, len, base) {
+  if (neonStill(() => ctx.strokeRect(x, y, w, h), col, t, x * 3 + y * 7 + w)) return;
   const per = 2 * (w + h); len = len || 46;
   ctx.strokeStyle = hexA(col, base === undefined ? 0.22 : base); ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -1594,6 +1678,7 @@ function neonRect(x, y, w, h, col, t, speed, comets, len, base) {
   ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.restore();
 }
 function neonLine(x0, y0, x1, y1, col, t, speed, gap) {
+  if (neonStill(() => { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); }, col, t, x0 * 3 + y0 * 7 + x1)) return;
   gap = gap || 70;
   ctx.strokeStyle = hexA(col, 0.16); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
   ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.setLineDash([14, gap]); ctx.lineDashOffset = -t * speed;
@@ -1609,30 +1694,32 @@ function flag(x, y, col, t, i) {
   ctx.closePath(); ctx.fill();
   ctx.fillStyle = hexA(CP.trim, 0.9); ctx.fillRect(x - 1, y - 19.5, 2, 2);
 }
-function drawProps(t, st, dt) {
-  const L = CP.lights;
+function drawProps(t0, st, dt) {
+  const L = CP.lights, cfx = castleFx(), t = t0, tl = t0 * (cfx.speed || 1);
   // moat shimmer and energy barrier
+  if (cfx.moat) {
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   ctx.strokeStyle = hexA(L, 0.07); ctx.lineWidth = 14; rr(ctx, 24, 18, 1152, 804, 46); ctx.stroke();
-  ctx.setLineDash([30, 90]); ctx.lineDashOffset = -t * 40; ctx.strokeStyle = hexA(L, 0.45); ctx.lineWidth = 1.5; rr(ctx, 24, 18, 1152, 804, 46); ctx.stroke();
-  ctx.lineDashOffset = t * 26; ctx.strokeStyle = hexA(L, 0.22); rr(ctx, 16, 11, 1168, 818, 52); ctx.stroke();
+  ctx.setLineDash([30, 90]); ctx.lineDashOffset = -tl * 40; ctx.strokeStyle = hexA(L, 0.45); ctx.lineWidth = 1.5; rr(ctx, 24, 18, 1152, 804, 46); ctx.stroke();
+  ctx.lineDashOffset = tl * 26; ctx.strokeStyle = hexA(L, 0.22); rr(ctx, 16, 11, 1168, 818, 52); ctx.stroke();
   ctx.setLineDash([]); ctx.restore();
+  }
   // outer gallery chase lights along both walls
-  neonRect(53.5, 47.5, 1093, 745, L, t, 80, 5, 60, 0.12);
-  neonRect(75.5, 69.5, 1049, 701, L, -t, 60, 4, 40, 0.1);
+  neonRect(53.5, 47.5, 1093, 745, L, tl, 80, 5, 60, 0.12);
+  neonRect(75.5, 69.5, 1049, 701, L, -tl, 60, 4, 40, 0.1);
   // hallway chase lights flowing toward the throne
   const ring2 = [446.5, 298.5, 307, 243];
-  neonRect(ring2[0], ring2[1], ring2[2], ring2[3], CP.trim, t, 55, 3, 50, 0.18);
-  neonRect(472.5, 324.5, 255, 191, CP.trim, -t, 40, 2, 40, 0.18);
-  [[587.5, 80, 587.5, 298], [612.5, 80, 612.5, 298]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, t, 50));
-  [[574.5, 770, 574.5, 542], [625.5, 770, 625.5, 542]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, t, 50));
-  [[86, 407.5, 436, 407.5], [86, 432.5, 436, 432.5]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, t, 50));
-  [[1114, 407.5, 764, 407.5], [1114, 432.5, 764, 432.5]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, t, 50));
+  neonRect(ring2[0], ring2[1], ring2[2], ring2[3], CP.trim, tl, 55, 3, 50, 0.18);
+  neonRect(472.5, 324.5, 255, 191, CP.trim, -tl, 40, 2, 40, 0.18);
+  [[587.5, 80, 587.5, 298], [612.5, 80, 612.5, 298]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, tl, 50));
+  [[574.5, 770, 574.5, 542], [625.5, 770, 625.5, 542]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, tl, 50));
+  [[86, 407.5, 436, 407.5], [86, 432.5, 436, 432.5]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, tl, 50));
+  [[1114, 407.5, 764, 407.5], [1114, 432.5, 764, 432.5]].forEach(([a, b, c2, d]) => neonLine(a, b, c2, d, L, tl, 50));
   // room neon strips
-  for (const [id, o] of Object.entries(ROOMS)) { if (id === 'throne') continue; neonRect(o.x + 5.5, o.y + 5.5, o.w - 11, o.h - 11, DEPT[id].color, t + hashf(id.length) * 9, 45, 1, 36, 0.14); }
+  for (const [id, o] of Object.entries(ROOMS)) { if (id === 'throne') continue; neonRect(o.x + 5.5, o.y + 5.5, o.w - 11, o.h - 11, DEPT[id].color, tl + hashf(id.length) * 9, 45, 1, 36, 0.14); }
   // torches
   TORCHES.forEach(([x, y], i) => {
-    const f = 0.75 + 0.25 * Math.sin(t * 11 + i * 1.7) * Math.sin(t * 7.3 + i);
+    const f = cfx.torches ? 0.75 + 0.25 * Math.sin(t0 * 11 + i * 1.7) * Math.sin(t0 * 7.3 + i) : 0.85;
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(x, y - 3, 10 + f * 3, '#ff9a3d', 0.32 * f); ctx.restore();
     ctx.fillStyle = '#2b2f36'; ctx.fillRect(x - 1, y - 2, 2, 4);
     ctx.fillStyle = '#ffcf6e'; ctx.beginPath(); ctx.ellipse(x, y - 4, 1.4, 2.4 + f, 0, 0, 7); ctx.fill();
@@ -1842,10 +1929,13 @@ function drawOrbs() {
 function drawHUD(t) {
   ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   // sweep centered on the throne
+  const cfx = castleFx();
+  if (cfx.radar) {
   ctx.save(); ctx.translate(OX + CENTER.x * S, OY + CENTER.y * S); ctx.rotate(t * 0.35);
   const R2 = Math.max(W, H) * 0.75, sw = ctx.createLinearGradient(0, 0, R2, 0); sw.addColorStop(0, hexA(TH.accent, 0.11)); sw.addColorStop(1, hexA(TH.accent, 0));
   ctx.fillStyle = sw; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R2, -0.22, 0); ctx.closePath(); ctx.fill();
   ctx.restore();
+  }
   // sector grid and labels
   if (settings.grid) {
     ctx.strokeStyle = hexA(TH.accent, 0.07); ctx.lineWidth = 1; ctx.setLineDash([2, 6]);
@@ -1861,7 +1951,7 @@ function drawHUD(t) {
   for (let x = 40; x < W - 20; x += 20) { const big = Math.round(x / 20) % 5 === 0; ctx.beginPath(); ctx.moveTo(x, H - 2); ctx.lineTo(x, H - (big ? 9 : 5)); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, 2); ctx.lineTo(x, big ? 9 : 5); ctx.stroke(); }
   for (let y = 40; y < H - 20; y += 20) { const big = Math.round(y / 20) % 5 === 0; ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(big ? 9 : 5, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(W - 2, y); ctx.lineTo(W - (big ? 9 : 5), y); ctx.stroke(); }
   // animated corner brackets
-  const bl = 22 + (reduceMotion ? 0 : Math.sin(t * 2) * 3), pad = 6;
+  const bl = 22 + (reduceMotion || !cfx.brackets ? 0 : Math.sin(t * 2) * 3), pad = 6;
   ctx.strokeStyle = TH.gold; ctx.lineWidth = 2;
   [[pad, pad, 1, 1], [W - pad, pad, -1, 1], [pad, H - pad, 1, -1], [W - pad, H - pad, -1, -1]].forEach(([x, y, sx, sy]) => { ctx.beginPath(); ctx.moveTo(x, y + sy * bl); ctx.lineTo(x, y); ctx.lineTo(x + sx * bl, y); ctx.stroke(); });
   // compass rose
@@ -2351,6 +2441,128 @@ function select(id) {
   const li = $(`#rosterList li[data-id="${CSS.escape(id)}"]`); if (li) li.scrollIntoView({block: 'nearest'});
 }
 
+/* ---------- border effects and animation tweaks ---------- */
+const FX_SECTIONS = [['header', 'Header'], ['hud', 'HUD tiles'], ['left', 'Personnel'], ['map', 'Tactical map'], ['side', 'Intel and command'], ['tel', 'Telemetry'], ['footer', 'Command line'], ['buttons', 'Action buttons'], ['dialogs', 'Panels and dialogs']];
+const FX_EFFECTS = [['chase', 'Chase lights'], ['comet', 'Comet'], ['pulse', 'Pulse'], ['heartbeat', 'Heartbeat'], ['electric', 'Electric'], ['flow', 'Flow'], ['spectrum', 'Spectrum'], ['static', 'Static glow'], ['off', 'Off']];
+const FX_COLORS = [['accent', 'Accent'], ['gold', 'Highlight'], ['violet', 'Seal violet'], ['good', 'Pass green'], ['bad', 'Alert red'], ['info', 'Info blue'], ['custom', 'Custom']];
+const FX_CASTLE = [['chase', 'Chase lights'], ['pulse', 'Pulse'], ['electric', 'Electric'], ['static', 'Static glow'], ['off', 'Off']];
+const FX_EXTRAS = [['leds', 'LED strips'], ['blink', 'Status lights blink'], ['scan', 'Page scan sweep'], ['glint', 'Tile glints'], ['brackets', 'Corner brackets pulse'], ['stripes', 'Class bar stripes'], ['sweep', 'Header and tab sweeps']];
+const FX_CASTLE_TOGGLES = [['torches', 'Torch flicker'], ['moat', 'Moat shimmer'], ['radar', 'Radar sweep'], ['brackets', 'Map corner brackets']];
+const FX_BASE = {fx: 'chase', color: 'accent', custom: '#d4a640', speed: 1, glow: 1, width: 1};
+function fxDefaults() {
+  const sections = {};
+  FX_SECTIONS.forEach(([k]) => { sections[k] = Object.assign({}, FX_BASE, k === 'map' ? {width: 2} : {}); });
+  return {sections, extras: {leds: true, ledSpeed: 1, blink: true, scan: true, glint: true, brackets: true, stripes: true, sweep: true}, castle: {mode: 'chase', speed: 1, torches: true, moat: true, radar: true, brackets: true}};
+}
+function fxNormalize(v) {
+  const d = fxDefaults(); v = v || {};
+  FX_SECTIONS.forEach(([k]) => { d.sections[k] = Object.assign(d.sections[k], (v.sections || {})[k] || {}); });
+  Object.assign(d.extras, v.extras || {}); Object.assign(d.castle, v.castle || {});
+  return d;
+}
+settings.fx = fxNormalize(settings.fx);
+const fxAll = patch => FX_SECTIONS.reduce((o, [k]) => (o[k] = Object.assign({}, FX_BASE, k === 'map' ? {width: 2} : {}, patch), o), {});
+const FX_PRESETS = {
+  command:  {label: 'Command', sw: 'var(--accent)', make: () => fxDefaults()},
+  electric: {label: 'Electric storm', sw: '#6cb6ff', make: () => Object.assign(fxDefaults(), {sections: Object.assign(fxAll({fx: 'electric', speed: 1.25, glow: 1.2}), {map: Object.assign({}, FX_BASE, {fx: 'electric', color: 'info', speed: 1.25, glow: 1.3, width: 2})}), castle: {mode: 'electric', speed: 1.25, torches: true, moat: true, radar: true, brackets: true}})},
+  calm:     {label: 'Calm pulse', sw: '#7fd17a', make: () => Object.assign(fxDefaults(), {sections: fxAll({fx: 'pulse', speed: 0.6, glow: 0.7}), extras: {leds: true, ledSpeed: 0.5, blink: true, scan: false, glint: false, brackets: true, stripes: false, sweep: true}, castle: {mode: 'pulse', speed: 0.6, torches: true, moat: true, radar: false, brackets: true}})},
+  alert:    {label: 'Red alert', sw: '#ec6a5f', make: () => Object.assign(fxDefaults(), {sections: fxAll({fx: 'heartbeat', color: 'bad', speed: 1.2, glow: 1.2}), extras: {leds: true, ledSpeed: 2, blink: true, scan: true, glint: true, brackets: true, stripes: true, sweep: true}, castle: {mode: 'pulse', speed: 2, torches: true, moat: true, radar: true, brackets: true}})},
+  spectrum: {label: 'Spectrum', sw: 'linear-gradient(90deg,#ff3b5c,#f2e14e,#4ade80,#38e1ff,#a78bfa)', make: () => Object.assign(fxDefaults(), {sections: fxAll({fx: 'spectrum', glow: 1})})},
+  comets:   {label: 'Comet run', sw: '#f1c96b', make: () => Object.assign(fxDefaults(), {sections: fxAll({fx: 'comet', color: 'gold', speed: 1.5})})},
+  mixed:    {label: 'Mixed ops', sw: 'linear-gradient(90deg,var(--accent),#6cb6ff,#b9a0ff)', make: () => {
+    const d = fxDefaults(); const S2 = d.sections;
+    Object.assign(S2.header, {fx: 'comet', color: 'gold'}); Object.assign(S2.hud, {fx: 'pulse', speed: 0.8}); Object.assign(S2.map, {fx: 'electric', color: 'info', glow: 1.2});
+    Object.assign(S2.tel, {fx: 'flow'}); Object.assign(S2.footer, {fx: 'comet'}); Object.assign(S2.buttons, {fx: 'pulse', color: 'gold'}); Object.assign(S2.dialogs, {fx: 'flow', color: 'violet'});
+    d.castle.mode = 'electric'; return d; }},
+  stealth:  {label: 'Stealth', sw: '#3d3627', make: () => Object.assign(fxDefaults(), {sections: fxAll({fx: 'static', glow: 0.35}), extras: {leds: false, ledSpeed: 1, blink: false, scan: false, glint: false, brackets: false, stripes: false, sweep: false}, castle: {mode: 'static', speed: 1, torches: true, moat: false, radar: false, brackets: false}})}
+};
+function fxSectionOf(el) {
+  if (el.dataset && el.dataset.section) return el.dataset.section;
+  if (el.tagName === 'BUTTON') return 'buttons';
+  const r = el.closest('[data-section]'); return r ? r.dataset.section : 'dialogs';
+}
+function fxColorOf(c) { return c.color === 'custom' ? c.custom : `var(--${c.color})`; }
+function styleFx(el) {
+  const key = fxSectionOf(el), c = settings.fx.sections[key] || FX_BASE, col = fxColorOf(c);
+  el.dataset.fx = c.fx;
+  el.style.setProperty('--fxc', col);
+  el.style.setProperty('--fxc2', c.color === 'accent' ? 'var(--gold)' : `color-mix(in srgb, ${col} 55%, #ffffff)`);
+  el.style.setProperty('--fxs', String(c.speed)); el.style.setProperty('--fxi', String(c.glow)); el.style.setProperty('--fxw', c.width + 'px');
+}
+function fxBodyClasses() {
+  const e = settings.fx.extras;
+  return [['leds', 'fx-noleds'], ['blink', 'fx-noblink'], ['scan', 'fx-noscan'], ['glint', 'fx-noglint'], ['brackets', 'fx-nobrackets'], ['stripes', 'fx-nostripes'], ['sweep', 'fx-nosweep']].filter(([k]) => !e[k]).map(([, c]) => ' ' + c).join('');
+}
+function applyFx() {
+  $$('.chase').forEach(styleFx);
+  document.body.style.setProperty('--led-speed', String(settings.fx.extras.ledSpeed || 1));
+  const base = document.body.className.split(' ').filter(c => c && !c.startsWith('fx-')).join(' ');
+  document.body.className = base + fxBodyClasses();
+}
+new MutationObserver(muts => {
+  for (const m of muts) for (const n of m.addedNodes) {
+    if (n.nodeType !== 1) continue;
+    if (n.classList.contains('chase')) styleFx(n);
+    if (n.querySelectorAll) n.querySelectorAll('.chase').forEach(styleFx);
+  }
+}).observe(document.body, {childList: true, subtree: true});
+let fxSel = 'all';
+function fxSave() { store.set('settings5', settings); }
+function fxSetSection(patch) {
+  const keys = fxSel === 'all' ? FX_SECTIONS.map(([k]) => k) : [fxSel];
+  keys.forEach(k => Object.assign(settings.fx.sections[k], patch));
+  applyFx(); fxSave(); renderFxList();
+}
+const fxLabel = k => (FX_EFFECTS.find(e => e[0] === k) || ['', k])[1];
+function renderFxList() {
+  const box = $('#fxList'); if (!box) return;
+  const S2 = settings.fx.sections, same = FX_SECTIONS.every(([k]) => S2[k].fx === S2.header.fx);
+  box.innerHTML = `<button class="fxitem all chase" data-section="header" data-fxsel="all" aria-pressed="${fxSel === 'all'}"><b>All sections</b><small>${same ? esc(fxLabel(S2.header.fx)) : 'Mixed'}</small></button>` +
+    FX_SECTIONS.map(([k, l]) => `<button class="fxitem chase" data-section="${k}" data-fxsel="${k}" aria-pressed="${fxSel === k}"><b>${esc(l)}</b><small>${esc(fxLabel(S2[k].fx))} · ${esc((FX_COLORS.find(c => c[0] === S2[k].color) || ['', 'Custom'])[1])}</small></button>`).join('');
+  $$('[data-fxsel]', box).forEach(b => b.addEventListener('click', () => { fxSel = b.dataset.fxsel; renderFxList(); renderFxEdit(); }));
+  $$('.chase', box).forEach(styleFx);
+}
+function renderFxEdit() {
+  const box = $('#fxEdit'); if (!box) return;
+  const c = settings.fx.sections[fxSel === 'all' ? 'header' : fxSel];
+  const name = fxSel === 'all' ? 'All sections' : FX_SECTIONS.find(s2 => s2[0] === fxSel)[1];
+  box.innerHTML = `<h3 style="margin-top:8px">${esc(name)}</h3>
+    <div class="formrow"><label for="fxE">Effect</label><select id="fxE">${FX_EFFECTS.map(([k, l]) => `<option value="${k}" ${c.fx === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+    <div class="formrow"><label for="fxC">Color</label><div style="display:flex;gap:6px"><select id="fxC" style="flex:1">${FX_COLORS.map(([k, l]) => `<option value="${k}" ${c.color === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><input type="color" id="fxCc" value="${esc(c.custom)}" title="Custom color" style="width:38px;height:31px;border:1px solid var(--line);background:var(--bg);padding:2px" ${c.color === 'custom' ? '' : 'hidden'}></div></div>
+    <div class="formrow"><label for="fxS">Speed</label><div class="rangev"><input id="fxS" type="range" min="0.25" max="3" step="0.25" value="${c.speed}"><span id="fxSV">${c.speed}×</span></div></div>
+    <div class="formrow"><label for="fxG">Glow</label><div class="rangev"><input id="fxG" type="range" min="0.2" max="1.6" step="0.1" value="${c.glow}"><span id="fxGV">${Math.round(c.glow * 100)}%</span></div></div>
+    <div class="formrow"><label>Width</label><div class="segs" role="group" aria-label="Border width">${[1, 2, 3].map(w => `<button class="mini" data-w="${w}" aria-pressed="${c.width === w}">${w}px</button>`).join('')}</div></div>`;
+  $('#fxE').addEventListener('change', e => fxSetSection({fx: e.target.value}));
+  $('#fxC').addEventListener('change', e => { $('#fxCc').hidden = e.target.value !== 'custom'; fxSetSection({color: e.target.value}); });
+  $('#fxCc').addEventListener('input', e => fxSetSection({custom: e.target.value, color: 'custom'}));
+  $('#fxS').addEventListener('input', e => { $('#fxSV').textContent = e.target.value + '×'; fxSetSection({speed: +e.target.value}); });
+  $('#fxG').addEventListener('input', e => { $('#fxGV').textContent = Math.round(e.target.value * 100) + '%'; fxSetSection({glow: +e.target.value}); });
+  $$('[data-w]', box).forEach(b => b.addEventListener('click', () => { fxSetSection({width: +b.dataset.w}); $$('[data-w]', box).forEach(x => x.setAttribute('aria-pressed', String(x === b))); }));
+}
+function renderFxPanel() {
+  $('#fxPresets').innerHTML = Object.entries(FX_PRESETS).map(([k, p]) => `<button class="mini" data-fxp="${k}"><i style="background:${p.sw}"></i>${esc(p.label)}</button>`).join('');
+  $$('[data-fxp]').forEach(b => b.addEventListener('click', () => { applyFxPreset(b.dataset.fxp); }));
+  renderFxList(); renderFxEdit();
+  const e = settings.fx.extras, cs = settings.fx.castle;
+  $('#fxExtras').innerHTML = FX_EXTRAS.map(([k, l]) => `<label><input type="checkbox" data-fxx="${k}" ${e[k] ? 'checked' : ''}>${esc(l)}</label>`).join('');
+  $$('[data-fxx]').forEach(i => i.addEventListener('change', ev => { settings.fx.extras[ev.target.dataset.fxx] = ev.target.checked; applyFx(); fxSave(); }));
+  $('#fxLed').value = e.ledSpeed; $('#fxLedV').textContent = e.ledSpeed + '×';
+  $('#fxCastle').innerHTML = FX_CASTLE.map(([k, l]) => `<option value="${k}" ${cs.mode === k ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  $('#fxCastleSpeed').value = cs.speed; $('#fxCastleSpeedV').textContent = cs.speed + '×';
+  $('#fxCastleToggles').innerHTML = FX_CASTLE_TOGGLES.map(([k, l]) => `<label><input type="checkbox" data-fxk="${k}" ${cs[k] ? 'checked' : ''}>${esc(l)}</label>`).join('');
+  $$('[data-fxk]').forEach(i => i.addEventListener('change', ev => { settings.fx.castle[ev.target.dataset.fxk] = ev.target.checked; fxSave(); }));
+}
+function applyFxPreset(k) {
+  const p = FX_PRESETS[k]; if (!p) return false;
+  settings.fx = fxNormalize(p.make()); applyFx(); fxSave();
+  if ($('#mFx').classList.contains('open')) renderFxPanel();
+  return true;
+}
+$('#fxLed').addEventListener('input', e => { settings.fx.extras.ledSpeed = +e.target.value; $('#fxLedV').textContent = e.target.value + '×'; applyFx(); fxSave(); });
+$('#fxCastle').addEventListener('change', e => { settings.fx.castle.mode = e.target.value; fxSave(); });
+$('#fxCastleSpeed').addEventListener('input', e => { settings.fx.castle.speed = +e.target.value; $('#fxCastleSpeedV').textContent = e.target.value + '×'; fxSave(); });
+$('#fxReset').addEventListener('click', () => { applyFxPreset('command'); });
+$('#bFx').addEventListener('click', () => { renderFxPanel(); $('#mColors').classList.remove('open'); openModal('mFx'); });
 /* ---------- HUD, telemetry, ticker ---------- */
 const HIST = {rev: [], spend: [], profit: [], tasks: []};
 let histTick = 0;
@@ -2435,7 +2647,7 @@ function openModal(id) { const m = $('#' + id); m.classList.add('open'); const f
 function closeModals() { $$('.modal.open').forEach(m => m.classList.remove('open')); }
 $$('.modal').forEach(m => { m.addEventListener('click', e => { if (e.target === m) closeModals(); }); $$('[data-close]', m).forEach(b => b.addEventListener('click', closeModals)); });
 $('#bSettings').addEventListener('click', () => openModal('mSettings'));
-$('#bColors').addEventListener('click', () => { renderColorPanel(); openModal('mColors'); });
+$('#bColors').addEventListener('click', () => { renderColorPanel(); $('#mFx').classList.remove('open'); openModal('mColors'); });
 $('#dGo').addEventListener('click', () => proclaim($('#dText').value));
 $$('[data-ex]').forEach(b => b.addEventListener('click', () => { $('#dText').value = b.dataset.ex; $('#dText').focus(); }));
 $('#bPlay').addEventListener('click', togglePlay);
@@ -2468,7 +2680,7 @@ function applyTheme() {
   }
   $('#themeSel').value = settings.theme; $('#themeSel2').value = settings.theme;
   readTheme(); if (bg.width) buildBackground(); dirty.roster = true;
-  syncColorInputs();
+  syncColorInputs(); applyFx();
 }
 function applySettings() {
   $('#sSpeed').value = settings.speed; $('#sSpeedV').textContent = settings.speed + '×';
@@ -2523,7 +2735,8 @@ document.addEventListener('keydown', e => {
   if (e.key === '/') { e.preventDefault(); $('#cmd').focus(); }
   else if (e.key === 'd' || e.key === 'D') { showTab('decree'); $('#dText').focus(); e.preventDefault(); }
   else if (e.key === 's' || e.key === 'S') showTab('seals');
-  else if (e.key === 'c' || e.key === 'C') { renderColorPanel(); openModal('mColors'); }
+  else if (e.key === 'c' || e.key === 'C') { renderColorPanel(); $('#mFx').classList.remove('open'); openModal('mColors'); }
+  else if (e.key === 'e' || e.key === 'E') { renderFxPanel(); $('#mColors').classList.remove('open'); openModal('mFx'); }
   else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
 });
 const findAgent = q => { q = q.toLowerCase().trim(); return agents.find(a => a.name.toLowerCase() === q) || agents.find(a => a.name.toLowerCase().includes(q)); };
@@ -2545,8 +2758,9 @@ $('#cmd').addEventListener('keydown', e => {
     case 'theme': { const t = ['obsidian', 'blackgold', 'naval', 'custom'].find(x => x.startsWith(arg.toLowerCase().replace(/[^a-z]/g, ''))); if (t) { settings.theme = t; applySettings(); say('Theme ' + t); } else say('Themes: obsidian, blackgold, naval, custom'); break; }
     case 'castle': { const k = Object.keys(CASTLE_PRESETS).find(x => x.startsWith(arg.toLowerCase().replace(/[^a-z]/g, ''))); if (k) { settings.castlePreset = k; applySettings(); say('Castle: ' + CASTLE_PRESETS[k].label); } else say('Castle styles: ' + Object.keys(CASTLE_PRESETS).join(', ')); break; }
     case 'colors': case 'colours': renderColorPanel(); openModal('mColors'); break;
+    case 'fx': case 'effects': { const k = arg && Object.keys(FX_PRESETS).find(x => x.startsWith(arg.toLowerCase().replace(/[^a-z]/g, ''))); if (k) { applyFxPreset(k); say('Effects: ' + FX_PRESETS[k].label); } else { renderFxPanel(); openModal('mFx'); if (arg) say('Effect looks: ' + Object.keys(FX_PRESETS).join(', ')); } break; }
     case 'hire': { showTab('hire'); $('#hName').value = arg.split(' ')[0] || ''; $('#hName').focus(); break; }
-    case 'help': default: say('/decree <goal> · /find <name> · /promote <name> · /demote <name> · /pause [name] · /court · /seals · /speed <0.25-4> · /theme <obsidian|blackgold|naval|custom> · /castle <' + Object.keys(CASTLE_PRESETS).join('|') + '> · /colors · /hire <name>');
+    case 'help': default: say('/decree <goal> · /find <name> · /promote <name> · /demote <name> · /pause [name] · /court · /seals · /speed <0.25-4> · /theme <obsidian|blackgold|naval|custom> · /castle <' + Object.keys(CASTLE_PRESETS).join('|') + '> · /colors · /fx <' + Object.keys(FX_PRESETS).join('|') + '> · /hire <name>');
   }
 });
 

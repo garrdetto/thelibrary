@@ -496,7 +496,7 @@ The Command Center is a military-grade console: a personnel roster on the left t
 | Treasury HUD | Revenue, token spend, profit and the venture's stage | Yes, simulated numbers, clearly labeled |
 | Org chart view | The hierarchy as a tree, click through to any dossier | Yes |
 | Roster controls | Hire a Servant, rename, recolor, promote, demote, pause, change model within the ceiling | Yes |
-| Customization | Themes, interface colors, castle styles and colors, simulation speed, map grid, scanlines, boot sequence, sound, movement trails, label density; saved in your browser | Yes |
+| Customization | Themes, interface colors, castle styles and colors, border effects per section (chase lights, comet, pulse, heartbeat, electric, flow, spectrum, static, off) with color, speed, glow and width, quick looks, motion extras, castle light effects, simulation speed, map grid, scanlines, boot sequence, sound, movement trails, label density; saved in your browser | Yes |
 | Live engine link | Real tasks, real costs, real merit over WebSocket | Phase 4 |
 | Replay | Scrub back through any day's events on the map | Phase 4 |
 | Phone approvals | Seal requests as push messages with Approve and Deny | Phase 4 |
