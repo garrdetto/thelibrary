@@ -18,7 +18,7 @@ type Entry = { id: string; job: Job }
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_ATTEMPTS = 5
-const ESTIMATE_SECONDS: Record<EngineId, number> = { 'flux-klein-9b': 12, 'flux-klein-4b': 6, 'sd15-img2img': 8, gemini: 18 }
+const ESTIMATE_SECONDS: Record<EngineId, number> = { 'flux-klein-9b': 12, 'flux-klein-4b': 6, gemini: 18 }
 const STATUS_LABEL: Record<Status, string> = { idle: 'Ready', queued: 'Queued', waiting: 'Waiting', generating: 'Generating', done: 'Done', failed: 'Failed' }
 
 const initialControls = (): Controls => {

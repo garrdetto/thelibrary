@@ -151,7 +151,6 @@ export function ClipartControls({ controls, onChange, engines, saved, onSavePres
       <textarea id="cg-prompt" rows={5} maxLength={PROMPT_LIMIT} value={controls.prompt} onChange={event => set({ prompt: event.target.value })}/>
       <div className="cg-head-row"><h3><label htmlFor="cg-negative">Negative prompt</label></h3><button type="button" className="cg-link" onClick={() => set({ negative: defaultNegative(finish) })}><RotateCcw size={12}/> Default</button></div>
       <textarea id="cg-negative" rows={3} maxLength={NEGATIVE_LIMIT} value={controls.negative} onChange={event => set({ negative: event.target.value })}/>
-      {engine.numeric && <small className="cg-hint">This engine reads about 75 words, so the strongest sliders go first; the rest steer strength, guidance and steps.</small>}
     </section>
 
     <section className="cg-card">
