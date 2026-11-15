@@ -1,7 +1,7 @@
 import type { RadarHolderRisk, RadarSafetyPlan, RadarScoreCap, RadarScoreCheck, RadarScoreGate, RadarScoreLedger, RadarScorePart, RadarScorePillar } from '../../src/lib/axiom-radar-types.js'
 
 /** Step 1: any of these makes the score 0. Percentages of supply. */
-export const disqualifyAbove = { dev: 5, top10: 30, bundlers: 35, fresh: 10, snipers: 30, insiders: 30, linked: 30, proTraders: 50 }
+export const disqualifyAbove = { dev: 5, top10: 30, bundlers: 35, fresh: 10, snipers: 30, insiders: 30, linked: 30, proTraders: 75 }
 export const serialLaunches = 20
 export const serialGraduationRate = 0.1
 /** A dev with at least this many graduated coins is a prolific launcher, not a serial rugger, however many coins they made. */

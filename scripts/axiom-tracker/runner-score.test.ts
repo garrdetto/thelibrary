@@ -105,7 +105,7 @@ test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0
     ['dev', { dev: 5.5, devSold: false }],
     ['top10', { top10: 31 }],
     ['bundlers', { bundlers: 36 }],
-    ['pro traders', { proTraders: 51 }],
+    ['pro traders', { proTraders: 76 }],
     ['dead', { buyers5m: 3 }],
     ['no volume', { volume5m: 0 }],
     ['fresh', { fresh: 10.5 }],
@@ -242,13 +242,14 @@ test('the ledger lists every gate and rule, and its points add up to the score',
   }
 })
 
-test('bundlers may hold up to 35% and pro traders up to 50% before the gate fails', () => {
+test('bundlers may hold up to 35% and pro traders up to 75% before the gate fails', () => {
   assert.equal(scoreRunner(strong({ bundlers: 35 })).ledger.gates.find(gate => gate.label === 'Bundlers')?.status, 'pass')
   assert.equal(scoreRunner(strong({ bundlers: 35.5 })).score, 0)
-  assert.equal(scoreRunner(strong({ proTraders: 50 })).ledger.gates.find(gate => gate.label === 'Pro traders holding')?.status, 'pass')
+  assert.equal(scoreRunner(strong({ proTraders: 75 })).ledger.gates.find(gate => gate.label === 'Pro traders holding')?.status, 'pass')
   assert.equal(scoreRunner(strong({ proTraders: 0 })).ledger.gates.find(gate => gate.label === 'Pro traders holding')?.status, 'pass')
   assert.equal(scoreRunner(strong({ proTraders: null })).ledger.gates.find(gate => gate.label === 'Pro traders holding')?.status, 'unknown')
-  assert.equal(scoreRunner(strong({ proTraders: 62 })).score, 0)
+  assert.ok(scoreRunner(strong({ proTraders: 62 })).score > 0)
+  assert.equal(scoreRunner(strong({ proTraders: 76 })).score, 0)
 })
 
 test('the score trail records each move and says what changed', () => {
