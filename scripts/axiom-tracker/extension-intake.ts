@@ -9,9 +9,11 @@ import { activeCandidates, trackerState } from './state.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { compactPayload } from './site-publisher.js'
 import { parsePulseCard } from './pulse-cards.js'
+import { pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
 
 const logger = createLogger('extension-intake')
 const bodyLimit = 2_000_000
+const pageRevisitMs = 3 * 60_000
 
 const report = z.object({
   url: z.string().max(500),
@@ -26,6 +28,7 @@ const report = z.object({
     lines: z.array(z.string().max(60)).max(60).optional(),
     icons: z.array(z.string().max(80)).max(40).optional(),
   }).strict()).max(300).default([]),
+  stats: z.record(z.string().max(40), z.number().min(0).max(100)).refine(value => Object.keys(value).length <= 60).optional(),
 }).strict()
 
 export type ExtensionReport = z.input<typeof report>
@@ -102,6 +105,10 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
     return null
   }
   const pageMint = input.pairAddress ? resolveMint(input.pairAddress) : null
+  if (pageMint && input.stats) {
+    const stats = parsePageStats(input.stats, now)
+    if (stats) trackerState.pageStats.set(pageMint, stats)
+  }
   const counts = new Map<string, number>()
   if (pageMint && input.pageViewers !== null) counts.set(pageMint, input.pageViewers)
   for (const text of input.frames) {
@@ -128,6 +135,14 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
   return counts.size
 }
 
+/** Says how many coin pages gave holder figures lately and whether Axiom shows a fresh-wallet figure on them. */
+function pageStatsNote(now = Date.now()) {
+  const recent = [...trackerState.pageStats.values()].filter(stats => now - stats.seenAt <= pageStatsFreshMs)
+  if (!recent.length) return ''
+  const withFresh = recent.filter(stats => stats.fresh !== null).length
+  return `, holder figures from ${recent.length} coin page${recent.length === 1 ? '' : 's'} (${withFresh ? `fresh wallets on ${withFresh}` : 'no fresh-wallet figure shown'})`
+}
+
 function send(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
   response.end(JSON.stringify(body))
@@ -151,7 +166,10 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
           const viewer = trackerState.viewers.get(candidate.mint)
           return !viewer || (viewer.source === 'page' ? now - viewer.at > 60_000 : now - viewer.at > 20_000)
         })
-        return send(response, 200, { ok: true, tracked, missing })
+        const readAt = (mint: string) => trackerState.pageStats.get(mint)?.seenAt ?? 0
+        const stale = tracked.filter(candidate => !missing.includes(candidate) && now - readAt(candidate.mint) > pageRevisitMs).sort((first, second) => readAt(first.mint) - readAt(second.mint))
+        for (const [mint, stats] of trackerState.pageStats) if (now - stats.seenAt > pageStatsKeptMs) trackerState.pageStats.delete(mint)
+        return send(response, 200, { ok: true, tracked, missing, stale })
       }
       if (request.method === 'POST' && url.pathname === '/extension/sample') {
         const body = await readBody(request)
@@ -179,7 +197,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
     }
   })
   const heartbeat = setInterval(() => {
-    recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards` : 'No Pulse cards in the last 15s: keep the Axiom Pulse tab visible')
+    recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards${pageStatsNote()}` : `No Pulse cards in the last 15s: keep the Axiom Pulse tab visible${pageStatsNote()}`)
   }, 15_000)
   return new Promise<void>(resolve => {
     server.on('error', error => {

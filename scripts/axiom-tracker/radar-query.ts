@@ -12,6 +12,8 @@ import { detectBotClimb } from './holder-limits.js'
 import { scoreRunner, type PricePoint, type RunnerLinks } from './runner-score.js'
 import { learnedEdge, learnedFor, runnerState } from './runner-state.js'
 import { forgetSells, watchSells } from './sell-watch.js'
+import { pageStatsAt } from './page-stats.js'
+import { rankHolderWallets } from './wallet-ranking.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -270,7 +272,7 @@ function finalize(entries: BuiltToken[], settings: RadarSettings) {
 const traitsCache = new Map<string, { at: number; traits: RadarHolderTraits | null }>()
 let lifecycleTableKnown = false
 
-/** The current holder numbers for one coin: the Pulse card while it is fresh, otherwise the higher of the latest RugCheck and Jupiter readings, then the last card or the worst numbers on record. */
+/** The current holder numbers for one coin: the Pulse card while it is fresh, then Axiom's own coin page read in the last two minutes, otherwise the highest of an older page reading and the latest RugCheck and Jupiter readings, then the last card or the worst numbers on record. */
 function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number): RadarHolderTraits | null {
   const cached = traitsCache.get(token.mint)
   if (cached && now - cached.at < 2_000) return cached.traits
@@ -286,15 +288,16 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
     return known.length ? Math.max(...known) : null
   }
   const jupiter = jupiterReading(token.mint, now)
-  const checkedAt = Math.max(fresh?.seenAt ?? 0, token.traits_checked_at ?? 0, card?.seenAt ?? 0) || null
+  const page = pageStatsAt(trackerState.pageStats.get(token.mint), now)
+  const checkedAt = Math.max(fresh?.seenAt ?? 0, page.recent?.seenAt ?? 0, token.traits_checked_at ?? 0, card?.seenAt ?? 0) || null
   const traits: RadarHolderTraits = {
-    top10: first(fresh?.top10Pct, highest(token.top10_pct, jupiter?.top10Pct), card?.top10Pct, worst?.top10),
-    dev: first(cardDev(fresh), highest(token.dev_pct, jupiter?.devPct), cardDev(card), worst?.dev),
-    snipers: first(card?.snipersPct, worst?.snipers),
-    insiders: first(card?.insidersPct, worst?.insiders),
-    bundlers: first(card?.bundlersPct, worst?.bundlers),
+    top10: first(fresh?.top10Pct, page.live?.top10, highest(page.recent?.top10, token.top10_pct, jupiter?.top10Pct), card?.top10Pct, page.kept?.top10, worst?.top10),
+    dev: first(cardDev(fresh), page.live?.dev, highest(page.recent?.dev, token.dev_pct, jupiter?.devPct), cardDev(card), page.kept?.dev, worst?.dev),
+    snipers: first(fresh?.snipersPct, page.recent?.snipers, card?.snipersPct, page.kept?.snipers, worst?.snipers),
+    insiders: first(fresh?.insidersPct, page.recent?.insiders, card?.insidersPct, page.kept?.insiders, worst?.insiders),
+    bundlers: first(fresh?.bundlersPct, page.recent?.bundlers, card?.bundlersPct, page.kept?.bundlers, worst?.bundlers),
     linked: first(token.insider_pct, worst?.linked),
-    fresh: first(token.fresh_pct, worst?.fresh),
+    fresh: first(page.kept?.fresh, token.fresh_pct, worst?.fresh),
     holders: first(fresh?.holders, jupiter?.holders, token.holders_total, card?.holders),
     rugged: token.rugged === 1,
     checkedAt,
@@ -380,10 +383,13 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
   const botClimb = botReason !== null || remembered !== null
   const ticks = marketTicks.get(token.mint) ?? []
   const pulseNow = live.pulse && now - live.pulse.seenAt < 10_000 ? live.pulse : null
+  const pageNow = pageStatsAt(trackerState.pageStats.get(token.mint), now).live
   const price = live.price ?? latest?.price_usd ?? null
   const sellAlerts = watchSells(token.mint, pulseNow
     ? { t: now, source: 'pulse', top10: pulseNow.top10Pct, bundlers: pulseNow.bundlersPct, insiders: pulseNow.insidersPct, dev: pulseNow.devSold ? 0 : pulseNow.devPct, price }
-    : { t: now, source: 'chain', top10: traits?.top10 ?? null, bundlers: traits?.bundlers ?? null, insiders: traits?.insiders ?? null, dev: traits?.dev ?? null, price }, now)
+    : pageNow
+      ? { t: now, source: 'page', top10: pageNow.top10, bundlers: pageNow.bundlers, insiders: pageNow.insiders, dev: pageNow.dev, price }
+      : { t: now, source: 'chain', top10: traits?.top10 ?? null, bundlers: traits?.bundlers ?? null, insiders: traits?.insiders ?? null, dev: traits?.dev ?? null, price }, now)
   const recycled = recycledFor(database, token, now)
   const card = live.pulse
   const runnerInput: Parameters<typeof scoreRunner>[0] = {
@@ -573,11 +579,7 @@ function componentStatuses(database: TrackerDatabase) {
 }
 
 function smartWallets(database: TrackerDatabase, minRunnerHits: number): RadarWallet[] {
-  const holders = database.prepare(`
-    SELECT h.wallet, COUNT(*) AS runnerHits, MAX(h.updated_at) AS updatedAt FROM holders h
-    JOIN good_coins g ON g.mint = h.mint GROUP BY h.wallet HAVING COUNT(*) >= ?
-    ORDER BY runnerHits DESC, updatedAt DESC LIMIT 40
-  `).all(minRunnerHits) as Array<{ wallet: string; runnerHits: number; updatedAt: number }>
+  const holders = rankHolderWallets(database, minRunnerHits)
   const holdings = database.prepare(`
     SELECT h.mint, COALESCE(t.symbol, g.symbol, '???') AS symbol, t.pair_address AS pairAddress, h.pct, g.mint IS NOT NULL AS good, h.updated_at AS timestamp FROM holders h
     LEFT JOIN tokens t ON t.mint = h.mint LEFT JOIN good_coins g ON g.mint = h.mint
