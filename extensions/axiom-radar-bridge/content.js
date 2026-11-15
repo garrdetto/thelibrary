@@ -100,7 +100,7 @@ function readPageStats() {
 
 function pageStats() {
   const now = Date.now()
-  if (now - pageStatsCache.at < (pageStatsCache.stats ? 5000 : 1500)) return pageStatsCache.stats
+  if (now - pageStatsCache.at < (pageStatsCache.stats ? 5000 : 700)) return pageStatsCache.stats
   pageStatsCache = { at: now, stats: readPageStats() }
   return pageStatsCache.stats
 }
