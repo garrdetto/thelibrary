@@ -45,10 +45,10 @@ export function cleanBotPatch(input: Record<string, unknown>): BotValues {
 }
 
 /** The dials shown first on the Trading bot tab. */
-export const botQuickDials = ['risk.strength', 'risk.buy_mode', 'risk.buy_amount_sol', 'risk.max_per_coin_sol', 'mode.pick_by', 'mode.score_buy_at', 'mode.quality_buy_at', 'entry.signal', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'costs.fee_mode', 'costs.max_fee_sol', 'account.starting_sol']
+export const botQuickDials = ['risk.strength', 'risk.buy_mode', 'risk.buy_amount_sol', 'risk.max_per_coin_sol', 'mode.pick_by', 'mode.score_buy_at', 'mode.quality_buy_at', 'mode.dex_buy_at', 'mode.blend_buy_at', 'entry.signal', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'costs.fee_mode', 'costs.max_fee_sol', 'account.starting_sol']
 
 const balancedStyle: BotValues = Object.fromEntries(
-  ['risk.strength', 'entry.signal', 'mode.score_buy_at', 'mode.quality_buy_at', 'entry.safety', 'entry.max_failed_checks', 'entry.radar_advice', 'risk.max_open_positions', 'exit.on_tighten', 'exit.left_radar'].map(key => [key, defaultBotValues[key]]),
+  ['risk.strength', 'mode.pick_by', 'entry.signal', 'mode.score_buy_at', 'mode.quality_buy_at', 'entry.safety', 'entry.max_failed_checks', 'entry.radar_advice', 'risk.max_open_positions', 'exit.on_tighten', 'exit.left_radar'].map(key => [key, defaultBotValues[key]]),
 )
 
 /** Starting points for the dials. Each style sets the same handful of dials and leaves the rest alone. */
@@ -65,6 +65,12 @@ export const botPresets: Array<{ id: string; label: string; summary: string; val
     label: 'Bold',
     summary: 'Bigger bets on buys and watched coins, up to eight at once, and only the Radar\'s never-rebuy advice blocks a buy. Loses faster when wrong.',
     values: { ...balancedStyle, 'risk.strength': 8, 'entry.signal': 'buy_or_watch', 'mode.score_buy_at': 60, 'mode.quality_buy_at': 60, 'entry.max_failed_checks': 2, 'entry.radar_advice': 'never_only', 'risk.max_open_positions': 8 },
+  },
+  {
+    id: 'quick',
+    label: 'Quick flips',
+    summary: 'Picks coins by the DexScreener score, buys on the first passing pull without needing Axiom viewers, and gets out fast: 10% stop, 25% target, 8% trailing stop, 10 minutes at most.',
+    values: { ...balancedStyle, 'mode.pick_by': 'dex', 'mode.dex_buy_at': 55, 'mode.dex_skip_viewers': true, 'mode.dex_confirm_pulls': 1, 'mode.dex_quick_exits': true, 'risk.max_open_positions': 6 },
   },
 ]
 
@@ -172,7 +178,7 @@ export type BotReport = {
   trades: BotTrade[]
   equity: Array<{ t: number; equity: number; sol?: number }>
   events: Array<{ id: number; t: number; kind: string; text: string }>
-  candidates: Array<{ mint: string; symbol: string; score: number; reason: string }>
+  candidates: Array<{ mint: string; symbol: string; score: number; dex?: number | null; reason: string }>
   strength: number
   settingsStamp: number
 }

@@ -393,6 +393,35 @@ class ModeTests(unittest.TestCase):
         self.assertEqual(self.fired(old, score=45, quality={"score": 90, "checks": []}), "Score fell to 45, under 50")
 
 
+    def test_dex_mode_buys_on_the_dexscreener_score(self) -> None:
+        self.s["mode.pick_by"] = "dex"
+        self.assertEqual(self.block(), "no DexScreener score yet")
+        self.assertIn("DexScreener score 50 under 55", self.block(dex={"score": 50}) or "")
+        self.assertIsNone(self.block(score=10, viewers=None, viewersPerMin=None, dex={"score": 70}))
+        self.s["mode.dex_skip_viewers"] = False
+        self.assertIn("viewers", self.block(viewers=None, dex={"score": 70}) or "")
+        self.assertEqual(strategy.confirm_pulls(self.s), 1)
+
+    def test_blend_mode_averages_both_scores(self) -> None:
+        self.s["mode.pick_by"] = "blend"
+        self.assertIn("blended score 60 under 65", self.block(score=80, dex={"score": 40}) or "")
+        self.assertIsNone(self.block(score=80, dex={"score": 60}))
+        self.assertIsNone(self.block(score=70))
+
+    def test_dex_buys_get_out_quickly(self) -> None:
+        quick = position(peak_mode=80.0, entry={"mode": "dex"})
+        self.assertEqual(self.fired(quick, dex={"score": 80}, priceUsd=1), None)
+        self.assertEqual(strategy.exit_signal(position(last_price=0.89, entry={"mode": "dex"}), Coin.from_token(token(dex={"score": 80})), self.s, 60_000).reason, "Stop loss")
+        self.assertIsNone(strategy.exit_signal(position(last_price=0.89, entry={"mode": "score"}), Coin.from_token(token()), self.s, 60_000))
+        target = strategy.exit_signal(position(last_price=1.26, peak_price=1.26, entry={"mode": "dex"}), Coin.from_token(token(dex={"score": 80})), self.s, 60_000)
+        self.assertEqual((target.reason, target.share), ("Profit target", 0.75))
+        late = strategy.exit_signal(position(last_price=1.03, peak_price=1.03, last_price_at=11 * 60_000, entry={"mode": "dex"}), Coin.from_token(token(dex={"score": 80})), self.s, 11 * 60_000)
+        self.assertEqual(late.reason, "Held too long")
+        self.assertEqual(self.fired(position(peak_mode=85.0, entry={"mode": "dex"}), dex={"score": 25}), "DexScreener score fell to 25, under 30")
+        self.s["mode.dex_quick_exits"] = False
+        self.assertIsNone(strategy.exit_signal(position(last_price=0.89, entry={"mode": "dex"}), Coin.from_token(token(dex={"score": 80})), self.s, 60_000))
+
+
 class EngineModeTests(unittest.TestCase):
     def test_quality_mode_buys_by_quality_and_remembers_its_mode(self) -> None:
         bot = Harness(**{"mode.pick_by": "quality", "risk.max_open_positions": 1})
@@ -423,6 +452,15 @@ class EngineModeTests(unittest.TestCase):
         self.assertEqual(bot.engine.positions, [])
         reason = bot.ledger.db.execute("SELECT exit_reason FROM positions").fetchone()["exit_reason"]
         self.assertEqual(reason, "Score fell 21 points from its best of 92")
+        bot.close()
+
+    def test_dex_mode_buys_on_the_first_pull_without_viewers(self) -> None:
+        bot = Harness(**{"mode.pick_by": "dex", "risk.max_open_positions": 1})
+        bot.pull(token("Slow", score=95, viewers=None, dex={"score": 50}), token("Fast", score=5, viewers=None, viewersPerMin=None, dex={"score": 82}))
+        self.assertEqual([held.mint for held in bot.engine.positions], ["Fast"])
+        held = bot.engine.positions[0]
+        self.assertEqual(held.entry["mode"], "dex")
+        self.assertEqual(held.peak_mode, 82)
         bot.close()
 
     def test_an_old_account_gets_the_peak_column(self) -> None:

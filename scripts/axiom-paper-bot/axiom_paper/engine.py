@@ -108,7 +108,7 @@ class Engine:
         self.feed_age_base: float | None = None
         self.feed_age_from = 0.0
         self.streaks: dict[str, int] = {}
-        self.readings: dict[str, list[tuple[int, float, float | None]]] = {}
+        self.readings: dict[str, list[tuple[int, dict[str, float | None]]]] = {}
         self.candidates: list[dict[str, Any]] = []
         self.buy_block: str | None = "Waiting for the Radar"
         self.error: str | None = None
@@ -384,10 +384,10 @@ class Engine:
 
     def _remember_readings(self, read_at: int) -> None:
         """Each coin's score and quality on recent pulls, so the bot can tell which way they are moving."""
-        kept: dict[str, list[tuple[int, float, float | None]]] = {}
+        kept: dict[str, list[tuple[int, dict[str, float | None]]]] = {}
         for mint, coin in self.coins.items():
             history = [reading for reading in self.readings.get(mint, []) if read_at - reading[0] <= READINGS_KEPT_MS and reading[0] < read_at]
-            history.append((read_at, coin.score, coin.quality))
+            history.append((read_at, {mode: strategy.mode_value(coin, mode) for mode in strategy.MODES}))
             kept[mint] = history
         self.readings = kept
 
@@ -398,7 +398,7 @@ class Engine:
             return None
         latest_at = history[-1][0]
         earlier = next((reading for reading in reversed(history) if reading[0] <= latest_at - TREND_WINDOW_MS), history[0])
-        now_value, then_value = (history[-1][1], earlier[1]) if mode == "score" else (history[-1][2], earlier[2])
+        now_value, then_value = history[-1][1].get(mode), earlier[1].get(mode)
         if now_value is None or then_value is None:
             return None
         return now_value - then_value
@@ -522,8 +522,9 @@ class Engine:
                 continue
             streak = self.streaks.get(coin.mint, 0) + 1
             self.streaks[coin.mint] = streak
-            if streak < s["entry.confirm_pulls"]:
-                considered.append((coin, f"passes, confirming ({streak} of {s['entry.confirm_pulls']} pulls)"))
+            needed = strategy.confirm_pulls(s)
+            if streak < needed:
+                considered.append((coin, f"passes, confirming ({streak} of {needed} pulls)"))
                 continue
             if guard is not None:
                 considered.append((coin, f"passes, but: {guard}"))
@@ -537,7 +538,7 @@ class Engine:
             guard = self.buy_guard(self.account())
         self.streaks = {mint: count for mint, count in self.streaks.items() if mint in self.coins}
         self.buy_block = guard
-        self.candidates = [{"mint": coin.mint, "symbol": coin.symbol, "score": round(coin.score), "quality": None if coin.quality is None else round(coin.quality), "reason": reason} for coin, reason in considered[:8]]
+        self.candidates = [{"mint": coin.mint, "symbol": coin.symbol, "score": round(coin.score), "dex": None if coin.dex_score is None else round(coin.dex_score), "quality": None if coin.quality is None else round(coin.quality), "reason": reason} for coin, reason in considered[:8]]
 
     def _buy(self, coin: Coin, now: int) -> str | None:
         """Buy the coin. Returns why not when the bet is refused."""

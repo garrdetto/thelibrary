@@ -81,6 +81,7 @@ class Coin:
     holders: float | None = None
     holders_per_min: float | None = None
     holders_seen_at: float | None = None
+    dex_score: float | None = None
 
     @staticmethod
     def from_token(token: dict[str, Any], sol_usd: float = 1.0) -> "Coin":
@@ -104,6 +105,7 @@ class Coin:
         holder_gains = gains.get("holders") if isinstance(gains.get("holders"), dict) else {}
         seen = [stamp for stamp in (number(traits.get("checkedAt")), number(pulse.get("seenAt"))) if stamp]
         holders_per_min = number(holder_gains.get("m1"))
+        dex = token.get("dex") if isinstance(token.get("dex"), dict) else {}
         return Coin(
             mint=str(token.get("mint", "")),
             symbol=str(token.get("symbol") or "?")[:16],
@@ -144,12 +146,13 @@ class Coin:
             holders=number(pulse.get("holders")) or number(traits.get("holders")),
             holders_per_min=holders_per_min if holders_per_min is not None else number(token.get("holdersPerMin")),
             holders_seen_at=max(seen) if seen else None,
+            dex_score=number(dex.get("score")),
         )
 
     def entry_facts(self) -> dict[str, Any]:
         """What the Radar said at the moment of a buy, kept with the trade for later study."""
         return {
-            "score": self.score, "signal": self.signal, "viewers": self.viewers, "viewersPerMin": self.viewers_per_min,
+            "score": self.score, "dexScore": self.dex_score, "signal": self.signal, "viewers": self.viewers, "viewersPerMin": self.viewers_per_min,
             "liquidity": self.liquidity, "marketCap": self.market_cap, "volume5m": self.volume_5m, "buySharePct": self.buy_share_pct,
             "ageMinutes": self.age_minutes, "gain1m": self.gain_1m, "gain5m": self.gain_5m, "safety": self.safety,
             "quality": self.quality, "failedChecks": self.failed_checks, "failedLabels": list(self.failed_labels), "smartHolders": self.smart_holders,

@@ -12,8 +12,9 @@ Settings = Mapping[str, Any]
 
 SAFETY_ALLOWED = {"safe": {"safe"}, "caution": {"safe", "caution"}}
 PHASES_SKIPPED = {"overdue": {"overdue"}, "late": {"late", "overdue"}}
-MODES = ("score", "quality")
-MODE_LABELS = {"score": "score", "quality": "quality score"}
+MODES = ("score", "quality", "dex", "blend")
+MODE_LABELS = {"score": "score", "quality": "quality score", "dex": "DexScreener score", "blend": "blended score"}
+QUICK_EXITS = ("stop_loss_pct", "take_profit_pct", "take_profit_sell_pct", "trailing_stop_pct", "trailing_start_pct", "max_hold_minutes")
 
 
 class Exit(NamedTuple):
@@ -54,7 +55,25 @@ def mode_of(settings: Settings, position: Position | None = None) -> str:
 
 
 def mode_value(coin: Coin, mode: str) -> float | None:
-    return coin.score if mode == "score" else coin.quality
+    if mode == "quality":
+        return coin.quality
+    if mode == "dex":
+        return coin.dex_score
+    if mode == "blend":
+        return coin.score if coin.dex_score is None else (coin.score + coin.dex_score) / 2
+    return coin.score
+
+
+def confirm_pulls(settings: Settings) -> int:
+    """Passing pulls in a row needed before a buy in the current mode."""
+    return int(settings["mode.dex_confirm_pulls"] if settings["mode.pick_by"] == "dex" else settings["entry.confirm_pulls"])
+
+
+def exit_dials(settings: Settings, position: Position) -> Settings:
+    """The sell settings for this position: a DexScreener-mode buy uses the quick-trade numbers when they are on."""
+    if mode_of(settings, position) != "dex" or not settings["mode.dex_quick_exits"]:
+        return settings
+    return {**settings, **{f"exit.{name}": settings[f"mode.dex_{name}"] for name in QUICK_EXITS}}
 
 
 def trend_block(change: float | None, mode: str, settings: Settings) -> str | None:
@@ -106,13 +125,14 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float, trend: 
         return f"market cap {_money(coin.market_cap)} over the limit"
     if s["entry.max_age_minutes"] > 0 and coin.age_minutes is not None and coin.age_minutes > s["entry.max_age_minutes"]:
         return f"{coin.age_minutes:.0f} minutes old, over the limit"
+    skip_viewers = mode == "dex" and s["mode.dex_skip_viewers"]
     checks = (
         _below(mode_value(coin, mode), s[f"mode.{mode}_buy_at"], MODE_LABELS[mode]),
         trend_block(trend, mode, s),
         _below(coin.gain_1m, s["entry.min_gain_1m_pct"], "1m gain", "%", off_at=-100),
         _below(coin.gain_5m, s["entry.min_gain_5m_pct"], "5m gain", "%", off_at=-100),
-        _below(coin.viewers, s["entry.min_viewers"], "viewers"),
-        _below(coin.viewers_per_min, s["entry.min_viewers_per_min"], "viewer growth"),
+        None if skip_viewers else _below(coin.viewers, s["entry.min_viewers"], "viewers"),
+        None if skip_viewers else _below(coin.viewers_per_min, s["entry.min_viewers_per_min"], "viewer growth"),
         _below(coin.liquidity, s["entry.min_liquidity_usd"], "liquidity"),
         _below(coin.market_cap, s["entry.min_market_cap_usd"], "market cap"),
         _below(coin.volume_5m, s["entry.min_volume_5m_usd"], "5m volume"),
@@ -240,7 +260,7 @@ def tightened(coin: Coin | None, settings: Settings, left_radar: bool) -> bool:
 
 def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: int, left_radar: bool = False) -> Exit | None:
     """The reason and the share of the open position to sell when a sell rule fires, else None."""
-    s = settings
+    s = exit_dials(settings, position)
     gain_pct = position.gain() * 100
     peak_gain_pct = (position.peak_price / position.entry_spot - 1) * 100
     held = position.held_minutes(now)
@@ -286,7 +306,7 @@ def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: 
 def _mode_exit(position: Position, coin: Coin, settings: Settings) -> Exit | None:
     """The sell rules of the mode the position was bought in."""
     mode = mode_of(settings, position)
-    label = MODE_LABELS[mode].capitalize()
+    label = MODE_LABELS[mode][:1].upper() + MODE_LABELS[mode][1:]
     value = mode_value(coin, mode)
     if value is not None:
         floor = settings[f"mode.{mode}_sell_below"]
