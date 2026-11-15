@@ -6,14 +6,15 @@ import type { RadarHistoryPoint, RadarSafetyLevel, RadarToken } from '@/lib/axio
 import { dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd, holderCount } from './format'
 import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
 import { useRadarAccess } from './access'
+import { scoreModeLabel, useScoreMode } from './score-mode'
 
 export type RadarSortKey = 'score' | 'quality' | 'viewers' | 'viewersPerMin' | 'holders' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
 export type RadarSort = { key: RadarSortKey; direction: 'asc' | 'desc' }
 
 const safetyLabels: Record<RadarSafetyLevel, string> = { safe: 'Safe', caution: 'Caution', risky: 'Risky', unknown: 'Unchecked' }
 
-export function sortValue(token: RadarToken, key: RadarSortKey) {
-  const value = key === 's30' || key === 'm1' || key === 'm5' || key === 'm10' ? token.priceChange[key] : key === 'holders' ? holderCount(token) : key === 'quality' ? token.quality.score : token[key]
+export function sortValue(token: RadarToken, key: RadarSortKey, scoreOf: (token: RadarToken) => number = item => item.score) {
+  const value = key === 'score' ? scoreOf(token) : key === 's30' || key === 'm1' || key === 'm5' || key === 'm10' ? token.priceChange[key] : key === 'holders' ? holderCount(token) : key === 'quality' ? token.quality.score : token[key]
   return typeof value === 'number' ? value : Number.NEGATIVE_INFINITY
 }
 
@@ -43,12 +44,27 @@ export const ViewerSparkline = memo(function ViewerSparkline({ history, field = 
   </LineChart>
 }, sameHistory)
 
+const dexCheckNames = ['Movement', 'Volume', 'Liquidity', 'Buy pressure', 'Not rising', 'Falling']
+
+function DexTooltip({ token }: { token: RadarToken }) {
+  if (!token.dex) return <><b>DexScreener score</b><span className="muted"><span>Waiting for the tracker</span><span>no data</span></span></>
+  return <>
+    <b>DexScreener score {token.dex.score}/100</b>
+    {token.dex.checks.map((item, index) => <span key={item.label}><span>{dexCheckNames[index] ?? item.label}</span><span className="tabular">{item.max ? `${item.points.toFixed(0)} of ${item.max}` : item.points}</span></span>)}
+    {token.dex.cuts.length ? <span className="radar-tooltip-cuts">Cuts: {token.dex.cuts.slice(0, 3).join(' · ')}</span> : null}
+  </>
+}
+
 export function ScoreBadge({ token, large = false }: { token: RadarToken; large?: boolean }) {
   const tooltipId = `score-tip-${token.mint}`
-  return <span className={`radar-score ${scoreTier(token.score)} ${large ? 'large' : ''}`} tabIndex={0} aria-describedby={tooltipId} onClick={event => event.stopPropagation()}>
-    <strong className="tabular">{token.score}</strong>
+  const { mode, scoreOf } = useScoreMode()
+  const shown = scoreOf(token)
+  return <span className={`radar-score ${scoreTier(shown)} ${large ? 'large' : ''}`} tabIndex={0} aria-describedby={tooltipId} aria-label={`${scoreModeLabel(mode)} ${shown}`} onClick={event => event.stopPropagation()}>
+    <strong className="tabular">{shown}</strong>
     <span role="tooltip" id={tooltipId} className="radar-tooltip">
-      <b>Runner score {token.score}/100</b>
+      {mode.runner && mode.dex && <b>Blended {shown}/100: runner {token.score}, DexScreener {token.dex?.score ?? '—'}</b>}
+      {mode.dex && <DexTooltip token={token}/>}
+      {mode.runner && <><b>Runner score {token.score}/100</b>
       {token.scoreParts
         ? token.scoreParts.map(part => <span key={`${part.key}:${part.label}`} className={part.available ? '' : 'muted'}>
           <span>{part.label}</span>
@@ -58,7 +74,7 @@ export function ScoreBadge({ token, large = false }: { token: RadarToken; large?
           <span>{factor.label}</span>
           <span className="tabular">{factor.available ? `${Math.round(factor.value * 100)}% × ${factor.weight.toFixed(2)} → ${factor.contribution.toFixed(1)}` : 'no data'}</span>
         </span>)}
-      {token.scoreParts && token.scoreCuts?.length ? <span className="radar-tooltip-cuts">{token.holderRisk?.blocked ? 'Scored 0' : 'Cuts'}: {token.scoreCuts.slice(0, 3).join(' · ')}</span> : null}
+      {token.scoreParts && token.scoreCuts?.length ? <span className="radar-tooltip-cuts">{token.holderRisk?.blocked ? 'Scored 0' : 'Cuts'}: {token.scoreCuts.slice(0, 3).join(' · ')}</span> : null}</>}
     </span>
   </span>
 }
@@ -165,6 +181,8 @@ type RadarTableProps = {
 }
 
 export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onTogglePin, selected }: RadarTableProps) {
+  const { mode, scoreOf } = useScoreMode()
+  const scoreHeader = mode.runner && mode.dex ? 'Blend' : mode.dex ? 'Dex score' : 'Score'
   const openWithKeyboard = (event: KeyboardEvent<HTMLTableRowElement>, mint: string) => {
     if (event.target !== event.currentTarget) return
     if (event.key === 'Enter' || event.key === ' ') {
@@ -179,7 +197,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
         <tr>
           <SortHeader label="Token" sortKey="ageMinutes" sort={sort} onSort={onSort} className="radar-col-token"/>
           <th scope="col">Signal</th>
-          <SortHeader label="Score" sortKey="score" sort={sort} onSort={onSort}/>
+          <SortHeader label={scoreHeader} sortKey="score" sort={sort} onSort={onSort}/>
           <SortHeader label="Quality" sortKey="quality" sort={sort} onSort={onSort}/>
           <SortHeader label="Viewers" sortKey="viewers" sort={sort} onSort={onSort}/>
           <SortHeader label="Viewers / min" sortKey="viewersPerMin" sort={sort} onSort={onSort}/>
@@ -195,7 +213,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
         </tr>
       </thead>
       <tbody>
-        {tokens.map(token => <tr key={token.mint} tabIndex={0} className={`${selected === token.mint ? 'selected' : ''} ${token.alerts.length ? 'alerting' : ''}`} onClick={() => onOpen(token.mint)} onKeyDown={event => openWithKeyboard(event, token.mint)} aria-label={`${token.symbol}, ${token.viewers ?? 'no'} viewers, score ${token.score}. Open details`}>
+        {tokens.map(token => <tr key={token.mint} tabIndex={0} className={`${selected === token.mint ? 'selected' : ''} ${token.alerts.length ? 'alerting' : ''}`} onClick={() => onOpen(token.mint)} onKeyDown={event => openWithKeyboard(event, token.mint)} aria-label={`${token.symbol}, ${token.viewers ?? 'no'} viewers, ${scoreHeader.toLowerCase()} ${scoreOf(token)}. Open details`}>
           <td className="radar-col-token">
             <div className="radar-token">
               <PinButton token={token} onTogglePin={onTogglePin}/>

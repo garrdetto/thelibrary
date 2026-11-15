@@ -9,6 +9,7 @@ import type { TrackerDatabase } from './db.js'
 import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
 import { jupiterReading } from './jupiter.js'
 import { detectBotClimb } from './holder-limits.js'
+import { scoreDex } from './dex-score.js'
 import { scoreRunner, type PricePoint, type RunnerLinks } from './runner-score.js'
 import { learnedEdge, learnedFor, runnerState } from './runner-state.js'
 import { forgetSells, watchSells } from './sell-watch.js'
@@ -176,6 +177,12 @@ function liveFigures(mint: string, now: number) {
     viewers,
     pulse,
     market: trackerState.market.get(mint) ?? null,
+    dexMoves: {
+      s5: percentChange(price, tickAt(ticks, now - 5_000, 2_000, 'price')),
+      s30: percentChange(price, tickAt(ticks, now - 30_000, 4_000, 'price')),
+      m1: percentChange(price, tickAt(ticks, now - 60_000, 6_000, 'price')),
+      m5: percentChange(price, tickAt(ticks, now - 300_000, 20_000, 'price')),
+    },
     priceChange: {
       s5: percentChange(price, tickAt(ticks, now - 5_000, 2_000, 'price')),
       s30: percentChange(price, tickAt(ticks, now - 30_000, 4_000, 'price')),
@@ -441,6 +448,18 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
   const firstPass = scoreRunner(runnerInput)
   const learned = learnedFor(firstPass.tags)
   const runner = learned.length ? scoreRunner({ ...runnerInput, learned }) : firstPass
+  const dex = scoreDex({
+    moves: live.dexMoves,
+    liquidity: runnerInput.liquidity,
+    marketCap,
+    volume5m,
+    buys5m: buys,
+    sells5m: sells,
+    botClimb,
+    authorityOn: safety.mintAuthority === true || safety.freezeAuthority === true,
+    holderBlocked: runner.holderRisk.reasons.find(reason => / hold|RugCheck/.test(reason)) ?? null,
+    severeSelling: (runnerInput.severeSelling?.length ?? 0) > 0 || runnerInput.devSelling === true,
+  })
   const built: RadarToken = {
     mint: token.mint,
     pairAddress: token.pair_address,
@@ -497,6 +516,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     dexPaid: runnerInput.dexPaid,
     scoreLedger: runner.ledger,
     scoreTrail: scoreTrailFor(token.mint),
+    dex,
   }
   return { token: built, liquidityChange1m: live.liquidityChange1m }
 }

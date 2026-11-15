@@ -8,6 +8,7 @@ import { activeBotClimb, trackerState, type ActiveCandidate } from './state.js'
 import { radarSettings } from './settings-store.js'
 import { applyPulseMarket, pairFromPulse } from './pulse-market.js'
 import { safetyLevel } from './model.js'
+import { scoreDex } from './dex-score.js'
 import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
 
 const logger = createLogger('discovery')
@@ -40,6 +41,26 @@ export function momentumOf(pair: DexPair, now = Date.now()) {
   const pressureScore = buys / transactions - 0.5
   const freshness = 1 - Math.min(1, (now - (pair.pairCreatedAt ?? now)) / trackerConfig.maxPairAgeMs)
   return Math.round((volumeScore * 45 + activityScore * 30 + pressureScore * 40 + freshness * 10) * 100) / 100
+}
+
+/**
+ * The DexScreener score from one discovery read (DexScreener's own 5-minute change, volume, liquidity and trades), so coins
+ * that are moving on DexScreener get tracked even when no Axiom tab is open to give them viewers.
+ */
+export function dexRankOf(pair: DexPair) {
+  const m5 = pair.priceChange?.m5
+  return scoreDex({
+    moves: { s5: null, s30: null, m1: null, m5: typeof m5 === 'number' && Number.isFinite(m5) ? m5 : null },
+    liquidity: pair.liquidity?.usd ?? null,
+    marketCap: pair.marketCap ?? pair.fdv ?? null,
+    volume5m: pair.volume?.m5 ?? null,
+    buys5m: pair.txns?.m5?.buys ?? null,
+    sells5m: pair.txns?.m5?.sells ?? null,
+    botClimb: false,
+    authorityOn: false,
+    holderBlocked: null,
+    severeSelling: false,
+  }).score
 }
 
 function upsertTokens(database: TrackerDatabase, pairs: DexPair[], boosted: Set<string>, now: number) {
@@ -129,8 +150,8 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
     return viewer && now - viewer.at < 60_000 ? viewer.count : -1
   }
   const sorted = eligible
-    .map(pair => ({ pair, momentum: momentumOf(pair, now) }))
-    .sort((first, second) => Number(pinned.has(second.pair.baseToken.address)) - Number(pinned.has(first.pair.baseToken.address)) || viewerCount(second.pair.baseToken.address) - viewerCount(first.pair.baseToken.address) || second.momentum - first.momentum)
+    .map(pair => ({ pair, momentum: momentumOf(pair, now), dexRank: dexRankOf(pair) }))
+    .sort((first, second) => Number(pinned.has(second.pair.baseToken.address)) - Number(pinned.has(first.pair.baseToken.address)) || viewerCount(second.pair.baseToken.address) - viewerCount(first.pair.baseToken.address) || (second.momentum + second.dexRank * 0.5) - (first.momentum + first.dexRank * 0.5))
   const kept = (entry: (typeof sorted)[number]) => pinned.has(entry.pair.baseToken.address) || trackerState.pulse.has(entry.pair.baseToken.address)
   const always = sorted.filter(kept)
   const ranked = [...always, ...sorted.filter(entry => !kept(entry)).slice(0, Math.max(0, settings.maxCoins - always.length))].slice(0, trackedLimit)

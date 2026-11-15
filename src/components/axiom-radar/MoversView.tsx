@@ -40,6 +40,7 @@ export function MoversView({ tokens, onOpen }: { tokens: RadarToken[]; onOpen: (
         .map(token => ({ token, value: formatChange(token.priceChange[board.key]), tone: changeClass(token.priceChange[board.key]) }))
       return <Board key={board.key} title={board.label} caption="BIGGEST PRICE GAIN" rows={rows} window={board.key} onOpen={onOpen}/>
     })}
+    <Board title="DexScreener score" caption="MOVEMENT · VOLUME · LIQUIDITY" rows={tokens.filter(token => (token.dex?.score ?? 0) > 0).sort((first, second) => (second.dex?.score ?? 0) - (first.dex?.score ?? 0)).slice(0, 8).map(token => ({ token, value: String(token.dex?.score ?? 0), tone: (token.dex?.score ?? 0) >= 50 ? 'up' : '' }))} window="m1" onOpen={onOpen}/>
     <Board title="Viewers gained per minute" caption="ATTENTION" rows={viewerGainers.map(token => ({ token, value: `${formatSigned(token.viewersPerMin)}/min`, tone: 'up' }))} window="m1" onOpen={onOpen}/>
   </div>
 }
