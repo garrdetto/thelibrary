@@ -3,6 +3,7 @@ import type { RadarPulseMetrics } from '../../src/lib/axiom-radar-types.js'
 import type { MarketReading } from './dexscreener.js'
 import { trackerConfig } from './runtime.js'
 import type { PageStats } from './page-stats.js'
+import type { PulseIdentity } from './pulse-market.js'
 
 export type ActiveCandidate = { mint: string; pairAddress: string; symbol: string; momentum: number }
 
@@ -42,6 +43,7 @@ export const trackerState = {
   watchlist: new Map<string, number>(),
   pulse: new Map<string, number>(),
   pulseCards: new Map<string, RadarPulseMetrics>(),
+  pulseNames: new Map<string, PulseIdentity>(),
   holderCounts: new Map<string, { count: number; at: number }>(),
 }
 

@@ -50,7 +50,7 @@ export function ScoreBadge({ token, large = false }: { token: RadarToken; large?
     <span role="tooltip" id={tooltipId} className="radar-tooltip">
       <b>Runner score {token.score}/100</b>
       {token.scoreParts
-        ? token.scoreParts.map(part => <span key={part.key} className={part.available ? '' : 'muted'}>
+        ? token.scoreParts.map(part => <span key={`${part.key}:${part.label}`} className={part.available ? '' : 'muted'}>
           <span>{part.label}</span>
           <span className="tabular">{part.key === 'penalty' || part.key === 'learned' ? `${part.points > 0 ? '+' : ''}${part.points}` : part.available ? `${part.points.toFixed(0)} of ${part.max}` : 'no data'}</span>
         </span>)

@@ -1,4 +1,5 @@
-import { chunk, fetchJson } from './runtime.js'
+import { chunk, errorMessage, fetchJson } from './runtime.js'
+import { geckoAnswered, geckoCalled, geckoLimited, geckoReady } from './gecko-limit.js'
 
 const dexScreenerApi = 'https://api.dexscreener.com'
 
@@ -46,9 +47,18 @@ async function searchMints(query: string) {
 
 type GeckoPools = { data?: Array<{ relationships?: { base_token?: { data?: { id?: string } } } }> }
 
+/** One GeckoTerminal list a cycle at most, and none while its shared request budget says wait. */
 async function geckoMints(path: string) {
-  const result = await fetchJson<GeckoPools>(`https://api.geckoterminal.com/api/v2/networks/solana/${path}`, { retries: 1 })
-  return (result.data ?? []).map(pool => pool.relationships?.base_token?.data?.id?.replace(/^solana_/, '')).filter((mint): mint is string => Boolean(mint))
+  if (!geckoReady()) return []
+  geckoCalled()
+  try {
+    const result = await fetchJson<GeckoPools>(`https://api.geckoterminal.com/api/v2/networks/solana/${path}`, { retries: 0 })
+    geckoAnswered()
+    return (result.data ?? []).map(pool => pool.relationships?.base_token?.data?.id?.replace(/^solana_/, '')).filter((mint): mint is string => Boolean(mint))
+  } catch (error) {
+    if (/429/.test(errorMessage(error))) geckoLimited()
+    throw error
+  }
 }
 
 let geckoPage = 0
@@ -61,8 +71,7 @@ export async function fetchDiscoverySources() {
     listingMints('/community-takeovers/latest/v1'),
     searchMints('pump'),
     searchMints('SOL'),
-    geckoMints(`new_pools?page=${(geckoPage % 5) + 1}`),
-    geckoMints('trending_pools?duration=1h'),
+    geckoMints(geckoPage % 2 ? 'trending_pools?duration=1h' : `new_pools?page=${(Math.floor(geckoPage / 2) % 5) + 1}`),
   ])
   geckoPage += 1
   const mints = new Set<string>()

@@ -380,7 +380,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
       ? { holders: jupiter.holders, perMin: jupiter.holdersPerMin, change5mPct: jupiter.holderChange5mPct }
       : { holders: traits?.holders ?? null, perMin: live.holdersPerMin, change5mPct: null }
   const flow = snapshots.filter(row => row.timestamp >= now - 200_000).map(row => ({ t: row.timestamp, price: row.price_usd, volume5m: row.volume_5m, buys5m: row.buys_5m, sells5m: row.sells_5m }))
-  const botReason = detectBotClimb({ now, ageMinutes, buys5m: buys, sells5m: sells, volume5m, traders5m: jupiter?.traders5m ?? null, netBuyers5m: jupiter?.netBuyers5m ?? null, flow })
+  const botReason = detectBotClimb({ now, ageMinutes, buys5m: buys, sells5m: sells, volume5m, traders5m: jupiter?.traders5m ?? null, netBuyers5m: jupiter?.netBuyers5m ?? null, flow, viewers })
   const remembered = activeBotClimb(token.mint, now)
   if (botReason) trackerState.botClimbs.set(token.mint, { until: now + botClimbHoldMs, reason: botReason })
   const botClimb = botReason !== null || remembered !== null
@@ -433,6 +433,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     holdersPerMin: live.holdersPerMin,
     botReason: botReason ?? remembered?.reason ?? null,
     selling: sellAlerts.map(alert => alert.text),
+    severeSelling: sellAlerts.filter(alert => alert.severe).map(alert => alert.text),
     devSelling: sellAlerts.some(alert => alert.dev),
     learned: [],
   }
@@ -542,7 +543,7 @@ function buildRadarTokensNow(database: TrackerDatabase, weights: RadarWeights, n
   const finished = finalize(entries, settings)
   for (const token of finished) if (token.scoreLedger) token.scoreTrail = recordScore(token.mint, now, token.scoreLedger)
   forgetScoreTrails(now)
-  return finished.filter(token => !token.botClimb || token.pinned).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
+  return finished.filter(token => !token.botClimb || token.pinned || token.onPulse).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
 }
 
 const returnOf = (price: number | null, entry: number) => price === null || entry <= 0 ? null : price / entry - 1

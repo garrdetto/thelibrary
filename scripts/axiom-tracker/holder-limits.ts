@@ -7,7 +7,11 @@ export type MoverFlowPoint = { t: number; price: number | null; volume5m: number
 
 export type MoverTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; proTraders?: number | null }
 
-export type BotClimbInput = { now: number; ageMinutes: number; buys5m: number | null; sells5m: number | null; volume5m: number | null; traders5m: number | null; netBuyers5m: number | null; flow: MoverFlowPoint[] }
+export type BotClimbInput = { now: number; ageMinutes: number; buys5m: number | null; sells5m: number | null; volume5m: number | null; traders5m: number | null; netBuyers5m: number | null; flow: MoverFlowPoint[]; viewers?: number | null }
+
+/** People watching on Axiom: a launch this young with this many watchers is a crowd buying in, not wallets farming a chart. */
+export const crowdViewers = 40
+export const crowdAgeMinutes = 10
 
 const round1 = (value: number) => Math.round(value * 10) / 10
 
@@ -23,7 +27,8 @@ function deviation(values: number[]) {
 export function detectBotClimb(input: BotClimbInput): string | null {
   const buys = input.buys5m ?? 0
   const sells = input.sells5m ?? 0
-  if (input.traders5m !== null && input.netBuyers5m !== null && input.traders5m >= 50 && input.ageMinutes >= 2) {
+  const crowd = (input.viewers ?? 0) >= crowdViewers && input.ageMinutes < crowdAgeMinutes
+  if (!crowd && input.traders5m !== null && input.netBuyers5m !== null && input.traders5m >= 50 && input.ageMinutes >= 2) {
     const onlyBuying = input.netBuyers5m / input.traders5m
     const sellerWallets = Math.max(1, input.traders5m - input.netBuyers5m)
     if (onlyBuying >= 0.85) return `${Math.round(onlyBuying * 100)}% of ${input.traders5m} wallets only buy and never sell`
