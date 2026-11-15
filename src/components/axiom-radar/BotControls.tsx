@@ -3,6 +3,7 @@ import { CirclePause, CirclePlay, LoaderCircle, RotateCcw, XCircle } from 'lucid
 import type { BotCommand } from '@/lib/axiom-bot'
 import { relativeSeconds } from './format'
 import type { useBot } from './useBot'
+import { useRadarAccess } from './access'
 
 const confirmWindowMs = 4_000
 
@@ -39,9 +40,11 @@ function ConfirmButton({ label, confirmLabel, icon, busy, disabled, onConfirm }:
 /** The bot's terminal actions as buttons: pause or resume buying, close every position, reset the account. */
 export function BotControls({ bot }: { bot: BotFeed }) {
   const { view, refresh, saveSettings, sendCommand } = bot
+  const { canEdit } = useRadarAccess()
   const [busy, setBusy] = useState<'' | 'pause' | keyof BotCommand>('')
   const [notice, setNotice] = useState('')
   if (!view) return null
+  if (!canEdit) return <p className="radar-note" role="note">Only the administrator can pause, close or reset the bot.</p>
   const online = view.online
   const buying = view.settings.values['bot.enabled'] !== false
 

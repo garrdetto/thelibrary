@@ -2026,3 +2026,8 @@ body{background:var(--paper);color:var(--tone-0)}
 @media (max-width:1180px){.cg-layout{grid-template-columns:200px minmax(0,1fr)}.cg-side{grid-column:1/-1;max-height:none}}
 @media (max-width:760px){.cg-layout{grid-template-columns:1fr}.cg-gallery{max-height:300px}.cg-split{grid-template-columns:1fr}.cg-export{flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){.cg-progress i,.cg-thumb-bar i{transition:none}}
+.studio-shell .radar-tab{position:fixed;left:0;bottom:0;z-index:31;display:inline-flex;align-items:center;gap:8px;padding:10px 16px 10px 14px;border:1px solid var(--lib-line);border-left:0;border-bottom:0;border-radius:0 12px 0 0;background:var(--lib-panel);color:var(--lib-text);font-size:12.5px;font-weight:600;line-height:1;text-decoration:none;box-shadow:0 -4px 18px rgb(0 0 0 / .18);transition:border-color .15s,color .15s}
+.studio-shell .radar-tab:hover{border-color:var(--lib-accent);color:var(--lib-accent)}
+.studio-shell .radar-tab:focus-visible{outline:2px solid var(--lib-accent);outline-offset:-3px}
+.studio-shell .sidebar{padding-bottom:58px}
+@media(prefers-reduced-motion:reduce){.studio-shell .radar-tab{transition:none}}

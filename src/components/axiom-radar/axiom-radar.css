@@ -546,3 +546,5 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-penalty-reasons { font-size: 10px; line-height: 1.4; }
 .radar-part-detail { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); font-weight: 400; }
 .radar-tooltip-cuts { display: block; margin-top: 4px; color: var(--radar-down); font-size: 10px; line-height: 1.4; white-space: normal; }
+.radar-readonly > :not(.radar-readonly-note) { opacity: .72; }
+.radar-readonly-note { margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--radar-card); }

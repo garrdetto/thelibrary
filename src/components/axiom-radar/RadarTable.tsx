@@ -5,6 +5,7 @@ import { Line, LineChart, YAxis } from 'recharts'
 import type { RadarHistoryPoint, RadarSafetyLevel, RadarToken } from '@/lib/axiom-radar-types'
 import { dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd, holderCount } from './format'
 import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
+import { useRadarAccess } from './access'
 
 export type RadarSortKey = 'score' | 'viewers' | 'viewersPerMin' | 'holders' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
 export type RadarSort = { key: RadarSortKey; direction: 'asc' | 'desc' }
@@ -86,6 +87,8 @@ export function TokenIcon({ token }: { token: RadarToken }) {
 }
 
 export function PinButton({ token, onTogglePin }: { token: RadarToken; onTogglePin: (mint: string) => void }) {
+  const { canEdit } = useRadarAccess()
+  if (!canEdit) return null
   return <button type="button" className={`radar-icon-button radar-pin ${token.pinned ? 'on' : ''}`} aria-pressed={token.pinned} aria-label={token.pinned ? `Unpin ${token.symbol}` : `Pin ${token.symbol}`} title={token.pinned ? 'Pinned: always tracked' : 'Pin: always track this coin'} onClick={event => { event.stopPropagation(); onTogglePin(token.mint) }}>
     <Star size={14} fill={token.pinned ? 'currentColor' : 'none'}/>
   </button>
