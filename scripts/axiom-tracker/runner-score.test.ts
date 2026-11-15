@@ -183,13 +183,33 @@ test('a one-second flicker or a switch of data source is not a sell', () => {
   assert.equal(alerts.length, 0)
 })
 
-test('top holders selling needs the price to fall too, and a dev sell is flagged', () => {
+test('the top 10 thinning out on a run is not selling until it halves, and a dev sell is flagged', () => {
   resetSellWatch()
   for (let second = 0; second < 10; second++) watchSells('coin', reading(now + second * 1_000, { top10: 22, dev: 3 }))
   let alerts: ReturnType<typeof watchSells> = []
-  for (let second = 10; second < 20; second++) alerts = watchSells('coin', reading(now + second * 1_000, { top10: 17, dev: 1, price: 0.85 }))
-  assert.ok(alerts.some(alert => alert.text.startsWith('Top holders are selling')))
+  for (let second = 10; second < 20; second++) alerts = watchSells('coin', reading(now + second * 1_000, { top10: 14, dev: 1, price: 0.85 }))
+  assert.ok(!alerts.some(alert => alert.text.startsWith('Top holders are selling')), JSON.stringify(alerts))
   assert.ok(alerts.some(alert => alert.dev))
+  resetSellWatch()
+  for (let second = 0; second < 10; second++) watchSells('coin', reading(now + second * 1_000, { top10: 20 }))
+  for (let second = 10; second < 20; second++) alerts = watchSells('coin', reading(now + second * 1_000, { top10: 10, price: 1.4 }))
+  assert.equal(alerts.length, 0, 'a rising coin whose top 10 halves is not flagged')
+  resetSellWatch()
+  for (let second = 0; second < 10; second++) watchSells('coin', reading(now + second * 1_000, { top10: 20 }))
+  for (let second = 10; second < 20; second++) alerts = watchSells('coin', reading(now + second * 1_000, { top10: 10, price: 0.85 }))
+  const top = alerts.find(alert => alert.text.startsWith('Top holders are selling'))
+  assert.ok(top && !top.severe, JSON.stringify(alerts))
+})
+
+test('a top 10 drop from 20% to 10% spread over two minutes still counts, and losing most of it zeroes the score', () => {
+  resetSellWatch()
+  let alerts: ReturnType<typeof watchSells> = []
+  for (let second = 0; second <= 120; second++) alerts = watchSells('coin', reading(now + second * 1_000, { top10: 20 - second / 12, price: second > 110 ? 0.9 : 1 }))
+  assert.ok(alerts.some(alert => alert.text.startsWith('Top holders are selling')), JSON.stringify(alerts))
+  resetSellWatch()
+  for (let second = 0; second < 10; second++) watchSells('coin', reading(now + second * 1_000, { top10: 24 }))
+  for (let second = 10; second < 20; second++) alerts = watchSells('coin', reading(now + second * 1_000, { top10: 6, price: 0.7 }))
+  assert.ok(alerts.some(alert => alert.text.startsWith('Top holders are selling') && alert.severe), JSON.stringify(alerts))
 })
 
 function alert(overrides: Partial<AlertRow> = {}): AlertRow {
