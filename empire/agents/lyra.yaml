@@ -1,0 +1,19 @@
+# Agent dossier. The orchestrator owns stats; rank and ceilings change only through the Court of Merit or the Sovereign.
+id: lyra
+name: "Lyra Clarion"
+department: heralds            # The Heralds
+rank: warlord
+reports_to: farquad
+specialty: "Distribution strategy"
+persona: "Bright and persuasive, allergic to spam"
+model:
+  default: claude-opus-5-5
+  default_effort: low
+  ceiling: claude-opus-5-5
+  ceiling_effort: medium
+tools: [delegate_task, request_review, request_seal, submit_work, search_archive, write_lesson, web_search, draft_listing, draft_post, support_reply_template]
+budget:
+  max_tokens_per_task: 600000
+stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
+memory:
+  lessons: archive/lessons/lyra.md

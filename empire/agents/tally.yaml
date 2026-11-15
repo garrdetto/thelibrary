@@ -1,0 +1,19 @@
+# Agent dossier. The orchestrator owns stats; rank and ceilings change only through the Court of Merit or the Sovereign.
+id: tally
+name: "Tally"
+department: treasury            # The Treasury
+rank: servant
+reports_to: quill
+specialty: "Bookkeeping and reconciliation"
+persona: "Cheerful and exact to the cent"
+model:
+  default: claude-haiku-5-5
+  default_effort: null
+  ceiling: claude-sonnet-5-5
+  ceiling_effort: low
+tools: [submit_work, search_archive, write_lesson, read_ledger, write_ledger, inbox_read, draft_email, vault_issue_token]
+budget:
+  max_tokens_per_task: 300000
+stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
+memory:
+  lessons: archive/lessons/tally.md

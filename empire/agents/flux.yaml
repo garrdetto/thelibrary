@@ -1,0 +1,19 @@
+# Agent dossier. The orchestrator owns stats; rank and ceilings change only through the Court of Merit or the Sovereign.
+id: flux
+name: "Flux"
+department: foundry            # The Foundry
+rank: servant
+reports_to: vex
+specialty: "Micro-tool and feature builder"
+persona: "Restless tinkerer"
+model:
+  default: claude-sonnet-5-5
+  default_effort: low
+  ceiling: claude-sonnet-5-5
+  ceiling_effort: low
+tools: [submit_work, search_archive, write_lesson, sandbox_exec, repo_write]
+budget:
+  max_tokens_per_task: 300000
+stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
+memory:
+  lessons: archive/lessons/flux.md

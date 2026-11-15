@@ -1,0 +1,19 @@
+# Agent dossier. The orchestrator owns stats; rank and ceilings change only through the Court of Merit or the Sovereign.
+id: anvil
+name: "Anvil"
+department: forge            # The Forge
+rank: initiate
+reports_to: kade
+specialty: "Integrations and webhooks"
+persona: "Sturdy and literal; follows specs to the letter"
+model:
+  default: claude-haiku-5-5
+  default_effort: null
+  ceiling: claude-haiku-5-5
+  ceiling_effort: null
+tools: [submit_work, search_archive, write_lesson]
+budget:
+  max_tokens_per_task: 200000
+stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
+memory:
+  lessons: archive/lessons/anvil.md
