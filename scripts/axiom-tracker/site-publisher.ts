@@ -1,4 +1,4 @@
-import { liveFiguresOf, type RadarHistoryPoint, type RadarPayload, type RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
+import { liveFiguresOf, type RadarHistoryPoint, type RadarLiveFigures, type RadarPayload, type RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { abandonIfHung, createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
@@ -23,6 +23,28 @@ function thin<T>(items: T[], limit: number) {
 
 export function compactPayload(payload: RadarPayload): RadarPayload {
   return { ...payload, tokens: payload.tokens.slice(0, siteTokenLimit).map(token => ({ ...token, history: thin<RadarHistoryPoint>(token.history, 45) })) }
+}
+
+const byteSize = (text: string) => Buffer.byteLength(text, 'utf8')
+
+/** The first body, from fullest to leanest, that fits under the site's upload limit (measured in bytes, as the site measures it). */
+export function fitBody(candidates: Array<() => unknown>, limit = maxBodyBytes) {
+  for (const candidate of candidates) {
+    const body = JSON.stringify(candidate())
+    if (byteSize(body) <= limit) return body
+  }
+  return null
+}
+
+/** The payload with shorter histories and without the per-coin score trail, for when every Pulse coin will not fit otherwise. */
+export function slimPayload(payload: RadarPayload, ledgersFor = Infinity): RadarPayload {
+  const keep = new Set([...payload.tokens].sort((first, second) => second.score - first.score).slice(0, ledgersFor).map(token => token.mint))
+  return { ...payload, tokens: payload.tokens.map(token => ({ ...token, ...(keep.has(token.mint) ? {} : { scoreLedger: undefined, spark: { fast: [], slow: [] } }), history: thin<RadarHistoryPoint>(token.history, 15), scoreTrail: token.scoreTrail ? { points: token.scoreTrail.points.slice(-30), changes: token.scoreTrail.changes.slice(-3) } : token.scoreTrail })) }
+}
+
+function slimLive(live: { at: number; tokens: Record<string, RadarLiveFigures> } | undefined) {
+  if (!live) return live
+  return { at: live.at, tokens: Object.fromEntries(Object.entries(live.tokens).map(([mint, figures]) => [mint, { ...figures, scoreLedger: undefined, scoreTrail: undefined }])) }
 }
 
 function collectDetails(database: TrackerDatabase, payload: RadarPayload, historyLimit: number) {
@@ -67,9 +89,14 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
         const payloadDue = !live || started - lastPayloadAt >= watchingPayloadMs
         const payload = compactPayload(full)
         const detailsDue = payloadDue && started - lastDetailsAt >= (watching ? watchingDetailsMs : idleDetailsMs)
-        let body = !payloadDue ? JSON.stringify({ live }) : JSON.stringify(detailsDue ? { payload, live, details: collectDetails(database, payload, 180) } : { payload, live })
-        if (body.length > maxBodyBytes && detailsDue) body = JSON.stringify({ payload, live, details: collectDetails(database, payload, 60) })
-        if (body.length > maxBodyBytes) body = JSON.stringify({ payload, live })
+        const body = fitBody(!payloadDue ? [() => ({ live }), () => ({ live: slimLive(live) })] : [
+          ...(detailsDue ? [() => ({ payload, live, details: collectDetails(database, payload, 180) }), () => ({ payload, live, details: collectDetails(database, payload, 60) })] : []),
+          () => ({ payload, live }),
+          () => ({ payload }),
+          () => ({ payload: slimPayload(payload) }),
+          () => ({ payload: slimPayload(payload, 40) }),
+        ])
+        if (!body) throw new Error('The radar update is larger than the site accepts even after trimming')
         const { response, result } = await send(endpoint, token, body)
         if (result.settings) applyRadarSettings(result.settings)
         if (response.status === 400 && live) {

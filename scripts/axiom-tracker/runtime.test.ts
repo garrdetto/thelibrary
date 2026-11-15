@@ -34,3 +34,20 @@ test('fetchJson retries after a hung request and returns the next answer', async
   assert.deepEqual(await fetchJson('https://tracker.invalid/prices', { timeoutMs: 30, retries: 1 }), { price: 2 })
   assert.equal(calls, 2)
 })
+
+test('the site upload steps down from details to the slim payload until it fits, measured in bytes', async () => {
+  const { fitBody } = await import('./site-publisher.js')
+  const big = { text: 'é'.repeat(600) }
+  const small = { text: 'ok' }
+  assert.equal(fitBody([() => big, () => small], 1_000), JSON.stringify(small))
+  assert.equal(fitBody([() => ({ text: 'a'.repeat(900) })], 1_000), JSON.stringify({ text: 'a'.repeat(900) }))
+  assert.equal(fitBody([() => big], 1_000), null)
+})
+
+test('the slim payload keeps score ledgers only for the top-scored coins', async () => {
+  const { slimPayload } = await import('./site-publisher.js')
+  const coin = (mint: string, score: number) => ({ mint, score, history: [], scoreLedger: { score }, spark: { fast: [1], slow: [1] }, scoreTrail: null })
+  const slim = slimPayload({ tokens: [coin('a', 10), coin('b', 90), coin('c', 50)] } as never, 2)
+  const ledgers = Object.fromEntries(slim.tokens.map(token => [token.mint, Boolean(token.scoreLedger)]))
+  assert.deepEqual(ledgers, { a: false, b: true, c: true })
+})
