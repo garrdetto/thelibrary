@@ -1,7 +1,7 @@
 import type { RadarHolderRisk, RadarSafetyPlan, RadarScoreCap, RadarScoreCheck, RadarScoreGate, RadarScoreLedger, RadarScorePart, RadarScorePillar } from '../../src/lib/axiom-radar-types.js'
 
 /** Step 1: any of these makes the score 0. Percentages of supply. */
-export const disqualifyAbove = { dev: 5, top10: 25, bundlers: 15, fresh: 10, snipers: 30, insiders: 30, linked: 30 }
+export const disqualifyAbove = { dev: 5, top10: 25, bundlers: 35, fresh: 10, snipers: 30, insiders: 30, linked: 30, proTraders: 50 }
 export const serialLaunches = 20
 export const serialGraduationRate = 0.1
 export const deadChartBuyers = 5
@@ -29,6 +29,7 @@ export type RunnerInput = {
   bundlers: number | null
   linked: number | null
   fresh: number | null
+  proTraders: number | null
   holders: number | null
   mintAuthority: boolean | null
   freezeAuthority: boolean | null
@@ -249,6 +250,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   shareGate('Snipers', input.snipers, disqualifyAbove.snipers, 'Snipers hold')
   shareGate('Insiders', input.insiders, disqualifyAbove.insiders, 'Insiders hold')
   shareGate('Linked wallet groups', input.linked, disqualifyAbove.linked, 'Linked wallet groups hold')
+  gate('Pro traders holding', share(input.proTraders), `0-${disqualifyAbove.proTraders}%`, input.proTraders === null ? null : input.proTraders > disqualifyAbove.proTraders, `Pro traders hold ${pct(input.proTraders ?? 0)} (limit ${disqualifyAbove.proTraders}%)`)
   const created = input.devCreated
   const migrated = input.devMigrated ?? 0
   gate('Serial launcher', created === null ? 'dev history not read yet' : `dev made ${Math.round(created)}, ${Math.round(migrated)} graduated`, `under ${serialLaunches} launches, or ${serialGraduationRate * 100}%+ graduated`,
@@ -386,6 +388,6 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     tags,
     safetyPlan: safetyPlanFor(input),
     thesis,
-    ledger: { gates, pillars, adjustments, caps, base: round1(base), beforeCaps, score },
+    ledger: { gates, pillars, adjustments, caps, base: round1(base), beforeCaps, score, at: input.now },
   }
 }

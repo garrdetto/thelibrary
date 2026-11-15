@@ -20,11 +20,16 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
   void (async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/report`, {
+      const send = async report => fetch(`http://127.0.0.1:${await trackerPort()}/extension/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(message.report),
+        body: JSON.stringify(report),
       })
+      let response = await send(message.report)
+      if (response.status === 400 && message.report?.stats) {
+        const { stats, ...withoutStats } = message.report
+        response = await send(withoutStats)
+      }
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`)
       await chrome.storage.local.set({ lastSentAt: Date.now(), lastMatched: result.matched ?? 0, lastError: null })
@@ -52,8 +57,8 @@ async function stepMissingViewers(pulseTab) {
   const { cycleMissing = true } = await chrome.storage.local.get('cycleMissing')
   if (!cycleMissing) return
   const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/status`)
-  const { missing = [] } = await response.json()
-  const next = missing.find(item => item.pairAddress && now - (visitedAt.get(item.pairAddress) ?? 0) > revisitAfterMs)
+  const { missing = [], stale = [] } = await response.json()
+  const next = [...missing, ...stale].find(item => item.pairAddress && now - (visitedAt.get(item.pairAddress) ?? 0) > revisitAfterMs)
   await chrome.storage.local.set({ missingViewers: missing.length })
   if (!next) return
   visitedAt.set(next.pairAddress, now)

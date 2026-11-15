@@ -5,7 +5,7 @@ export const holderLimits = disqualifyAbove
 
 export type MoverFlowPoint = { t: number; price: number | null; volume5m: number | null; buys5m: number | null; sells5m: number | null }
 
-export type MoverTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null }
+export type MoverTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; proTraders?: number | null }
 
 export type BotClimbInput = { now: number; ageMinutes: number; buys5m: number | null; sells5m: number | null; volume5m: number | null; traders5m: number | null; netBuyers5m: number | null; flow: MoverFlowPoint[] }
 
@@ -60,5 +60,6 @@ export function holderLimitBreaks(traits: MoverTraits | null) {
   if (traits.bundlers !== null && traits.bundlers > holderLimits.bundlers) breaks.push(`Bundlers hold ${round1(traits.bundlers)}% (limit ${holderLimits.bundlers}%)`)
   if (traits.linked !== null && traits.linked > holderLimits.linked) breaks.push(`Linked wallet groups hold ${round1(traits.linked)}% (limit ${holderLimits.linked}%)`)
   if (typeof traits.fresh === 'number' && traits.fresh > holderLimits.fresh) breaks.push(`Fresh wallets hold ${round1(traits.fresh)}% (limit ${holderLimits.fresh}%)`)
+  if (typeof traits.proTraders === 'number' && traits.proTraders > holderLimits.proTraders) breaks.push(`Pro traders hold ${round1(traits.proTraders)}% (limit ${holderLimits.proTraders}%)`)
   return breaks
 }

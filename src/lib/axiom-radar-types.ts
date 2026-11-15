@@ -28,7 +28,7 @@ export type RadarHistoryPoint = { t: number; viewers: number | null; marketCap: 
 
 export type RadarSocials = { twitter: string | null; telegram: string | null; website: string | null }
 
-export type RadarHolderTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; holders: number | null; rugged: boolean; checkedAt: number | null }
+export type RadarHolderTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; proTraders?: number | null; holders: number | null; rugged: boolean; checkedAt: number | null }
 
 export type RadarHolderRisk = { blocked: boolean; multiplier: number; reasons: string[] }
 
@@ -47,7 +47,7 @@ export type RadarScorePillar = { key: RadarScorePart['key']; label: string; poin
 export type RadarScoreCap = { label: string; cap: number; applies: boolean; reading: string }
 
 /** Everything that made the current score: gates, each pillar's rules, adjustments and caps. */
-export type RadarScoreLedger = { gates: RadarScoreGate[]; pillars: RadarScorePillar[]; adjustments: RadarScoreCheck[]; caps: RadarScoreCap[]; base: number; beforeCaps: number; score: number }
+export type RadarScoreLedger = { gates: RadarScoreGate[]; pillars: RadarScorePillar[]; adjustments: RadarScoreCheck[]; caps: RadarScoreCap[]; base: number; beforeCaps: number; score: number; at: number }
 
 /** A moment the score or a gate changed, with what changed. */
 export type RadarScoreChange = { t: number; from: number; to: number; reasons: string[] }

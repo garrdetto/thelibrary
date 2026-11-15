@@ -104,8 +104,8 @@ export function assessQuality(input: QualityInput) {
   if (input.freezeAuthority !== null) checks.push({ label: 'Freeze authority', status: input.freezeAuthority ? 'fail' : 'pass', detail: input.freezeAuthority ? 'Still enabled: wallets can be frozen' : 'Revoked', weight: 2 })
   const totalWeight = checks.reduce((total, check) => total + check.weight, 0)
   const earned = checks.reduce((total, check) => total + check.weight * (check.status === 'pass' ? 1 : check.status === 'warn' ? 0.5 : 0), 0)
-  const holderLabels: Record<string, string> = { 'Top 10 holders': 'Top 10 wallets hold', 'Dev holding': 'Dev holds', Snipers: 'Snipers hold', Insiders: 'Insiders hold', Bundlers: 'Bundlers hold', 'Linked wallets': 'Linked wallet groups hold' }
-  const values: Record<string, number | null> = { 'Top 10 holders': top10, 'Dev holding': dev, Snipers: snipers, Insiders: insiders, Bundlers: bundlers, 'Linked wallets': linked }
+  const holderLabels: Record<string, string> = { 'Top 10 holders': 'Top 10 wallets hold', 'Dev holding': 'Dev holds', Snipers: 'Snipers hold', Insiders: 'Insiders hold', Bundlers: 'Bundlers hold', 'Linked wallets': 'Linked wallet groups hold', 'Fresh wallets': 'Fresh wallets hold' }
+  const values: Record<string, number | null> = { 'Top 10 holders': top10, 'Dev holding': dev, Snipers: snipers, Insiders: insiders, Bundlers: bundlers, 'Linked wallets': linked, 'Fresh wallets': fresh }
   const risky = checks.filter(check => check.label in holderLabels && check.status !== 'pass')
   const blocked = risky.some(check => check.status === 'fail')
   const multiplier = Math.max(0.2, risky.reduce((total, check) => total * (check.status === 'fail' ? 0.45 : 0.8), 1))

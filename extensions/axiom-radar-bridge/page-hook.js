@@ -1,5 +1,5 @@
 (() => {
-  if (location.pathname.startsWith('/pulse') || location.pathname.startsWith('/meme/')) {
+  if (location.pathname.startsWith('/pulse') || location.pathname.startsWith('/meme/') || location.pathname.startsWith('/token/')) {
     try {
       Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get: () => false })
       Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get: () => 'visible' })

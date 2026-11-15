@@ -7,6 +7,7 @@ import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, 
 import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
+import { ScoreLedger } from './ScoreLedger'
 import { fetchTokenDetail } from './useRadarFeed'
 
 const tooltipStyle = { background: 'var(--tone-82)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11, color: 'var(--tone-0)' }
@@ -99,6 +100,11 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div><dt>5m buy share</dt><dd className="tabular">{formatPercent(live.buyRatio, 0)}</dd></div>
         </dl>
       </section>
+
+      {live.scoreLedger && <section className="radar-drawer-section" aria-labelledby="radar-ledger-title">
+        <h3 id="radar-ledger-title">Why it scores {live.score} <small>every rule, reading and cap behind the runner score</small></h3>
+        <ScoreLedger token={live}/>
+      </section>}
 
       <section className="radar-drawer-section">
         <h3>Candles <small>DexScreener, live</small></h3>
@@ -193,7 +199,8 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       </section>
 
       <section className="radar-drawer-section">
-        <h3>Score breakdown</h3>
+        <h3>{live.scoreLedger ? 'Safety plan and token settings' : 'Score breakdown'}</h3>
+        {!live.scoreLedger && <>
         {live.scoreParts && <p className="radar-note">Runner score, re-checked every second: distribution (30), multi-wave momentum (30), hype (25) and chart health (15), less a point for each point the top 10 hold above 15%. Mint or freeze authority, dev over 5%, top 10 over 25%, bundles over 15%, a serial or copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling score 0.</p>}
         <ul className="radar-factors">
           {live.scoreParts
@@ -213,6 +220,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
             <span className="tabular">{live.score - live.rawScore}</span>
           </li>}
         </ul>
+        </>}
         {live.holderRisk?.blocked && <p className="radar-pick-alert" role="note">Scores 0 and stays out of every recommendation while this lasts.</p>}
         {live.safetyPlan && <div className={`radar-safety-plan ${live.safetyPlan.level}`}>
           <h4>Safety plan{live.safetyPlan.level === 'exit' ? ': get out' : live.safetyPlan.level === 'watch' ? ': dump risk' : ''}</h4>
