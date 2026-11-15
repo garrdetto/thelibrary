@@ -23,6 +23,17 @@ const statLabels: Array<[StatKey, RegExp, RegExp]> = [
 export const pageStatsLiveMs = 2 * 60_000
 export const pageStatsFreshMs = 8 * 60_000
 export const pageStatsKeptMs = 30 * 60_000
+export const pageRevisitMs = 4 * 60_000
+export const pageRevisitOnPulseMs = 20 * 60_000
+
+/**
+ * Whether the bridge's background tab should open this coin's Axiom page for its holder figures. A coin that is not on Pulse
+ * has nothing else from Axiom, so it is read every four minutes; a coin on Pulse already sends its card every second and
+ * only needs the page for the fresh-wallet figure, every twenty.
+ */
+export function needsPageRead(stats: PageStats | undefined, onPulse: boolean, now: number) {
+  return now - (stats?.seenAt ?? 0) > (onPulse ? pageRevisitOnPulseMs : pageRevisitMs)
+}
 
 /**
  * Reads the holder figures Axiom shows in the Token Info box on a coin's own page ("Top 10 H.", "Dev H.", "Snipers H.", "Insiders",
