@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS positions (
   cost REAL NOT NULL, proceeds REAL NOT NULL DEFAULT 0, fees REAL NOT NULL DEFAULT 0,
   entry_liquidity REAL, last_liquidity REAL, peak_price REAL NOT NULL, peak_viewers REAL,
   last_price REAL NOT NULL, last_price_at INTEGER NOT NULL, target_done INTEGER NOT NULL DEFAULT 0, score REAL NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'open', closed_at INTEGER, exit_reason TEXT, exit_high REAL, entry_json TEXT NOT NULL DEFAULT '{}'
+  status TEXT NOT NULL DEFAULT 'open', closed_at INTEGER, exit_reason TEXT, exit_high REAL, entry_json TEXT NOT NULL DEFAULT '{}', peak_mode REAL
 );
 CREATE INDEX IF NOT EXISTS positions_status ON positions (status, closed_at);
 CREATE INDEX IF NOT EXISTS positions_mint ON positions (mint, opened_at);
@@ -47,8 +47,9 @@ MONEY_COLUMNS = {
 POSITION_COLUMNS = (
     "mint", "symbol", "pair", "opened_at", "entry_spot", "entry_price", "qty", "qty_open", "cost", "proceeds", "fees",
     "entry_liquidity", "last_liquidity", "peak_price", "peak_viewers", "last_price", "last_price_at", "target_done", "score",
-    "status", "closed_at", "exit_reason", "exit_high",
+    "status", "closed_at", "exit_reason", "exit_high", "peak_mode",
 )
+ADDED_COLUMNS = {"positions": {"peak_mode": "REAL"}}
 
 
 def _position(row: sqlite3.Row) -> Position:
@@ -70,6 +71,7 @@ class Ledger:
         self.db.execute("PRAGMA journal_mode = WAL")
         self._rename_dollar_columns()
         self.db.executescript(SCHEMA)
+        self._add_columns()
 
     def close(self) -> None:
         self.db.close()
@@ -81,6 +83,14 @@ class Ledger:
             for old, new in renames.items():
                 if old in have:
                     self.db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+
+    def _add_columns(self) -> None:
+        """Columns added after an account was made."""
+        for table, columns in ADDED_COLUMNS.items():
+            have = {row["name"] for row in self.db.execute(f"PRAGMA table_info({table})")}
+            for name, kind in columns.items():
+                if name not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
     @property
     def in_sol(self) -> bool:
@@ -191,8 +201,8 @@ class Ledger:
 
     def _save(self, position: Position) -> None:
         self.db.execute(
-            "UPDATE positions SET qty_open = ?, proceeds = ?, fees = ?, last_liquidity = ?, peak_price = ?, peak_viewers = ?, last_price = ?, last_price_at = ?, target_done = ?, status = ?, closed_at = ?, exit_reason = ?, exit_high = ? WHERE id = ?",
-            (position.qty_open, position.proceeds, position.fees, position.last_liquidity, position.peak_price, position.peak_viewers, position.last_price, position.last_price_at, int(position.target_done), position.status, position.closed_at, position.exit_reason, position.exit_high, position.id),
+            "UPDATE positions SET qty_open = ?, proceeds = ?, fees = ?, last_liquidity = ?, peak_price = ?, peak_viewers = ?, last_price = ?, last_price_at = ?, target_done = ?, status = ?, closed_at = ?, exit_reason = ?, exit_high = ?, peak_mode = ? WHERE id = ?",
+            (position.qty_open, position.proceeds, position.fees, position.last_liquidity, position.peak_price, position.peak_viewers, position.last_price, position.last_price_at, int(position.target_done), position.status, position.closed_at, position.exit_reason, position.exit_high, position.peak_mode, position.id),
         )
 
     def _fill(self, position_id: int, now: int, side: str, spot: float, fill: Fill, reason: str) -> None:

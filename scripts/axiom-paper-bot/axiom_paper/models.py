@@ -56,6 +56,7 @@ class Coin:
     exit_advice_reason: str | None = None
     rebuy_advice_reason: str | None = None
     high_price: float | None = None
+    failed_labels: tuple[str, ...] = ()
 
     @staticmethod
     def from_token(token: dict[str, Any], sol_usd: float = 1.0) -> "Coin":
@@ -64,6 +65,7 @@ class Coin:
         safety = token.get("safety") if isinstance(token.get("safety"), dict) else {}
         quality = token.get("quality") if isinstance(token.get("quality"), dict) else {}
         checks = quality.get("checks") if isinstance(quality.get("checks"), list) else []
+        failed = tuple(str(check.get("label") or "a check")[:40] for check in checks if isinstance(check, dict) and check.get("status") == "fail")
         outlook = token.get("outlook") if isinstance(token.get("outlook"), dict) else {}
         advice = token.get("advice") if isinstance(token.get("advice"), dict) else {}
         buy_ratio = number(token.get("buyRatio"))
@@ -91,7 +93,8 @@ class Coin:
             gain_5m=number(change.get("m5")),
             safety=str(safety.get("level") or "unknown"),
             quality=number(quality.get("score")),
-            failed_checks=sum(1 for check in checks if isinstance(check, dict) and check.get("status") == "fail"),
+            failed_checks=len(failed),
+            failed_labels=failed,
             alerts=tuple(str(alert) for alert in token.get("alerts") or [] if alert),
             smart_holders=int(number(token.get("runnerWallets")) or 0),
             snapshot_at=number(token.get("lastSnapshotAt")),
@@ -113,7 +116,7 @@ class Coin:
             "score": self.score, "signal": self.signal, "viewers": self.viewers, "viewersPerMin": self.viewers_per_min,
             "liquidity": self.liquidity, "marketCap": self.market_cap, "volume5m": self.volume_5m, "buySharePct": self.buy_share_pct,
             "ageMinutes": self.age_minutes, "gain1m": self.gain_1m, "gain5m": self.gain_5m, "safety": self.safety,
-            "quality": self.quality, "failedChecks": self.failed_checks, "smartHolders": self.smart_holders,
+            "quality": self.quality, "failedChecks": self.failed_checks, "failedLabels": list(self.failed_labels), "smartHolders": self.smart_holders,
             "runnerChance": self.runner_chance, "explodeChance": self.explode_chance, "makerChance": self.maker_chance,
             "phase": self.phase, "minutesLeft": self.minutes_left, "adviceExit": self.advice_exit, "adviceRebuy": self.advice_rebuy,
         }
@@ -141,6 +144,7 @@ class Position:
     last_price_at: int
     target_done: bool
     score: float
+    peak_mode: float | None = None
     status: str = "open"
     closed_at: int | None = None
     exit_reason: str | None = None
