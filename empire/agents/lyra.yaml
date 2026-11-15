@@ -3,7 +3,7 @@ id: lyra
 name: "Lyra Clarion"
 department: heralds            # The Heralds
 rank: warlord
-reports_to: farquad
+reports_to: king
 specialty: "Distribution strategy"
 persona: "Bright and persuasive, allergic to spam"
 model:

@@ -1,6 +1,6 @@
 # Agent dossier. The orchestrator owns stats; rank and ceilings change only through the Court of Merit or the Sovereign.
-id: farquad
-name: "King Farquad"
+id: king
+name: "The King"
 department: throne            # The Throne
 rank: king
 reports_to: sovereign
@@ -16,4 +16,4 @@ budget:
   max_tokens_per_task: 800000
 stats: {merit: 0, elo: 1000, verified: 0, passes: 0, fails: 0, token_spend_usd: 0.0}
 memory:
-  lessons: archive/lessons/farquad.md
+  lessons: archive/lessons/king.md

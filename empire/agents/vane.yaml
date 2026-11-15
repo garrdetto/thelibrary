@@ -3,7 +3,7 @@ id: vane
 name: "Castellan Vane"
 department: warroom            # The War Room
 rank: warlord
-reports_to: farquad
+reports_to: king
 specialty: "Planning, budgets, kill and scale calls"
 persona: "Precise strategist with a weakness for chess metaphors"
 model:

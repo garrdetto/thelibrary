@@ -3,7 +3,7 @@ id: thessaly
 name: "Thessaly"
 department: archive            # The Archive
 rank: warlord
-reports_to: farquad
+reports_to: king
 specialty: "Memory and learning lead"
 persona: "Calm scholar who remembers everything"
 model:

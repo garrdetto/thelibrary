@@ -1,4 +1,4 @@
-# King Farquad's Empire: Claude Code starter kit
+# The King's Empire: Claude Code starter kit
 
 Everything Claude Code needs to build the empire described in `docs/EMPIRE_PLAN.md`.
 
@@ -11,10 +11,10 @@ Everything Claude Code needs to build the empire described in `docs/EMPIRE_PLAN.
 | `BUILD_PROMPTS.md` | Eight phase prompts, each with a gate to check |
 | `docs/EMPIRE_PLAN.md` | The full plan (exported from your doc) |
 | `codex.yaml` | Chain of command, model ceilings, routing, budgets, Seal list, refusals |
-| `agents/*.yaml` | 39 agent dossiers: King Farquad, 8 Warlords, 30 Servants |
+| `agents/*.yaml` | 39 agent dossiers: The King, 8 Warlords, 30 Servants |
 | `charters/*.md` | One charter per department |
 | `archive/` | Lessons (one file per agent), skills and eval sets, empty to start |
-| `prototype/command-center.html` | The Command Center console (personnel roster, fortress view, Intel and Command tabs, themes); open it in a browser. Phase 4 connects it to the live engine |
+| `prototype/command-center.html` | The Command Center console (personnel roster, castle view with The King at the center, Intel and Command tabs, telemetry, themes and castle colors); open it in a browser. Phase 4 connects it to the live engine |
 | `engine/` | Empty; Claude Code builds the Throne Engine here |
 | `wrangler.jsonc`, `worker.js` | Hosting for the console on the `kingdom` Cloudflare Worker |
 

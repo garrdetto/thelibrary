@@ -1,4 +1,4 @@
-# King Farquad's Empire: build rules for Claude Code
+# The King's Empire: build rules for Claude Code
 
 You are building the Throne Engine: an orchestrator that runs a three-tier hierarchy of Claude agents (King, Warlords, Servants) as an automated digital-products business. The full design is in `docs/EMPIRE_PLAN.md`. Build one phase at a time from `BUILD_PROMPTS.md` and stop at each phase's gate.
 
@@ -20,7 +20,7 @@ This folder sits inside the library site repository (`garrdetto/thelibrary`, Tan
 
 | Use | Model ID | Effort |
 | --- | --- | --- |
-| King Farquad | `claude-opus-5-5` | high (xhigh for venture go/no-go) |
+| The King | `claude-opus-5-5` | high (xhigh for venture go/no-go) |
 | Warlords | `claude-opus-5-5` | medium or low (or route down to Sonnet) |
 | Adept / Knight-Captain ceiling | `claude-sonnet-5-5` | medium |
 | Servant ceiling | `claude-sonnet-5-5` | low |
