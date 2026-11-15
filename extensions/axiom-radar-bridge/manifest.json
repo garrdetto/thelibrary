@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Axiom Radar Bridge",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Sends the viewer counts shown on Axiom Pulse and the holder figures on Axiom coin pages to the Axiom Radar tracker on this computer, and keeps the Pulse tab updating in the background.",
   "permissions": [
     "storage"

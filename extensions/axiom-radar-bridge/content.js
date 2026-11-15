@@ -31,7 +31,7 @@ function visibleViewers() {
 }
 
 function pairFromUrl() {
-  const match = location.pathname.match(/\/meme\/([1-9A-HJ-NP-Za-km-z]{32,44})/)
+  const match = location.pathname.match(/\/(?:meme|token)\/([1-9A-HJ-NP-Za-km-z]{32,44})/)
   return match ? match[1] : null
 }
 
@@ -82,18 +82,20 @@ function eyeCards() {
 const percentLine = /^<?\s*(\d+(?:\.\d+)?)\s*%$/
 let pageStatsCache = { at: 0, stats: null }
 
+const holderLabel = /top\s*10|\bdev\b|snip|insid|bundl|fresh/i
+
 function readPageStats() {
   const lines = (document.body?.innerText ?? '').split('\n').map(line => line.trim()).filter(Boolean)
   const stats = {}
   let found = 0
-  for (let index = 0; index < lines.length - 1 && found < 40; index++) {
+  for (let index = 0; index < lines.length - 1 && found < 20; index++) {
     const value = lines[index].match(percentLine)
     const label = lines[index + 1]
-    if (!value || label.length > 28 || !/[a-z]/i.test(label) || percentLine.test(label) || label in stats) continue
+    if (!value || label.length > 28 || !holderLabel.test(label) || label in stats) continue
     stats[label] = Math.min(100, Number(value[1]))
     found += 1
   }
-  return found ? stats : null
+  return found >= 2 ? stats : null
 }
 
 function pageStats() {
