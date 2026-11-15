@@ -36,7 +36,7 @@ export const movementWindows = [
 /** Points a rising coin earns for movement, and the most a falling one loses. */
 export const movementPoints = 10
 
-/** The weighted movement from -1 (falling hard in every window) to +1, over the windows that have a reading. */
+/** The weighted movement from -1 (falling hard in every window) to +1. A window with no reading yet counts as no move, so a lone 5-second spike can earn only its 10% share. */
 export function movementSignal(change: RunnerInput['priceChange']) {
   let weighted = 0
   let weights = 0
@@ -48,7 +48,7 @@ export function movementSignal(change: RunnerInput['priceChange']) {
     weights += window.weight
     readings.push(`${window.label} ${value > 0 ? '+' : ''}${round1(value)}%`)
   }
-  return weights ? { signal: weighted / weights, readings, coverage: weights } : null
+  return weights ? { signal: weighted, readings, coverage: weights } : null
 }
 export const sweetSpots = { early: { low: 8_000, high: 60_000 }, graduated: { low: 30_000, high: 300_000 } }
 

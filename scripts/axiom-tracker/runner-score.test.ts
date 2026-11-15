@@ -305,4 +305,5 @@ test('movement over 5s, 30s, 1m and 5m counts, the 5-minute move most and the 5-
   assert.ok(falling.score < quiet, `${quiet} ${falling.score}`)
   assert.ok(falling.cuts.some(cut => cut.startsWith('Falling (')), JSON.stringify(falling.cuts))
   assert.equal(movementSignal({ m1: null, m5: null }), null)
+  assert.ok((movementSignal({ s5: 8, s30: null, m1: null, m5: null })?.signal ?? 1) <= 0.1)
 })
