@@ -78,3 +78,16 @@ test('every coin in the Pulse worker feed becomes a Pulse coin with dollar figur
   assert.equal(market?.liquidityUsd, 2_800)
   for (const map of [trackerState.pulseCards, trackerState.pulseNames, trackerState.viewers, trackerState.pulse]) map.delete(mint)
 })
+
+test('a coin with a field the tracker cannot read is skipped, not the whole Pulse feed', async () => {
+  const { applyPulseFeed, pulseFeedSchema, pulseFeedSeen } = await import('./pulse-feed.js')
+  const good = 'Good1111111111111111111111111111111111pump'
+  const feed = pulseFeedSchema.parse({ usdPerSol: 70, rows: [
+    { column: 'migrated', pairAddress: '8joWpsrzJRYibU3Cp5hezATASCDRAGN4sJxe5QhmD4BX', tokenAddress: good, tokenTicker: 'OK', createdAt: {}, marketCap: 100, userCount: 5 },
+    { column: 'migrated', pairAddress: 'not-an-address', tokenAddress: 'nope' },
+  ] })
+  assert.equal(applyPulseFeed(feed, now), 1)
+  assert.equal(pulseFeedSeen.skipped, 1)
+  assert.equal(trackerState.pulseNames.get(good)?.createdAt, null)
+  for (const map of [trackerState.pulseCards, trackerState.pulseNames, trackerState.viewers, trackerState.pulse]) map.delete(good)
+})

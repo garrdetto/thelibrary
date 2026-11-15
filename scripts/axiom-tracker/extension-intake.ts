@@ -122,7 +122,7 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
   }
   for (const card of input.cards ?? []) {
     if (card.mint) {
-      if (card.lines?.length && !(input.pulse && input.pulse.rows.some(row => row.tokenAddress === card.mint))) {
+      if (card.lines?.length && !(input.pulse && input.pulse.rows.some(row => (row as { tokenAddress?: unknown } | null)?.tokenAddress === card.mint))) {
         const metrics = parsePulseCard(card.lines, card.viewers, now)
         trackerState.pulseCards.set(card.mint, metrics)
         notePulseFlow(card.mint, metrics)
@@ -207,7 +207,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
     }
   })
   const heartbeat = setInterval(() => {
-    recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - pulseFeedSeen.at < 15_000 ? `Reading all ${pulseFeedSeen.count} coins in the Pulse columns${pageStatsNote()}` : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards (update the bridge to 1.7 for every coin in the columns)${pageStatsNote()}` : `No Pulse cards in the last 15s: keep the Axiom Pulse tab visible${pageStatsNote()}`)
+    recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - pulseFeedSeen.at < 15_000 ? `Reading all ${pulseFeedSeen.count} coins in the Pulse columns${pulseFeedSeen.skipped ? ` (${pulseFeedSeen.skipped} unreadable)` : ''}${pageStatsNote()}` : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards (update the bridge to 1.7 for every coin in the columns)${pageStatsNote()}` : `No Pulse cards in the last 15s: keep the Axiom Pulse tab visible${pageStatsNote()}`)
   }, 15_000)
   return new Promise<void>(resolve => {
     server.on('error', error => {
