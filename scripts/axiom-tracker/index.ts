@@ -6,6 +6,7 @@ import { startDiscovery } from './discovery.js'
 import { startExtensionIntake } from './extension-intake.js'
 import { startFollowUp } from './follow-up.js'
 import { startHolderRefresh } from './holder-refresh.js'
+import { startJupiter } from './jupiter.js'
 import { startLearner } from './learner.js'
 import { startLiveMarket } from './live-market.js'
 import { createLogger, errorMessage, runLoop } from './runtime.js'
@@ -46,6 +47,7 @@ const tasks = [
   startExplosions(database, controller.signal),
   startFollowUp(database, controller.signal),
   startHolderRefresh(database, controller.signal),
+  startJupiter(database, controller.signal),
   startAdvice(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {
     const removed = pruneSnapshots(database)
