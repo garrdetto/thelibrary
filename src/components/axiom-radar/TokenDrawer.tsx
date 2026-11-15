@@ -8,6 +8,8 @@ import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
 import { ScoreLedger } from './ScoreLedger'
+import { DexScoreBreakdown } from './DexScoreBreakdown'
+import { useScoreMode } from './score-mode'
 import { fetchTokenDetail } from './useRadarFeed'
 
 const tooltipStyle = { background: 'var(--tone-82)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11, color: 'var(--tone-0)' }
@@ -20,6 +22,7 @@ type TokenDrawerProps = { token: RadarToken; chartWindow: ChartWindow; fast: boo
 
 export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: TokenDrawerProps) {
   const [span, setSpan] = useState<ChartWindow>(chartWindow)
+  const { mode: scoreMode } = useScoreMode()
   const [detail, setDetail] = useState<RadarTokenDetail | null>(null)
   const [error, setError] = useState('')
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -101,7 +104,12 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
         </dl>
       </section>
 
-      {live.scoreLedger && <section className="radar-drawer-section" aria-labelledby="radar-ledger-title">
+      {scoreMode.dex && <section className="radar-drawer-section" aria-labelledby="radar-dex-title">
+        <h3 id="radar-dex-title">DexScreener score {live.dex?.score ?? '—'} <small>movement over 5s, 30s, 1m and 5m (longer windows weigh more), backed by liquidity and volume</small></h3>
+        <DexScoreBreakdown token={live}/>
+      </section>}
+
+      {scoreMode.runner && live.scoreLedger && <section className="radar-drawer-section" aria-labelledby="radar-ledger-title">
         <h3 id="radar-ledger-title">Why it scores {live.score} <small>every rule, reading and cap behind the runner score</small></h3>
         <ScoreLedger token={live}/>
       </section>}

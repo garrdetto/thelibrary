@@ -14,17 +14,18 @@ import { PaperTrades } from './PaperTrades'
 import { PicksView } from './PicksView'
 import { ChartWindowPicker, PriceSpark, sparkPoints, type ChartWindow } from './PriceSpark'
 import { applyRadarTheme } from './theme'
-import { RadarTable, TokenIcon, sortValue, type RadarSort, type RadarSortKey } from './RadarTable'
+import { RadarTable, TokenIcon, formatChange, sortValue, type RadarSort, type RadarSortKey } from './RadarTable'
 import { SettingsView } from './SettingsView'
 import { TokenDrawer } from './TokenDrawer'
 import { saveRadarSettings, useRadarFeed } from './useRadarFeed'
 import { WalletsView } from './WalletsView'
 import { useRadarAccess } from './access'
+import { ScoreModeProvider, ScoreModeToggle, useScoreMode } from './score-mode'
 import './axiom-radar.css'
 
 type RadarTab = 'picks' | 'runners' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'bot' | 'paper' | 'settings'
 type RadarFilter = 'all' | 'surge' | 'buy' | 'watch' | 'holders' | 'clean' | 'pinned'
-type RadarToast = { id: string; kind: 'surge' | 'buy' | 'runner' | 'sell'; mint: string; text: string; at: number }
+type RadarToast = { id: string; kind: 'surge' | 'buy' | 'runner' | 'dex' | 'sell'; mint: string; text: string; at: number }
 
 const tabs: Array<{ id: RadarTab; label: string; icon: typeof Radar }> = [
   { id: 'picks', label: 'Picks', icon: Sparkles },
@@ -58,7 +59,14 @@ const gainWindows: Array<{ id: RadarGainWindow; label: string; spoken: string; s
   { id: 'm1', label: '1m', spoken: 'minute', suffix: '/min' },
 ]
 
-const alertCooldownMs = { surge: 120_000, buy: 300_000, runner: 600_000, sell: 120_000 }
+const alertCooldownMs = { surge: 120_000, buy: 300_000, runner: 600_000, dex: 600_000, sell: 120_000 }
+const dexAlertScore = 80
+
+function dexMoveText(token: RadarToken) {
+  const moves = token.dex?.moves
+  if (!moves) return ''
+  return ([['5s', moves.s5], ['30s', moves.s30], ['1m', moves.m1], ['5m', moves.m5]] as const).filter(([, value]) => value !== null).map(([label, value]) => `${label} ${formatChange(value)}`).join(' ')
+}
 const toastLifetimeMs = 25_000
 
 function playChime(context: AudioContext, high: boolean) {
@@ -86,6 +94,11 @@ function useNow(intervalMs: number) {
 }
 
 export function AxiomRadar() {
+  return <ScoreModeProvider><AxiomRadarBody/></ScoreModeProvider>
+}
+
+function AxiomRadarBody() {
+  const { mode: scoreMode, scoreOf } = useScoreMode()
   const { payload, connection, error, receivedAt, applySavedSettings, retry } = useRadarFeed()
   const { canEdit } = useRadarAccess()
   const now = useNow(1000)
@@ -109,7 +122,7 @@ export function AxiomRadar() {
   const [makerSort, setMakerSort] = useState<MakerSort>('match')
   const audioRef = useRef<AudioContext | null>(null)
   const seededRef = useRef(false)
-  const previousRef = useRef({ surge: new Set<string>(), buy: new Set<string>(), runner: new Set<string>(), sell: new Set<string>() })
+  const previousRef = useRef({ surge: new Set<string>(), buy: new Set<string>(), runner: new Set<string>(), dex: new Set<string>(), sell: new Set<string>() })
   const alertedRef = useRef(new Map<string, number>())
   const lastSelectedRef = useRef<RadarToken | null>(null)
 
@@ -144,10 +157,11 @@ export function AxiomRadar() {
     const surging = tokens.filter(token => token.viewerSurge)
     const buys = tokens.filter(token => token.signal === 'buy')
     const threshold = payload.runner?.threshold ?? 75
-    const runners = tokens.filter(token => token.score >= threshold && !token.holderRisk?.blocked)
+    const runners = scoreMode.runner ? tokens.filter(token => token.score >= threshold && !token.holderRisk?.blocked) : []
+    const dexMovers = scoreMode.dex ? tokens.filter(token => (token.dex?.score ?? 0) >= dexAlertScore) : []
     const selling = tokens.filter(token => (token.safetyPlan?.selling.length ?? 0) > 0)
     const previous = previousRef.current
-    previousRef.current = { surge: new Set(surging.map(token => token.mint)), buy: new Set(buys.map(token => token.mint)), runner: new Set(runners.map(token => token.mint)), sell: new Set(selling.map(token => token.mint)) }
+    previousRef.current = { surge: new Set(surging.map(token => token.mint)), buy: new Set(buys.map(token => token.mint)), runner: new Set(runners.map(token => token.mint)), dex: new Set(dexMovers.map(token => token.mint)), sell: new Set(selling.map(token => token.mint)) }
     if (!seededRef.current) {
       seededRef.current = true
       return
@@ -163,19 +177,20 @@ export function AxiomRadar() {
     for (const token of surging) consider('surge', token, `${token.symbol} is gaining viewers quickly: ${formatSigned(token.viewersPerMin)}/min, ${formatCount(token.viewers)} watching`)
     for (const token of buys) consider('buy', token, `${token.symbol} is now a recommended buy (score ${token.score})`)
     for (const token of runners) consider('runner', token, `[SCORE: ${token.score}/100] ${token.name} ($${token.symbol}) | MC ${formatCount(token.marketCap)} | Top 10 ${token.holderTraits?.top10 ?? '—'}%${token.learnedEdge ? ` | ${token.learnedEdge}` : ''}`)
+    for (const token of dexMovers) consider('dex', token, `[DEX: ${token.dex?.score}/100] ${token.name} ($${token.symbol}) | ${dexMoveText(token)} | Liq ${formatCount(token.liquidityUsd)}`)
     for (const token of selling) consider('sell', token, `${token.symbol}: ${token.safetyPlan?.selling[0] ?? 'holders are selling'}. Get out.`)
     if (!fresh.length) return
     setToasts(current => [...fresh, ...current].slice(0, 6))
     if (sound && audioRef.current) {
       const context = audioRef.current
-      void context.resume().then(() => playChime(context, fresh.some(toast => toast.kind === 'buy' || toast.kind === 'runner' || toast.kind === 'sell'))).catch(() => undefined)
+      void context.resume().then(() => playChime(context, fresh.some(toast => toast.kind !== 'surge'))).catch(() => undefined)
     }
     if (desktopAlerts && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       for (const toast of fresh) {
         try { new Notification('Axiom Radar', { body: toast.text, tag: toast.id }) } catch { }
       }
     }
-  }, [payload, tokens, sound, desktopAlerts])
+  }, [payload, tokens, sound, desktopAlerts, scoreMode])
 
   useEffect(() => () => { void audioRef.current?.close().catch(() => undefined) }, [])
 
@@ -209,8 +224,8 @@ export function AxiomRadar() {
     const multiplier = sort.direction === 'asc' ? 1 : -1
     return tokens
       .filter(token => test(token) && (!needle || token.symbol.toLowerCase().includes(needle) || token.name.toLowerCase().includes(needle) || token.mint.toLowerCase().includes(needle)))
-      .sort((first, second) => Number(second.pinned) - Number(first.pinned) || (sortValue(first, sort.key) - sortValue(second, sort.key)) * multiplier || second.score - first.score)
-  }, [tokens, filter, query, sort])
+      .sort((first, second) => Number(second.pinned) - Number(first.pinned) || (sortValue(first, sort.key, scoreOf) - sortValue(second, sort.key, scoreOf)) * multiplier || scoreOf(second) - scoreOf(first))
+  }, [tokens, filter, query, sort, scoreOf])
 
   const buyCount = tokens.filter(token => token.signal === 'buy').length
   const watchCount = tokens.filter(token => token.signal === 'watch').length
@@ -255,6 +270,7 @@ export function AxiomRadar() {
         <span className="radar-live-dot" aria-hidden="true"/>{problems.length ? `${problems.length} tracker ${problems.length === 1 ? 'issue' : 'issues'}` : 'Tracker healthy'}<ChevronDown size={13} aria-hidden="true" className={showHealth ? 'open' : ''}/>
       </button>}
       <span className="radar-controls-spacer" aria-hidden="true"/>
+      <ScoreModeToggle/>
       <button type="button" className={`radar-icon-toggle ${sound ? 'on' : ''}`} aria-pressed={sound} aria-label="Sound alerts" title="Sound alerts" onClick={toggleSound}>{sound ? <Bell size={15}/> : <BellOff size={15}/>}</button>
       <button type="button" className={`radar-icon-toggle ${desktopAlerts ? 'on' : ''}`} aria-pressed={desktopAlerts} aria-label="Desktop alerts" title="Desktop alerts" onClick={() => void toggleDesktopAlerts()}><BellRing size={15}/></button>
     </div>

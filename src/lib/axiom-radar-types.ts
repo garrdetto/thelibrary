@@ -34,6 +34,12 @@ export type RadarHolderRisk = { blocked: boolean; multiplier: number; reasons: s
 
 export type RadarScorePart = { key: 'viewers' | 'holders' | 'momentum' | 'buyers' | 'together' | 'distribution' | 'hype' | 'chart' | 'penalty' | 'learned'; label: string; points: number; max: number; detail: string; available: boolean }
 
+/** Price change in percent over each DexScreener score window. */
+export type RadarDexMoves = { s5: number | null; s30: number | null; m1: number | null; m5: number | null }
+export type RadarDexCheck = { label: string; reading: string; points: number; max: number }
+/** The DexScreener score: price movement weighted over 5s, 30s, 1m and 5m, backed by liquidity and volume, from market data alone. */
+export type RadarDexScore = { score: number; moves: RadarDexMoves; signal: number | null; checks: RadarDexCheck[]; cuts: string[] }
+
 export type RadarScoreStatus = 'earned' | 'partial' | 'missed' | 'unknown'
 
 /** One scoring rule as it stood on the last check: what it read, what it earned and what it could earn. */
@@ -155,6 +161,7 @@ export type RadarToken = {
   dexPaid?: boolean | null
   scoreLedger?: RadarScoreLedger | null
   scoreTrail?: RadarScoreTrail | null
+  dex?: RadarDexScore | null
 }
 
 export type RadarPaperTrade = {
@@ -241,12 +248,12 @@ export type RadarPayload = {
   runner?: RadarRunnerSummary | null
 }
 
-export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'rawScore' | 'scoreCuts' | 'scoreParts' | 'botClimb' | 'alerts' | 'safetyPlan' | 'runnerThesis' | 'learnedEdge' | 'scoreLedger' | 'scoreTrail'>
+export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'rawScore' | 'scoreCuts' | 'scoreParts' | 'botClimb' | 'alerts' | 'safetyPlan' | 'runnerThesis' | 'learnedEdge' | 'scoreLedger' | 'scoreTrail' | 'dex'>
 
 export type RadarLivePatch = { at: number; tokens: Record<string, RadarLiveFigures> }
 
 export function liveFiguresOf(token: RadarToken): RadarLiveFigures {
-  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice, holderTraits: token.holderTraits, holderRisk: token.holderRisk, score: token.score, rawScore: token.rawScore, scoreCuts: token.scoreCuts, scoreParts: token.scoreParts, botClimb: token.botClimb, alerts: token.alerts, safetyPlan: token.safetyPlan, runnerThesis: token.runnerThesis, learnedEdge: token.learnedEdge, scoreLedger: token.scoreLedger, scoreTrail: token.scoreTrail }
+  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice, holderTraits: token.holderTraits, holderRisk: token.holderRisk, score: token.score, rawScore: token.rawScore, scoreCuts: token.scoreCuts, scoreParts: token.scoreParts, botClimb: token.botClimb, alerts: token.alerts, safetyPlan: token.safetyPlan, runnerThesis: token.runnerThesis, learnedEdge: token.learnedEdge, scoreLedger: token.scoreLedger, scoreTrail: token.scoreTrail, dex: token.dex }
 }
 
 export function applyLivePatch(payload: RadarPayload, patch: RadarLivePatch): RadarPayload {

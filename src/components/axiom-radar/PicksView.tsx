@@ -4,6 +4,7 @@ import { Eye, Sparkles, TriangleAlert } from 'lucide-react'
 import type { RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatSigned, formatUsd } from './format'
 import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
+import { useScoreMode } from './score-mode'
 import { LaunchLinks, PinButton, QualityBadge, ScoreBadge, TokenIcon, changeClass, formatChange } from './RadarTable'
 
 type CardProps = { token: RadarToken; chartWindow: ChartWindow; onOpen: (mint: string) => void; onTogglePin: (mint: string) => void }
@@ -38,8 +39,9 @@ export function PickCard({ token, chartWindow, onOpen, onTogglePin }: CardProps)
 }
 
 export function PicksView({ tokens, chartWindow, onOpen, onTogglePin }: { tokens: RadarToken[]; chartWindow: ChartWindow; onOpen: (mint: string) => void; onTogglePin: (mint: string) => void }) {
-  const buys = tokens.filter(token => token.signal === 'buy').sort((first, second) => second.score - first.score)
-  const watch = tokens.filter(token => token.signal === 'watch').sort((first, second) => Number(second.viewerSurge) - Number(first.viewerSurge) || second.score - first.score).slice(0, 12)
+  const { scoreOf } = useScoreMode()
+  const buys = tokens.filter(token => token.signal === 'buy').sort((first, second) => scoreOf(second) - scoreOf(first))
+  const watch = tokens.filter(token => token.signal === 'watch').sort((first, second) => Number(second.viewerSurge) - Number(first.viewerSurge) || scoreOf(second) - scoreOf(first)).slice(0, 12)
   const warnings = tokens.filter(token => token.alerts.length > 0 && token.signal !== 'watch').slice(0, 6)
   return <div className="radar-picks">
     <section aria-labelledby="radar-buys-title">

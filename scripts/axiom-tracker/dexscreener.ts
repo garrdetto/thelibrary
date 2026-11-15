@@ -11,7 +11,8 @@ export type DexPair = {
   quoteToken?: { address: string; symbol?: string }
   priceUsd?: string
   txns?: { m5?: { buys?: number; sells?: number } }
-  volume?: { m5?: number }
+  volume?: { m5?: number; h1?: number }
+  priceChange?: { m5?: number; h1?: number }
   liquidity?: { usd?: number }
   marketCap?: number
   fdv?: number
@@ -71,6 +72,8 @@ export async function fetchDiscoverySources() {
     listingMints('/community-takeovers/latest/v1'),
     searchMints('pump'),
     searchMints('SOL'),
+    searchMints('pumpswap'),
+    searchMints('raydium'),
     geckoMints(geckoPage % 2 ? 'trending_pools?duration=1h' : `new_pools?page=${(Math.floor(geckoPage / 2) % 5) + 1}`),
   ])
   geckoPage += 1
