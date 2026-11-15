@@ -124,28 +124,33 @@ def strength_factor(settings: Settings) -> float:
     return settings["risk.strength"] / 5
 
 
-def exposure_limit_usd(equity: float, settings: Settings) -> float:
+def exposure_limit(equity: float, settings: Settings) -> float:
     return equity * min(100.0, settings["risk.max_exposure_pct"] * strength_factor(settings)) / 100
 
 
-def position_size(coin: Coin, settings: Settings, equity: float, cash: float, exposure_usd: float) -> tuple[float, str]:
-    """Dollars to bet and what limited the bet. A size of 0 means skip, with the reason."""
+def position_size(coin: Coin, settings: Settings, equity: float, cash: float, exposure: float, spent_on_coin: float = 0.0) -> tuple[float, str]:
+    """SOL to buy with and what set or limited the amount. A size of 0 means skip, with the reason.
+    `spent_on_coin` is what the last 24 hours of buys already put into this coin."""
     s = settings
-    scale = 0.5 + conviction(coin, s) if s["risk.scale_with_conviction"] else 1.0
-    size = equity * s["risk.position_pct"] / 100 * strength_factor(s) * scale
-    limit = "risk strength"
+    if s["risk.buy_mode"] == "fixed":
+        size = s["risk.buy_amount_sol"]
+        limit = "buy amount"
+    else:
+        scale = 0.5 + conviction(coin, s) if s["risk.scale_with_conviction"] else 1.0
+        size = equity * s["risk.position_pct"] / 100 * strength_factor(s) * scale
+        limit = "risk strength"
     caps = [(equity * s["risk.max_position_pct"] / 100, "largest single bet")]
-    if s["risk.max_position_usd"] > 0:
-        caps.append((s["risk.max_position_usd"], "dollar cap"))
-    if coin.liquidity:
-        caps.append((coin.liquidity * s["risk.max_pool_share_pct"] / 100, "coin's liquidity"))
-    caps.append((exposure_limit_usd(equity, s) - exposure_usd, "account exposure limit"))
+    if s["risk.max_per_coin_sol"] > 0:
+        caps.append((s["risk.max_per_coin_sol"] - spent_on_coin, "most SOL in one coin"))
+    if coin.liquidity_sol:
+        caps.append((coin.liquidity_sol * s["risk.max_pool_share_pct"] / 100, "coin's liquidity"))
+    caps.append((exposure_limit(equity, s) - exposure, "account exposure limit"))
     caps.append((cash, "cash on hand"))
     for cap, name in caps:
         if cap < size:
             size, limit = cap, name
-    if size < s["risk.min_position_usd"]:
-        return 0.0, f"bet of {_money(max(0.0, size))} is too small ({limit})"
+    if size < s["risk.min_position_sol"]:
+        return 0.0, f"buy of {max(0.0, size):.3f} SOL is too small ({limit})"
     return size, limit
 
 

@@ -98,6 +98,7 @@ const store = { get(name) { try { return localStorage.getItem(name) } catch { re
 const hashKey = location.hash.match(/k=([\w-]+)/)
 if (hashKey) { store.set('axiom-console-key', hashKey[1]); history.replaceState(null, '', location.pathname) }
 const key = hashKey ? hashKey[1] : store.get('axiom-console-key') || ''
+addEventListener('hashchange', () => { if (/k=[\w-]+/.test(location.hash)) location.reload() })
 const ideas = ['Show my account', 'Pause buying', 'Resume buying', 'Be more careful', 'Take bigger risks', 'Show the last 30 log lines', 'Restart the bot', 'What is my stop loss?']
 const past = []
 let pastAt = 0

@@ -1,4 +1,4 @@
-"""Plain records: a coin as the Radar reports it, and a position the bot holds."""
+"""Plain records: a coin as the Radar reports it, and a position the bot holds. The bot's money and coin prices are in SOL."""
 
 from __future__ import annotations
 
@@ -49,6 +49,8 @@ class Coin:
     maker_chance: float | None
     phase: str | None
     minutes_left: float | None
+    price_usd: float | None = None
+    liquidity_sol: float | None = None
     advice_exit: str | None = None
     advice_rebuy: str | None = None
     exit_advice_reason: str | None = None
@@ -56,7 +58,8 @@ class Coin:
     high_price: float | None = None
 
     @staticmethod
-    def from_token(token: dict[str, Any]) -> "Coin":
+    def from_token(token: dict[str, Any], sol_usd: float = 1.0) -> "Coin":
+        """`sol_usd` turns the Radar's dollar price, liquidity and high into SOL. The dollar figures stay for the buy rules."""
         change = token.get("priceChange") if isinstance(token.get("priceChange"), dict) else {}
         safety = token.get("safety") if isinstance(token.get("safety"), dict) else {}
         quality = token.get("quality") if isinstance(token.get("quality"), dict) else {}
@@ -65,16 +68,21 @@ class Coin:
         advice = token.get("advice") if isinstance(token.get("advice"), dict) else {}
         buy_ratio = number(token.get("buyRatio"))
         price = number(token.get("priceUsd"))
+        price = price if price and price > 0 else None
+        liquidity = number(token.get("liquidityUsd"))
+        high = number(advice.get("highPrice"))
         return Coin(
             mint=str(token.get("mint", "")),
             symbol=str(token.get("symbol") or "?")[:16],
             pair=token.get("pairAddress") if isinstance(token.get("pairAddress"), str) else None,
-            price=price if price and price > 0 else None,
+            price=None if price is None else price / sol_usd,
+            price_usd=price,
             score=number(token.get("score")) or 0.0,
             signal=token.get("signal") if token.get("signal") in ("buy", "watch") else None,
             viewers=number(token.get("viewers")),
             viewers_per_min=number(token.get("viewersPerMin")),
-            liquidity=number(token.get("liquidityUsd")),
+            liquidity=liquidity,
+            liquidity_sol=None if liquidity is None else liquidity / sol_usd,
             market_cap=number(token.get("marketCap")),
             volume_5m=number(token.get("volume5m")),
             buy_share_pct=None if buy_ratio is None else buy_ratio * 100,
@@ -96,7 +104,7 @@ class Coin:
             advice_rebuy=advice.get("rebuy") if advice.get("rebuy") in ("ok", "wait", "never") else None,
             exit_advice_reason=_first(advice.get("exitReasons")),
             rebuy_advice_reason=_first(advice.get("rebuyReasons")),
-            high_price=number(advice.get("highPrice")),
+            high_price=None if high is None else high / sol_usd,
         )
 
     def entry_facts(self) -> dict[str, Any]:
@@ -122,9 +130,9 @@ class Position:
     entry_price: float
     qty: float
     qty_open: float
-    cost_usd: float
-    proceeds_usd: float
-    fees_usd: float
+    cost: float
+    proceeds: float
+    fees: float
     entry_liquidity: float | None
     last_liquidity: float | None
     peak_price: float
@@ -146,8 +154,8 @@ class Position:
     def held_minutes(self, now: int) -> float:
         return ((self.closed_at or now) - self.opened_at) / 60_000
 
-    def pnl_usd(self, open_value: float = 0.0) -> float:
-        return self.proceeds_usd + open_value - self.cost_usd
+    def pnl(self, open_value: float = 0.0) -> float:
+        return self.proceeds + open_value - self.cost
 
     def pnl_pct(self, open_value: float = 0.0) -> float:
-        return self.pnl_usd(open_value) / self.cost_usd * 100 if self.cost_usd else 0.0
+        return self.pnl(open_value) / self.cost * 100 if self.cost else 0.0

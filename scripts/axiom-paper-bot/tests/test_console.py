@@ -53,7 +53,7 @@ class DialCommandTests(Folder):
         self.assertEqual(dials.parse_value("risk.strength", "8"), 8)
         self.assertEqual(dials.parse_value("exit.stop_loss_pct", "30%"), 30)
         self.assertEqual(dials.parse_value("exit.stop_loss_pct", "500"), 95)
-        self.assertEqual(dials.parse_value("account.starting_cash", "$2,500"), 2500)
+        self.assertEqual(dials.parse_value("account.starting_sol", "2,500"), 2500)
         self.assertIs(dials.parse_value("bot.enabled", "Off"), False)
         self.assertEqual(dials.parse_value("entry.safety", "Safe only"), "safe")
         with self.assertRaisesRegex(ValueError, "Did you mean risk.strength"):
@@ -79,15 +79,15 @@ class DialCommandTests(Folder):
 class InboxTests(Folder):
     def held(self) -> Position:
         return Position(
-            id=0, mint="MintA", symbol="MINTA", pair=None, opened_at=0, entry_spot=1.0, entry_price=1.02, qty=20.0, qty_open=20.0, cost_usd=20.6, proceeds_usd=0.0,
-            fees_usd=0.4, entry_liquidity=50_000.0, last_liquidity=50_000.0, peak_price=1.0, peak_viewers=None, last_price=1.0, last_price_at=0, target_done=False, score=80.0,
+            id=0, mint="MintA", symbol="MINTA", pair=None, opened_at=0, entry_spot=1.0, entry_price=1.02, qty=20.0, qty_open=20.0, cost=20.6, proceeds=0.0,
+            fees=0.4, entry_liquidity=50_000.0, last_liquidity=50_000.0, peak_price=1.0, peak_viewers=None, last_price=1.0, last_price_at=0, target_done=False, score=80.0,
         )
 
     def bot(self) -> Engine:
         ledger = Ledger(":memory:")
         self.addCleanup(ledger.close)
         engine = Engine(ledger, None, self.settings)
-        fill = types.SimpleNamespace(qty=20.0, price=1.02, gross_usd=20.2, fee_usd=0.4, net_usd=20.6, impact_pct=0.1)
+        fill = types.SimpleNamespace(qty=20.0, price=1.02, gross=20.2, fee=0.4, net=20.6, impact_pct=0.1)
         engine.positions.append(engine.ledger.record_buy(self.held(), fill, engine.now()))
         return engine
 
@@ -98,7 +98,7 @@ class InboxTests(Folder):
         self.assertEqual(engine.positions, [])
         self.assertEqual(engine.trade_rows()[0]["reason"], "Closed from the command line")
         self.assertFalse(self.settings.with_suffix(".inbox.json").exists())
-        cli.send_to_running_bot(self.settings, {"reset": engine.now(), "cash": 2500})
+        cli.send_to_running_bot(self.settings, {"reset": engine.now(), "sol": 2500})
         engine.check_inbox()
         self.assertEqual(engine.trade_rows(), [])
         self.assertEqual(engine.ledger.cash, 2500)
@@ -141,9 +141,9 @@ class StepTests(Folder):
 
     def test_selling_wiping_and_process_changes_wait_for_a_click(self) -> None:
         self.assertTrue(self.step("bot flatten").approval)
-        reset = self.step("bot reset --cash $2,500")
+        reset = self.step("bot reset --sol 2.5")
         self.assertTrue(reset.approval)
-        self.assertEqual(reset.argv[2:6], ["reset", "--yes", "--cash", "2500"])
+        self.assertEqual(reset.argv[2:6], ["reset", "--yes", "--sol", "2.5"])
         for text in ("pm2 restart axiom-paper-bot", "pm2 stop axiom-worker", "pm2 start axiom-paper-bot"):
             step = self.step(text)
             self.assertIn(step.kind, ("pm2", "error"), text)
@@ -154,7 +154,7 @@ class StepTests(Folder):
         self.assertIn("Did you mean", self.step("bot set risk.strenth 8").note)
         self.assertEqual(self.step("bot dance").kind, "error")
         self.assertEqual(self.step("bot status; del important.txt").kind, "error")
-        self.assertEqual(self.step("bot reset --cash lots").kind, "error")
+        self.assertEqual(self.step("bot reset --sol lots").kind, "error")
 
     def test_anything_else_is_a_shell_line_that_always_waits(self) -> None:
         for text in ("Get-Process python", "pm2 delete axiom-worker", "pm2 restart all", "Remove-Item C:\\thing"):
