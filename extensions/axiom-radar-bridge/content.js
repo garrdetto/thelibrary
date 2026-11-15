@@ -82,7 +82,7 @@ function eyeCards() {
 const percentLine = /^<?\s*(\d+(?:\.\d+)?)\s*%$/
 let pageStatsCache = { at: 0, stats: null }
 
-const holderLabel = /top\s*10|\bdev\b|snip|insid|bundl|fresh/i
+const holderLabel = /top\s*10|\bdev\b|snip|insid|bundl|fresh|pro\s*trader/i
 
 function readPageStats() {
   const lines = (document.body?.innerText ?? '').split('\n').map(line => line.trim()).filter(Boolean)

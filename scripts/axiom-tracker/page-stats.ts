@@ -5,11 +5,12 @@ export type PageStats = {
   insiders: number | null
   bundlers: number | null
   fresh: number | null
+  proTraders: number | null
   labels: string[]
   seenAt: number
 }
 
-type StatKey = 'top10' | 'dev' | 'snipers' | 'insiders' | 'bundlers' | 'fresh'
+type StatKey = 'top10' | 'dev' | 'snipers' | 'insiders' | 'bundlers' | 'fresh' | 'proTraders'
 
 const statLabels: Array<[StatKey, RegExp, RegExp]> = [
   ['top10', /^top\s*10\s*h/i, /top\s*10/i],
@@ -18,6 +19,7 @@ const statLabels: Array<[StatKey, RegExp, RegExp]> = [
   ['snipers', /^snipers?\s*h/i, /snip/i],
   ['insiders', /^insiders?$/i, /insid/i],
   ['bundlers', /^bundlers?$/i, /bundl/i],
+  ['proTraders', /^pro\s*traders?\s*hold/i, /pro\s*trader/i],
 ]
 
 export const pageStatsLiveMs = 2 * 60_000
@@ -37,11 +39,11 @@ export function needsPageRead(stats: PageStats | undefined, onPulse: boolean, no
 
 /**
  * Reads the holder figures Axiom shows in the Token Info box on a coin's own page ("Top 10 H.", "Dev H.", "Snipers H.", "Insiders",
- * "Bundlers", "Fresh Wallets"). Axiom's own wording wins; a looser match is the fallback if Axiom renames a label, so a wallet
+ * "Bundlers", "Fresh Wallets", "Pro Traders Holding"). Axiom's own wording wins; a looser match is the fallback if Axiom renames a label, so a wallet
  * in the holders table that happens to share a word never takes the place of the real figure.
  */
 export function parsePageStats(stats: Record<string, number>, seenAt: number): PageStats | null {
-  const result: PageStats = { top10: null, dev: null, snipers: null, insiders: null, bundlers: null, fresh: null, labels: [], seenAt }
+  const result: PageStats = { top10: null, dev: null, snipers: null, insiders: null, bundlers: null, fresh: null, proTraders: null, labels: [], seenAt }
   const entries = Object.entries(stats).filter(([, value]) => Number.isFinite(value) && value >= 0 && value <= 100)
   const used = new Set<string>()
   for (const [key, exact, loose] of statLabels) {

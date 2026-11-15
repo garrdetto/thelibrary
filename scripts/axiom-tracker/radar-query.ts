@@ -12,6 +12,8 @@ import { detectBotClimb } from './holder-limits.js'
 import { scoreRunner, type PricePoint, type RunnerLinks } from './runner-score.js'
 import { learnedEdge, learnedFor, runnerState } from './runner-state.js'
 import { forgetSells, watchSells } from './sell-watch.js'
+import { forgetScoreTrails, recordScore, scoreTrailFor } from './score-trail.js'
+import { chartHistory, withChartHistory } from './chart-history.js'
 import { pageStatsAt } from './page-stats.js'
 import { rankHolderWallets } from './wallet-ranking.js'
 
@@ -298,11 +300,12 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
     bundlers: first(fresh?.bundlersPct, page.recent?.bundlers, card?.bundlersPct, page.kept?.bundlers, worst?.bundlers),
     linked: first(token.insider_pct, worst?.linked),
     fresh: first(page.kept?.fresh, token.fresh_pct, worst?.fresh),
+    proTraders: first(page.kept?.proTraders),
     holders: first(fresh?.holders, jupiter?.holders, token.holders_total, card?.holders),
     rugged: token.rugged === 1,
     checkedAt,
   }
-  const known = [traits.top10, traits.dev, traits.snipers, traits.insiders, traits.bundlers, traits.linked, traits.fresh, traits.holders].some(value => value !== null)
+  const known = [traits.top10, traits.dev, traits.snipers, traits.insiders, traits.bundlers, traits.linked, traits.fresh, traits.proTraders, traits.holders].some(value => value !== null)
   const result = known ? traits : null
   traitsCache.set(token.mint, { at: now, traits: result })
   if (traitsCache.size > 800) for (const [key, entry] of traitsCache) if (now - entry.at > 120_000) traitsCache.delete(key)
@@ -397,7 +400,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     marketCap,
     liquidity: live.market?.liquidityUsd ?? latest?.liquidity_usd ?? null,
     priceChange: { m1: live.priceChange.m1, m5: live.priceChange.m5 },
-    ticks: priceSeries(snapshots, ticks),
+    ticks: withChartHistory(chartHistory(token.mint), priceSeries(snapshots, ticks)),
     top10: traits?.top10 ?? null,
     dev: traits?.dev ?? null,
     devSold: card?.devSold ?? false,
@@ -406,6 +409,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     bundlers: traits?.bundlers ?? null,
     linked: traits?.linked ?? null,
     fresh: traits?.fresh ?? null,
+    proTraders: traits?.proTraders ?? null,
     holders: holderSource.holders,
     mintAuthority: safety.mintAuthority,
     freezeAuthority: safety.freezeAuthority,
@@ -488,6 +492,8 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     runnerThesis: runner.thesis,
     learnedEdge: learnedEdge(runner.tags),
     dexPaid: runnerInput.dexPaid,
+    scoreLedger: runner.ledger,
+    scoreTrail: scoreTrailFor(token.mint),
   }
   return { token: built, liquidityChange1m: live.liquidityChange1m }
 }
@@ -532,7 +538,10 @@ function buildRadarTokensNow(database: TrackerDatabase, weights: RadarWeights, n
   const runners = runnerCounts(database, mints)
   const settings = radarSettings()
   const entries = tokens.map(token => buildToken(database, token, byMint.get(token.mint) ?? [], fallbacks.get(token.mint), runners.get(token.mint) ?? 0, weights, now, settings, holderTraitsFor(database, token, now)))
-  return finalize(entries, settings).filter(token => !token.botClimb || token.pinned).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
+  const finished = finalize(entries, settings)
+  for (const token of finished) if (token.scoreLedger) token.scoreTrail = recordScore(token.mint, now, token.scoreLedger)
+  forgetScoreTrails(now)
+  return finished.filter(token => !token.botClimb || token.pinned).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
 }
 
 const returnOf = (price: number | null, entry: number) => price === null || entry <= 0 ? null : price / entry - 1

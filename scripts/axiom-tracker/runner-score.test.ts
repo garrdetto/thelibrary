@@ -3,6 +3,8 @@ import { test } from 'node:test'
 import { advanceAlert, patternStats, thresholdFor, type AlertRow } from './runner-learning.js'
 import { scoreRunner, sellImpact, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
 import { resetSellWatch, watchSells, type ShareReading } from './sell-watch.js'
+import { recordScore, resetScoreTrails } from './score-trail.js'
+import { minuteClosesFrom, withChartHistory } from './chart-history.js'
 
 const now = 1_800_000_000_000
 
@@ -27,6 +29,7 @@ function strong(overrides: Partial<RunnerInput> = {}): RunnerInput {
     bundlers: 3,
     linked: 1,
     fresh: 4,
+    proTraders: 20,
     holders: 260,
     mintAuthority: false,
     freezeAuthority: false,
@@ -71,7 +74,8 @@ test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0
     ['freeze', { freezeAuthority: true }],
     ['dev', { dev: 5.5, devSold: false }],
     ['top10', { top10: 26 }],
-    ['bundlers', { bundlers: 16 }],
+    ['bundlers', { bundlers: 36 }],
+    ['pro traders', { proTraders: 51 }],
     ['serial', { devCreated: 400, devMigrated: 6 }],
     ['recycled', { recycled: 'Recycled name: 3 earlier coins called X crashed' }],
     ['dead', { buyers5m: 3 }],
@@ -189,4 +193,62 @@ test('a pattern behind repeated false positives costs 10 points and one behind r
   const stats = patternStats(rows)
   assert.equal(stats.get('x-tweet')?.points, -10)
   assert.equal(stats.get('dex-paid')?.points, 10)
+})
+
+test('the ledger lists every gate and rule, and its points add up to the score', () => {
+  for (const input of [strong(), strong({ top10: 19, dexPaid: false, smartHolders: 0 }), strong({ bundlers: 40 }), strong({ top10: null, dev: null }), strong({ priceChange: { m1: -20, m5: -30 } })]) {
+    const result = scoreRunner(input)
+    const ledger = result.ledger
+    assert.equal(ledger.score, result.score)
+    assert.equal(ledger.gates.length, 16)
+    assert.equal(ledger.gates.some(gate => gate.status === 'fail'), result.disqualified.length > 0)
+    for (const pillar of ledger.pillars) {
+      assert.equal(pillar.points, pillar.checks.reduce((total, item) => total + item.points, 0), pillar.key)
+      assert.equal(pillar.points, result.parts.find(part => part.key === pillar.key)?.points, pillar.key)
+      assert.equal(pillar.max, pillar.checks.reduce((total, item) => total + item.max, 0), pillar.key)
+    }
+    const adjusted = Math.max(0, Math.min(100, Math.round(ledger.base + ledger.adjustments.reduce((total, item) => total + item.points, 0))))
+    assert.equal(ledger.beforeCaps, adjusted)
+    const caps = ledger.caps.filter(cap => cap.applies).map(cap => cap.cap)
+    assert.equal(ledger.score, Math.min(ledger.beforeCaps, ...caps))
+  }
+})
+
+test('bundlers may hold up to 35% and pro traders up to 50% before the gate fails', () => {
+  assert.equal(scoreRunner(strong({ bundlers: 35 })).ledger.gates.find(gate => gate.label === 'Bundlers')?.status, 'pass')
+  assert.equal(scoreRunner(strong({ bundlers: 35.5 })).score, 0)
+  assert.equal(scoreRunner(strong({ proTraders: 50 })).ledger.gates.find(gate => gate.label === 'Pro traders holding')?.status, 'pass')
+  assert.equal(scoreRunner(strong({ proTraders: 0 })).ledger.gates.find(gate => gate.label === 'Pro traders holding')?.status, 'pass')
+  assert.equal(scoreRunner(strong({ proTraders: null })).ledger.gates.find(gate => gate.label === 'Pro traders holding')?.status, 'unknown')
+  assert.equal(scoreRunner(strong({ proTraders: 62 })).score, 0)
+})
+
+test('the score trail records each move and says what changed', () => {
+  resetScoreTrails()
+  const clean = scoreRunner(strong())
+  recordScore('coin', now, clean.ledger)
+  const steady = recordScore('coin', now + 1_000, clean.ledger)
+  assert.equal(steady.changes.length, 0)
+  assert.equal(steady.points.length, 1)
+  const heavier = scoreRunner(strong({ top10: 19 }))
+  const moved = recordScore('coin', now + 2_000, heavier.ledger)
+  assert.equal(moved.points.length, 2)
+  assert.equal(moved.changes.length, 1)
+  assert.equal(moved.changes[0].from, clean.score)
+  assert.equal(moved.changes[0].to, heavier.score)
+  assert.ok(moved.changes[0].reasons.some(reason => reason.startsWith('-15 Top 10 hold under 15%')), moved.changes[0].reasons.join(' | '))
+  assert.ok(moved.changes[0].reasons.some(reason => reason.includes('Top 10 over 15%')), moved.changes[0].reasons.join(' | '))
+  const failed = recordScore('coin', now + 3_000, scoreRunner(strong({ top10: 30 })).ledger)
+  assert.ok(failed.changes.at(-1)?.reasons.some(reason => reason.startsWith('Top 10 holders gate failed')))
+})
+
+test('a coin the radar just found is judged on its earlier chart, not on how long it has been tracked', () => {
+  const full = strongTicks()
+  const tracked = full.slice(-3)
+  const history = minuteClosesFrom(full.slice(0, -3).map(point => [Math.floor((point.t - 59_999) / 1000), point.price, point.price, point.price, point.price, 1] as [number, number, number, number, number, number]).reverse())
+  const justFound = scoreRunner(strong({ ticks: tracked }))
+  const backfilled = scoreRunner(strong({ ticks: withChartHistory(history, tracked) }))
+  const trackedLong = scoreRunner(strong({ ticks: full }))
+  assert.ok(backfilled.score > justFound.score, `${backfilled.score} vs ${justFound.score}`)
+  assert.equal(backfilled.ledger.pillars.find(pillar => pillar.key === 'momentum')?.points, trackedLong.ledger.pillars.find(pillar => pillar.key === 'momentum')?.points)
 })

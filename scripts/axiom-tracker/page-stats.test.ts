@@ -14,7 +14,7 @@ test('reads the holder figures by their abbreviated labels', () => {
 
 test('reads the Token Info box as Axiom shows it on a new coin', () => {
   const stats = parsePageStats({ 'AGn7ek...fan2': 2.577, 'Dev wallet': 5, 'Top 10 H.': 82.91, 'Dev H.': 0, 'Snipers H.': 0.05, Insiders: 78.16, Bundlers: 0, 'Fresh Wallets': 0.14, 'Pro Traders Holding': 83.2 }, now)
-  assert.deepEqual(stats && { top10: stats.top10, dev: stats.dev, snipers: stats.snipers, insiders: stats.insiders, bundlers: stats.bundlers, fresh: stats.fresh }, { top10: 82.91, dev: 0, snipers: 0.05, insiders: 78.16, bundlers: 0, fresh: 0.14 })
+  assert.deepEqual(stats && { top10: stats.top10, dev: stats.dev, snipers: stats.snipers, insiders: stats.insiders, bundlers: stats.bundlers, fresh: stats.fresh, proTraders: stats.proTraders }, { top10: 82.91, dev: 0, snipers: 0.05, insiders: 78.16, bundlers: 0, fresh: 0.14, proTraders: 83.2 })
 })
 
 test('a page without holder figures is not a reading', () => {
@@ -51,7 +51,7 @@ test('a coin off Pulse is read every four minutes, one on Pulse every twenty', (
 test('fresh wallets over 10% score 0', () => {
   const input: RunnerInput = {
     now, marketCap: 30_000, liquidity: 14_000, priceChange: { m1: 3, m5: 20 }, ticks: [], top10: 14, dev: 0, devSold: true, snipers: 3, insiders: 2,
-    bundlers: 4, linked: 1, fresh: 10.5, holders: 500, mintAuthority: false, freezeAuthority: false, rugged: false, devCreated: null, devMigrated: null,
+    bundlers: 4, linked: 1, fresh: 10.5, proTraders: null, holders: 500, mintAuthority: false, freezeAuthority: false, rugged: false, devCreated: null, devMigrated: null,
     recycled: null, buys5m: 300, volume5m: 42_000, buyers5m: 120, buyVolume5m: 20_000, sellVolume5m: 12_000, feesSol: 2, graduated: false, dexPaid: true,
     links: { twitter: null, telegram: null, website: null }, reusedLinks: [], smartHolders: 1, viewers: 100, viewersPerMin: 20, botReason: null,
     selling: [], devSelling: false, learned: [],

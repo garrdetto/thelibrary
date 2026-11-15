@@ -28,11 +28,32 @@ export type RadarHistoryPoint = { t: number; viewers: number | null; marketCap: 
 
 export type RadarSocials = { twitter: string | null; telegram: string | null; website: string | null }
 
-export type RadarHolderTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; holders: number | null; rugged: boolean; checkedAt: number | null }
+export type RadarHolderTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; proTraders?: number | null; holders: number | null; rugged: boolean; checkedAt: number | null }
 
 export type RadarHolderRisk = { blocked: boolean; multiplier: number; reasons: string[] }
 
 export type RadarScorePart = { key: 'viewers' | 'holders' | 'momentum' | 'buyers' | 'together' | 'distribution' | 'hype' | 'chart' | 'penalty' | 'learned'; label: string; points: number; max: number; detail: string; available: boolean }
+
+export type RadarScoreStatus = 'earned' | 'partial' | 'missed' | 'unknown'
+
+/** One scoring rule as it stood on the last check: what it read, what it earned and what it could earn. */
+export type RadarScoreCheck = { label: string; reading: string; points: number; max: number; status: RadarScoreStatus }
+
+/** One instant disqualifier: the reading against its limit. Any failed gate makes the score 0. */
+export type RadarScoreGate = { label: string; reading: string; limit: string; status: 'pass' | 'fail' | 'unknown' }
+
+export type RadarScorePillar = { key: RadarScorePart['key']; label: string; points: number; max: number; checks: RadarScoreCheck[] }
+
+export type RadarScoreCap = { label: string; cap: number; applies: boolean; reading: string }
+
+/** Everything that made the current score: gates, each pillar's rules, adjustments and caps. */
+export type RadarScoreLedger = { gates: RadarScoreGate[]; pillars: RadarScorePillar[]; adjustments: RadarScoreCheck[]; caps: RadarScoreCap[]; base: number; beforeCaps: number; score: number; at: number }
+
+/** A moment the score or a gate changed, with what changed. */
+export type RadarScoreChange = { t: number; from: number; to: number; reasons: string[] }
+
+/** The score over the last minutes ([time, score] pairs) and the recent changes. */
+export type RadarScoreTrail = { points: Array<[number, number]>; changes: RadarScoreChange[] }
 
 /** What the coin's risky holders could do to its price, and the instant-exit triggers being watched every second. */
 export type RadarSafetyPlan = { level: 'ok' | 'watch' | 'exit'; selling: string[]; bundleDumpPct: number | null; topDumpPct: number | null; triggers: string[]; summary: string }
@@ -132,6 +153,8 @@ export type RadarToken = {
   runnerThesis?: string[]
   learnedEdge?: string | null
   dexPaid?: boolean | null
+  scoreLedger?: RadarScoreLedger | null
+  scoreTrail?: RadarScoreTrail | null
 }
 
 export type RadarPaperTrade = {
@@ -218,12 +241,12 @@ export type RadarPayload = {
   runner?: RadarRunnerSummary | null
 }
 
-export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'rawScore' | 'scoreCuts' | 'scoreParts' | 'botClimb' | 'alerts' | 'safetyPlan' | 'runnerThesis' | 'learnedEdge'>
+export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'rawScore' | 'scoreCuts' | 'scoreParts' | 'botClimb' | 'alerts' | 'safetyPlan' | 'runnerThesis' | 'learnedEdge' | 'scoreLedger' | 'scoreTrail'>
 
 export type RadarLivePatch = { at: number; tokens: Record<string, RadarLiveFigures> }
 
 export function liveFiguresOf(token: RadarToken): RadarLiveFigures {
-  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice, holderTraits: token.holderTraits, holderRisk: token.holderRisk, score: token.score, rawScore: token.rawScore, scoreCuts: token.scoreCuts, scoreParts: token.scoreParts, botClimb: token.botClimb, alerts: token.alerts, safetyPlan: token.safetyPlan, runnerThesis: token.runnerThesis, learnedEdge: token.learnedEdge }
+  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice, holderTraits: token.holderTraits, holderRisk: token.holderRisk, score: token.score, rawScore: token.rawScore, scoreCuts: token.scoreCuts, scoreParts: token.scoreParts, botClimb: token.botClimb, alerts: token.alerts, safetyPlan: token.safetyPlan, runnerThesis: token.runnerThesis, learnedEdge: token.learnedEdge, scoreLedger: token.scoreLedger, scoreTrail: token.scoreTrail }
 }
 
 export function applyLivePatch(payload: RadarPayload, patch: RadarLivePatch): RadarPayload {

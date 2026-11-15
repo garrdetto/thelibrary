@@ -564,3 +564,53 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-safety-plan.exit { border-left-color: var(--radar-down); }
 .radar-safety-plan h4 { margin: 0 0 4px; font-size: 13px; }
 .radar-safety-plan p { margin: 0 0 4px; font-size: 12.5px; }
+
+.radar-score-cell { display: inline-flex; align-items: center; gap: 4px; }
+.radar-score-move { font-size: 10px; font-weight: 700; white-space: nowrap; }
+.radar-score-move.up { color: var(--radar-up); }
+.radar-score-move.down { color: var(--radar-down); }
+
+.radar-ledger { display: grid; gap: 12px; }
+.radar-ledger-live { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 11px; color: var(--muted); }
+.radar-ledger-live .radar-live-dot { background: var(--radar-up); animation: radar-pulse 1.8s ease-out infinite; }
+.radar-ledger-live.stale .radar-live-dot { background: var(--radar-warn); animation: none; }
+.radar-ledger-sum { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.radar-ledger-sum li { display: grid; gap: 1px; min-width: 64px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--radar-soft); }
+.radar-ledger-sum li span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.radar-ledger-sum li strong { font-size: 15px; }
+.radar-ledger-sum li.minus strong, .radar-ledger-sum li.cap strong { color: var(--radar-down); }
+.radar-ledger-sum li.plus strong { color: var(--radar-up); }
+.radar-ledger-sum li.final { border-color: var(--radar-accent); background: color-mix(in oklab, var(--radar-accent) 16%, var(--radar-card)); }
+.radar-ledger-trail h4, .radar-ledger-group summary { margin: 0 0 6px; font-size: 12px; }
+.radar-ledger-changes { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 220px; overflow-y: auto; }
+.radar-ledger-changes li { display: grid; grid-template-columns: 70px 64px 1fr; gap: 8px; font-size: 11px; line-height: 1.45; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.radar-ledger-changes li > span:first-child { color: var(--muted); }
+.radar-ledger-changes li.up strong { color: var(--radar-up); }
+.radar-ledger-changes li.down strong { color: var(--radar-down); }
+.radar-ledger-group { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--radar-card); }
+.radar-ledger-group summary { display: grid; grid-template-columns: 1fr minmax(60px, 120px) auto; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; }
+.radar-ledger-group summary small { color: var(--muted); font-weight: 500; text-align: right; }
+.radar-ledger-group summary:not(:has(.radar-factor-bar)) { grid-template-columns: 1fr auto; }
+.radar-ledger-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.radar-ledger-row { display: grid; grid-template-columns: 18px 1fr auto; align-items: baseline; gap: 8px; padding: 4px 6px; border-radius: 6px; font-size: 11px; line-height: 1.45; }
+.radar-ledger-label { display: grid; gap: 1px; }
+.radar-ledger-label small { color: var(--muted); font-size: 10.5px; }
+.radar-ledger-mark { font-weight: 700; text-align: center; }
+.radar-ledger-points { text-align: right; white-space: nowrap; color: var(--muted); }
+.radar-ledger-row.earned .radar-ledger-mark, .radar-ledger-row.pass .radar-ledger-mark { color: var(--radar-up); }
+.radar-ledger-row.earned .radar-ledger-points { color: var(--radar-up); }
+.radar-ledger-row.partial .radar-ledger-mark, .radar-ledger-row.partial .radar-ledger-points { color: var(--radar-warn); }
+.radar-ledger-row.missed .radar-ledger-mark, .radar-ledger-row.fail .radar-ledger-mark { color: var(--radar-down); }
+.radar-ledger-row.fail { background: color-mix(in oklab, var(--radar-down) 12%, transparent); }
+.radar-ledger-row.fail .radar-ledger-label { color: var(--radar-down); }
+.radar-ledger-row.unknown { color: var(--muted); }
+.radar-ledger-row.flash, .radar-ledger-sum li.flash { animation: radar-ledger-flash 2.5s ease-out; }
+@keyframes radar-ledger-flash { 0% { background: color-mix(in oklab, var(--radar-accent) 35%, transparent); } 100% { background: transparent; } }
+@media (max-width: 560px) {
+  .radar-ledger-changes li { grid-template-columns: 64px 1fr; }
+  .radar-ledger-changes li > span:last-child { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .radar-ledger-live .radar-live-dot, .radar-ledger-row.flash, .radar-ledger-sum li.flash { animation: none; }
+  .radar-ledger-row.flash, .radar-ledger-sum li.flash { outline: 1px solid var(--radar-accent); }
+}

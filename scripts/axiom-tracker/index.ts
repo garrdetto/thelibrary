@@ -1,6 +1,7 @@
 import { startAdvice } from './advice.js'
 import { startAxiomCollector } from './axiom-collector.js'
 import { startExplosions } from './bursts.js'
+import { startChartHistory } from './chart-history.js'
 import { startDexPaid } from './dex-paid.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
@@ -53,6 +54,7 @@ const tasks = [
   startJupiter(database, controller.signal),
   startFreshWallets(database, controller.signal),
   startDexPaid(database, controller.signal),
+  startChartHistory(database, controller.signal),
   startRunnerAlerts(database, controller.signal),
   startAdvice(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {

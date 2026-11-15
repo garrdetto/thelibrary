@@ -7,13 +7,13 @@ import { dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd, holder
 import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
 import { useRadarAccess } from './access'
 
-export type RadarSortKey = 'score' | 'viewers' | 'viewersPerMin' | 'holders' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
+export type RadarSortKey = 'score' | 'quality' | 'viewers' | 'viewersPerMin' | 'holders' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
 export type RadarSort = { key: RadarSortKey; direction: 'asc' | 'desc' }
 
 const safetyLabels: Record<RadarSafetyLevel, string> = { safe: 'Safe', caution: 'Caution', risky: 'Risky', unknown: 'Unchecked' }
 
 export function sortValue(token: RadarToken, key: RadarSortKey) {
-  const value = key === 's30' || key === 'm1' || key === 'm5' || key === 'm10' ? token.priceChange[key] : key === 'holders' ? holderCount(token) : token[key]
+  const value = key === 's30' || key === 'm1' || key === 'm5' || key === 'm10' ? token.priceChange[key] : key === 'holders' ? holderCount(token) : key === 'quality' ? token.quality.score : token[key]
   return typeof value === 'number' ? value : Number.NEGATIVE_INFINITY
 }
 
@@ -61,6 +61,20 @@ export function ScoreBadge({ token, large = false }: { token: RadarToken; large?
       {token.scoreParts && token.scoreCuts?.length ? <span className="radar-tooltip-cuts">{token.holderRisk?.blocked ? 'Scored 0' : 'Cuts'}: {token.scoreCuts.slice(0, 3).join(' · ')}</span> : null}
     </span>
   </span>
+}
+
+const scoreMoveWindowMs = 60_000
+
+/** How far the score moved in the last minute, from the tracker's per-second score trail. */
+export function ScoreMove({ token }: { token: RadarToken }) {
+  const points = token.scoreTrail?.points ?? []
+  const latest = points.at(-1)
+  if (!latest) return null
+  const since = latest[0] - scoreMoveWindowMs
+  const earlier = [...points].reverse().find(([t]) => t <= since) ?? points[0]
+  const moved = latest[1] - earlier[1]
+  if (!moved) return null
+  return <small className={`radar-score-move tabular ${moved > 0 ? 'up' : 'down'}`} title={`Score ${moved > 0 ? 'rose' : 'fell'} ${Math.abs(moved)} in the last minute`}>{moved > 0 ? '▲' : '▼'}{Math.abs(moved)}</small>
 }
 
 export function SignalBadge({ token }: { token: RadarToken }) {
@@ -166,6 +180,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
           <SortHeader label="Token" sortKey="ageMinutes" sort={sort} onSort={onSort} className="radar-col-token"/>
           <th scope="col">Signal</th>
           <SortHeader label="Score" sortKey="score" sort={sort} onSort={onSort}/>
+          <SortHeader label="Quality" sortKey="quality" sort={sort} onSort={onSort}/>
           <SortHeader label="Viewers" sortKey="viewers" sort={sort} onSort={onSort}/>
           <SortHeader label="Viewers / min" sortKey="viewersPerMin" sort={sort} onSort={onSort}/>
           <SortHeader label="Holders" sortKey="holders" sort={sort} onSort={onSort}/>
@@ -176,7 +191,6 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
           <th scope="col">Price chart · {chartWindows.find(item => item.key === chartWindow)?.label}</th>
           <SortHeader label="MCap / Liq" sortKey="marketCap" sort={sort} onSort={onSort}/>
           <SortHeader label="5m vol · buys" sortKey="volume5m" sort={sort} onSort={onSort}/>
-          <th scope="col">Quality</th>
           <th scope="col"><span className="sr-only">Launch links</span></th>
         </tr>
       </thead>
@@ -199,7 +213,8 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
             </div>
           </td>
           <td><SignalBadge token={token}/></td>
-          <td><ScoreBadge token={token}/></td>
+          <td><div className="radar-score-cell"><ScoreBadge token={token}/><ScoreMove token={token}/></div></td>
+          <td><QualityBadge token={token}/></td>
           <td><div className="radar-viewers">{token.viewerRank && <span className="radar-rank-chip tabular">#{token.viewerRank}</span>}<span className="tabular">{formatCount(token.viewers)}</span>{token.viewerSurge && <span className="radar-surge" title="Gaining viewers quickly" role="img" aria-label="Gaining viewers quickly">🔥</span>}<ViewerSparkline history={token.history}/></div></td>
           <td><div className="radar-stack tabular"><strong className={`radar-delta ${changeClass(token.viewersPerMin)}`}>{formatSigned(token.viewersPerMin)}</strong><small>{formatSigned(token.viewersDelta5m)} in 5m</small></div></td>
           <td><div className="radar-stack tabular"><strong>{formatCount(holderCount(token))}</strong><small className={`radar-delta ${changeClass(token.holdersPerMin ?? null)}`}>{token.holdersPerMin === null || token.holdersPerMin === undefined ? '—' : `${formatSigned(token.holdersPerMin)}/min`}</small></div></td>
@@ -207,7 +222,6 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
           <td><PriceSpark points={sparkPoints(token, chartWindow)} width={112} height={32}/></td>
           <td><div className="radar-stack tabular"><strong>{formatUsd(token.marketCap)}</strong><small>{formatUsd(token.liquidityUsd)} liq</small></div></td>
           <td><div className="radar-stack tabular"><strong>{formatUsd(token.volume5m)}</strong><BuySellBar buys={token.buys5m} sells={token.sells5m}/></div></td>
-          <td><QualityBadge token={token}/></td>
           <td><LaunchLinks token={token}/></td>
         </tr>)}
       </tbody>
