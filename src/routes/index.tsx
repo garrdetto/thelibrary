@@ -3,7 +3,7 @@ import { SignInRibbon } from '@/components/SignInRibbon'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck } from 'lucide-react'
+import { ArrowDown, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { usePoolLobby } from '@/components/PoolLobby'
@@ -486,6 +486,7 @@ function Studio() {
       </nav>
       <div className="sidebar-bottom"><div className="creative-note"><span className="tiny-star">✳</span><strong>Learn by doing.</strong><p>Strategy, physics, math<br/>and precision modules.</p></div><button className="help-link" onClick={() => setHelpOpen(true)}><Info size={16}/> About the library <ArrowRight size={14}/></button><div className="workspace-profile"><span className="profile-icon"><Feather size={18}/></span><div>{access.username ?? 'Guest'}<small>{access.username ? 'Progress saves to your account' : 'Sign in to save progress'}</small></div></div></div>
     </aside>
+    <a className="radar-tab" href="/axiom-radar"><Radar size={15} strokeWidth={1.8} aria-hidden="true"/><span>Axiom Radar</span><ArrowRight size={13} aria-hidden="true"/></a>
 
     <main className="main-panel"><RecordResetProvider>
       {accountReady && !access.username && <SignInRibbon/>}

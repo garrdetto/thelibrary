@@ -128,18 +128,18 @@ async function sendCommand(request: Request, env: Env) {
  * The Axiom paper-trading bot (`scripts/axiom-paper-bot`, Python, on the owner's machine).
  * POST `/api/admin/axiom/bot/sync` (server-to-server, `Authorization: Bearer AXIOM_RADAR_TOKEN`): the bot sends its report and any dials
  * changed in its settings file, and receives the latest Radar payload, dials saved on the page and pending commands.
- * GET `/api/admin/axiom/bot` (admin) returns the dials and the bot's last report; PUT `/bot/settings` merges the dials it is sent into the saved ones;
- * POST `/bot/command` `{ action: 'flatten' | 'reset' }` asks the bot to close every position or start the account again.
+ * GET `/api/admin/axiom/bot` (anyone, same origin) returns the dials and the bot's last report; PUT `/bot/settings` (admin) merges the dials it is
+ * sent into the saved ones; POST `/bot/command` `{ action: 'flatten' | 'reset' }` (admin) asks the bot to close every position or start the account again.
  */
 export async function axiomBot(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (path.endsWith('/sync')) return sync(request, env)
   const site = request.headers.get('sec-fetch-site')
   if (site && site !== 'same-origin' && site !== 'none') return json({ error: 'This request is not allowed.' }, 403)
+  const changing = path.endsWith('/settings') || path.endsWith('/command')
+  if (!changing) return request.method === 'GET' ? json(await view(env)) : json({ error: 'Method not allowed.' }, 405)
   const user = await currentUser(request, env)
-  if (!user?.isAdmin) return json({ error: 'Administrator access required.' }, 403)
+  if (!user?.isAdmin) return json({ error: 'Only the administrator can change the bot.' }, 403)
   if (path.endsWith('/settings')) return request.method === 'PUT' ? saveSettings(request, env) : json({ error: 'Method not allowed.' }, 405)
-  if (path.endsWith('/command')) return request.method === 'POST' ? sendCommand(request, env) : json({ error: 'Method not allowed.' }, 405)
-  if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405)
-  return json(await view(env))
+  return request.method === 'POST' ? sendCommand(request, env) : json({ error: 'Method not allowed.' }, 405)
 }

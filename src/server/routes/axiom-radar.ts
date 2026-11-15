@@ -143,8 +143,9 @@ function stream(request: Request, env: Env) {
 
 /**
  * POST `/api/admin/axiom/ingest` (server-to-server, `Authorization: Bearer AXIOM_RADAR_TOKEN`): the self-hosted tracker
- * pushes its latest payload (and per-token details) into D1 `axiom_radar_state`; the reply says whether an admin is watching.
- * GET `/api/admin/axiom/data` (admin) returns the payload, or `?mint=` token detail; `/api/admin/axiom/stream` sends it as SSE.
+ * pushes its latest payload (and per-token details) into D1 `axiom_radar_state`; the reply says whether anyone is watching.
+ * GET `/api/admin/axiom/data` (anyone, same origin) returns the payload, or `?mint=` token detail; `/api/admin/axiom/stream` sends it as SSE.
+ * GET `/api/admin/axiom/settings` (anyone) returns the saved settings; PUT (admin) saves them.
  */
 export async function axiomRadar(request: Request, env: Env) {
   const url = new URL(request.url)
@@ -152,12 +153,12 @@ export async function axiomRadar(request: Request, env: Env) {
   if (request.method !== 'GET' && !(request.method === 'PUT' && url.pathname.endsWith('/settings'))) return json({ error: 'Method not allowed.' }, 405)
   const site = request.headers.get('sec-fetch-site')
   if (site && site !== 'same-origin' && site !== 'none') return json({ error: 'This request is not allowed.' }, 403)
-  const user = await currentUser(request, env)
-  if (!user?.isAdmin) return json({ error: 'Administrator access required.' }, 403)
 
   if (url.pathname.endsWith('/settings')) {
-    if (request.method === 'PUT') return saveSettings(request, env)
-    return json({ settings: await savedSettings(env) })
+    if (request.method !== 'PUT') return json({ settings: await savedSettings(env) })
+    const user = await currentUser(request, env)
+    if (!user?.isAdmin) return json({ error: 'Only the administrator can change the Radar settings.' }, 403)
+    return saveSettings(request, env)
   }
   if (url.pathname.endsWith('/stream')) return stream(request, env)
   await markRadarViewed(env)

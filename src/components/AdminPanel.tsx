@@ -79,7 +79,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
   }
 
   function open(next: Section, focus = false) {
-    if (next === 'axiom-radar') { window.location.assign('/admin/axiom-radar'); return }
+    if (next === 'axiom-radar') { window.location.assign('/axiom-radar'); return }
     if (leave(next)) return
     setSection(next)
     if (window.location.hash.startsWith('#admin') || window.location.hash === '') window.history.replaceState(null, '', `#admin/${next}`)
@@ -133,7 +133,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
         {studio && children}
         {section === 'people' && <WorkspaceAdmin/>}
         {section === 'changes' && <SiteChanges/>}
-        {section === 'axiom-radar' && <p className="race-loading"><a href="/admin/axiom-radar">Open the Axiom Radar</a> It runs on its own page.</p>}
+        {section === 'axiom-radar' && <p className="race-loading"><a href="/axiom-radar">Open the Axiom Radar</a> It runs on its own page.</p>}
         {section === 'image-editor' && <Suspense fallback={<Loading text="Opening the image editor…"/>}><ImageEditor/></Suspense>}
         {section === 'clipart' && <Suspense fallback={<Loading text="Opening the clipart generator…"/>}><ClipartGenerator/></Suspense>}
         {section === 'maplestreet' && <Suspense fallback={<Loading text="Opening the item editor…"/>}><MapleStreetItemEditor/></Suspense>}

@@ -18,6 +18,7 @@ import { SettingsView } from './SettingsView'
 import { TokenDrawer } from './TokenDrawer'
 import { saveRadarSettings, useRadarFeed } from './useRadarFeed'
 import { WalletsView } from './WalletsView'
+import { useRadarAccess } from './access'
 import './axiom-radar.css'
 
 type RadarTab = 'picks' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'bot' | 'paper' | 'settings'
@@ -84,6 +85,7 @@ function useNow(intervalMs: number) {
 
 export function AxiomRadar() {
   const { payload, connection, error, receivedAt, applySavedSettings, retry } = useRadarFeed()
+  const { canEdit } = useRadarAccess()
   const now = useNow(1000)
   const [tab, setTab] = useState<RadarTab>('picks')
   const [filter, setFilter] = useState<RadarFilter>('all')
@@ -130,9 +132,10 @@ export function AxiomRadar() {
   }, [applySavedSettings])
 
   const onTogglePin = useCallback((mint: string) => {
+    if (!canEdit) return
     const pinned = settings.pinned.includes(mint) ? settings.pinned.filter(item => item !== mint) : [...settings.pinned, mint].slice(-50)
     void persist({ ...settings, pinned })
-  }, [persist, settings])
+  }, [canEdit, persist, settings])
 
   useEffect(() => {
     if (!payload) return
@@ -348,7 +351,7 @@ export function AxiomRadar() {
         {tab === 'wallets' && <WalletsView payload={payload} now={now} onOpen={onOpen}/>}
         {tab === 'bot' && <BotView now={now} onOpenTrades={() => setTab('paper')}/>}
         {tab === 'paper' && <PaperTrades payload={payload} now={now}/>}
-        {tab === 'settings' && <SettingsView settings={settings} activeUpdatedAt={payload.settings.updatedAt} saving={saving} error={saveError} now={now} onSave={next => void persist(next)} onPreviewTheme={setPreviewTheme}/>}
+        {tab === 'settings' && <SettingsView settings={settings} activeUpdatedAt={payload.settings.updatedAt} saving={saving} error={saveError} now={now} onSave={next => void persist(next)} onPreviewTheme={setPreviewTheme} readOnly={!canEdit}/>}
       </div>
     </>}
 

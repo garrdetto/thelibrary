@@ -12,9 +12,10 @@ type SettingsViewProps = {
   now: number
   onSave: (settings: RadarSettings) => void
   onPreviewTheme: (theme: RadarTheme | null) => void
+  readOnly?: boolean
 }
 
-export function SettingsView({ settings, activeUpdatedAt, saving, error, now, onSave, onPreviewTheme }: SettingsViewProps) {
+export function SettingsView({ settings, activeUpdatedAt, saving, error, now, onSave, onPreviewTheme, readOnly = false }: SettingsViewProps) {
   const [form, setForm] = useState(settings)
   const [dirty, setDirty] = useState(false)
   useEffect(() => { if (!dirty) setForm(settings) }, [settings, dirty])
@@ -29,7 +30,8 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
   ]
   const applied = settings.updatedAt !== null && activeUpdatedAt === settings.updatedAt
 
-  return <form className="radar-settings" onSubmit={event => { event.preventDefault(); onSave(form); setDirty(false); onPreviewTheme(null) }}>
+  return <form className={`radar-settings ${readOnly ? 'radar-readonly' : ''}`} inert={readOnly} onSubmit={event => { event.preventDefault(); if (readOnly) return; onSave(form); setDirty(false); onPreviewTheme(null) }}>
+    {readOnly && <p className="radar-note radar-readonly-note" role="note">These are the settings the tracker is using. Only the administrator can change them.</p>}
     <section className="radar-card">
       <div className="panel-heading"><span className="number-tag">01</span><h2>Which coins are tracked</h2><span className="panel-caption">TURN A REQUIREMENT OFF TO IGNORE IT</span></div>
       <div className="radar-requirements">

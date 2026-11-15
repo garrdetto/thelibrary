@@ -5,6 +5,7 @@ import { BotControls, botStatus, dollars, signedDollars, signedPercent, toneOf }
 import { relativeSeconds } from './format'
 import { NumberField, Toggle } from './SettingsFields'
 import { useBot } from './useBot'
+import { useRadarAccess } from './access'
 import './axiom-bot.css'
 
 const pauseKey = 'bot.enabled'
@@ -36,6 +37,7 @@ function DialField({ dial, prefix, value, onChange }: { dial: BotDial; prefix: s
 export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () => void }) {
   const bot = useBot()
   const { view, error, loading, saveSettings } = bot
+  const { canEdit } = useRadarAccess()
   const [form, setForm] = useState<BotValues>(defaultBotValues)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -86,7 +88,8 @@ export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () =
         <button type="button" className="secondary-button radar-bot-more" onClick={onOpenTrades}>Positions, trades and activity <ArrowRight size={13}/></button>
       </div>}
 
-    {view && <form className="radar-settings radar-bot-settings" noValidate onSubmit={event => { event.preventDefault(); void save() }}>
+    {view && <form className={`radar-settings radar-bot-settings ${canEdit ? '' : 'radar-readonly'}`} noValidate inert={!canEdit} onSubmit={event => { event.preventDefault(); if (canEdit) void save() }}>
+      {!canEdit && <p className="radar-note radar-readonly-note" role="note">These are the dials the bot is using. Only the administrator can change them.</p>}
       <section className="radar-card">
         <div className="panel-heading"><span className="number-tag">01</span><h2>Quick setup</h2><span className="panel-caption">START FROM A STYLE, THEN ADJUST</span></div>
         <div className="radar-bot-presets" role="radiogroup" aria-label="Trading style">

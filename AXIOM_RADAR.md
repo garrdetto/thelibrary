@@ -1,8 +1,8 @@
 # Axiom Radar
 
-A private, admin-only page that ranks coins by live Axiom viewers and shows price moves over 30 seconds, 1, 5 and 10 minutes, holder-quality checks from the Axiom Pulse cards, smart-holder tracking, and Buy and Watch signals from rules you set. A paper-trading loop scores the signals and tunes the score weights. It is signals only: nothing places a real order.
+A page that ranks coins by live Axiom viewers and shows price moves over 30 seconds, 1, 5 and 10 minutes, holder-quality checks from the Axiom Pulse cards, smart-holder tracking, and Buy and Watch signals from rules you set. A paper-trading loop scores the signals. It is signals only: nothing places a real order.
 
-It is a standalone page at `/admin/axiom-radar` with its own header and none of the site's navigation. The **Axiom Radar** entry in the admin console (Site → Tools) opens it.
+It is a standalone page at `/axiom-radar` with its own header. The **Axiom Radar** tab pinned to the bottom-left corner of the base site opens it, and so does the entry in the admin console (Site → Tools); the old `/admin/axiom-radar` address redirects. Anyone can watch it, signed in or not. Pinning coins, saving settings and controlling the paper-trading bot stay with the administrator: other visitors see those read-only, and the site refuses the changes.
 
 ## How it fits together
 
@@ -19,14 +19,14 @@ Your machine:   axiom-worker (PM2)
                      ▼
 Cloudflare Worker  stores the latest update in D1 axiom_radar_state
                      ▼
-Browser (admin) ──► /api/admin/axiom/data | /stream  (tl_session admin check)
+Browser (anyone) ──► /api/admin/axiom/data | /stream  (same origin; saving settings and bot commands need the admin session)
 ```
 
 | Piece | Where |
 | --- | --- |
 | Worker suite | `scripts/axiom-tracker/` (`index.ts` runs everything; `site-publisher.ts` pushes to the site) |
 | Site routes | `src/server/routes/axiom-radar.ts` and `src/server/axiom-radar-store.ts` (registered in `src/server/api.ts`) |
-| Admin UI | `src/components/axiom-radar/`, the `axiom-radar` section in `src/components/AdminPanel.tsx`, and `src/routes/admin.axiom-radar.tsx` |
+| Page | `src/components/axiom-radar/` (`access.ts` says who may change things), `src/routes/axiom-radar.tsx`, the corner tab in `src/routes/index.tsx`, and the redirect in `src/routes/admin.axiom-radar.tsx` |
 | Shared types | `src/lib/axiom-radar-types.ts` |
 
 The tracker only makes outbound HTTPS requests, so nothing on your machine is exposed and no tunnel or domain is needed. The site keeps one copy of the latest radar data and per-coin details in D1 (`axiom_radar_state`, created on first use). While an administrator has the radar open, the tracker sends every 3 seconds; otherwise every 20 seconds.
