@@ -11,6 +11,8 @@ const idleIntervalMs = 20_000
 const watchingDetailsMs = 15_000
 const idleDetailsMs = 120_000
 const maxBodyBytes = 1_800_000
+/** The site's ingest takes at most 160 coins; the list is already ordered pinned, then most watched. */
+export const siteTokenLimit = 160
 const sendLimitMs = 30_000
 
 function thin<T>(items: T[], limit: number) {
@@ -20,7 +22,7 @@ function thin<T>(items: T[], limit: number) {
 }
 
 export function compactPayload(payload: RadarPayload): RadarPayload {
-  return { ...payload, tokens: payload.tokens.map(token => ({ ...token, history: thin<RadarHistoryPoint>(token.history, 45) })) }
+  return { ...payload, tokens: payload.tokens.slice(0, siteTokenLimit).map(token => ({ ...token, history: thin<RadarHistoryPoint>(token.history, 45) })) }
 }
 
 function collectDetails(database: TrackerDatabase, payload: RadarPayload, historyLimit: number) {

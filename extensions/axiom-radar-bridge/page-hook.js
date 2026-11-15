@@ -9,6 +9,59 @@
       }
     } catch { }
   }
+
+  const pulseTables = { newPairs: new Map(), finalStretch: new Map(), migrated: new Map() }
+  const pulseFields = ['pairAddress', 'tokenAddress', 'tokenName', 'tokenTicker', 'createdAt', 'marketCap', 'volume', 'liquidityNative', 'numHolders', 'userCount', 'numTxns', 'numBuys', 'numSells', 'buyVolume', 'totalFees', 'bondingCurvePercent', 'top10HoldersPercent', 'devHoldsPercent', 'devSold', 'snipersHoldPercent', 'insidersHoldPercent', 'bundlersHoldPercent', 'freshWalletsHoldPercent', 'proTradersHoldPercent', 'devMigrationCount', 'devCreationCount', 'kolCount', 'dexPaid', 'twitter', 'telegram', 'website']
+  let usdPerSol = null
+  let pulseChangedAt = 0
+  const keepFields = item => {
+    const row = {}
+    for (const key of pulseFields) if (item[key] !== undefined) row[key] = item[key]
+    return row
+  }
+  const applyPulseOperations = message => {
+    const table = pulseTables[message.table]
+    if (!table || !Array.isArray(message.operations)) return
+    for (const op of message.operations) {
+      if (!op || typeof op !== 'object') continue
+      if (Array.isArray(op.items)) {
+        table.clear()
+        for (const item of op.items) if (item?.pairAddress) table.set(item.pairAddress, keepFields(item))
+      } else if (op.item?.pairAddress) table.set(op.item.pairAddress, keepFields(op.item))
+      else if (op.type === 'remove' && op.pairAddress) table.delete(op.pairAddress)
+      else if (op.pairAddress && op.set && table.has(op.pairAddress)) Object.assign(table.get(op.pairAddress), keepFields(op.set))
+    }
+    pulseChangedAt = Date.now()
+  }
+  const watchPulseWorker = worker => {
+    worker.addEventListener('message', event => {
+      const data = event.data
+      if (data?.type !== 'OUTPUT_BATCH' || !Array.isArray(data.messages)) return
+      for (const message of data.messages) if (message?.type === 'TABLE_OPERATIONS') applyPulseOperations(message)
+    })
+  }
+  const NativeWorker = window.Worker
+  if (NativeWorker && !NativeWorker.axiomRadarWrapped) {
+    const nativePost = NativeWorker.prototype.postMessage
+    NativeWorker.prototype.postMessage = function (message, ...rest) {
+      if (message?.type === 'UPDATE_USD_PER_NATIVE' && message.payload?.chain === 'sol' && Number(message.payload.usdPerNative) > 0) usdPerSol = Number(message.payload.usdPerNative)
+      return nativePost.call(this, message, ...rest)
+    }
+    function RadarWorker(url, ...rest) {
+      const worker = new NativeWorker(url, ...rest)
+      if (/PulseWorker/i.test(String(url))) watchPulseWorker(worker)
+      return worker
+    }
+    RadarWorker.prototype = NativeWorker.prototype
+    RadarWorker.axiomRadarWrapped = true
+    window.Worker = RadarWorker
+  }
+  setInterval(() => {
+    if (!usdPerSol || Date.now() - pulseChangedAt > 30000) return
+    const rows = []
+    for (const [column, table] of Object.entries(pulseTables)) for (const row of table.values()) if (row.tokenAddress) rows.push({ ...row, column })
+    window.postMessage({ source: 'axiom-radar-bridge-pulse', usdPerSol, rows: rows.slice(0, 300), at: Date.now() }, window.location.origin)
+  }, 1000)
   const Native = window.WebSocket
   if (!Native || Native.axiomRadarWrapped) return
   const interesting = /viewer|watch|online|concurrent/i
