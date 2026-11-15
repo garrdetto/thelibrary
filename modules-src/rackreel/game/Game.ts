@@ -67,6 +67,7 @@ import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
 import { ANCHOR_MAX_SPEED, BOARD_MAX_SPEED, BOARD_RANGE, CONSOLE_SEAT, DECK_SEATS, DECK_SEAT_NAMES, PASSENGER_SEAT, createAnchorLine, otherSeat, swivelToward } from './BoatSeats'
 import type { DeckSeat } from './BoatSeats'
+import { VehicleCamera } from '../systems/VehicleCamera'
 import type { RemoteBoat } from './Online'
 import { Bowfishing } from './Bowfishing'
 import { BOWBOAT, deckHeight } from './BowBoat'
@@ -246,6 +247,8 @@ export class Game {
   private perch: { at: Vector3; facing: number } | null = null
   /** A host world's fixed camera (a slot machine screen, the blackjack table). */
   private cameraShot: { eye: Vector3; target: Vector3 } | null = null
+  /** Turns the driving camera with the vehicle and pans it back after the player looks around. */
+  private readonly driveCam = new VehicleCamera()
   /** With `gearAtCabin`: the one tool the player took from the rack (null until they take one). */
   private carried: 'rod' | 'rifle' | null = null
   private keys = new Set<string>()
@@ -1205,6 +1208,7 @@ export class Game {
     this.crouch = false
     const cam = this.ctx.camera
     cam.rotation.set(0.28, v.heading, 0)
+    this.driveCam.reset(v.heading)
     this.avatar.root.parent = v.root
     this.avatar.root.rotationQuaternion = null
     this.avatar.root.rotation.set(0, 0, 0)
@@ -1744,6 +1748,9 @@ export class Game {
     input.steer = active && !reeling && v ? this.key('KeyD') - this.key('KeyA') : 0
     input.brake = this.keys.has('Space')
     this.vehicles.update(dt, input)
+    const driven = this.mode === 'vehicle' && !this.onDeck ? this.vehicles.active : null
+    if (driven && !driven.anchored) cam.rotation.y = this.driveCam.follow(cam.rotation.y, driven.heading, dt)
+    else this.driveCam.release()
     this.wearGround(dt)
     const bowfishing = this.mode === 'bowfish'
     this.bowfish.setParty(this.online.bowTrip(), this.online.bowSlots(), this.online.active && this.online.members.length > 0)
