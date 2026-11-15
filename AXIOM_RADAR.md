@@ -131,6 +131,29 @@ To start on boot: on Linux or macOS run `pm2 startup` and follow its printed com
 
 The ecosystem file is an ES module that exports `apps`. PM2 loads it with `require()`, which needs Node 20.19+ or 22.12+.
 
+## 6. Keep it running without anyone starting it
+
+PM2 restarts the tracker when it crashes, but PM2 itself stops when the PC restarts or when the window that started it is closed. Two guards cover that, and neither uses Claude or any AI service.
+
+```bash
+pnpm axiom:autostart
+```
+
+Run it once from the folder the tracker runs in. It registers a Windows task for your account, **Axiom Radar watchdog**, with no administrator rights and no window. Every two minutes (`scripts/axiom-tracker/watchdog.mjs`):
+
+- nothing running in PM2 (after a restart, or PM2 was closed): it brings back the list PM2 last saved, so the tracker and the paper bot return together;
+- the tracker missing from PM2, or given up on after too many crashes: it starts it;
+- the tracker running but not answering on its local port twice in a row: it restarts it;
+- a tracker you stopped yourself with `pm2 stop`: it leaves it alone.
+
+It writes what it did to `data/watchdog.log`. `pnpm axiom:autostart:remove` takes the task away.
+
+Inside the tracker, `self-check.ts` looks every 30 seconds at the loops the Radar cannot do without (discovery, scoring, the site upload, runner alerts). If one of them has gone quiet for 4 to 6 minutes, usually a request that never answered, the tracker exits and PM2 starts it afresh. Set `AXIOM_SELF_RESTART=0` in `.env` to only report.
+
+On the Radar's tracker status list, **watchdog** says when Windows last checked and the last time it had to step in, or that the task is not installed; **self-check** says every core loop is reporting.
+
+The learning needs nothing from outside either: runner alerts are followed for 4 hours and the pattern weights and alert threshold are worked out again whenever an outcome changes, the warning signs are re-tested every 15 minutes, and the research verdicts are rebuilt from the tracker's own database. All of it is arithmetic on your own data, kept in `data/axiom-tracker.db`, so it carries on across restarts.
+
 ## The page
 
 - **Gaining viewers fastest**: the three coins whose viewer count is climbing fastest right now, with live counts. A coin is flagged "gaining viewers quickly" when its viewers-per-minute gain is large for its own size (at least 10% and +5 a minute on Normal) or far above the other tracked coins. Sensitivity is a setting, not a fixed threshold.

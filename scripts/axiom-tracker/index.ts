@@ -14,6 +14,7 @@ import { startLiveMarket } from './live-market.js'
 import { startRunnerAlerts } from './runner-learning.js'
 import { createLogger, errorMessage, runLoop } from './runtime.js'
 import { startScoring } from './scoring.js'
+import { startSelfCheck } from './self-check.js'
 import { startSitePublisher } from './site-publisher.js'
 import { startWalletTracker } from './wallet-tracker.js'
 
@@ -55,6 +56,7 @@ const tasks = [
   startDexPaid(database, controller.signal),
   startRunnerAlerts(database, controller.signal),
   startAdvice(database, controller.signal),
+  startSelfCheck(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {
     const removed = pruneSnapshots(database)
     database.pragma('wal_checkpoint(PASSIVE)')
