@@ -11,6 +11,11 @@ test('reads the holder figures by their abbreviated labels', () => {
   assert.ok(!stats?.labels.includes('LP Burned'))
 })
 
+test('reads the Token Info box as Axiom shows it on a new coin', () => {
+  const stats = parsePageStats({ 'AGn7ek...fan2': 2.577, 'Dev wallet': 5, 'Top 10 H.': 82.91, 'Dev H.': 0, 'Snipers H.': 0.05, Insiders: 78.16, Bundlers: 0, 'Fresh Wallets': 0.14, 'Pro Traders Holding': 83.2 }, now)
+  assert.deepEqual(stats && { top10: stats.top10, dev: stats.dev, snipers: stats.snipers, insiders: stats.insiders, bundlers: stats.bundlers, fresh: stats.fresh }, { top10: 82.91, dev: 0, snipers: 0.05, insiders: 78.16, bundlers: 0, fresh: 0.14 })
+})
+
 test('a page without holder figures is not a reading', () => {
   assert.equal(parsePageStats({ 'Bonding': 44, 'Buy tax': 0 }, now), null)
   assert.equal(parsePageStats({ 'Top 10 H.': 20 }, now), null)
