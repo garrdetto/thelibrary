@@ -78,7 +78,26 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
     </section>
 
     <section className="radar-card">
-      <div className="panel-heading"><span className="number-tag">04</span><h2>Appearance</h2><span className="panel-caption">COLOURS FOR THIS PAGE ONLY</span></div>
+      <div className="panel-heading"><span className="number-tag">04</span><h2>Axiom watchlist</h2><span className="panel-caption">STARRED ON YOUR AXIOM ACCOUNT</span></div>
+      <p className="radar-note">The Bridge extension stars coins that reach the add level on your Axiom watchlist, one coin-page visit each, and un-stars them when they fall below the remove level, leave the Radar or break a holder limit. Coins you starred yourself are never touched. Open the watchlist from the star button at the top of any Axiom page.</p>
+      <Toggle id="watch-enabled" label="Keep my Axiom watchlist up to date" hint="Turning this off takes off every coin the Radar starred." checked={form.axiomWatchlist.enabled} onChange={enabled => change({ ...form, axiomWatchlist: { ...form.axiomWatchlist, enabled } })}/>
+      <div className="radar-field-grid">
+        <label className="radar-field" htmlFor="watch-score-kind">
+          <span>Pick coins by<small>The same scores as the switches on the main bar.</small></span>
+          <select id="watch-score-kind" value={form.axiomWatchlist.score} onChange={event => change({ ...form, axiomWatchlist: { ...form.axiomWatchlist, score: event.target.value as RadarSettings['axiomWatchlist']['score'] } })}>
+            <option value="dex">DexScreener score</option>
+            <option value="runner">Runner score</option>
+            <option value="blend">Blend of both</option>
+          </select>
+        </label>
+        <NumberField id="watch-add" label="Add at a score of" value={form.axiomWatchlist.addAt} min={1} max={100} onChange={addAt => change({ ...form, axiomWatchlist: { ...form.axiomWatchlist, addAt } })}/>
+        <NumberField id="watch-remove" label="Remove below a score of" hint="Kept lower than the add level so a coin does not flicker on and off." value={form.axiomWatchlist.removeAt} max={100} onChange={removeAt => change({ ...form, axiomWatchlist: { ...form.axiomWatchlist, removeAt } })}/>
+        <NumberField id="watch-max" label="Most coins at once" value={form.axiomWatchlist.maxCoins} min={1} max={30} onChange={maxCoins => change({ ...form, axiomWatchlist: { ...form.axiomWatchlist, maxCoins } })}/>
+      </div>
+    </section>
+
+    <section className="radar-card">
+      <div className="panel-heading"><span className="number-tag">05</span><h2>Appearance</h2><span className="panel-caption">COLOURS FOR THIS PAGE ONLY</span></div>
       <div className="radar-theme-presets" role="radiogroup" aria-label="Colour theme">
         {themeOptions.map(option => <button key={option.id} type="button" role="radio" aria-checked={form.theme.preset === option.id} className={form.theme.preset === option.id ? 'active' : ''} onClick={() => changeTheme({ ...form.theme, preset: option.id })}>
           <span className="radar-theme-swatch" aria-hidden="true">{option.colors ? [option.colors.background, option.colors.panel, option.colors.accent, option.colors.up].map((color, index) => <i key={index} style={{ background: color }}/>) : <i className="site"/>}</span>

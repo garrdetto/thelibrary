@@ -43,6 +43,8 @@ export type RadarSettings = {
   surgeSensitivity: 1 | 2 | 3
   wallets: { minRunnerHits: number }
   pinned: string[]
+  /** Coins the Bridge stars on the person's Axiom watchlist, and takes off again when they stop qualifying. */
+  axiomWatchlist: { enabled: boolean; score: 'runner' | 'dex' | 'blend'; addAt: number; removeAt: number; maxCoins: number }
   theme: RadarTheme
   updatedAt: number | null
 }
@@ -62,6 +64,7 @@ export const defaultRadarSettings: RadarSettings = {
   surgeSensitivity: 2,
   wallets: { minRunnerHits: 2 },
   pinned: [],
+  axiomWatchlist: { enabled: true, score: 'dex', addAt: 60, removeAt: 40, maxCoins: 8 },
   theme: { preset: 'site', custom: { background: '#0a1628', panel: '#11213d', text: '#e8f1ff', muted: '#8ea6c9', border: '#22395f', accent: '#6cc4ff', up: '#3ddc97', down: '#ff6b7a' } },
   updatedAt: null,
 }
@@ -112,6 +115,15 @@ export function normalizeRadarSettings(value: unknown): RadarSettings {
   settings.surgeSensitivity = input.surgeSensitivity === 1 || input.surgeSensitivity === 3 ? input.surgeSensitivity : 2
   settings.wallets = { minRunnerHits: Math.round(clampNumber(wallets.minRunnerHits, defaults.wallets.minRunnerHits, 1, 20)) }
   settings.pinned = Array.isArray(input.pinned) ? [...new Set(input.pinned.filter((mint): mint is string => typeof mint === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)))].slice(0, 50) : []
+  const watchlist = (input.axiomWatchlist && typeof input.axiomWatchlist === 'object' ? input.axiomWatchlist : {}) as Partial<RadarSettings['axiomWatchlist']>
+  const addAt = clampNumber(watchlist.addAt, defaults.axiomWatchlist.addAt, 1, 100)
+  settings.axiomWatchlist = {
+    enabled: typeof watchlist.enabled === 'boolean' ? watchlist.enabled : defaults.axiomWatchlist.enabled,
+    score: watchlist.score === 'runner' || watchlist.score === 'blend' || watchlist.score === 'dex' ? watchlist.score : defaults.axiomWatchlist.score,
+    addAt,
+    removeAt: Math.min(addAt, clampNumber(watchlist.removeAt, defaults.axiomWatchlist.removeAt, 0, 100)),
+    maxCoins: Math.round(clampNumber(watchlist.maxCoins, defaults.axiomWatchlist.maxCoins, 1, 30)),
+  }
   const theme = (input.theme && typeof input.theme === 'object' ? input.theme : {}) as Partial<RadarTheme>
   const custom = (theme.custom && typeof theme.custom === 'object' ? theme.custom : {}) as Partial<RadarThemeColors>
   const hex = (value: unknown, fallback: string) => typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : fallback

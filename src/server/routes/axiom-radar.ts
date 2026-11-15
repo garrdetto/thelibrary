@@ -79,6 +79,7 @@ const settingsInput = z.object({
   surgeSensitivity: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   wallets: z.object({ minRunnerHits: z.number().finite() }).strict(),
   pinned: z.array(z.string().regex(mintPattern)).max(50),
+  axiomWatchlist: z.object({ enabled: z.boolean(), score: z.enum(['runner', 'dex', 'blend']), addAt: z.number().finite(), removeAt: z.number().finite(), maxCoins: z.number().finite() }).strict().optional(),
   theme: z.object({
     preset: z.enum(['site', 'ocean', 'neon', 'mono', 'custom']),
     custom: z.object({ background: hexColor, panel: hexColor, text: hexColor, muted: hexColor, border: hexColor, accent: hexColor, up: hexColor, down: hexColor }).strict(),
