@@ -190,10 +190,11 @@ export class Foliage {
    * around town), built like the lake country's stands: same models, sway,
    * tints, far versions and cached shadows. Trunk colliders are the host's.
    */
-  plantTrees(spots: readonly { x: number; y: number; z: number; kind: TreeKind; scale: number; yaw: number }[]): void {
+  /** Plants trees grouped in square stands `standSize` metres wide (wider stands for far-reaching woods mean fewer meshes). */
+  plantTrees(spots: readonly { x: number; y: number; z: number; kind: TreeKind; scale: number; yaw: number }[], standSize = STAND_SIZE): void {
     const cells = new Map<string, typeof spots[number][]>()
     for (const s of spots) {
-      const key = `${Math.floor(s.x / STAND_SIZE)},${Math.floor(s.z / STAND_SIZE)}`
+      const key = `${Math.floor(s.x / standSize)},${Math.floor(s.z / standSize)}`
       let list = cells.get(key)
       if (!list) cells.set(key, (list = []))
       list.push(s)
@@ -218,7 +219,7 @@ export class Foliage {
       }
       const [ci, cj] = key.split(',').map(Number)
       const node = new TransformNode(`hosted_${ci}_${cj}`, this.ctx.scene)
-      const stand: Stand = { node, center: new Vector3((ci + 0.5) * STAND_SIZE, 0, (cj + 0.5) * STAND_SIZE), casters: [], meshes: [] }
+      const stand: Stand = { node, center: new Vector3((ci + 0.5) * standSize, 0, (cj + 0.5) * standSize), casters: [], meshes: [] }
       for (const kind of TREE_KINDS) {
         if (!this.treeMatrices[kind].length) continue
         const matrices = this.treeMatrices[kind].toArray()

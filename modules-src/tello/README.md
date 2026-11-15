@@ -71,7 +71,7 @@ From the point cloud (`load_lidar`, one-metre rasters plus the last returns over
 
 Only the City of Montello is built. The bake reads the city's boundary from OpenStreetMap (relation, admin level 8,
 holes filled) and ships it with the playable area, the limits widened by 30 m plus County Highway F out to the map's
-south edge (where Fox Lake's County Road F comes in): `limits` in the JSON (`city`, `play`, the road `exits`, the
+south edge; since the 2026-11-14 re-bake the frame is 8192 m and the playable area is the city limits widened by a mile (`PLAY_PAD`), trimmed on the east where State Highway 23 leaves toward Fox Lake (`limits.east`): `limits` in the JSON (`city`, `play`, the road `exits`, the
 `link`) and the signed-distance grid `play` in the bin. Buildings outside the limits are dropped; ground, water, roads
 and the lidar woods are drawn only `seen` (240 m) past the playable edge (`TelloLand.seen`); invisible walls follow the
 edge (`Montello.addWalls`), and every road that leaves it ends at a striped barricade (`world/Barricades.ts`). Every

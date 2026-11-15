@@ -9,7 +9,7 @@
  * scene position (the map centre a whole map width north of the origin), which Rack & Reel's water shader needs.
  */
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
-import type { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { GameHost } from '../../rackreel/game/Game'
 import type { Mats } from '../../foxlake/fp/core/Tex'
 import type { Physics } from '../../foxlake/fp/physics/Physics'
@@ -37,6 +37,8 @@ const TREE_RADIUS = [0.34, 0.42, 0.25]
 /** Each tree model's height at scale 1, so a tree stands as tall as the lidar measured it. */
 const TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]
 const TREE_CELL = 16
+/** Montello's woods reach a mile round the city: its trees are planted in wide stands so they are a few thousand meshes, not tens of thousands. */
+const TREE_STAND = 384
 const NAME_CELL = 64
 const WALL_HEIGHT = 30
 /** How far past what is seen the ground stays solid (the play grid reads no further out than 254 m), and how deep it sinks beyond. */
@@ -78,24 +80,30 @@ export class Montello {
     this.nameIndex = roadIndex(land.doc.roads, NAME_CELL)
   }
 
-  /** Builds everything (call while the host world loads, before Rack & Reel lays out its tree stands). */
+  /** Builds everything, a frame between the big steps so a host world can build it while the game runs. */
   async build(progress: (share: number, text: string) => void = () => {}): Promise<void> {
     const { land, s } = this
     const { scene } = s.host.ctx
     progress(0, 'Surveying Montello…')
     this.addGround()
     this.addWalls()
+    await frame()
     const ground = buildGround(scene, land)
+    await frame()
     this.water = new Water(s.host.ctx, land)
+    await frame()
     const roads = [...buildRoads(scene, land), ...buildStreetPaint(scene, land)]
+    await frame()
     const bridges = buildBridges(scene, land, (mesh) => s.gfx.addCaster(mesh))
     for (const b of bridgeSolids(land)) this.sink.addStaticBox({ cx: b.x, cy: b.y, cz: -b.z, hx: b.across, hy: b.up, hz: b.along, rotY: Math.atan2(Math.sin(b.heading), -Math.cos(b.heading)) })
     progress(0.4, 'Raising the town…')
     const [downtownKit, quarryKit] = await Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
     this.lotHouses = buildBuildings(this.root, s.mats, this.sink, land, s.lotHouses).apart
     for (const index of this.cleared) this.clearHouse(index)
+    await frame()
     buildBarricades(this.root, s.mats, this.sink, land, s.openExit)
     buildStorefronts(this.root, s.mats, land, downtownKit)
+    await frame()
     buildLandmarks(this.root, s.mats, this.sink, land)
     buildCornerGarage(this.root, s.mats, this.sink, land)
     buildStreetDressing(this.root, s.mats, this.sink, land)
@@ -117,7 +125,10 @@ export class Montello {
 
   /** Hands the town's static meshes to the culler (call once the builders have frozen them). */
   ready(): void {
-    this.s.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), BUILDING_CELL)
+    const still = this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen)
+    this.s.culler.addByCell(still, BUILDING_CELL)
+    // Once on the GPU, the town's still, unpickable meshes need no copy of their vertices in memory.
+    for (const m of still) if (!m.isPickable && m instanceof Mesh) m.geometry?.clearCachedData()
   }
 
   update(dt: number): void {
@@ -181,7 +192,7 @@ export class Montello {
       if (!list) this.treeCells.set(key, (list = []))
       list.push(i)
     }
-    this.s.host.foliage.plantTrees(spots)
+    this.s.host.foliage.plantTrees(spots, TREE_STAND)
   }
 
   /** The model scale that makes tree `i` its measured height. */
