@@ -28,11 +28,19 @@ const SIDING = [0xf1eee6, 0xe6dfcf, 0xd9d4c7, 0xbfc6c9, 0x9db199, 0x8fa3b5, 0xc9
 const BRICK = [0xb8573f, 0xa5503c, 0xc27a5a, 0xe2d6c2]
 const ROOF_TONES = [0x3b3d42, 0x4a3d34, 0x2f3a46, 0x5a3a2e, 0x46494c, 0x3e4a3c, 0x55504a]
 const METAL = [0xc9c2b0, 0xa9b0b4, 0x8d9aa0, 0x7f9482, 0xd9d6cf, 0x9a6a55, 0x6f86a0]
+const INDUSTRIAL = [0xcbbd9a, 0xb6bcbf, 0x8d9d8a, 0xa5533f, 0x7c8ea3, 0xe2ddd0, 0x9a8f7c, 0x6e8575, 0xc7b48a, 0x9aa3a8]
 const STORE = [0xd9cdb8, 0xc7b299, 0xb8573f, 0xcfc8ba, 0xa9a39a, 0xdcc9a0, 0xb9c1c4, 0xc98f6b]
 const TRIM: RGB = hexRGB(0xf2f0ea)
 const STOREY = 3.6
 
 export type V3 = [number, number, number]
+
+/** The wall colour of a shop, civic or industrial building that no photo dresses (the factory-finished metal of a pole building, a shop's paint or brick). */
+export function wallTone(b: BuildingData): number {
+  if (b.k === 'store') return pick(STORE, b.s, 1)
+  if (b.k === 'civic') return pick(BRICK, b.s, 1)
+  return pick(INDUSTRIAL, b.s, 1)
+}
 
 export function rand(seed: number, salt: number): number {
   const x = Math.sin(seed * 12.9898 + salt * 78.233) * 43758.5453
@@ -180,10 +188,10 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
       color = hexRGB(known.wall)
     } else if (facade) {
       wall = get(b.k === 'store' ? M.store : M.civic, true)
-      color = hexRGB(pick(b.k === 'store' ? STORE : BRICK, b.s, 1))
+      color = hexRGB(wallTone(b))
     } else if (b.k === 'industrial') {
       wall = get(M.metal, true)
-      color = hexRGB(pick(METAL, b.s, 1))
+      color = hexRGB(wallTone(b))
     } else if (b.k === 'shed') {
       wall = get(rand(b.s, 2) < 0.5 ? M.boards : M.metal, true)
       color = hexRGB(rand(b.s, 3) < 0.35 ? 0x8c3b30 : pick(METAL, b.s, 1))
@@ -227,7 +235,7 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
         if (b.k === 'house') cornerBoards(trimmed, edges, floor, roofs, wall === get(M.siding, true) || wall === get(M.boards, true))
         houseParts = { paint: trimmed, glass: get(M.glass, false, false), lit: get(M.lit, false, false), garage: get(M.garage, false, false), foundation: get(M.foundation, false, false), shingle: get(M.shingles, true, false), brick: get(M.brick, true, false), wall }
         houseFront = front
-      } else openings(b, edges, floor, roofs, land, get(M.paint, true, false), get(M.glass, false, false), get(M.lit, false, false), get(b.k === 'house' ? M.door : M.garage, false, false))
+      } else if (b.k !== 'industrial') openings(b, edges, floor, roofs, land, get(M.paint, true, false), get(M.glass, false, false), get(M.lit, false, false), get(b.k === 'house' ? M.door : M.garage, false, false))
     }
     // Roofs.
     const tin = b.k === 'industrial' || (b.k === 'shed' && rand(b.s, 2) >= 0.5)

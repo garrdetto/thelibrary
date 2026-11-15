@@ -115,8 +115,12 @@ export function parseGrids(bytes: Uint8Array): MapGrids {
   let side = 0
   let fineSide = 0
   for (const s of header.sections) {
-    const raw = bytes.slice(base + s.offset, base + s.offset + s.bytes)
-    out[s.name] = s.type === 'u16' ? new Uint16Array(raw.buffer, 0, s.count) : s.type === 'i8' ? new Int8Array(raw.buffer, 0, s.count) : raw
+    const from = base + s.offset
+    if (s.type === 'u16') {
+      const aligned = (bytes.byteOffset + from) % 2 === 0
+      out[s.name] = aligned ? new Uint16Array(bytes.buffer, bytes.byteOffset + from, s.count) : new Uint16Array(bytes.slice(from, from + s.bytes).buffer, 0, s.count)
+    } else if (s.type === 'i8') out[s.name] = new Int8Array(bytes.buffer, bytes.byteOffset + from, s.count)
+    else out[s.name] = bytes.subarray(from, from + s.bytes)
     if (s.name === 'ground') side = s.side
     if (s.name === 'clear') fineSide = s.side
   }

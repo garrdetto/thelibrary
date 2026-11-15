@@ -74,79 +74,190 @@ export function groundSink(clear: number): number {
   return 0.05 + 0.16 * (1 - smoothstep(-0.5, 2.2, clear))
 }
 
-export async function buildGround(scene: Scene, land: TelloLand, pace?: () => Promise<void>): Promise<Mesh[]> {
-  const mat = new StandardMaterial('tello-ground-mat', scene)
-  mat.diffuseTexture = detailTexture(scene)
-  mat.specularColor = Color3.Black()
-  mat.ambientColor = new Color3(0.4, 0.4, 0.4)
-  mat.freeze()
-  const out: Mesh[] = []
-  const cells = land.side - 1
-  const step = land.cell
-  for (let cj = 0; cj < cells; cj += GROUND_CHUNK) {
-    for (let ci = 0; ci < cells; ci += GROUND_CHUNK) {
-      if (pace) await pace()
-      const nx = Math.min(GROUND_CHUNK, cells - ci)
-      const nz = Math.min(GROUND_CHUNK, cells - cj)
-      const vx = nx + 1
-      const vz = nz + 1
-      const positions = new Float32Array(vx * vz * 3)
-      const colors = new Float32Array(vx * vz * 4)
-      const uvs = new Float32Array(vx * vz * 2)
-      const indices = new Uint32Array(nx * nz * 6)
-      const seen = new Uint8Array(vx * vz)
-      for (let j = 0; j < vz; j++) {
-        for (let i = 0; i < vx; i++) {
-          const k = j * vx + i
-          const mx = land.x0 + (ci + i) * step
-          const mz = land.z0 + (cj + j) * step
-          const x = land.toSceneX(mx)
-          const z = land.toSceneZ(mz)
-          seen[k] = land.seen(mx, mz) ? 1 : 0
-          positions[k * 3] = x
-          positions[k * 3 + 1] = land.groundAt(mx, mz) - groundSink(land.clearAt(mx, mz))
-          positions[k * 3 + 2] = z
-          uvs[k * 2] = x / 7
-          uvs[k * 2 + 1] = z / 7
-          const c = groundColor(land, mx, mz)
-          colors[k * 4] = c[0]
-          colors[k * 4 + 1] = c[1]
-          colors[k * 4 + 2] = c[2]
-          colors[k * 4 + 3] = 1
-        }
+/** Chunks within this many metres of the walker or driver are kept built (the town culls beyond 640 m), and the ones past `GROUND_DROP` are given back. */
+const GROUND_BUILD = 1000
+const GROUND_DROP = 1900
+/** Chunks this close to the walker are built at once (a teleport lands on ground); farther ones one at a time. */
+const GROUND_NEAR = 320
+const GROUND_EVERY = 0.06
+
+interface Chunk {
+  key: number
+  ci: number
+  cj: number
+  x: number
+  z: number
+  half: number
+}
+
+/**
+ * Montello's ground, built chunk by chunk around whoever is moving instead of all at once: the seen ring is three
+ * miles across, and every chunk costs a few hundred kilobytes on the GPU and a good while to colour. A chunk is built
+ * once it is within `GROUND_BUILD`, its vertices are dropped from memory as soon as they are on the GPU, and it is
+ * disposed again past `GROUND_DROP`.
+ */
+export class GroundStream {
+  private readonly material: StandardMaterial
+  private readonly chunks: Chunk[] = []
+  private readonly built = new Map<number, Mesh>()
+  private clock = 0
+
+  constructor(private readonly scene: Scene, private readonly land: TelloLand, private readonly onBuilt: (mesh: Mesh, x: number, z: number, radius: number) => void, private readonly onDropped: (mesh: Mesh) => void) {
+    const mat = new StandardMaterial('tello-ground-mat', scene)
+    mat.diffuseTexture = detailTexture(scene)
+    mat.specularColor = Color3.Black()
+    mat.ambientColor = new Color3(0.4, 0.4, 0.4)
+    mat.freeze()
+    this.material = mat
+    const cells = land.side - 1
+    const step = land.cell
+    for (let cj = 0; cj < cells; cj += GROUND_CHUNK) {
+      for (let ci = 0; ci < cells; ci += GROUND_CHUNK) {
+        const nx = Math.min(GROUND_CHUNK, cells - ci)
+        const nz = Math.min(GROUND_CHUNK, cells - cj)
+        if (!this.anySeen(ci, cj, nx, nz)) continue
+        const mx = land.x0 + (ci + nx / 2) * step
+        const mz = land.z0 + (cj + nz / 2) * step
+        this.chunks.push({ key: cj * land.side + ci, ci, cj, x: land.toSceneX(mx), z: land.toSceneZ(mz), half: (Math.max(nx, nz) * step) / 2 })
       }
-      let t = 0
-      for (let j = 0; j < nz; j++) {
-        for (let i = 0; i < nx; i++) {
-          const a = j * vx + i
-          if (!seen[a] && !seen[a + 1] && !seen[a + vx] && !seen[a + vx + 1]) continue
-          indices[t++] = a
-          indices[t++] = a + 1
-          indices[t++] = a + vx
-          indices[t++] = a + vx + 1
-          indices[t++] = a + vx
-          indices[t++] = a + 1
-        }
-      }
-      if (t === 0) continue
-      const used = indices.subarray(0, t)
-      const normals = new Float32Array(positions.length)
-      VertexData.ComputeNormals(positions, used, normals, { useRightHandedSystem: false })
-      const data = new VertexData()
-      data.positions = positions
-      data.indices = used
-      data.normals = normals
-      data.colors = colors
-      data.uvs = uvs
-      const mesh = new Mesh(`tello-ground:${ci / GROUND_CHUNK},${cj / GROUND_CHUNK}`, scene)
-      data.applyToMesh(mesh, false)
-      mesh.material = mat
-      mesh.receiveShadows = true
-      mesh.isPickable = false
-      mesh.freezeWorldMatrix()
-      mesh.doNotSyncBoundingInfo = true
-      out.push(mesh)
     }
   }
-  return out
+
+  get builtCount(): number {
+    return this.built.size
+  }
+
+  get chunkCount(): number {
+    return this.chunks.length
+  }
+
+  get meshes(): Mesh[] {
+    return [...this.built.values()]
+  }
+
+  private anySeen(ci: number, cj: number, nx: number, nz: number): boolean {
+    const land = this.land
+    for (let j = 0; j <= nz; j += 2) {
+      for (let i = 0; i <= nx; i += 2) if (land.seen(land.x0 + (ci + i) * land.cell, land.z0 + (cj + j) * land.cell)) return true
+    }
+    return false
+  }
+
+  private distance(c: Chunk, x: number, z: number): number {
+    return Math.max(0, Math.max(Math.abs(c.x - x), Math.abs(c.z - z)) - c.half)
+  }
+
+  /** Builds every chunk within `radius` of a scene point, nearest first, a slice at a time. */
+  async prime(x: number, z: number, radius: number, pace?: () => Promise<void>): Promise<void> {
+    const wanted = this.chunks.filter((c) => !this.built.has(c.key) && this.distance(c, x, z) <= radius).sort((a, b) => this.distance(a, x, z) - this.distance(b, x, z))
+    for (const c of wanted) {
+      if (pace) await pace()
+      this.build(c)
+    }
+  }
+
+  /** Keeps the ground built round a scene point: close chunks at once, the rest one every `GROUND_EVERY` seconds; far ones go. */
+  update(dt: number, x: number, z: number): void {
+    let next: Chunk | null = null
+    let nextD = GROUND_BUILD
+    for (const c of this.chunks) {
+      const d = this.distance(c, x, z)
+      const mesh = this.built.get(c.key)
+      if (mesh) {
+        if (d > GROUND_DROP) this.drop(c.key, mesh)
+        continue
+      }
+      if (d <= GROUND_NEAR) this.build(c)
+      else if (d < nextD) {
+        nextD = d
+        next = c
+      }
+    }
+    this.clock -= dt
+    if (next && this.clock <= 0) {
+      this.clock = GROUND_EVERY
+      this.build(next)
+    }
+  }
+
+  private drop(key: number, mesh: Mesh): void {
+    this.built.delete(key)
+    this.onDropped(mesh)
+    mesh.dispose()
+  }
+
+  private build(c: Chunk): void {
+    if (this.built.has(c.key)) return
+    const mesh = buildChunk(this.scene, this.land, this.material, c.ci, c.cj)
+    if (!mesh) return
+    this.built.set(c.key, mesh)
+    const centre = mesh.getBoundingInfo().boundingBox.centerWorld
+    this.onBuilt(mesh, centre.x, centre.z, GROUND_CHUNK * this.land.cell * 0.71)
+  }
+}
+
+function buildChunk(scene: Scene, land: TelloLand, material: StandardMaterial, ci: number, cj: number): Mesh | null {
+  const cells = land.side - 1
+  const step = land.cell
+  const nx = Math.min(GROUND_CHUNK, cells - ci)
+  const nz = Math.min(GROUND_CHUNK, cells - cj)
+  const vx = nx + 1
+  const vz = nz + 1
+  const positions = new Float32Array(vx * vz * 3)
+  const colors = new Float32Array(vx * vz * 4)
+  const uvs = new Float32Array(vx * vz * 2)
+  const seen = new Uint8Array(vx * vz)
+  for (let j = 0; j < vz; j++) {
+    for (let i = 0; i < vx; i++) {
+      const k = j * vx + i
+      const mx = land.x0 + (ci + i) * step
+      const mz = land.z0 + (cj + j) * step
+      const x = land.toSceneX(mx)
+      const z = land.toSceneZ(mz)
+      seen[k] = land.seen(mx, mz) ? 1 : 0
+      positions[k * 3] = x
+      positions[k * 3 + 1] = land.groundAt(mx, mz) - groundSink(land.clearAt(mx, mz))
+      positions[k * 3 + 2] = z
+      uvs[k * 2] = x / 7
+      uvs[k * 2 + 1] = z / 7
+      const c = groundColor(land, mx, mz)
+      colors[k * 4] = c[0]
+      colors[k * 4 + 1] = c[1]
+      colors[k * 4 + 2] = c[2]
+      colors[k * 4 + 3] = 1
+    }
+  }
+  const indices = new Uint16Array(nx * nz * 6)
+  let t = 0
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const a = j * vx + i
+      if (!seen[a] && !seen[a + 1] && !seen[a + vx] && !seen[a + vx + 1]) continue
+      indices[t++] = a
+      indices[t++] = a + 1
+      indices[t++] = a + vx
+      indices[t++] = a + vx + 1
+      indices[t++] = a + vx
+      indices[t++] = a + 1
+    }
+  }
+  if (t === 0) return null
+  const used = indices.slice(0, t)
+  const normals = new Float32Array(positions.length)
+  VertexData.ComputeNormals(positions, used, normals, { useRightHandedSystem: false })
+  const data = new VertexData()
+  data.positions = positions
+  data.indices = used
+  data.normals = normals
+  data.colors = colors
+  data.uvs = uvs
+  const mesh = new Mesh(`tello-ground:${ci / GROUND_CHUNK},${cj / GROUND_CHUNK}`, scene)
+  data.applyToMesh(mesh, false)
+  mesh.material = material
+  mesh.receiveShadows = true
+  mesh.isPickable = false
+  mesh.freezeWorldMatrix()
+  mesh.doNotSyncBoundingInfo = true
+  mesh.geometry?.clearCachedData()
+  return mesh
 }

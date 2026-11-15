@@ -8,12 +8,14 @@
  * the freight depot behind Freitag's (a metal warehouse with a row of dock doors). Plain lettering on dark boards, no
  * logos and no brand colours. Places come from the JSON `pois` (`i` building index, `d` front door, `pumps`).
  */
-import { hexRGB, type RGB } from '../../foxlake/fp/core/Geo'
+import { hexRGB } from '../../foxlake/fp/core/Geo'
 import { pointInRing } from './Poly'
 import type { BuildingData, Poi } from '../data/MapData'
 import type { TelloLand } from '../region'
-import { edgesOf, facing, type Edge } from './Buildings'
+import { edgesOf, facing, shellSkips, type Edge } from './Buildings'
 import { place } from './Kit'
+import { dressCommercial, dressMetalWall, type TakenWall } from './Commercial'
+import { ALUM, CANOPY_BAND, CANOPY_WHITE, at, entryCanopy, storeFront, toTown, wallBox, wallNear, wallPacks, wallQuad, type Wall } from './WallKit'
 import type { PlaceLayer } from './PlaceLayer'
 import type { StaticSink } from './Sink'
 import { SIGN_BOARD, SIGN_INK, type Signs } from './Signs'
@@ -32,12 +34,9 @@ export interface DepotSite {
 export interface BusinessesBuilt { fuelStations: number; pumps: number; canopies: number; signs: number; depot: DepotSite | null }
 
 const DARK = hexRGB(0x23262b)
-const ALUM = hexRGB(0x4a4d52)
 const WOOD = hexRGB(0x6f573f)
 const WOOD_DARK = hexRGB(0x4d3a2a)
-const CANOPY_WHITE = hexRGB(0xe9e7e1)
-const CANOPY_BAND = hexRGB(0x4a4d52)
-const METAL_WALL = hexRGB(0xb9bdbf)
+const METAL_WALL = hexRGB(0x93a09f)
 const FLAGPOLE = hexRGB(0xd7d9db)
 
 /** A `pois` row with the bake's place fields: its building's index and the spot behind that building. */
@@ -48,100 +47,7 @@ const FUEL_NAMES = new Set(['Kwik Trip', 'BP', 'Mobil'])
 /** Places whose own building a host world replaces (Fox Lake rebuilds Foxtails as its casino): only their street sign is drawn. */
 export const REPLACED_BUILDINGS = new Set<string>()
 
-export interface Wall { e: Edge; t: number; floor: number }
-
-const toTown = (x: number, z: number): [number, number] => [x, -z]
-
-/** The wall of the building closest to the door (a map point), with where along it the door is. */
-export function wallNear(b: BuildingData, door: [number, number, number]): Wall | null {
-  const edges = edgesOf(b.p)
-  const [dx, dz] = toTown(door[0], door[1])
-  const out: [number, number] = [Math.sin(door[2]), -Math.cos(door[2])]
-  let best: Edge | null = null
-  let bestScore = Infinity
-  for (const e of edges) {
-    if (e.len < 2.5) continue
-    const ex = (e.bx - e.ax) / e.len
-    const ez = (e.bz - e.az) / e.len
-    const t = Math.max(0, Math.min(e.len, (dx - e.ax) * ex + (dz - e.az) * ez))
-    const dist = Math.hypot(dx - (e.ax + ex * t), dz - (e.az + ez * t))
-    const score = dist + (e.nx * out[0] + e.nz * out[1] < 0.3 ? 40 : 0)
-    if (score < bestScore) {
-      bestScore = score
-      best = e
-    }
-  }
-  if (!best) return null
-  const ex = (best.bx - best.ax) / best.len
-  const ez = (best.bz - best.az) / best.len
-  return { e: best, t: Math.max(0, Math.min(best.len, (dx - best.ax) * ex + (dz - best.az) * ez)), floor: b.f }
-}
-
-export function at(w: Wall, t: number, out = 0): [number, number] {
-  const e = w.e
-  return [e.ax + ((e.bx - e.ax) / e.len) * t + e.nx * out, e.az + ((e.bz - e.az) / e.len) * t + e.nz * out]
-}
-
-function wallQuad(b: ReturnType<PlaceLayer['builder']>, w: Wall, t0: number, t1: number, y0: number, y1: number, out: number, color?: RGB): void {
-  const e = w.e
-  const p0 = at(w, t0, out)
-  const p1 = at(w, t1, out)
-  facing(b, [[p0[0], y0, p0[1]], [p1[0], y0, p1[1]], [p1[0], y1, p1[1]], [p0[0], y1, p0[1]]], [e.nx, 0, e.nz], [[0, 0], [t1 - t0, 0], [t1 - t0, y1 - y0], [0, y1 - y0]], color)
-}
-
-function wallBox(layer: PlaceLayer, w: Wall, t0: number, t1: number, y0: number, y1: number, out0: number, out1: number, color: RGB): void {
-  const [x, z] = at(w, (t0 + t1) / 2)
-  const b = layer.builder(x, z, layer.M.paint)
-  const e = w.e
-  const ax = (e.bx - e.ax) / e.len
-  const az = (e.bz - e.az) / e.len
-  const mid = (out0 + out1) / 2
-  const cx = x + e.nx * mid
-  const cz = z + e.nz * mid
-  b.orientedBox(cx, (y0 + y1) / 2, cz, (t1 - t0) / 2, (y1 - y0) / 2, (out1 - out0) / 2, Math.atan2(-az, ax), { color })
-}
-
-/** A glass store front along part of a wall: lit panes between dark mullions, a sill, a fascia band and double entry doors at the door. */
-function storeFront(layer: PlaceLayer, w: Wall, from: number, to: number, doorWidth: number, band: RGB): void {
-  const { floor } = w
-  const [mx, mz] = at(w, (from + to) / 2)
-  const glass = layer.builder(mx, mz, layer.M.lit, false, false)
-  const y0 = floor + 0.35
-  const y1 = floor + 2.75
-  const d0 = Math.max(from, w.t - doorWidth / 2)
-  const d1 = Math.min(to, w.t + doorWidth / 2)
-  const span = (a: number, b: number) => {
-    if (b - a > 0.3) wallQuad(glass, w, a, b, y0, y1, 0.05)
-  }
-  span(from, d0)
-  span(d1, to)
-  wallQuad(glass, w, d0, d1, floor + 0.05, floor + 2.5, 0.05)
-  const cols = Math.max(1, Math.round((to - from) / 1.5))
-  for (let i = 0; i <= cols; i++) {
-    const t = from + ((to - from) * i) / cols
-    if (t > d0 + 0.1 && t < d1 - 0.1) continue
-    wallBox(layer, w, t - 0.04, t + 0.04, y0 - 0.05, y1 + 0.05, 0.03, 0.12, ALUM)
-  }
-  wallBox(layer, w, d0 - 0.04, d0 + 0.04, floor, floor + 2.55, 0.03, 0.12, ALUM)
-  wallBox(layer, w, d1 - 0.04, d1 + 0.04, floor, floor + 2.55, 0.03, 0.12, ALUM)
-  wallBox(layer, w, (d0 + d1) / 2 - 0.03, (d0 + d1) / 2 + 0.03, floor, floor + 2.5, 0.04, 0.1, ALUM)
-  wallBox(layer, w, from - 0.1, to + 0.1, y0 - 0.25, y0, 0.0, 0.22, hexRGB(0x7d7466))
-  wallBox(layer, w, from - 0.1, to + 0.1, y1, y1 + 0.85, 0.0, 0.3, band)
-  wallBox(layer, w, from - 0.15, to + 0.15, y1 + 0.85, y1 + 0.97, 0.0, 0.36, hexRGB(0xd9d6cf))
-}
-
-export function entryCanopy(layer: PlaceLayer, w: Wall, scaleX = 1): void {
-  const [x, z] = at(w, w.t)
-  layer.lay('entry-canopy', x, z, place(x + w.e.nx * 0.02, w.floor, z + w.e.nz * 0.02, scaleX, 1, 1, Math.atan2(w.e.nx, w.e.nz)), { paint: CANOPY_WHITE, trim: CANOPY_BAND, stone: hexRGB(0xffffff) })
-}
-
-export function wallPacks(layer: PlaceLayer, w: Wall, count: number, y: number): void {
-  for (let i = 0; i < count; i++) {
-    const t = (w.e.len * (i + 0.5)) / count
-    const [x, z] = at(w, t)
-    layer.lay('wall-pack', x, z, place(x + w.e.nx * 0.02, w.floor + y, z + w.e.nz * 0.02, 1, 1, 1, Math.atan2(w.e.nx, w.e.nz)), {})
-  }
-}
+export { at, entryCanopy, wallNear, wallPacks, type Wall }
 
 function placeBuilding(land: TelloLand, poi: PlacePoi): BuildingData | null {
   return poi.i === undefined ? null : land.doc.buildings[poi.i] ?? null
@@ -160,7 +66,11 @@ function findFree(land: TelloLand, from: [number, number], n: [number, number], 
   return null
 }
 
-interface Ctx { land: TelloLand; layer: PlaceLayer; signs: Signs; sink: StaticSink; out: BusinessesBuilt }
+interface Ctx { land: TelloLand; layer: PlaceLayer; signs: Signs; sink: StaticSink; out: BusinessesBuilt; taken: TakenWall[] }
+
+function take(c: Ctx, b: BuildingData, wall: Wall): void {
+  c.taken.push({ b, e: wall.e })
+}
 
 function addSign(c: Ctx, text: string, x: number, z: number, y: number, w: number, h: number, n: [number, number], board = SIGN_BOARD, ink = SIGN_INK, out = 0.04): void {
   c.signs.add({ text, x, z, y, w, h, n, board, ink, out })
@@ -251,6 +161,7 @@ function fuelStation(c: Ctx, poi: PlacePoi, hasCanopy: (x: number, z: number) =>
   if (!b || !poi.d) return
   const wall = wallNear(b, poi.d)
   if (wall) {
+    take(c, b, wall)
     const { e } = wall
     const from = Math.max(0.8, wall.t - Math.min(8, e.len * 0.45))
     const to = Math.min(e.len - 0.8, wall.t + Math.min(8, e.len * 0.45))
@@ -324,19 +235,48 @@ function existingCanopies(c: Ctx): void {
   }
 }
 
+/** A glass entry vestibule standing out from the front wall: a flat roof on four posts, glass on three sides and the sliding doors in the face. */
+function vestibule(c: Ctx, w: Wall): void {
+  const width = 7
+  const depth = 3.2
+  const high = 3.5
+  const { floor, e } = w
+  const t0 = w.t - width / 2
+  const t1 = w.t + width / 2
+  wallBox(c.layer, w, t0 - 0.2, t1 + 0.2, floor + high, floor + high + 0.3, 0, depth + 0.2, hexRGB(0x3b3f44))
+  wallBox(c.layer, w, t0 - 0.2, t1 + 0.2, floor + high + 0.3, floor + high + 0.42, 0, depth + 0.24, CANOPY_WHITE)
+  const [mx, mz] = at(w, w.t, depth)
+  const lit = c.layer.builder(mx, mz, c.layer.M.lit, false, false)
+  wallQuad(lit, w, t0, t1, floor + 0.05, floor + high, depth)
+  const dx = (e.bx - e.ax) / e.len
+  const dz = (e.bz - e.az) / e.len
+  for (const [t, sign] of [[t0, -1], [t1, 1]] as const) {
+    const p0 = at(w, t, 0)
+    const p1 = at(w, t, depth)
+    facing(lit, [[p0[0], floor + 0.05, p0[1]], [p1[0], floor + 0.05, p1[1]], [p1[0], floor + high, p1[1]], [p0[0], floor + high, p0[1]]], [dx * sign, 0, dz * sign], [[0, 0], [depth, 0], [depth, high], [0, high]])
+  }
+  for (const t of [t0, t0 + width / 3, w.t - 0.04, w.t + 0.04, t0 + (2 * width) / 3, t1]) wallBox(c.layer, w, t - 0.05, t + 0.05, floor, floor + high, depth - 0.05, depth + 0.07, ALUM)
+  wallBox(c.layer, w, t0 - 0.05, t1 + 0.05, floor + 2.55, floor + 2.65, depth - 0.05, depth + 0.07, ALUM)
+  wallBox(c.layer, w, t0 - 0.05, t1 + 0.05, floor, floor + 0.12, depth - 0.05, depth + 0.07, ALUM)
+  for (const t of [t0, t1]) wallBox(c.layer, w, t - 0.08, t + 0.08, floor, floor + high, 0, 0.14, ALUM)
+  const [cx, cz] = at(w, w.t, depth / 2)
+  c.sink.addStaticBox({ cx, cy: floor + high / 2, cz, hx: width / 2, hy: high / 2, hz: depth / 2, rotY: Math.atan2(-dz, dx) })
+}
+
 function groceryStore(c: Ctx, poi: PlacePoi): void {
   const b = placeBuilding(c.land, poi)
   if (!b || !poi.d) return
   const wall = wallNear(b, poi.d)
   if (!wall) return
+  take(c, b, wall)
   const { e } = wall
   const from = Math.max(1, wall.t - Math.min(22, e.len * 0.45))
   const to = Math.min(e.len - 1, wall.t + Math.min(22, e.len * 0.45))
   storeFront(c.layer, wall, from, to, 3.4, hexRGB(0x3b3f44))
-  entryCanopy(c.layer, wall, 1.8)
+  vestibule(c, wall)
   wallPacks(c.layer, wall, Math.max(3, Math.floor(e.len / 9)), 3.4)
   const [sx, sz] = at(wall, (from + to) / 2)
-  addSign(c, poi.n.toUpperCase(), sx, sz, wall.floor + 3.4, Math.min(14, to - from - 1), 1.1, [e.nx, e.nz], SIGN_BOARD, SIGN_INK, 0.4)
+  addSign(c, poi.n.toUpperCase(), sx, sz, wall.floor + 4.0, Math.min(14, to - from - 1), 1.1, [e.nx, e.nz], SIGN_BOARD, SIGN_INK, 0.4)
   const main = b.r[0]
   const yaw = main[4]
   const cs = Math.cos(yaw)
@@ -372,6 +312,7 @@ function lakeside(c: Ctx, poi: PlacePoi): void {
   if (!b || !poi.d) return
   const wall = wallNear(b, poi.d)
   if (!wall) return
+  take(c, b, wall)
   const { e } = wall
   entryCanopy(c.layer, wall, 0.8)
   const [sx, sz] = at(wall, e.len / 2)
@@ -421,6 +362,7 @@ function yahooz(c: Ctx, poi: PlacePoi): void {
   if (!b || !poi.d) return
   const wall = wallNear(b, poi.d)
   if (!wall) return
+  take(c, b, wall)
   const [sx, sz] = at(wall, wall.t)
   addSign(c, 'YAHOOZ SPORTS BAR & GRILL', sx, sz, wall.floor + 2.75, Math.min(5.4, wall.e.len - 0.6), 0.62, [wall.e.nx, wall.e.nz], 0x2e4640, SIGN_INK, 0.45)
   wallPacks(c.layer, wall, 2, 3.2)
@@ -431,6 +373,7 @@ function foxtails(c: Ctx, poi: PlacePoi): void {
   if (!b || !poi.d) return
   const wall = wallNear(b, poi.d)
   if (!wall) return
+  take(c, b, wall)
   const { e } = wall
   if (!REPLACED_BUILDINGS.has(poi.n)) {
     entryCanopy(c.layer, wall, 1.3)
@@ -454,6 +397,7 @@ function sheriff(c: Ctx, poi: PlacePoi): void {
   if (!b || !poi.d) return
   const wall = wallNear(b, poi.d)
   if (!wall) return
+  take(c, b, wall)
   const { e } = wall
   entryCanopy(c.layer, wall, 1.7)
   wallPacks(c.layer, wall, Math.max(3, Math.floor(e.len / 8)), 3.2)
@@ -489,27 +433,80 @@ function depot(c: Ctx, freitag: PlacePoi): DepotSite | null {
   const [tx, tz] = toTown(centre[0], centre[1])
   const wall = c.layer.builder(tx, tz, c.layer.M.paint)
   const height = 7.2
-  wall.orientedBox(tx, floor + height / 2 - 0.2, tz, length / 2, height / 2 + 0.2, depth / 2, 0, { color: METAL_WALL })
+  const base = METAL_WALL
+  wall.orientedBox(tx, floor + height / 2 - 0.2, tz, length / 2, height / 2 + 0.2, depth / 2, 0, { color: base })
   wall.orientedBox(tx, floor + height + 0.05, tz, length / 2 + 0.3, 0.12, depth / 2 + 0.3, 0, { color: hexRGB(0x7d8184) })
   c.sink.addStaticBox({ cx: tx, cy: floor + height / 2, cz: tz, hx: length / 2, hy: height / 2, hz: depth / 2, rotY: 0 })
+  const x0 = tx - length / 2
+  const x1 = tx + length / 2
+  const zn = tz - depth / 2
+  const zs = tz + depth / 2
+  const faces: Edge[] = [
+    { ax: x0, az: zn, bx: x1, bz: zn, nx: 0, nz: -1, len: length, at: 0 },
+    { ax: x1, az: zn, bx: x1, bz: zs, nx: 1, nz: 0, len: depth, at: 0 },
+    { ax: x1, az: zs, bx: x0, bz: zs, nx: 0, nz: 1, len: length, at: 0 },
+    { ax: x0, az: zs, bx: x0, bz: zn, nx: -1, nz: 0, len: depth, at: 0 },
+  ]
+  for (const e of faces) dressMetalWall(c.layer, e, floor, floor + height, base)
   const northZ = centre[1] + depth / 2
   const docks = 7
+  const dockX: number[] = []
   for (let i = 0; i < docks; i++) {
     const x = centre[0] - length / 2 + 3 + (i * (length - 6)) / (docks - 1)
+    dockX.push(x)
     const [dx, dz] = toTown(x, northZ)
     c.layer.lay('dock-door', dx, dz, place(dx, floor, dz, 1, 1, 1, Math.PI), {})
   }
   const [px, pz] = toTown(centre[0], northZ)
   const apron = c.layer.builder(px, pz, c.layer.M.foundation, false)
   apron.box(centre[0] - length / 2, floor - 0.06, -northZ - 7, centre[0] + length / 2, floor + 0.03, -northZ, { color: [1, 1, 1] })
-  wallPacks(c.layer, { e: { ax: centre[0] - length / 2, az: -northZ, bx: centre[0] + length / 2, bz: -northZ, nx: 0, nz: -1, len: length, at: 0 }, t: 0, floor }, 4, 5.0)
-  addSign(c, "FREITAG'S FREIGHT DEPOT", centre[0], -northZ, floor + 5.2, 9, 0.9, [0, -1], SIGN_BOARD, SIGN_INK, 0.35)
+  const roofTop = floor + 4.9
+  const steel = c.layer.builder(px, pz, c.layer.M.paint)
+  steel.box(x0 - 0.3, roofTop, zn - 3.4, x1 + 0.3, roofTop + 0.28, zn, { color: hexRGB(0x6f7377) })
+  steel.box(x0 - 0.3, roofTop + 0.28, zn - 3.4, x1 + 0.3, roofTop + 0.4, zn - 3.28, { color: hexRGB(0xd8d6d0) })
+  for (const x of [x0 + 0.5, tx - 9, tx, tx + 9, x1 - 0.5]) {
+    steel.cylinder(x, floor, zn - 3.0, 0.11, 0.11, roofTop - floor, 8, false, hexRGB(0x3d4146))
+    c.sink.addStaticCylinder(x, floor + (roofTop - floor) / 2, zn - 3.0, (roofTop - floor) / 2, 0.16)
+  }
+  const lit = c.layer.builder(px, pz, c.layer.M.lit, false, false)
+  for (const x of dockX) facing(lit, [[x - 0.5, roofTop - 0.01, zn - 2.6], [x + 0.5, roofTop - 0.01, zn - 2.6], [x + 0.5, roofTop - 0.01, zn - 1.6], [x - 0.5, roofTop - 0.01, zn - 1.6]], [0, -1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]])
+  const trailerX = dockX[1]
+  const bed = floor + 1.15
+  const trailerLen = 13.7
+  const body = c.layer.builder(px, pz, c.layer.M.paint)
+  body.box(trailerX - 1.3, bed, zn - 1.2 - trailerLen, trailerX + 1.3, bed + 2.75, zn - 1.2, { color: hexRGB(0xe9e8e3) })
+  body.box(trailerX - 1.32, bed - 0.12, zn - 1.2 - trailerLen, trailerX + 1.32, bed + 0.04, zn - 1.2, { color: hexRGB(0x3d4146) })
+  body.box(trailerX - 1.31, bed + 2.75, zn - 1.2 - trailerLen, trailerX + 1.31, bed + 2.84, zn - 1.2, { color: hexRGB(0xc9c7c0) })
+  for (const z of [zn - 1.2 - trailerLen + 1.6, zn - 1.2 - trailerLen + 3.0]) {
+    for (const side of [-1, 1]) body.tube([trailerX + side * 1.15, floor + 0.5, z], [trailerX + side * 1.45, floor + 0.5, z], 0.5, 10, true, hexRGB(0x1f2124))
+  }
+  body.box(trailerX - 0.12, floor + 0.15, zn - 1.2 - trailerLen + 6, trailerX + 0.12, bed, zn - 1.2 - trailerLen + 6.2, { color: hexRGB(0x3d4146) })
+  c.sink.addStaticBox({ cx: trailerX, cy: bed + 1.4, cz: zn - 1.2 - trailerLen / 2, hx: 1.35, hy: 1.5, hz: trailerLen / 2, rotY: 0 })
+  wallPacks(c.layer, { e: faces[0], t: 0, floor }, 4, 5.4)
+  addSign(c, "FREITAG'S FREIGHT DEPOT", centre[0], -northZ, floor + 5.5, 9, 0.9, [0, -1], SIGN_BOARD, SIGN_INK, 0.35)
   return { dock: { x: centre[0], z: northZ + 1 }, face: [0, 1], x: centre[0], z: centre[1], yaw, length, depth }
+}
+
+/** Freitag's dealership: a plain-lettered pole sign at the lot's street end (its building front, from the photos, is Storefronts.ts). */
+function dealership(c: Ctx, poi: PlacePoi): void {
+  if (!poi.d) return
+  const nMap: [number, number] = [Math.sin(poi.d[2]), Math.cos(poi.d[2])]
+  const spot = findFree(c.land, [poi.d[0], poi.d[1]], nMap, [10, 13, 7, 16], [0, 7, -7, 12], c.land.doc.buildings)
+  if (!spot) return
+  const [px, pz] = toTown(spot[0], spot[1])
+  const y = c.land.heightAt(spot[0], spot[1])
+  const n: [number, number] = [nMap[0], -nMap[1]]
+  const pole = c.layer.builder(px, pz, c.layer.M.paint)
+  pole.cylinder(px, y - 0.2, pz, 0.14, 0.14, 6.0, 8, true, ALUM)
+  pole.box(px - 1.9, y + 4.3, pz - 0.14, px + 1.9, y + 6.0, pz + 0.14, { color: hexRGB(0x1d3f73) })
+  addSign(c, 'H A FREITAG & SON', px, pz, y + 4.5, 3.4, 1.2, n, 0x1d3f73, 0xffffff, 0.16)
+  addSign(c, 'H A FREITAG & SON', px, pz, y + 4.5, 3.4, 1.2, [-n[0], -n[1]], 0x1d3f73, 0xffffff, 0.16)
+  c.sink.addStaticCylinder(px, y + 3, pz, 3, 0.2)
 }
 
 export function buildBusinesses(layer: PlaceLayer, signs: Signs, sink: StaticSink, land: TelloLand): BusinessesBuilt {
   const out: BusinessesBuilt = { fuelStations: 0, pumps: 0, canopies: 0, signs: 0, depot: null }
-  const c: Ctx = { land, layer, signs, sink, out }
+  const c: Ctx = { land, layer, signs, sink, out, taken: [] }
   const done = new Set<number>()
   existingCanopies(c)
   const canopyBuildings = land.doc.buildings.filter((b) => b.k === 'canopy')
@@ -526,6 +523,13 @@ export function buildBusinesses(layer: PlaceLayer, signs: Signs, sink: StaticSin
     else if (poi.n === 'Yahooz Sports Bar & Grill') yahooz(c, poi)
     else if (poi.n === "Foxtails Gentlemen's Club") foxtails(c, poi)
     else if (poi.n === 'Marquette County Sheriff Department') sheriff(c, poi)
+    else if (poi.n === 'H A Freitag & Son') dealership(c, poi)
+    else if (poi.n === 'Montello Junior-Senior High School' && poi.i !== undefined && poi.d) {
+      const hs = land.doc.buildings[poi.i]
+      const wall = hs ? wallNear(hs, poi.d) : null
+      if (hs && wall) take(c, hs, wall)
+    }
   }
+  dressCommercial({ layer, signs, land, taken: c.taken, skip: (b) => !!b.n && (REPLACED_BUILDINGS.has(b.n) || shellSkips.has(b.n)) })
   return out
 }

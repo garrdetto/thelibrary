@@ -16,8 +16,8 @@ import type { Physics } from '../../foxlake/fp/physics/Physics'
 import type { TownGfx } from '../../foxlake/town/TownGfx'
 import type { RegionCuller } from '../../foxlake/core/RegionCuller'
 import type { TelloLand } from '../region'
-import { buildGround, GROUND_CHUNK } from './Ground'
-import { Water } from './Water'
+import { GroundStream } from './Ground'
+import { Water, WATER_CHUNK } from './Water'
 import { bridgeSolids, buildBridges, buildRoads } from './Roads'
 import { buildStreetPaint } from './StreetPaint'
 import { BUILDING_CELL, buildBuildings, type ApartBuilding } from './Buildings'
@@ -39,6 +39,10 @@ const WALL_HEIGHT = 30
 /** How far past what is seen the ground stays solid (the play grid reads no further out than 254 m), and how deep it sinks beyond. */
 const GROUND_REACH = 8
 const SUNK = 80
+/** Heightfields are laid in tiles this many cells across, only where the ground is seen. */
+const TILE = 256
+/** The ground within this many metres of where the game starts is built while loading; the rest streams in round whoever moves. */
+const GROUND_PRIME = 700
 
 export interface MontelloSetup {
   host: GameHost
@@ -61,6 +65,7 @@ export class Montello {
   private junction: Intersection | null = null
   private falls: Falls | null = null
   private forest: Forest | null = null
+  private ground: GroundStream | null = null
   private readonly nameIndex: Map<number, number[]>
   private lotHouses = new Map<number, ApartBuilding>()
   private readonly cleared = new Set<number>()
@@ -101,7 +106,14 @@ export class Montello {
     this.buildSolids()
     await pace('buildSolids')
     const kits = Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
-    const ground = await buildGround(scene, land, () => pace())
+    const start = land.holdsScene(s.host.player.x, s.host.player.z) ? { x: land.toMapX(s.host.player.x), z: land.toMapZ(s.host.player.z) } : { x: 0, z: 0 }
+    this.ground = new GroundStream(
+      scene,
+      land,
+      (mesh, x, z, radius) => s.culler.addGroup([mesh], x, z, radius),
+      (mesh) => s.culler.remove([mesh]),
+    )
+    await this.ground.prime(land.toSceneX(start.x), land.toSceneZ(start.z), GROUND_PRIME, () => pace())
     await pace('buildGround')
     this.water = new Water(s.host.ctx, land)
     await pace('water')
@@ -133,10 +145,9 @@ export class Montello {
     progress(0.8, 'Planting the trees…')
     await pace('buildFalls')
     this.forest = new Forest(land, (spots, size) => s.host.foliage.plantTrees(spots, size), this.sink)
-    const start = land.holdsScene(s.host.player.x, s.host.player.z) ? { x: land.toMapX(s.host.player.x), z: land.toMapZ(s.host.player.z) } : { x: 0, z: 0 }
     await this.forest.plantAround(start.x, start.z, PLANT_RADIUS, () => pace())
-    const chunk = GROUND_CHUNK * land.cell
-    for (const m of [...ground, ...this.water.meshes]) {
+    const chunk = WATER_CHUNK * land.cell
+    for (const m of this.water.meshes) {
       const c = m.getBoundingInfo().boundingBox.centerWorld
       s.culler.addGroup([m], c.x, c.z, chunk * 0.71)
     }
@@ -157,6 +168,7 @@ export class Montello {
   update(dt: number, focus?: { x: number; z: number }): void {
     const at = focus ?? this.s.host.driving?.position ?? this.s.host.player
     this.forest?.update(dt, at.x, at.z)
+    this.ground?.update(dt, at.x, at.z)
     this.water?.update(dt, this.s.host.lighting)
     this.junction?.update(dt)
     this.falls?.update(dt)
@@ -169,16 +181,24 @@ export class Montello {
   private addGround(): void {
     const land = this.land
     const n = land.side - 1
-    const heights = new Float32Array(land.side * land.side)
     const ground = land.grids.ground
-    for (let j = 0; j <= n; j++) {
-      for (let i = 0; i <= n; i++) {
-        const row = n - j
-        const seen = land.seen(land.x0 + i * land.cell, land.z0 + row * land.cell, -GROUND_REACH)
-        heights[i + j * land.side] = ground[row * land.side + i] / 100 - (seen ? 0 : SUNK)
+    for (let tj = 0; tj < n; tj += TILE) {
+      for (let ti = 0; ti < n; ti += TILE) {
+        const t = Math.min(TILE, n - ti, n - tj)
+        const heights = new Float32Array((t + 1) * (t + 1))
+        let any = false
+        for (let j = 0; j <= t; j++) {
+          const row = tj + t - j
+          for (let i = 0; i <= t; i++) {
+            const seen = land.seen(land.x0 + (ti + i) * land.cell, land.z0 + row * land.cell, -GROUND_REACH)
+            if (seen) any = true
+            heights[i + j * (t + 1)] = ground[row * land.side + ti + i] / 100 - (seen ? 0 : SUNK)
+          }
+        }
+        if (!any) continue
+        this.sink.addHeightfield(t, t * land.cell, heights, land.x0 + (ti + t / 2) * land.cell, -(land.z0 + (tj + t / 2) * land.cell))
       }
     }
-    this.sink.addHeightfield(n, land.size, heights, land.x0 + land.size / 2, -(land.z0 + land.size / 2))
   }
 
   /** Invisible walls along the playable area's edge, so nothing drives out of town (the way in from Fox Lake stays open). */

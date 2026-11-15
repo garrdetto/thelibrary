@@ -79,8 +79,8 @@ test('water: Buffalo Lake, Lake Montello and the Fox River lie at their own leve
   assert.ok(share > 0.02 && share < 0.3, `water covers ${(share * 100).toFixed(1)} % of the map`)
   const bytes = depthBytes(land)
   let texels = 0
-  for (let k = 0; k < bytes.length; k += 4) if (bytes[k]) texels++
-  assert.ok(Math.abs(texels / (bytes.length / 4) - share) < 0.02, 'the shader depth map covers the same water')
+  for (let k = 0; k < bytes.length; k++) if (bytes[k]) texels++
+  assert.ok(Math.abs(texels / bytes.length - share) < 0.02, 'the shader depth map covers the same water')
   for (let k = 0; k < grids.ground.length; k++) if (grids.cover[k] === COVER.water) assert.ok(grids.water[k] > grids.ground[k], 'cover says water only where there is depth')
 })
 
