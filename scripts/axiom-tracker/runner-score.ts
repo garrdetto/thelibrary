@@ -22,6 +22,34 @@ export const scoreStretch = 1.25
 export const softPenalties = { recycledName: 10, copiedLinks: 6, sellingEach: 8, sellingMax: 16 }
 /** A serial launcher (many coins, few graduated) stays visible but cannot rank as a pick. */
 export const serialLauncherCap = 40
+/**
+ * Price movement over the last 5 seconds, 30 seconds, 1 minute and 5 minutes, weighted so the 5-minute move counts most and
+ * the 5-second move least. Each change is read against the size of a strong move for that window (a 2% move in 5 seconds is
+ * as strong as 30% in 5 minutes) and held to -1..+1, so one spike cannot carry it.
+ */
+export const movementWindows = [
+  { key: 's5', label: '5s', weight: 0.1, strong: 2 },
+  { key: 's30', label: '30s', weight: 0.2, strong: 6 },
+  { key: 'm1', label: '1m', weight: 0.3, strong: 10 },
+  { key: 'm5', label: '5m', weight: 0.4, strong: 30 },
+] as const
+/** Points a rising coin earns for movement, and the most a falling one loses. */
+export const movementPoints = 10
+
+/** The weighted movement from -1 (falling hard in every window) to +1, over the windows that have a reading. */
+export function movementSignal(change: RunnerInput['priceChange']) {
+  let weighted = 0
+  let weights = 0
+  const readings: string[] = []
+  for (const window of movementWindows) {
+    const value = change[window.key]
+    if (value === null || value === undefined || !Number.isFinite(value)) continue
+    weighted += window.weight * Math.max(-1, Math.min(1, value / window.strong))
+    weights += window.weight
+    readings.push(`${window.label} ${value > 0 ? '+' : ''}${round1(value)}%`)
+  }
+  return weights ? { signal: weighted / weights, readings, coverage: weights } : null
+}
 export const sweetSpots = { early: { low: 8_000, high: 60_000 }, graduated: { low: 30_000, high: 300_000 } }
 
 export type PricePoint = { t: number; price: number }
@@ -31,7 +59,7 @@ export type RunnerInput = {
   now: number
   marketCap: number | null
   liquidity: number | null
-  priceChange: { m1: number | null; m5: number | null }
+  priceChange: { s5?: number | null; s30?: number | null; m1: number | null; m5: number | null }
   ticks: PricePoint[]
   top10: number | null
   dev: number | null
@@ -242,7 +270,7 @@ const sum = (checks: RadarScoreCheck[]) => checks.reduce((total, item) => total 
  * The runner score out of 100, ranked on Axiom's own figures. Step 1 gates make it 0 (mint or freeze on, dev over 5%, top 10
  * over 30%, bundlers over 35%, fresh wallets over 10%, dead charts, bot climbs, a big holder sell-off right now); a serial
  * launcher is capped at 40 and a recycled name, copied links or small holder trims cost points. Then holder percentages (20), Axiom demand and growth: viewers, viewer and holder growth a
- * minute, buy share, holders, volume, fees (45), chart and liquidity (20) and hype (15), raised by `scoreStretch`, less one
+ * minute, buy share, holders, volume, fees (45), chart and liquidity (25, with movement over 5s, 30s, 1m and 5m weighted toward 5m) and hype (15); a falling move costs up to 10, raised by `scoreStretch`, less one
  * point for each percentage point the top 10 hold above 15%, plus or minus what past alerts taught. `ledger` lists every
  * gate, rule, adjustment and cap with the reading it used.
  */
@@ -341,7 +369,10 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   if (steps.points >= 10) tags.push('staircase')
   const m5 = input.priceChange.m5
   const rising = m5 !== null && m5 >= 10
-  const risePoints = tier(m5, [[(m5 ?? 0) >= 30, 5], [(m5 ?? 0) >= 10, 3]])
+  const movement = movementSignal(input.priceChange)
+  const movementEarned = movement ? Math.max(0, Math.round(movement.signal * movementPoints)) : 0
+  const movementCost = movement ? Math.max(0, Math.round(-movement.signal * movementPoints)) : 0
+  if (movement && movement.signal >= 0.5) tags.push('moving-up')
   const shapePoints = Math.max(waves.points >= 15 ? 5 : waves.points ? 3 : 0, steps.points >= 10 ? 5 : steps.points ? 3 : 0)
   const shapeDetail = waves.points >= steps.points ? waves.detail : steps.detail
   const inEarlySpot = input.marketCap !== null && input.marketCap >= sweetSpots.early.low && input.marketCap <= sweetSpots.early.high
@@ -353,7 +384,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   if (depth === 4) tags.push('deep-liquidity')
   const nearHigh = high !== null && latest !== null && latest >= high * 0.8
   const chartChecks = [
-    check('Rising: up 30%+ over 5 minutes 5, 10%+ 3', m5 === null ? 'not read yet' : `${signed(m5)}%`, risePoints, 5, m5 !== null),
+    check(`Moving up, weighted 5s ${movementWindows[0].weight * 100}%, 30s ${movementWindows[1].weight * 100}%, 1m ${movementWindows[2].weight * 100}%, 5m ${movementWindows[3].weight * 100}%`, movement ? `${movement.readings.join(', ')} (${movement.signal >= 0 ? '+' : ''}${Math.round(movement.signal * 100)}% of a strong move)` : 'not read yet', movementEarned, movementPoints, movement !== null),
     check('Steps up or won back a 30-55% pullback (3 if mostly or recovering)', shapeDetail, shapePoints, 5, input.ticks.length > 0),
     check(`Market cap in the sweet spot ($8K-$60K, or $30K-$300K once graduated)`, input.marketCap === null ? 'not read yet' : money(input.marketCap), inSpot ? 4 : 0, 4, input.marketCap !== null),
     check('Deep liquidity: selling 1% moves it under 25% (2 if under 40%)', impact === null ? `liquidity ${input.liquidity === null ? 'not read yet' : money(input.liquidity)}` : `selling 1% of supply moves it about ${impact}% (${money(input.liquidity as number)} liquidity)`, depth, 4, impact !== null),
@@ -377,13 +408,13 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   const parts: RadarScorePart[] = [
     { key: 'distribution', label: 'Holder percentages', points: distribution, max: 20, detail: distributionDetail.join(', ') || 'Holder percentages high or not read yet', available: input.bundlers !== null || input.dev !== null || input.fresh !== null },
     { key: 'momentum', label: 'Axiom demand & growth', points: momentum, max: 45, detail: demandDetail.join(', ') || 'Few viewers, slow holder growth or sellers in control', available: viewers !== null || input.holders !== null },
-    { key: 'chart', label: 'Chart & liquidity', points: chart, max: 20, detail: [shapeDetail, rising ? `up ${Math.round(m5 as number)}% in 5 minutes` : null, impact !== null ? `selling 1% of supply would move the price about ${impact}%` : 'liquidity unknown'].filter(Boolean).join('; '), available: input.ticks.length > 0 },
+    { key: 'chart', label: 'Chart & liquidity', points: chart, max: 25, detail: [shapeDetail, movement ? `moves ${movement.readings.join(', ')}` : rising ? `up ${Math.round(m5 as number)}% in 5 minutes` : null, impact !== null ? `selling 1% of supply would move the price about ${impact}%` : 'liquidity unknown'].filter(Boolean).join('; '), available: input.ticks.length > 0 },
     { key: 'hype', label: 'Hype', points: hype, max: 15, detail: [input.dexPaid ? 'DexPaid' : input.dexPaid === false ? 'not DexPaid' : 'DexPaid not checked yet', social.detail, input.smartHolders ? `${input.smartHolders} smart wallet${input.smartHolders === 1 ? '' : 's'} in` : null].filter(Boolean).join('; '), available: true },
   ]
   const pillars: RadarScorePillar[] = [
     { key: 'distribution', label: parts[0].label, points: distribution, max: 20, checks: distributionChecks },
     { key: 'momentum', label: parts[1].label, points: momentum, max: 45, checks: demandChecks },
-    { key: 'chart', label: parts[2].label, points: chart, max: 20, checks: chartChecks },
+    { key: 'chart', label: parts[2].label, points: chart, max: 25, checks: chartChecks },
     { key: 'hype', label: parts[3].label, points: hype, max: 15, checks: hypeChecks },
   ]
   const base = distribution + momentum + hype + chart
@@ -406,6 +437,11 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     cuts.push(...mildSelling.map(reason => `${reason}: -${softPenalties.sellingEach}`))
     parts.push({ key: 'penalty', label: 'Holders trimming', points: -sellingCost, max: 0, detail: mildSelling.join('; '), available: true })
   }
+  adjustments.push({ label: `Falling across 5s, 30s, 1m and 5m (5m weighs most): up to -${movementPoints}`, reading: movement ? movement.readings.join(', ') : 'not read yet', points: -movementCost, max: 0, status: movement === null ? 'unknown' : movementCost ? 'missed' : 'earned' })
+  if (movementCost) {
+    cuts.push(`Falling (${movement?.readings.join(', ')}): -${movementCost}`)
+    parts.push({ key: 'penalty', label: 'Price falling', points: -movementCost, max: 0, detail: movement?.readings.join(', ') ?? '', available: true })
+  }
   const learnedTotal = input.learned.reduce((total, item) => total + item.points, 0)
   const learned = Math.max(learnedLimits.minimum, Math.min(learnedLimits.maximum, learnedTotal))
   for (const item of input.learned) adjustments.push({ label: `Learned: ${item.label}`, reading: 'pattern seen in past alerts', points: item.points, max: Math.max(0, item.points), status: item.points >= 0 ? 'earned' : 'missed' })
@@ -414,7 +450,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     parts.push({ key: 'learned', label: 'Learned from past alerts', points: learned, max: learnedLimits.maximum, detail: input.learned.map(item => `${item.label} ${item.points > 0 ? '+' : ''}${item.points}`).join(', '), available: true })
     cuts.push(...input.learned.filter(item => item.points < 0).map(item => `${item.label}: ${item.points}`))
   }
-  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch - penalty - recycledCost - sellingCost)))
+  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch - penalty - recycledCost - sellingCost - movementCost)))
   adjustments.push({ label: `Points raised by a quarter (x${scoreStretch}), top 10 deduction not raised`, reading: `${round1(base + learned)} points`, points: round1((base + learned) * (scoreStretch - 1)), max: 0, status: 'earned' })
   let score = beforeCaps
   if (disqualified.length) score = 0

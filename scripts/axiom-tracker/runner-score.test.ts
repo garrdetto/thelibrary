@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceAlert, patternStats, thresholdFor, type AlertRow } from './runner-learning.js'
-import { scoreRunner, sellImpact, serialLauncherCap, softPenalties, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
+import { movementSignal, scoreRunner, sellImpact, serialLauncherCap, softPenalties, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
 import { resetSellWatch, watchSells, type ShareReading } from './sell-watch.js'
 import { recordScore, resetScoreTrails } from './score-trail.js'
 import { minuteClosesFrom, withChartHistory } from './chart-history.js'
@@ -289,4 +289,20 @@ test('a trim of a couple of points is a mild alert; twice the trigger is severe'
   assert.ok(alerts.some(alert => alert.text.startsWith('Bundlers are selling') && !alert.severe), JSON.stringify(alerts))
   for (let second = 30; second < 40; second++) alerts = watchSells('coin', reading(now + second * 1_000, { bundlers: 6 }))
   assert.ok(alerts.some(alert => alert.text.startsWith('Bundlers are selling') && alert.severe), JSON.stringify(alerts))
+})
+
+test('movement over 5s, 30s, 1m and 5m counts, the 5-minute move most and the 5-second move least', () => {
+  const flat = { s5: 0, s30: 0, m1: 0, m5: 0 }
+  const onlyFiveSeconds = movementSignal({ ...flat, s5: 5 })?.signal ?? 0
+  const onlyThirty = movementSignal({ ...flat, s30: 20 })?.signal ?? 0
+  const onlyMinute = movementSignal({ ...flat, m1: 40 })?.signal ?? 0
+  const onlyFiveMinutes = movementSignal({ ...flat, m5: 80 })?.signal ?? 0
+  assert.ok(onlyFiveSeconds < onlyThirty && onlyThirty < onlyMinute && onlyMinute < onlyFiveMinutes, `${onlyFiveSeconds} ${onlyThirty} ${onlyMinute} ${onlyFiveMinutes}`)
+  const quiet = scoreRunner(middling({ priceChange: flat })).score
+  const climbing = scoreRunner(middling({ priceChange: { s5: 1, s30: 4, m1: 8, m5: 30 } })).score
+  const falling = scoreRunner(middling({ priceChange: { s5: -1, s30: -4, m1: -6, m5: -20 } }))
+  assert.ok(climbing > quiet, `${quiet} ${climbing}`)
+  assert.ok(falling.score < quiet, `${quiet} ${falling.score}`)
+  assert.ok(falling.cuts.some(cut => cut.startsWith('Falling (')), JSON.stringify(falling.cuts))
+  assert.equal(movementSignal({ m1: null, m5: null }), null)
 })

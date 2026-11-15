@@ -13,7 +13,7 @@ import { fetchTokenDetail } from './useRadarFeed'
 const tooltipStyle = { background: 'var(--tone-82)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11, color: 'var(--tone-0)' }
 const authorityLabel = (value: boolean | null) => value === null ? 'Unknown' : value ? 'Enabled' : 'Revoked'
 const percentLabel = (value: number | null | undefined) => value === null || value === undefined ? '—' : `${value.toFixed(0)}%`
-const windows = [['s30', '30 seconds'], ['m1', '1 minute'], ['m5', '5 minutes'], ['m10', '10 minutes']] as const
+const windows = [['s5', '5 seconds'], ['s30', '30 seconds'], ['m1', '1 minute'], ['m5', '5 minutes'], ['m10', '10 minutes']] as const
 const clockWithSeconds = (value: number) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 type TokenDrawerProps = { token: RadarToken; chartWindow: ChartWindow; fast: boolean; onClose: () => void; onTogglePin: (mint: string) => void }

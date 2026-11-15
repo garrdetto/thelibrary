@@ -177,6 +177,7 @@ function liveFigures(mint: string, now: number) {
     pulse,
     market: trackerState.market.get(mint) ?? null,
     priceChange: {
+      s5: percentChange(price, tickAt(ticks, now - 5_000, 2_000, 'price')),
       s30: percentChange(price, tickAt(ticks, now - 30_000, 4_000, 'price')),
       m1: percentChange(price, tickAt(ticks, now - 60_000, 6_000, 'price')),
       m5: percentChange(price, tickAt(ticks, now - 300_000, 20_000, 'price')),
@@ -399,7 +400,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     now,
     marketCap,
     liquidity: live.market?.liquidityUsd ?? latest?.liquidity_usd ?? null,
-    priceChange: { m1: live.priceChange.m1, m5: live.priceChange.m5 },
+    priceChange: { s5: live.priceChange.s5 ?? null, s30: live.priceChange.s30, m1: live.priceChange.m1, m5: live.priceChange.m5 },
     ticks: withChartHistory(chartHistory(token.mint), priceSeries(snapshots, ticks)),
     top10: traits?.top10 ?? null,
     dev: traits?.dev ?? null,
