@@ -71,15 +71,24 @@ export class HttpError extends Error {
   constructor(readonly status: number, message: string) { super(message) }
 }
 
+/** Runs a step, and rejects if it has not settled within the limit, so a call that ignores its own timeout cannot stall its loop for good. */
+export function abandonIfHung<T>(name: string, limitMs: number, task: () => Promise<T>): Promise<T> {
+  let watchdog: ReturnType<typeof setTimeout> | undefined
+  const hung = new Promise<never>((_, reject) => { watchdog = setTimeout(() => reject(new Error(`${name} hung for ${Math.round(limitMs / 1000)}s and was abandoned`)), limitMs) })
+  return Promise.race([(async () => task())(), hung]).finally(() => clearTimeout(watchdog))
+}
+
 export async function fetchJson<T>(url: string, init: RequestInit & { timeoutMs?: number; retries?: number } = {}): Promise<T> {
   const { timeoutMs = 12_000, retries = 2, ...request } = init
   let attempt = 0
   while (true) {
     try {
-      const response = await fetch(url, { ...request, signal: AbortSignal.timeout(timeoutMs), headers: { Accept: 'application/json', 'User-Agent': 'axiom-radar/1.0', ...request.headers } })
-      if (response.status === 429 || response.status >= 500) throw new HttpError(response.status, `HTTP ${response.status}`)
-      if (!response.ok) throw new HttpError(response.status, `HTTP ${response.status}`)
-      return await response.json() as T
+      return await abandonIfHung(`request to ${new URL(url).host}`, timeoutMs * 2 + 1_000, async () => {
+        const response = await fetch(url, { ...request, signal: AbortSignal.timeout(timeoutMs), headers: { Accept: 'application/json', 'User-Agent': 'axiom-radar/1.0', ...request.headers } })
+        if (response.status === 429 || response.status >= 500) throw new HttpError(response.status, `HTTP ${response.status}`)
+        if (!response.ok) throw new HttpError(response.status, `HTTP ${response.status}`)
+        return await response.json() as T
+      })
     } catch (error) {
       const retryable = !(error instanceof HttpError) || error.status === 429 || error.status >= 500
       if (!retryable || attempt >= retries) throw error
@@ -95,16 +104,12 @@ export function runLoop(name: string, intervalMs: number, task: () => Promise<vo
     let failures = 0
     while (!signal.aborted) {
       const started = Date.now()
-      let watchdog: ReturnType<typeof setTimeout> | undefined
       try {
-        const limitMs = Math.max(90_000, intervalMs * 6)
-        await Promise.race([task(), new Promise<never>((_, reject) => { watchdog = setTimeout(() => reject(new Error(`${name} cycle hung for ${Math.round(limitMs / 1000)}s and was abandoned`)), limitMs) })])
+        await abandonIfHung(`${name} cycle`, Math.max(90_000, intervalMs * 6), task)
         failures = 0
       } catch (error) {
         failures += 1
         logger.error(`${name} cycle failed`, { error: errorMessage(error), failures })
-      } finally {
-        clearTimeout(watchdog)
       }
       const backoff = failures ? Math.min(intervalMs * 2 ** Math.min(failures, 4), 5 * 60_000) : intervalMs
       await sleep(Math.max(250, backoff - (Date.now() - started)), signal)

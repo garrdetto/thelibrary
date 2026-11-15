@@ -1,7 +1,7 @@
 import { liveFiguresOf, type RadarHistoryPoint, type RadarPayload, type RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
-import { createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
+import { abandonIfHung, createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
 import { applyRadarSettings } from './settings-store.js'
 
 const logger = createLogger('site-publisher')
@@ -11,6 +11,7 @@ const idleIntervalMs = 20_000
 const watchingDetailsMs = 15_000
 const idleDetailsMs = 120_000
 const maxBodyBytes = 1_800_000
+const sendLimitMs = 30_000
 
 function thin<T>(items: T[], limit: number) {
   if (items.length <= limit) return items
@@ -29,6 +30,13 @@ function collectDetails(database: TrackerDatabase, payload: RadarPayload, histor
     if (detail) details[token.mint] = { ...detail, history: thin(detail.history, historyLimit), live: thin(detail.live, 90), token: { ...detail.token, history: thin(detail.token.history, 45), spark: { fast: [], slow: [] } } }
   }
   return details
+}
+
+function send(endpoint: string, token: string, body: string) {
+  return abandonIfHung('site upload', sendLimitMs, async () => {
+    const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body, signal: AbortSignal.timeout(15_000) })
+    return { response, result: await response.json().catch(() => ({})) as { watching?: boolean; error?: string; settings?: unknown } }
+  })
 }
 
 export function startSitePublisher(database: TrackerDatabase, signal: AbortSignal) {
@@ -60,8 +68,7 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
         let body = !payloadDue ? JSON.stringify({ live }) : JSON.stringify(detailsDue ? { payload, live, details: collectDetails(database, payload, 180) } : { payload, live })
         if (body.length > maxBodyBytes && detailsDue) body = JSON.stringify({ payload, live, details: collectDetails(database, payload, 60) })
         if (body.length > maxBodyBytes) body = JSON.stringify({ payload, live })
-        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body, signal: AbortSignal.timeout(15_000) })
-        const result = await response.json().catch(() => ({})) as { watching?: boolean; error?: string; settings?: unknown }
+        const { response, result } = await send(endpoint, token, body)
         if (result.settings) applyRadarSettings(result.settings)
         if (response.status === 400 && live) {
           liveSupported = false
