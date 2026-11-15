@@ -10,6 +10,14 @@ chrome.storage.local.get(['cycleMissing', 'missingViewers']).then(({ cycleMissin
 })
 cycleInput.addEventListener('change', () => chrome.storage.local.set({ cycleMissing: cycleInput.checked }))
 
+const watchInput = document.getElementById('watch')
+const watchLine = document.getElementById('watch-status')
+chrome.storage.local.get(['keepWatchlist', 'watchlistLast']).then(({ keepWatchlist = true, watchlistLast }) => {
+  watchInput.checked = keepWatchlist
+  if (watchlistLast) watchLine.textContent = `Last: ${watchlistLast.ok ? '' : 'could not '}${watchlistLast.action === 'add' ? 'star' : 'un-star'} ${watchlistLast.symbol} ${ago(watchlistLast.at)}.`
+})
+watchInput.addEventListener('change', () => chrome.storage.local.set({ keepWatchlist: watchInput.checked }))
+
 function ago(timestamp) {
   const seconds = Math.round((Date.now() - timestamp) / 1000)
   return seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`

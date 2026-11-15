@@ -11,10 +11,20 @@ import { compactPayload } from './site-publisher.js'
 import { parsePulseCard } from './pulse-cards.js'
 import { notePulseFlow, pulseIdentity } from './pulse-market.js'
 import { applyPulseFeed, pulseFeedSchema, pulseFeedSeen } from './pulse-feed.js'
+import { watchlistResult, watchlistStatus } from './watchlist.js'
 import { needsPageRead, pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
 
 const logger = createLogger('extension-intake')
 const bodyLimit = 2_000_000
+
+const watchlistReport = z.object({
+  mint: z.string().regex(solanaAddressPattern),
+  pairAddress: z.string().regex(solanaAddressPattern),
+  symbol: z.string().max(40),
+  action: z.enum(['add', 'remove']),
+  ok: z.boolean(),
+  reason: z.string().max(200).optional(),
+}).strict()
 
 const report = z.object({
   url: z.string().max(500),
@@ -179,7 +189,16 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
         const onPulse = (mint: string) => now - (trackerState.pulseCards.get(mint)?.seenAt ?? 0) < 120_000
         const stale = tracked.filter(candidate => needsPageRead(trackerState.pageStats.get(candidate.mint), onPulse(candidate.mint), now)).sort((first, second) => readAt(first.mint) - readAt(second.mint))
         for (const [mint, stats] of trackerState.pageStats) if (now - stats.seenAt > pageStatsKeptMs) trackerState.pageStats.delete(mint)
-        return send(response, 200, { ok: true, tracked, missing, stale })
+        let watchlist: ReturnType<typeof watchlistStatus> | null = null
+        try { watchlist = watchlistStatus(database, now) } catch (error) { logger.warn('Watchlist plan failed', { error: errorMessage(error) }) }
+        return send(response, 200, { ok: true, tracked, missing, stale, watchlist })
+      }
+      if (request.method === 'POST' && url.pathname === '/extension/watchlist') {
+        const parsed = watchlistReport.safeParse(JSON.parse(await readBody(request)))
+        if (!parsed.success) return send(response, 400, { error: 'Watchlist result could not be read.' })
+        watchlistResult(database, parsed.data)
+        logger.info(parsed.data.ok ? (parsed.data.action === 'add' ? 'Starred on the Axiom watchlist' : 'Taken off the Axiom watchlist') : 'Axiom watchlist star click failed', { symbol: parsed.data.symbol, mint: parsed.data.mint, detail: parsed.data.reason })
+        return send(response, 200, { ok: true })
       }
       if (request.method === 'POST' && url.pathname === '/extension/sample') {
         const body = await readBody(request)

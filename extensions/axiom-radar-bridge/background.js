@@ -48,6 +48,48 @@ const visitedAt = new Map()
 let lastStepAt = 0
 let onShow = null
 
+const watchRetryMs = 30_000
+const watchTriedAt = new Map()
+
+/** Asks the coin page to set its Axiom watchlist star, retrying while the page loads, then tells the tracker how it went. */
+async function runWatchJob(tabId, job) {
+  const started = Date.now()
+  let answer = null
+  while (Date.now() - started < cycleMaxMs - 1_000) {
+    await new Promise(resolve => setTimeout(resolve, 1_500))
+    answer = await chrome.tabs.sendMessage(tabId, { type: 'axiom-radar-star', mint: job.mint, pairAddress: job.pairAddress, want: job.action === 'add' }).catch(() => null)
+    if (answer?.done) break
+  }
+  if (onShow?.tabId === tabId) onShow = { ...onShow, awaitingFigures: false, gotFigures: true }
+  const ok = Boolean(answer?.done && answer.ok)
+  await fetch(`http://127.0.0.1:${await trackerPort()}/extension/watchlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mint: job.mint, pairAddress: job.pairAddress, symbol: String(job.symbol ?? '').slice(0, 40), action: job.action, ok, ...(ok ? { reason: String(job.reason ?? '').slice(0, 200) } : { reason: String(answer?.reason ?? 'the star button did not load').slice(0, 200) }) }),
+  }).catch(() => undefined)
+  const { watchlistDone = 0 } = await chrome.storage.local.get('watchlistDone')
+  await chrome.storage.local.set({ watchlistDone: watchlistDone + (ok ? 1 : 0), watchlistLast: { symbol: job.symbol, action: job.action, ok, at: Date.now() } })
+}
+
+function nextWatchJob(watchlist, now) {
+  if (!watchlist) return null
+  const jobs = [...(watchlist.remove ?? []).map(item => ({ ...item, action: 'remove' })), ...(watchlist.add ?? []).map(item => ({ ...item, action: 'add' }))]
+  for (const [key, at] of watchTriedAt) if (now - at > 10 * 60_000) watchTriedAt.delete(key)
+  return jobs.find(job => job.pairAddress && job.mint && now - (watchTriedAt.get(`${job.action}:${job.mint}`) ?? 0) > watchRetryMs) ?? null
+}
+
+async function showInCycler(pulseTab, url) {
+  const tab = await existingCyclerTab()
+  if (tab) {
+    await chrome.tabs.update(tab.id, { url, autoDiscardable: false })
+    return tab.id
+  }
+  const created = await chrome.tabs.create({ url, active: false, windowId: pulseTab.windowId, index: pulseTab.index + 1 })
+  await chrome.storage.session.set({ cyclerTabId: created.id })
+  await chrome.tabs.update(created.id, { autoDiscardable: false })
+  return created.id
+}
+
 /** How long the coin page on show keeps its turn: until its holder figures arrive (they load about 6 seconds in) or 15 seconds pass, and 6 seconds when only its viewer count is wanted. */
 function turnOver(now) {
   const shown = now - lastStepAt
@@ -67,10 +109,20 @@ async function stepMissingViewers(pulseTab) {
   if (!turnOver(now)) return
   lastStepAt = now
   onShow = null
-  const { cycleMissing = true } = await chrome.storage.local.get('cycleMissing')
-  if (!cycleMissing) return
+  const { cycleMissing = true, keepWatchlist = true } = await chrome.storage.local.get(['cycleMissing', 'keepWatchlist'])
+  if (!cycleMissing && !keepWatchlist) return
   const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/status`)
-  const { missing = [], stale = [] } = await response.json()
+  const { missing = [], stale = [], watchlist = null } = await response.json()
+  const job = keepWatchlist ? nextWatchJob(watchlist, now) : null
+  if (job) {
+    watchTriedAt.set(`${job.action}:${job.mint}`, now)
+    visitedAt.set(job.pairAddress, now)
+    const tabId = await showInCycler(pulseTab, `https://axiom.trade/meme/${job.pairAddress}`)
+    onShow = { tabId, awaitingFigures: true, gotFigures: false }
+    void runWatchJob(tabId, job).catch(() => undefined)
+    return
+  }
+  if (!cycleMissing) return
   const lastVisit = item => visitedAt.get(item.pairAddress) ?? 0
   const waiting = [...missing, ...stale].filter((item, index, all) => item.pairAddress && all.findIndex(other => other.pairAddress === item.pairAddress) === index)
   const next = waiting.filter(item => now - lastVisit(item) > revisitAfterMs).sort((first, second) => lastVisit(first) - lastVisit(second))[0]
@@ -79,17 +131,8 @@ async function stepMissingViewers(pulseTab) {
   visitedAt.set(next.pairAddress, now)
   for (const [pairAddress, at] of visitedAt) if (now - at > 60 * 60_000) visitedAt.delete(pairAddress)
   const awaitingFigures = stale.some(item => item.pairAddress === next.pairAddress)
-  const url = `https://axiom.trade/meme/${next.pairAddress}`
-  const tab = await existingCyclerTab()
-  if (tab) {
-    await chrome.tabs.update(tab.id, { url, autoDiscardable: false })
-    onShow = { tabId: tab.id, awaitingFigures, gotFigures: false }
-    return
-  }
-  const created = await chrome.tabs.create({ url, active: false, windowId: pulseTab.windowId, index: pulseTab.index + 1 })
-  await chrome.storage.session.set({ cyclerTabId: created.id })
-  await chrome.tabs.update(created.id, { autoDiscardable: false })
-  onShow = { tabId: created.id, awaitingFigures, gotFigures: false }
+  const tabId = await showInCycler(pulseTab, `https://axiom.trade/meme/${next.pairAddress}`)
+  onShow = { tabId, awaitingFigures, gotFigures: false }
 }
 
 chrome.runtime.onMessage.addListener((message, sender) => {

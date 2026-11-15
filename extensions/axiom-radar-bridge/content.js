@@ -157,6 +157,42 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true
 })
 
+/** The star beside the coin's name at the top of a coin page, which adds it to or takes it off the Axiom watchlist. */
+function headerStar() {
+  const buttons = Array.from(document.querySelectorAll('button')).filter(button => button.querySelector(':scope > div > i.ri-star-line, :scope > div > i.ri-star-fill'))
+  const visible = buttons.map(button => ({ button, rect: button.getBoundingClientRect() })).filter(({ rect }) => rect.width > 0 && rect.top >= 0 && rect.top < 220)
+  visible.sort((first, second) => first.rect.top - second.rect.top || first.rect.left - second.rect.left)
+  return visible[0]?.button ?? null
+}
+
+function starred(button) {
+  return Boolean(button.querySelector('i.ri-star-fill:not(.hidden)')) && !button.querySelector('i.ri-star-line:not(.hidden)')
+}
+
+function onCoinPage(mint, pairAddress) {
+  return location.pathname.includes(mint) || location.pathname.includes(pairAddress)
+}
+
+async function setStar(mint, pairAddress, want) {
+  if (!onCoinPage(mint, pairAddress)) return { done: false, reason: 'the coin page has not opened yet' }
+  const button = headerStar()
+  if (!button) return { done: false, reason: 'the star button has not loaded yet' }
+  if (starred(button) === want) return { done: true, ok: true }
+  button.click()
+  for (let waited = 0; waited < 5_000; waited += 500) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    const after = headerStar()
+    if (after && starred(after) === want) return { done: true, ok: true }
+  }
+  return { done: true, ok: false, reason: want ? 'the star did not fill within 5 seconds of the click' : 'the star stayed filled 5 seconds after the click' }
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'axiom-radar-star' || typeof message.mint !== 'string' || typeof message.pairAddress !== 'string') return
+  setStar(message.mint, message.pairAddress, message.want === true).then(sendResponse, error => sendResponse({ done: true, ok: false, reason: String(error).slice(0, 160) }))
+  return true
+})
+
 let lastReportAt = 0
 let reportTimer = null
 let reportObserver = null
