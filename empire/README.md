@@ -14,7 +14,7 @@ Everything Claude Code needs to build the empire described in `docs/EMPIRE_PLAN.
 | `agents/*.yaml` | 39 agent dossiers: The King, 8 Warlords, 30 Servants |
 | `charters/*.md` | One charter per department |
 | `archive/` | Lessons (one file per agent), skills and eval sets, empty to start |
-| `prototype/command-center.html` | The Command Center console (personnel roster, castle view with The King at the center, Intel and Command tabs, telemetry, themes and castle colors); open it in a browser. Phase 4 connects it to the live engine |
+| `prototype/command-center.html` | The Command Center console (personnel roster, castle view with The King at the center, Intel and Command tabs, telemetry, themes, castle colors and per-section border effects); open it in a browser. Phase 4 connects it to the live engine |
 | `engine/` | Empty; Claude Code builds the Throne Engine here |
 | `wrangler.jsonc`, `worker.js` | Hosting for the console on the `kingdom` Cloudflare Worker |
 
