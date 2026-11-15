@@ -10,7 +10,7 @@
  * while it is open and typing an amount never moves the character.
  */
 import { formatLeft } from './Placement'
-import type { Place } from './Places'
+import { PLACE_AREAS, type Place } from './Places'
 import type { SpawnedRow } from './SharedCars'
 
 export interface VehicleChoice {
@@ -78,7 +78,7 @@ export class DevPanel {
   private readonly vehicleList = el('ul', 'fl-dev-list')
   private readonly spawnedTitle = el('h4')
   private readonly spawnedList = el('ul', 'fl-dev-list')
-  private readonly placeGrid = el('div', 'fl-dev-grid')
+  private readonly placeAreas = el('div', 'fl-dev-areas')
   private readonly playerGrid = el('div', 'fl-dev-grid')
   private readonly spawnedText = new Map<string, HTMLElement>()
   private readonly busyButtons = new Set<HTMLButtonElement>()
@@ -231,7 +231,7 @@ export class DevPanel {
 
   private teleportSection(): HTMLElement {
     const section = el('section')
-    section.append(el('h3', '', 'Teleport'), el('p', '', 'Puts you on foot at the nearest safe ground. A vehicle you are in stays where it is.'), this.placeGrid, el('h4', '', 'Players'), this.playerGrid)
+    section.append(el('h3', '', 'Teleport'), el('p', '', 'Puts you on foot at the nearest safe ground. A vehicle you are in stays where it is.'), this.placeAreas, el('h4', '', 'Players'), this.playerGrid)
     return section
   }
 
@@ -357,10 +357,23 @@ export class DevPanel {
   private renderPlaces(): void {
     const home = button('Home')
     home.addEventListener('click', () => this.run(home, () => this.actions.goHome()))
-    this.placeGrid.replaceChildren(home, ...this.actions.places().map((p) => {
-      const b = button(p.label)
-      b.addEventListener('click', () => this.run(b, () => this.actions.goToPlace(p.id)))
-      return b
-    }))
+    const places = this.actions.places()
+    const first = el('div', 'fl-dev-grid')
+    first.append(home)
+    const groups: HTMLElement[] = [first]
+    for (const area of PLACE_AREAS) {
+      const here = places.filter((p) => p.area === area)
+      if (!here.length) continue
+      const grid = el('div', 'fl-dev-grid')
+      grid.setAttribute('role', 'group')
+      grid.setAttribute('aria-label', area)
+      grid.append(...here.map((p) => {
+        const b = button(p.label)
+        b.addEventListener('click', () => this.run(b, () => this.actions.goToPlace(p.id)))
+        return b
+      }))
+      groups.push(el('h4', '', area), grid)
+    }
+    this.placeAreas.replaceChildren(...groups)
   }
 }
