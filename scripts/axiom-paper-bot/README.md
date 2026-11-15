@@ -1,6 +1,6 @@
 # Axiom paper-trading bot
 
-A Python bot that trades the Axiom Radar feed with pretend money. It pulls the Radar from the site every few seconds, buys coins that pass your rules, and sells them by your exit rules. It keeps a pretend account with cash, positions, fees and slippage. Nothing here places a real order, and the bot holds no wallet or exchange keys.
+A Python bot that trades the Axiom Radar feed with pretend SOL. It pulls the Radar from the site every few seconds, buys coins that pass your rules, and sells them by your exit rules. It keeps a pretend SOL account with cash, positions, fees and slippage, and shows every amount as SOL with the dollar value in brackets, for example `0.2500 SOL ($17.64)`. Nothing here places a real order, and the bot holds no wallet or exchange keys.
 
 It needs Python 3.11 or newer and nothing else: no packages to install.
 
@@ -31,7 +31,7 @@ Every action is also a command, and each works whether or not the bot is running
 | `run.py set <dial> <value> ...` | Change dials, for example `set risk.strength 7 exit.stop_loss_pct 30`. A running bot picks the change up within seconds |
 | `run.py pause` / `run.py resume` | Stop or allow new buys. Open positions are still managed while paused |
 | `run.py flatten` | Sell every coin the bot holds |
-| `run.py reset [--cash 2500] [--yes]` | Wipe every pretend trade and start the account again |
+| `run.py reset [--sol 10] [--yes]` | Wipe every pretend trade and start the account again, with that many SOL when given |
 | `run.py logs [lines]` | The bot's recent PM2 log lines |
 | `run.py console` | Open the prompt console (below) |
 
@@ -82,14 +82,16 @@ The Trading bot tab also has the terminal's actions as buttons: pause or resume 
 | Group | What it controls |
 | --- | --- |
 | Bot | Buying on or off, how often to pull, the fast feed, live price checks |
-| Account | Starting cash for the next reset |
+| Account | Starting balance in SOL for the next reset |
 | When to buy | Radar signal, score, price gains, viewers, liquidity, market cap, volume, buy share, age, safety, quality, warnings, the Radar's buy advice, rebuys only above the old high, confirmation pulls, cooldown |
 | Learned predictions | Runner, could-explode and big-winner chances, and crash timing from the Radar's learner |
-| Risk and bet size | Risk strength, bet per trade, caps, open coins, exposure, daily loss limit, drawdown stop, loss-streak break, buys per hour |
+| Risk and bet size | A fixed buy amount in SOL or a share of the account, the most SOL in one coin, risk strength, caps, open coins, exposure, daily loss limit, drawdown stop, loss-streak break, buys per hour |
 | When to sell | Stop loss, profit target and share sold, entry protection, trailing stop, time limits, score, viewers, warnings, the Radar's exit advice, fading momentum, coins that leave the Radar |
-| Costs and realism | Trading fee, network fee, price impact, extra slippage, extra slippage on stop sells |
+| Costs and realism | Trading fee, network fees (auto fee with a max fee, or your own priority fee and bribe), price impact, extra slippage, extra slippage on stop sells |
 
-**Risk strength** (1 to 10) scales every bet and how much of the account can be in coins at once. 5 uses the numbers as written, 10 doubles them, 1 uses a fifth. The largest-single-bet cap and the liquidity cap still apply at any strength.
+**Buy amounts.** By default every buy is a fixed amount (**Buy amount**, 0.25 SOL), and **Most SOL in one coin** (0.5 SOL) caps what goes into any one coin across all its buys in 24 hours. Switch **How each buy is sized** to a share of the account to size buys by percentage instead.
+
+**Risk strength** (1 to 10) scales how much of the account can be in coins at once, and every buy when buys are a share of the account. 5 uses the numbers as written, 10 doubles them, 1 uses a fifth. The largest-single-buy cap and the liquidity cap still apply at any strength.
 
 ## The Radar's advice
 
@@ -104,10 +106,26 @@ That study found coins often bounce after a price dip and that stops rarely sell
 
 The learned rules use `outlook`, `explode` and `maker` on each coin. When the tracker does not send them, those rules pass or skip the coin according to **When a prediction is not ready**.
 
+## The SOL account
+
+The account, every buy and every fee are in SOL, as they would be on Axiom. Coin prices from the Radar and DexScreener are in dollars, so the bot divides them by the live SOL price (DexScreener, refreshed every 30 seconds) to price coins in SOL. A coin that is flat in dollars therefore loses SOL value when SOL rises, as it would in a real wallet. Dollar amounts in brackets are the SOL amounts at the current SOL price.
+
+An account made before this change was kept in dollars. The first time the new bot runs, it converts every amount once at the current SOL price and sets **Starting balance** to match. The bot buys nothing while it has no SOL price.
+
+## Network fees
+
+Every buy and every sell pays the network a priority fee and a bribe, in SOL, on top of the trading fee.
+
+- **Auto fee** (the default) follows the network. The bribe is what recently landed Jito tips cost, and the priority fee is what recent blocks charged for the swap program most Radar coins trade through, times a typical swap's compute units. **Auto fee speed** picks how far up those ranges to pay (low, normal, high), and **Max fee** caps the two together. Axiom does not publish how its own auto fee works, so this is a close stand-in, not a copy.
+- **My own priority fee and bribe** uses the two amounts you set, as on an Axiom trading preset.
+- When auto fee has no live data, the bot uses your own amounts and says so.
+
+The terminal view, `status` and the Radar page show what one trade pays right now.
+
 ## How trades are priced
 
-- A buy spends the bet in total, fees included. The price paid is the market price plus price impact plus extra slippage.
-- Price impact follows a constant-product pool: a buy of $B against a pool with $Q on the quote side pays `spot x (1 + B/Q)`, and a sale worth $V receives `spot / (1 + V/Q)`. Q is half the coin's liquidity figure. A pulled pool pays almost nothing.
+- A buy spends the buy amount in total, fees included. The price paid is the market price plus price impact plus extra slippage.
+- Price impact follows a constant-product pool: a buy of B against a pool with Q on the quote side pays `spot x (1 + B/Q)`, and a sale worth V receives `spot / (1 + V/Q)`. Q is half the coin's liquidity figure. A pulled pool pays almost nothing.
 - With **Live prices for open positions** on, the bot checks the price on DexScreener at the moment of a buy and every few seconds while it holds a coin, so stops react between pulls. A buy is cancelled when the live price is already 15% under the Radar's reading.
 - Stop loss, trailing stop, Radar exit and warning sells pay **Extra slippage on stop and exit sells** on top, because these coins fall faster than prices arrive.
 - Stops and targets measure the market price move since the buy. Profit and loss count everything: fees, impact and slippage on both sides.
@@ -124,13 +142,15 @@ The bot stops buying (and keeps managing what it holds) when: buying is paused, 
 | `axiom_paper/dials.json` | Every dial: label, range, default. Also read by the site (`src/lib/axiom-bot.ts`) |
 | `axiom_paper/strategy.py` | The buy rules, bet sizing and sell rules |
 | `axiom_paper/broker.py` | Simulated fills: fees, price impact, slippage |
+| `axiom_paper/fees.py` | Network fees per trade: auto fee from live Jito tip and Solana priority fee levels, or your own |
+| `axiom_paper/money.py` | How amounts are written: SOL first, dollars in brackets |
 | `axiom_paper/engine.py` | The loop: pull, mark prices, sell, buy, sync dials, report |
-| `axiom_paper/ledger.py` | The account in SQLite at `data/axiom-paper.db` |
+| `axiom_paper/ledger.py` | The account in SQLite at `data/axiom-paper.db`, in SOL, and the one-time conversion of a dollar account |
 | `axiom_paper/site.py`, `prices.py` | The site sync call and DexScreener prices |
 | `axiom_paper/dashboard.py`, `cli.py` | The live view and the commands |
 | `axiom_paper/console.py`, `console.html` | The prompt console: local server, Claude translator, command checks, and the page |
 | `ecosystem.config.cjs` | PM2 processes for the bot and the console |
-| `tests/test_bot.py`, `tests/test_console.py` | `python -m unittest discover -s scripts/axiom-paper-bot/tests` |
+| `tests/test_bot.py`, `tests/test_console.py`, `tests/test_sol.py` | `python -m unittest discover -s scripts/axiom-paper-bot/tests` |
 
 `data/paper-bot.toml`, `data/axiom-paper.db*`, `data/axiom-paper.lock`, `data/paper-bot.inbox.json` and `data/console-key.json` are git-ignored. Delete the database to start with no history, or use `reset`.
 

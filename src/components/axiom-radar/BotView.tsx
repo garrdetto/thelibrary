@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, Bot, Check, ChevronDown, LoaderCircle, RotateCcw, Undo2 } from 'lucide-react'
 import { botDialGroups, botDials, botPresets, botQuickDials, defaultBotValues, normalizeBotValues, type BotDial, type BotDialValue, type BotValues } from '@/lib/axiom-bot'
-import { BotControls, botStatus, dollars, signedDollars, signedPercent, toneOf } from './BotControls'
+import { BotControls, botStatus, bracket, feeLine, headline, signedHeadline, signedPercent, toneOf } from './BotControls'
 import { relativeSeconds } from './format'
 import { NumberField, Toggle } from './SettingsFields'
 import { useBot } from './useBot'
@@ -42,6 +42,7 @@ export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () =
   const [saveError, setSaveError] = useState('')
   const saved = view?.settings ?? null
   const report = view?.report ?? null
+  const sol = report?.accountSol
   useEffect(() => { if (saved && !dirty) setForm(saved.values) }, [saved, dirty])
 
   const change = (key: string, value: BotDialValue) => { setForm(current => ({ ...current, [key]: value })); setDirty(true) }
@@ -67,7 +68,7 @@ export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () =
   return <div className="radar-bot-view">
     <div className="radar-section-head radar-bot-head">
       <h2><Bot size={17} aria-hidden="true"/> Trading bot <span className={`radar-bot-chip ${status.tone}`}>{status.label}</span></h2>
-      <p>Set the bot up here. Save sends your dials to the Python bot on your PC, which applies them on its next pull (about 10 seconds) and rewrites its settings file to match. It trades with pretend money and never places a real order.</p>
+      <p>Set the bot up here. Save sends your dials to the Python bot on your PC, which applies them on its next pull (about 10 seconds) and rewrites its settings file to match. It trades with pretend SOL and never places a real order.</p>
       <BotControls bot={bot}/>
     </div>
 
@@ -79,11 +80,12 @@ export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () =
         <code className="radar-bot-code">python scripts/axiom-paper-bot/run.py</code>
       </div>
       : <div className="radar-kpis radar-bot-strip">
-        <div className="radar-kpi"><span>Account value</span><strong className="tabular">{dollars(report.account.equity)}</strong><small className={`radar-delta ${toneOf(report.account.totalPnl)}`}>{signedDollars(report.account.totalPnl)} ({signedPercent(report.account.totalPnlPct)}) from {dollars(report.account.startingCash)}</small></div>
-        <div className="radar-kpi"><span>Today</span><strong className={`tabular radar-delta ${toneOf(report.account.dayPnl)}`}>{signedDollars(report.account.dayPnl)}</strong><small>{signedPercent(report.account.dayPnlPct)} · {report.stats.trades} closed trades</small></div>
-        <div className="radar-kpi"><span>Coins held</span><strong className="tabular">{report.positions.length}</strong><small>{dollars(report.account.exposure)} of {dollars(report.account.exposureLimit)} allowed</small></div>
+        <div className="radar-kpi"><span>Account value</span><strong className="tabular">{headline(sol?.equity, report.account.equity)}</strong><small className={`radar-delta ${toneOf(report.account.totalPnl)}`}>{bracket(sol?.equity, report.account.equity)}{signedHeadline(sol?.totalPnl, report.account.totalPnl)} ({signedPercent(report.account.totalPnlPct)})</small></div>
+        <div className="radar-kpi"><span>Today</span><strong className={`tabular radar-delta ${toneOf(report.account.dayPnl)}`}>{signedHeadline(sol?.dayPnl, report.account.dayPnl)}</strong><small>{bracket(sol?.dayPnl, Math.abs(report.account.dayPnl))}{signedPercent(report.account.dayPnlPct)} · {report.stats.trades} closed trades</small></div>
+        <div className="radar-kpi"><span>Coins held</span><strong className="tabular">{report.positions.length}</strong><small>{headline(sol?.exposure, report.account.exposure)} of {headline(sol?.exposureLimit, report.account.exposureLimit)} allowed</small></div>
         <div className="radar-kpi"><span>Radar feed</span><strong className="tabular">{report.feed.ageSeconds === null ? '—' : `${report.feed.ageSeconds}s old`}</strong><small>{report.feed.live ? 'Live' : 'Not live'} · {report.feed.coins} coins</small></div>
         <button type="button" className="secondary-button radar-bot-more" onClick={onOpenTrades}>Positions, trades and activity <ArrowRight size={13}/></button>
+        {report.fees && <p className="radar-note radar-bot-fee">{feeLine(report)}</p>}
       </div>}
 
     {view && <form className="radar-settings radar-bot-settings" noValidate onSubmit={event => { event.preventDefault(); void save() }}>
