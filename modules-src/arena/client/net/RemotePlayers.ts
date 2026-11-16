@@ -98,6 +98,10 @@ export class RemotePlayers {
     this.remotes.delete(id)
   }
 
+  clear(): void {
+    for (const id of [...this.remotes.keys()]) this.remove(id)
+  }
+
   contacts(): TrackerContact[] {
     const list: TrackerContact[] = []
     for (const remote of this.remotes.values()) {

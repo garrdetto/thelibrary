@@ -25,6 +25,8 @@ export const scoredModules = {
   'greible-6': { title: 'Fastest 6-letter words', metric: 'Time', order: 'asc', unit: 'ms', decimals: 2, detail: 'Word', min: 1_000, max: 3_600_000, parent: 'greible', label: '6 letters', note: 'The clock starts on your first letter and stops when the word is solved. Saved only when you find the word.' },
   'greible-7': { title: 'Fastest 7-letter words', metric: 'Time', order: 'asc', unit: 'ms', decimals: 2, detail: 'Word', min: 1_000, max: 3_600_000, parent: 'greible', label: '7 letters', note: 'The clock starts on your first letter and stops when the word is solved. Saved only when you find the word.' },
   'greible-8': { title: 'Fastest 8-letter words', metric: 'Time', order: 'asc', unit: 'ms', decimals: 2, detail: 'Word', min: 1_000, max: 3_600_000, parent: 'greible', label: '8 letters', note: 'The clock starts on your first letter and stops when the word is solved. Saved only when you find the word.' },
+  'arena-range': { title: 'Training Range', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 1_000_000, parent: 'arena', label: 'Training Range', note: 'One sixty-second run of pop-up targets. Quick drops, headshots, long shots, sliding targets and streaks score more. Saved as you shoot, and finalized when the clock runs out.' },
+  'arena-horde': { title: 'Rolling Siege', metric: 'Time held', order: 'desc', unit: 'ms', decimals: 1, min: 1_000, max: 600_000, parent: 'arena', label: 'Rolling Siege', note: 'How long you held out against the raiders with 2,000 rounds. Nobody is meant to last past two minutes. Saved as you hold, and finalized when you go down.' },
   'proskater-story': { title: 'Story Runs', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Story', note: 'The best score in one two-minute Story run at any park. Saved as you skate, so a run cut short by closing the page or losing connection still counts, and finalized when the clock runs out.' },
   'proskater-blitz': { title: 'Timed Blitz', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Blitz', note: 'One minute at any park. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
   'proskater-showdown': { title: 'Half-Pipe Showdown', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Showdown', note: 'Sixty seconds, with tricks started inside the half-pipe zone scoring double. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
@@ -38,6 +40,7 @@ export type ScoredModuleId = keyof typeof scoredModules
 
 export const scoreBoardGroups: Partial<Record<string, ScoredModuleId[]>> = {
   greible: ['greible-6', 'greible-7', 'greible-8'],
+  arena: ['arena-range', 'arena-horde'],
   proskater: ['proskater-blitz', 'proskater-showdown', 'proskater-story', 'proskater-free'],
   sunvault: ['sunvault-win', 'sunvault-multiple', 'sunvault-total'],
 }

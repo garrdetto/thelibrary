@@ -8,8 +8,8 @@ import { stepCarNext } from './dynamics'
 
 /** True while either axle has a tire on the flat concrete below the banking. */
 export function concreteContact(w: World, c: SimCar): boolean {
-  const sh = Math.sin(c.h), ch = Math.cos(c.h), k = c.stockCar ? 0.98 : 0.98 * TRUCK_SCALE, half = 0.83 * k
-  for (const lg of [TRUCK_DIM.FA * k, TRUCK_DIM.RA * k]) for (const b of [1, -1]) {
+  const sh = Math.sin(c.h), ch = Math.cos(c.h), k = c.stockCar ? 0.98 : 0.98 * TRUCK_SCALE, half = 0.83 * k * (c.fw || 1), kl = k * (c.fl || 1)
+  for (const lg of [TRUCK_DIM.FA * kl, TRUCK_DIM.RA * kl]) for (const b of [1, -1]) {
     if (w.track.toTrack(c.x + sh * lg - ch * half * b, c.z + ch * lg + sh * half * b).lat < -w.track.HW) return true
   }
   return false
@@ -127,10 +127,10 @@ const CORNERS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]]
 
 export function walls(w: World, c: SimCar): void {
   const CFG = w.cfg, T = w.track, HW = T.HW
-  const sh = Math.sin(c.h), ch = Math.cos(c.h)
+  const sh = Math.sin(c.h), ch = Math.cos(c.h), hl = 2.35 * CFG.carScale * (c.fl || 1), hw = 0.95 * CFG.carScale * (c.fw || 1)
   let worst: { pen: number; out: number; px: number; pz: number; s: number } | null = null
   for (const [a, b] of CORNERS) {
-    const px = c.x + sh * 2.35 * CFG.carScale * a - ch * 0.95 * CFG.carScale * b, pz = c.z + ch * 2.35 * CFG.carScale * a + sh * 0.95 * CFG.carScale * b, t = T.toTrack(px, pz)
+    const px = c.x + sh * hl * a - ch * hw * b, pz = c.z + ch * hl * a + sh * hw * b, t = T.toTrack(px, pz)
     let pen = t.lat - (HW + 0.1), out = 1
     const pin = -HW - T.AP + 0.1 - t.lat
     if (pin > pen) {
@@ -160,11 +160,13 @@ export function walls(w: World, c: SimCar): void {
 export function collidePair(w: World, a: SimCar, b: SimCar): void {
   if (!a.local && !b.local) return
   const CFG = w.cfg, T = w.track
-  const dx0 = a.x - b.x, dz0 = a.z - b.z, CS = CFG.carScale, RS = 2 * CS
-  if (dx0 * dx0 + dz0 * dz0 > 42 * CS * CS) return
+  const dx0 = a.x - b.x, dz0 = a.z - b.z, CS = CFG.carScale
+  const shape = (c: SimCar) => { const r = CS * (c.fw || 1), off = Math.max(0, 2.35 * CS * (c.fl || 1) - r); return { r, ks: [-off, 0, off], reach: off + r } }
+  const A = shape(a), B = shape(b), RS = A.r + B.r, near = A.reach + B.reach
+  if (dx0 * dx0 + dz0 * dz0 > near * near) return
   const sa = Math.sin(a.h), ca = Math.cos(a.h), sb = Math.sin(b.h), cb = Math.cos(b.h)
   let best: { o: number; nx: number; nz: number; px: number; pz: number } | null = null
-  for (const ka of [-1.35 * CS, 0, 1.35 * CS]) for (const kb of [-1.35 * CS, 0, 1.35 * CS]) {
+  for (const ka of A.ks) for (const kb of B.ks) {
     const ax = a.x + sa * ka, az = a.z + ca * ka, bx = b.x + sb * kb, bz = b.z + cb * kb, dx = ax - bx, dz = az - bz, d2 = dx * dx + dz * dz
     if (d2 < RS * RS && d2 > 1e-6) {
       const d = Math.sqrt(d2), o = RS - d
@@ -202,7 +204,7 @@ export function collidePair(w: World, a: SimCar, b: SimCar): void {
     const hit = -vn, loss = 1 - Math.min(0.08, hit * 0.012)
     {
       const ds = sgnDs(w, a.tp.s, b.tp.s), front = ds > 0 ? a : b
-      if (front.ai && Math.abs(a.tp.lat - b.tp.lat) < AI_TOUCH(w) * 0.85 && hit < 3.5) front.looseT = 0.7
+      if (front.ai && Math.abs(a.tp.lat - b.tp.lat) < AI_TOUCH(w, front) * 0.85 && hit < 3.5) front.looseT = 0.7
     }
     if (am) {
       a.vx *= loss
@@ -223,7 +225,7 @@ export function impact(w: World, c: SimCar, px: number, pz: number, ix: number, 
   const CFG = w.cfg
   const sh = Math.sin(c.h), ch = Math.cos(c.h), dx = px - c.x, dz = pz - c.z
   const lx = (dx * ch - dz * sh) / CFG.carScale, lz = (dx * sh + dz * ch) / CFG.carScale, dlx = ix * ch - iz * sh, dlz = ix * sh + iz * ch
-  const zone: Zone = Math.abs(lz) > 1.6 ? (lz > 0 ? 'f' : 'r') : lx > 0 ? 'l' : 'rt'
+  const zone: Zone = Math.abs(lz) > 1.6 * (c.fl || 1) ? (lz > 0 ? 'f' : 'r') : lx > 0 ? 'l' : 'rt'
   const amt = Math.max(0, v - (kind === 'car' ? 2 : 1.3)) * (kind === 'car' ? 2.6 : 3.3) * CFG.damageScale
   if (c.local && amt > 0.3) damageCar(w, c, [lx, 0.55, lz], [dlx, 0, dlz], amt, zone)
   if (kind === 'car' && !c.local) return

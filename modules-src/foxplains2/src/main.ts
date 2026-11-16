@@ -7,7 +7,7 @@
 import { Game, type NetMode } from './game/Game';
 import { guestName } from '../../maplestreet/src/net/WorldTransport';
 import { store } from '../../maplestreet/src/core/Storage';
-import { isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../../maplestreet/shared/CustomVehicles';
+import { forFoxPlains, isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../../maplestreet/shared/CustomVehicles';
 import { isValidRecord, registerCustomItems, type CustomItemRecord } from '../../maplestreet/shared/CustomItems';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -55,7 +55,7 @@ async function registerPublished() {
   ]);
   if (vehicles) store.set(VK, JSON.stringify(vehicles));
   if (items) store.set(IK, JSON.stringify(items));
-  registerCustomVehicles(vehicles ?? (store.json<unknown[]>(VK) ?? []).filter(isValidVehicleRecord));
+  registerCustomVehicles(forFoxPlains(vehicles ?? (store.json<unknown[]>(VK) ?? []).filter(isValidVehicleRecord)));
   registerCustomItems(items ?? (store.json<unknown[]>(IK) ?? []).filter(isValidRecord));
 }
 

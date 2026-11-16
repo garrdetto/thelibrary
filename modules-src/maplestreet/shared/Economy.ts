@@ -43,6 +43,8 @@ export interface VehicleSpec {
   kind: VehicleKind; name: string; price: number; tank: number; mpg: number; fuel: 'gas' | 'electric' | 'none'; forSale?: boolean;
   /** False for published vehicles that keep their model's own colors, so buyers don't pick a paint. */
   paintable?: boolean;
+  /** Made in the vehicle creator for Life Sim (or shipped with it): sold only at Life Sim's dealership, never in Fox Plains. */
+  lifeSim?: boolean;
 }
 export const isPaintable = (kind: string) => VEHICLES[kind]?.paintable !== false;
 
@@ -93,10 +95,10 @@ export const LAKE_RIDE_ITEMS: readonly ShopItem[] = [
   { id: 'ride-boat', name: 'Fishing boat', price: 18_900, blurb: 'A bass boat for Lake Montello: anchor up and fish, or take friends along', ride: 'boat' },
 ];
 
-/** The items a counter of this kind sells; Fox Lake's dealership also sells the lake rides. */
+/** The items a counter of this kind sells; Life Sim's dealership also sells its own vehicles and the lake rides. */
 export function shopItems(kind: string, foxLake = false): ShopItem[] {
   const own = SHOP_ITEMS[kind] ?? [];
-  return foxLake && kind === 'dealer' ? [...own, ...LAKE_RIDE_ITEMS] : own;
+  return foxLake && kind === 'dealer' ? [...LIFE_SIM_DEALER, ...LAKE_RIDE_ITEMS] : own;
 }
 
 export const UPGRADES: Record<string, { name: string; blurb: string }> = {
@@ -139,9 +141,14 @@ export const SHOP_ITEMS: Record<string, ShopItem[]> = {
   dealer: [],
 };
 
-/** Rebuilds Maple Motors' list after published vehicles are registered. */
+/** Life Sim's dealership: every vehicle for sale, Life Sim's own included (Fox Plains' Maple Motors leaves those out). */
+export let LIFE_SIM_DEALER: ShopItem[] = [];
+
+/** Rebuilds Maple Motors' list and Life Sim's after published vehicles are registered. */
 export function refreshDealer() {
-  SHOP_ITEMS.dealer = Object.values(VEHICLES).filter(forSale).map(dealerItem);
+  const all = Object.values(VEHICLES).filter(forSale);
+  SHOP_ITEMS.dealer = all.filter(v => !v.lifeSim).map(dealerItem);
+  LIFE_SIM_DEALER = all.map(dealerItem);
 }
 refreshDealer();
 

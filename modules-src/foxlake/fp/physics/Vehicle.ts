@@ -10,12 +10,18 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { MASK, type Physics } from './Physics';
+import { Flight } from './Flight';
+import { Rotors } from './Rotors';
 import type { VehicleModels, VehicleView } from './VehicleModels';
 import { TUNING, wheelbaseOf, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
 import type { VehicleSnap } from '../../../maplestreet/shared/Protocol';
 import { conditionEffects, CRASH_MIN_DV, tuneEffects, type CarStyle, type OwnedCar } from '../../../maplestreet/shared/Cars';
 
-export interface DriveInput { throttle: number; steer: number; brake: number; handbrake: boolean }
+export interface DriveInput {
+  throttle: number; steer: number; brake: number; handbrake: boolean;
+  /** Helicopters: +1 climb, -1 descend, 0 hold; missing when nobody is flying it (it settles to the ground). */
+  lift?: number;
+}
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const _xyz = { x: 0, y: 0, z: 0 };
@@ -55,6 +61,10 @@ export class Vehicle {
   fuel = Infinity;
   tank = Infinity;
   private mpm = 0;
+  /** Helicopters only (tuning `flight`). */
+  readonly flight: Flight | null = null;
+  private readonly rotors: Rotors | null = null;
+  private visualAt = 0;
 
   constructor(private physics: Physics, models: VehicleModels, kind: string, readonly id: string, pos: { x: number; y: number; z: number }, yaw: number, style?: CarStyle | null) {
     const P = TUNING[kind];
@@ -92,6 +102,10 @@ export class Vehicle {
       }
     });
     this.view = models.build(kind, style ?? null);
+    if (P.flight) {
+      this.flight = new Flight(this.body, this.ctrl, P);
+      this.rotors = new Rotors(this.view.root, P.flight);
+    }
     physics.track(this.body, this.view.root);
     this.unsubscribe = physics.onPreStep(dt => this.preStep(dt));
   }
@@ -114,6 +128,16 @@ export class Vehicle {
       this.ctrl.setWheelSuspensionRestLength(i, Math.max(0.05, P.suspension.rest + this.tune.lift));
     }
     for (const w of this.view.wheels) w.spin.scaling.set(this.tune.tireScale, this.tune.tireScale, 1);
+  }
+
+  /** Grip from the tuning again, after the developer panel changed it (TUNING is edited in place; the rest is read each step). */
+  retune() {
+    const P = this.preset;
+    let i = 0;
+    for (const a of P.axles) for (let s = 0; s < 2; s++, i++) {
+      this.ctrl.setWheelFrictionSlip(i, (a.caster ? 0.15 : P.frictionSlip) * this.cond.grip * this.tune.grip);
+      this.ctrl.setWheelSideFrictionStiffness(i, a.caster ? 0.02 : P.sideStiffness);
+    }
   }
 
   setFuel(level: number, tank: number, mpg: number, scale: number) {
@@ -147,6 +171,12 @@ export class Vehicle {
     const P = this.preset;
     this.checkImpact();
     const speed = this.speed;
+    if (this.flight) {
+      const burned = this.flight.step(dt, this.input, this.empty);
+      if (this.mpm && burned > 0) this.fuel = Math.max(0, this.fuel - burned * this.mpm);
+      this.ctrl.updateVehicle(dt, undefined, MASK.wheelRay);
+      return;
+    }
     const raw = this.towedBy ? (_towed.brake = this.towedBy.input.brake, _towed) : this.input;
     let inp = raw;
     if (this.empty) { _empty.steer = raw.steer; _empty.brake = raw.brake; _empty.handbrake = raw.handbrake; _empty.throttle = 0; inp = _empty; }
@@ -232,6 +262,12 @@ export class Vehicle {
       w.spin.rotation.z = -(this.ctrl.wheelRotation(i) ?? 0);
     }
     this.view.setLamps(night, braking);
+    if (this.rotors && this.flight) {
+      const now = performance.now();
+      const dt = this.visualAt ? Math.min(0.1, (now - this.visualAt) / 1000) : 0;
+      this.visualAt = now;
+      this.rotors.update(dt, this.flight.spool);
+    }
   }
 
   private casterAngle() {
@@ -266,6 +302,7 @@ export class Vehicle {
     this.body.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.flight?.settle();
     this.physics.snapTracked(this.body);
   }
 
@@ -275,6 +312,7 @@ export class Vehicle {
     this.body.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.flight?.settle();
     this.physics.snapTracked(this.body);
   }
 

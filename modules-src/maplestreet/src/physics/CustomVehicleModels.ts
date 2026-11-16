@@ -13,7 +13,7 @@ import { cutTriangles, lampCuts, lamps3d, type Lamp3d, type LampCut } from '../.
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { customVehicleKind, isValidVehicleRecord, registerCustomVehicles, tuningFromRecord, type CustomVehicleRecord } from '../../shared/CustomVehicles';
+import { customVehicleKind, forFoxPlains, isValidVehicleRecord, registerCustomVehicles, tuningFromRecord, type CustomVehicleRecord } from '../../shared/CustomVehicles';
 import { recolorPixels } from '../../shared/PaintMask';
 import { impostor, lods, simplifiedGeometry, swapObjects, type LodEntry } from '../core/Lod';
 import { store } from '../core/Storage';
@@ -83,7 +83,7 @@ export async function loadCustomVehicles(): Promise<void> {
   const fresh = await fetchList();
   if (fresh) store.set(CACHE_KEY, JSON.stringify(fresh.filter(r => r.status !== 'draft')));
   const list = fresh ?? (store.json<unknown[]>(CACHE_KEY) ?? []).filter(isValidVehicleRecord);
-  await installVehicles(list);
+  await installVehicles(forFoxPlains(list));
 }
 
 /** Registers records with the rules and the renderer; resolves when their models load (or after a timeout). */

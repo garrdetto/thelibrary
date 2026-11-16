@@ -13,6 +13,7 @@ import type { GameHost } from '../../rackreel/game/Game'
 import type { ControlRow } from '../../rackreel/ui/Controls'
 import type { Physics } from '../fp/physics/Physics'
 import { Parking } from '../fp/physics/Parking'
+import type { Vehicle } from '../fp/physics/Vehicle'
 import type { VehicleModels } from '../fp/physics/VehicleModels'
 import { customVehicleRecord } from '../../maplestreet/shared/CustomVehicles'
 import { SPAWN_REACH } from '../../maplestreet/shared/DevTools'
@@ -20,7 +21,9 @@ import { VEHICLES } from '../../maplestreet/shared/Economy'
 import type { ClientMsg, PlayerSnap, ServerMsg, VehicleKind } from '../../maplestreet/shared/Protocol'
 import { TUNING, isBuiltinVehicleKind } from '../../maplestreet/shared/Vehicles'
 import { TOWN_OFFSET, sceneToTown, townToScene } from '../region'
-import { DevPanel, type DevActions, type Outcome, type PlayerChoice, type VehicleChoice } from './DevPanel'
+import { DevPanel, type DevActions, type Outcome, type PlayerChoice, type TuningRow, type VehicleChoice } from './DevPanel'
+import { applyEdit, currentValue, defaultValue, TUNING_FIELDS, type TuningDoc, type TuningField } from '../vehicles/Tuning'
+import { publishedTuning, saveTuning } from '../vehicles/TuningClient'
 import type { Place } from './Places'
 import { restingPose, spotsAround, yawFromHeading, yawFromTownYaw } from './Placement'
 import { SharedCars, type SpawnedRow } from './SharedCars'
@@ -39,6 +42,10 @@ export interface DevHooks {
   home(): { at: Vector3; facing: number } | null
   /** The teleport list: Montello's places and the lake's. */
   places(): Place[]
+  /** This player's own vehicles on the road (live tuning reaches them at once). */
+  ownVehicles(): Vehicle[]
+  /** The kind of the player's own vehicle they are driving, if any. */
+  drivingKind(): string | null
 }
 
 const DRY = 0.05
@@ -56,6 +63,8 @@ export class FoxLakeDev implements DevActions {
   private dev = false
   private offline = false
   private allPlaces: Place[] | null = null
+  /** The tuning being edited here: the published tuning plus this panel's changes, applied live. */
+  private tuning: TuningDoc | null = null
 
   constructor(private readonly hooks: DevHooks) {
     this.cars = new SharedCars(hooks)
@@ -212,6 +221,75 @@ export class FoxLakeDev implements DevActions {
     const at = townToScene(p.x, p.y, p.z)
     const side = { x: at.x + 2.2 * Math.cos(p.yaw), z: at.z + 2.2 * Math.sin(p.yaw) }
     return this.goTo(side.x, side.z, Math.atan2(at.x - side.x, at.z - side.z), p.name)
+  }
+
+  // ------------------------------------------------------------ vehicle tuning
+
+  private working(): TuningDoc {
+    this.tuning ??= JSON.parse(JSON.stringify(publishedTuning())) as TuningDoc
+    return this.tuning
+  }
+
+  drivingKind(): string | null {
+    return this.hooks.drivingKind() ?? this.cars.drivingKind()
+  }
+
+  tuningFields(kind: string): TuningRow[] {
+    const rows: TuningRow[] = []
+    for (const f of TUNING_FIELDS) {
+      const value = currentValue(kind, f.key)
+      const initial = defaultValue(kind, f.key)
+      if (value === null || initial === null) continue
+      rows.push({ ...f, value, initial })
+    }
+    return rows
+  }
+
+  /** Puts a kind's edit into force on every live copy of it (TUNING is changed in place; grip is set per wheel). */
+  private retune(kind: string): void {
+    applyEdit(kind, this.working().vehicles[kind])
+    const live = [...this.hooks.ownVehicles(), this.cars.liveVehicle()]
+    for (const v of live) if (v && v.kind === kind) v.retune()
+  }
+
+  tune(kind: string, key: TuningField, value: number | null): Outcome {
+    if (!TUNING[kind]) return { state: 'refused', text: 'That vehicle isn’t registered here.' }
+    const doc = this.working()
+    const edit = { ...(doc.vehicles[kind] ?? {}) }
+    const initial = defaultValue(kind, key)
+    if (value === null || (initial !== null && Math.abs(value - initial) < 1e-9)) delete edit[key]
+    else edit[key] = value
+    if (Object.keys(edit).length) doc.vehicles[kind] = edit
+    else delete doc.vehicles[kind]
+    this.retune(kind)
+    const field = TUNING_FIELDS.find((f) => f.key === key)
+    return { state: 'done', text: `${VEHICLES[kind]?.name ?? 'Vehicle'}: ${field?.label.toLowerCase() ?? key} ${value === null ? 'back to default' : `set to ${value}${field?.unit ? ` ${field.unit}` : ''}`} on this device.` }
+  }
+
+  resetTuning(kind: string): Outcome {
+    if (!TUNING[kind]) return { state: 'refused', text: 'Pick a vehicle first.' }
+    delete this.working().vehicles[kind]
+    this.retune(kind)
+    return { state: 'done', text: `${VEHICLES[kind]?.name ?? 'Vehicle'} is back to its own numbers on this device. Save for everyone to make it stick.` }
+  }
+
+  unsavedTuning(): number {
+    if (!this.tuning) return 0
+    const saved = publishedTuning().vehicles
+    const mine = this.tuning.vehicles
+    const kinds = new Set([...Object.keys(saved), ...Object.keys(mine)])
+    let n = 0
+    for (const k of kinds) if (JSON.stringify(saved[k] ?? null) !== JSON.stringify(mine[k] ?? null)) n++
+    return n
+  }
+
+  saveTuning(): Outcome {
+    const doc = this.working()
+    void saveTuning(doc).then((error) => {
+      if (error) this.panel.answer(false, error)
+      else this.panel.answer(true, 'Saved. Every player gets this tuning the next time they load Life Sim.')
+    })
+    return { state: 'sent' }
   }
 
   /** Trace windows on the vehicle the administrator is in, or the nearest drawn one within TRACE_REACH. */

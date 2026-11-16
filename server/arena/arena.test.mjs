@@ -111,3 +111,93 @@ test('/arena namespace on the shared socket.io server: join, 20 Hz state, shooti
     await server.close()
   }
 })
+
+test('1v1 duels and 2v2 squads: matchmaking, private codes, countdown, score limit and a rematch', async () => {
+  const server = await startServer({
+    respawnMs: 60,
+    countdownMs: 120,
+    intermissionMs: 150,
+    modes: { duel: { id: 'duel', name: '1v1 Duel', capacity: 2, scoreLimit: 1, timeLimitMs: 20000 } },
+  })
+  const url = `http://localhost:${server.port}${ARENA_NAMESPACE}`
+  const sockets = Array.from({ length: 6 }, () => connect(url, { transports: ['websocket'] }))
+  const [a, b, c, d, e, f] = sockets
+  try {
+    a.emit(ArenaEvent.join, { name: 'alpha', mode: 'duel' })
+    const aWelcome = await once(a, ArenaEvent.welcome)
+    assert.equal(aWelcome.room.mode, 'duel')
+    assert.equal(aWelcome.match.phase, 'waiting')
+
+    c.emit(ArenaEvent.join, { name: 'charlie', mode: 'squads', code: 'ABC234' })
+    const cWelcome = await once(c, ArenaEvent.welcome)
+    assert.equal(cWelcome.room.code, 'ABC234')
+    assert.equal(cWelcome.room.mode, 'squads')
+    d.emit(ArenaEvent.join, { name: 'delta', mode: 'duel', code: 'ABC234' })
+    const dWelcome = await once(d, ArenaEvent.welcome)
+    assert.equal(dWelcome.room.id, cWelcome.room.id, 'a code joins its room whatever mode was asked for')
+    assert.equal(dWelcome.team, 1)
+
+    const countdown = new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.phase === 'countdown') resolve(match) }))
+    const live = new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.phase === 'live') resolve(match) }))
+    b.emit(ArenaEvent.join, { name: 'bravo', mode: 'duel' })
+    const bWelcome = await once(b, ArenaEvent.welcome)
+    assert.equal(bWelcome.room.id, aWelcome.room.id, 'the second duelist is matched into the waiting duel')
+    assert.equal(bWelcome.team, 1)
+    assert.equal((await countdown).players, 2)
+    assert.equal((await live).scores.join(), '0,0')
+
+    e.emit(ArenaEvent.join, { name: 'echo', mode: 'duel' })
+    const eWelcome = await once(e, ArenaEvent.welcome)
+    assert.notEqual(eWelcome.room.id, aWelcome.room.id, 'a full duel is never joined')
+
+    let crossRoom = 0
+    c.on(ArenaEvent.shot, () => crossRoom++)
+
+    b.emit(ArenaEvent.move, { x: 0, y: 0, z: 10, yaw: Math.PI, pitch: 0, action: 'idle', weapon: 'battle' })
+    a.emit(ArenaEvent.move, { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, action: 'firing', weapon: 'battle' })
+    await wait(80)
+    const over = new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.phase === 'over') resolve(match) }))
+    const shot = { weapon: 'battle', origin: { x: 0, y: 1.7, z: 0 }, direction: { x: 0, y: 0, z: 1 }, end: { x: 0, y: 1.7, z: 9.6 }, hit: bWelcome.id }
+    const rematch = new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.phase === 'countdown') resolve(match) }))
+    for (let round = 0; round < 6; round++) {
+      a.emit(ArenaEvent.shoot, shot)
+      await wait(80)
+    }
+    const result = await over
+    assert.equal(result.winner, 0)
+    assert.equal(result.reason, 'score')
+    assert.equal(result.scores[0], 1)
+    assert.equal(crossRoom, 0, 'shots stay inside their room')
+
+    assert.equal((await rematch).players, 2)
+
+    const forfeit = new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.reason === 'left') resolve(match) }))
+    await new Promise(resolve => a.once(ArenaEvent.match, resolve))
+    b.close()
+    const afterLeave = await Promise.race([forfeit, new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.phase === 'waiting') resolve(match) }))])
+    assert.ok(afterLeave.phase === 'over' || afterLeave.phase === 'waiting')
+    f.emit(ArenaEvent.join, { name: 'foxtrot', mode: 'squads' })
+    const fWelcome = await once(f, ArenaEvent.welcome)
+    assert.notEqual(fWelcome.room.id, cWelcome.room.id, 'private rooms are never matched')
+  } finally {
+    for (const socket of sockets) socket.close()
+    await server.close()
+  }
+})
+
+test('Rolling Siege: two body bursts or one head burst, and nobody outlasts two minutes', async () => {
+  const { HORDE, SPRINT_SPEED, bestKillRate, burstsToKill, raiderSpeed, spawnRate, spawnedBy } = await import('./horde.mjs')
+  assert.equal(burstsToKill('body'), 2)
+  assert.equal(burstsToKill('head'), 1)
+  const rifle = WEAPONS.battle
+  const twoHeadsOneBody = rifle.damage * rifle.headMultiplier * 2 + rifle.damage
+  assert.ok(twoHeadsOneBody < HORDE.raiderHealth, 'a head burst only kills when all three rounds land on the head')
+  const perfect = bestKillRate() * HORDE.breakSeconds
+  const arrived = spawnedBy(HORDE.breakSeconds)
+  assert.ok(arrived > perfect, `by 2:00 ${arrived.toFixed(0)} raiders arrive against at most ${perfect.toFixed(0)} perfect kills`)
+  assert.ok(spawnRate(HORDE.breakSeconds) > bestKillRate() * 2.5, 'at 2:00 they arrive far faster than anyone can melt them')
+  assert.ok(spawnRate(60) < bestKillRate(), 'at one minute a sharp shooter can still keep up')
+  assert.ok(raiderSpeed(HORDE.breakSeconds + 10) > SPRINT_SPEED, 'soon after 2:00 they outrun a sprint')
+  assert.ok(raiderSpeed(10) < 6, 'the first raiders are slower than a walk')
+  assert.ok(HORDE.ammo > perfect * rifle.burst, 'the 2,000 rounds outlast a perfect run')
+})

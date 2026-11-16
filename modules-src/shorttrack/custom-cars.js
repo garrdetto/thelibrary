@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { STOCK_CAR, carIdOf, carVehicleKey, carGarage, paintMode } from './shared/CustomCars';
+import { STOCK_CAR, carIdOf, carVehicleKey, carGarage, paintMode, carSize, carFootprint, carCountsForRecords } from './shared/CustomCars';
 import { STOCK_BOUNDS, bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels, toLiveryFrame } from './shared/carRepaint';
 import { clearGroups, clearMask, clearPixels, cutClear } from './shared/carClear';
 import { applyAtlas, buildLiveryGeo, planAtlas, wheelOccluder, wrapContext } from './shared/liveryWrap';
@@ -28,7 +28,13 @@ export async function loadCustomCars() {
   } catch { return []; }
 }
 
-export const customCarEntries = () => [...CUSTOM_CARS.values()].filter(c => c.active).map(c => [carVehicleKey(c.id), { name: c.name, desc: c.blurb || 'A custom body', draft: c.status === 'draft', garage: carGarage(c) }]);
+export const customCarEntries = () => [...CUSTOM_CARS.values()].filter(c => c.active).map(c => [carVehicleKey(c.id), { name: c.name, desc: c.blurb || 'A custom body', draft: c.status === 'draft', garage: carGarage(c), records: carCountsForRecords(c) }]);
+
+/** False when laps in this vehicle stay off the record boards (an admin-made car with records turned off). */
+export function vehicleCountsForRecords(veh) {
+  const id = carIdOf(veh || ''), rec = id && CUSTOM_CARS.get(id);
+  return rec ? carCountsForRecords(rec) : true;
+}
 
 /** The Garage options for a vehicle key: everything for the truck and stock car, the admin's choice for custom cars. */
 export function vehicleGarage(veh) {
@@ -289,6 +295,7 @@ function addWheels(g, a, carAsset) {
  */
 export function buildCustomCar(a, lv, ctx) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const size = carSize(a.rec); body.scale.setScalar(size);
   const g = new THREE.Group(); g.rotation.y = -Math.PI / 2; g.scale.setScalar(ctx.modelScale); body.add(g);
   const paints = [], deform = [];
   const livery = a.parts.some(p => p.paint) && ctx.livery ? ctx.livery(lv) : null;
@@ -310,7 +317,7 @@ export function buildCustomCar(a, lv, ctx) {
   const tl = a.rec.lights.tail;
   if (tl) for (const side of [1, -1]) { const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.24), brakeMat); lamp.position.set(tl.x, tl.y, tl.z * side); g.add(lamp); }
   const bumperF = new THREE.Group(), bumperR = new THREE.Group(); body.add(bumperF, bumperR);
-  return { root, body, bodyMesh, orig: deform[0]?.orig, deform, wheels, bumperF, bumperR, paints, light: null, brakeMat, tm: true, tmg: g, car: true, custom: a, painted, liveryOn: !!livery, modelScale: ctx.modelScale, crisp: !!ctx.crisp, numbers: null };
+  return { root, body, bodyMesh, orig: deform[0]?.orig, deform, wheels, bumperF, bumperR, paints, light: null, brakeMat, tm: true, tmg: g, car: true, custom: a, painted, liveryOn: !!livery, modelScale: ctx.modelScale * size, size, footprint: a.footprint || (a.footprint = carFootprint(a.rec, a.bounds)), crisp: !!ctx.crisp, numbers: null };
 }
 
 /** Repaints a built custom car in place with a new livery (painted-on numbers changed, or their font arrived). */

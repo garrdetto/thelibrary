@@ -12,22 +12,26 @@ import type { World } from './world'
  */
 type AiConsts = { AI_TOUCH: number; AI_GAP: number; AI_PASS: number; AI_SHIFT: number; AI_CORNER: number; CAR_LEN: number; AI_LINE_MAX: number; SIDE_LEN: number; SIDE_TIGHT: number; SIDE_ROOM: number }
 
-const cache = new WeakMap<World, AiConsts>()
+const cache = new WeakMap<World, Map<string, AiConsts>>()
 
-export function aiConsts(w: World): AiConsts {
-  let k = cache.get(w)
+/** Racecraft spacing for car `c`: lengths follow its footprint length, lateral gaps its width (smaller bodies race closer). */
+export function aiConsts(w: World, c?: Pick<SimCar, 'fl' | 'fw'>): AiConsts {
+  const fl = c?.fl || 1, fw = c?.fw || 1, key = `${fl}:${fw}`
+  let byCar = cache.get(w)
+  if (!byCar) cache.set(w, (byCar = new Map()))
+  let k = byCar.get(key)
   if (!k) {
-    const CS = w.cfg.carScale, DIRT = w.track.dirt, AI_TOUCH = 2 * CS, AI_GAP = AI_TOUCH + (DIRT ? 1.0 : 0.6)
+    const CS = w.cfg.carScale, DIRT = w.track.dirt, room = (DIRT ? 1.0 : 0.6) * Math.min(1, fw * 1.4), AI_TOUCH = 2 * CS * fw, AI_GAP = AI_TOUCH + room
     k = {
-      AI_TOUCH, AI_GAP, AI_PASS: AI_GAP + 0.9, AI_SHIFT: DIRT ? 2.2 : 2.8, AI_CORNER: DIRT ? 0.975 : 0.998, CAR_LEN: 5.5 * CS, AI_LINE_MAX: w.track.LINE_MAX - 0.5,
-      SIDE_LEN: 6.6 * CS, SIDE_TIGHT: AI_GAP + 0.2, SIDE_ROOM: 1.0,
+      AI_TOUCH, AI_GAP, AI_PASS: AI_GAP + 0.9 * Math.min(1, fw * 1.4), AI_SHIFT: DIRT ? 2.2 : 2.8, AI_CORNER: DIRT ? 0.975 : 0.998, CAR_LEN: 5.5 * CS * fl, AI_LINE_MAX: w.track.LINE_MAX - 0.5,
+      SIDE_LEN: 6.6 * CS * fl, SIDE_TIGHT: AI_GAP + 0.2, SIDE_ROOM: Math.min(1, fw * 1.4),
     }
-    cache.set(w, k)
+    byCar.set(key, k)
   }
   return k
 }
 
-export const AI_TOUCH = (w: World): number => aiConsts(w).AI_TOUCH
+export const AI_TOUCH = (w: World, c?: Pick<SimCar, 'fl' | 'fw'>): number => aiConsts(w, c).AI_TOUCH
 
 export function sgnDs(w: World, a: number, b: number): number {
   const P = w.track.P
@@ -53,7 +57,7 @@ export function isHazard(w: World, o: SimCar, v: number): boolean {
 
 /** Is it safe to move from the current line to `lat`? Sweeps the whole strip the car crosses. */
 function laneClear(w: World, c: SimCar, lat: number): boolean {
-  const { AI_GAP, CAR_LEN } = aiConsts(w)
+  const { AI_GAP, CAR_LEN } = aiConsts(w, c)
   const cur = c.tp.lat, up = lat > cur, lo = up ? cur + 1.2 : lat - AI_GAP, hi = up ? lat + AI_GAP : cur - 1.2
   for (const o of w.cars.values()) {
     if (o === c || !o.vis) continue
@@ -70,7 +74,7 @@ function laneClear(w: World, c: SimCar, lat: number): boolean {
  * lane, door to door) or give room (an extra car-width and a small lift when the other car is level or ahead).
  */
 function sideBySide(w: World, c: SimCar, lane: number): { lane: number; lift: number } {
-  const { SIDE_LEN, SIDE_TIGHT, SIDE_ROOM, AI_GAP } = aiConsts(w), T = w.track
+  const { SIDE_LEN, SIDE_TIGHT, SIDE_ROOM, AI_GAP } = aiConsts(w, c), T = w.track
   let o: SimCar | null = null, best = 1e9, ds = 0
   for (const q of w.cars.values()) {
     if (q === c || !q.vis || q.isPace) continue
@@ -111,7 +115,7 @@ function sideBySide(w: World, c: SimCar, lane: number): { lane: number; lift: nu
 
 /** Picks the side to pass on: inside first, the outside if that is the only room. */
 function passLane(w: World, c: SimCar, ahead: SimCar, gl: number): number | null {
-  const { AI_PASS, AI_GAP } = aiConsts(w), T = w.track
+  const { AI_PASS, AI_GAP } = aiConsts(w, c), T = w.track
   const onLine = (o: number) => clamp(o, T.LINE_MIN, T.LINE_MAX), low = onLine(Math.min(gl, ahead.tp.lat) - AI_PASS), high = onLine(Math.max(gl, ahead.tp.lat) + AI_PASS)
   const opts = [low, high].filter((l) => Math.abs(l - ahead.tp.lat) >= AI_GAP + 0.3)
   if (c.tp.lat > ahead.tp.lat + 0.8) opts.reverse()
@@ -121,14 +125,14 @@ function passLane(w: World, c: SimCar, ahead: SimCar, gl: number): number | null
 
 /** Two wide off the green: the inside file runs the groove, the outside file a lane width above it. */
 function startLane(w: World, c: SimCar, gl: number): number {
-  const { AI_LINE_MAX, AI_PASS } = aiConsts(w)
+  const { AI_LINE_MAX, AI_PASS } = aiConsts(w, c)
   const lo = clamp(gl, w.track.LINE_MIN, AI_LINE_MAX - AI_PASS)
   return c.startFile ? lo + AI_PASS : lo
 }
 
 export function aiCtl(w: World, c: SimCar, dt: number): Controls {
   const CFG = w.cfg, T = w.track, race = w.race, DIRT = T.dirt, P = T.P, R = T.R, T1 = T.T1, T2 = T.T2, TURN = T.TURN, HW = T.HW
-  const { AI_GAP, AI_CORNER, CAR_LEN, AI_LINE_MAX, AI_SHIFT } = aiConsts(w)
+  const { AI_GAP, AI_CORNER, CAR_LEN, AI_LINE_MAX, AI_SHIFT } = aiConsts(w, c)
   const s = c.tp.s, v = c.vf, ph = race.ph
   let lane: number, target: number
   if (c.isPace) {
@@ -226,7 +230,7 @@ export function aiCtl(w: World, c: SimCar, dt: number): Controls {
     }
     if (c.looseT > 0) target *= 0.95
     {
-      const room = HW - 1.3 * CFG.carScale - c.tp.lat, drift = latVel(w, c)
+      const room = HW - 1.3 * CFG.carScale * (c.fw || 1) - c.tp.lat, drift = latVel(w, c)
       if (drift > 0 && room < drift * (DIRT ? 0.7 : 0.9)) target = Math.min(target, v - (DIRT ? 0.8 : 0.6))
     }
     const cap = capFor(w, c)

@@ -96,7 +96,7 @@ input[type=color]{padding:2px;height:38px}
 .dnswitch.on .dn-day{color:var(--dim)}.dnswitch.on .dn-night{color:#fff}
 .dnswitch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.dnswitch i,.dnswitch span{transition:none}}
-.vhead{margin-top:16px}.vcards{grid-template-columns:1fr 1fr}.tcard:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.vhead{margin-top:16px}.vnote{margin:6px 0 0;font-size:12px;color:var(--dim)}.tcard:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .nav{display:flex;justify-content:space-between;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .nav .navb{width:auto;margin:0;min-width:120px;text-align:center;letter-spacing:.5px}
 #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);padding:10px 16px;font-weight:700;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
@@ -172,8 +172,9 @@ input[type=color]{padding:2px;height:38px}
     <h2>Choose a track</h2>
     <div id="trackCards" class="tcards"></div>
     <div class="daynight"><span id="sNightL">Time of day</span><button type="button" id="sNight" class="dnswitch" role="switch" aria-checked="false" aria-labelledby="sNightL"><span class="dn-day">&#9728; Day</span><span class="dn-night">&#9790; Night</span><i aria-hidden="true"></i></button></div>
-    <h2 class="vhead">Choose a vehicle</h2>
-    <div id="vehCards" class="tcards vcards" role="group" aria-label="Vehicle"></div>
+    <h2 class="vhead"><label for="vehSel">Choose a vehicle</label></h2>
+    <select id="vehSel"></select>
+    <p id="vehNote" class="vnote" aria-live="polite"></p>
     <div class="nav"><button class="btn navb" data-act="track-back">&larr; BACK</button><button class="btn pri navb" data-act="track-next">NEXT &rarr;</button></div>
   </div>
   <div id="scrSetup" class="scr panel hidden">
@@ -190,8 +191,8 @@ input[type=color]{padding:2px;height:38px}
   <div id="scrGarage" class="scr panel hidden">
     <h2>Garage</h2>
     <div class="gcols"><div>
-    <div class="f" id="gVehL">Vehicle</div>
-    <div class="gview gveh" id="gVeh" role="group" aria-labelledby="gVehL"><button type="button" data-gveh="truck" aria-pressed="true">Race Truck</button><button type="button" data-gveh="car" aria-pressed="false">Super Late Model</button></div>
+    <label class="f" for="gVehSel">Vehicle</label>
+    <select id="gVehSel" class="gveh"></select>
     <div class="gview" role="group" aria-label="Camera"><button type="button" data-gview="door" aria-pressed="true">Door</button><button type="button" data-gview="roof" aria-pressed="false">Roof</button><button type="button" data-gview="rear" aria-pressed="false">Rear</button><button type="button" data-gview="spin" aria-pressed="false">Spin</button></div>
     <label class="f" for="gName">Driver name</label><input id="gName" maxlength="20">
     <p class="gnote hidden" id="gCarNote" role="status"></p>

@@ -3,7 +3,6 @@ import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { ChevronLeft, ChevronRight, Gauge, Lasso, LoaderCircle, Move3d, Pipette, Plus, RotateCw, Ruler, SquarePen, Upload, WandSparkles } from 'lucide-react'
 import type { Object3D } from 'three'
-import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { BUNDLED_VEHICLES } from '../../../../modules-src/maplestreet/shared/BundledVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
@@ -15,7 +14,7 @@ import { MeshyPanel } from '../MeshyPanel'
 import type { MeshySourceOption } from '../MeshyPanel'
 import { defaultPart, PART_LABEL, partOf, withPart } from './draft'
 import type { PartKey } from './draft'
-import { DRIVE_TEMPLATES, draftFromRecord, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, QUALITY, REFERENCE_KINDS, REFERENCE_LABEL, ROUTE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
+import { DRIVE_TEMPLATES, draftFromRecord, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, QUALITY, REFERENCE_KINDS, REFERENCE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
 import { exportScene } from './bodySmooth'
 import { BodySmoothPanel, useBodySmoothing } from './BodySmoothPanel'
 import { SmoothOverlay } from './DentSmoother'
@@ -370,7 +369,7 @@ export default function VehicleEditor() {
       setVehicles(current => current?.some(v => v.id === vehicle.id) ? current.map(v => v.id === vehicle.id ? vehicle : v) : [...(current ?? []), vehicle])
       if (editing) { setEditing(vehicle); setSelection(null); bodyChanged(); setStatus({ tone: 'ok', text: `Saved your changes to “${vehicle.name}”. ${target === 'draft' ? 'It stays a draft until you publish it from the list.' : 'Players get the updated body the next time they load the module.'}` }); return }
       if (target === 'draft') setStatus({ tone: 'ok', text: `Saved “${vehicle.name}” as a draft. Drive it in the developer instance, then publish it from the list below.` })
-      else setStatus({ tone: 'ok', text: `Published “${vehicle.name}”. ${vehicle.dealer.forSale ? 'It’s for sale at Maple Motors' : 'It isn’t for sale'}${vehicle.traffic.enabled ? ' and drives around town' : ''} the next time players load the module.` })
+      else setStatus({ tone: 'ok', text: `Published “${vehicle.name}” to Life Sim. ${vehicle.dealer.forSale ? 'It’s for sale at the dealership on Main Street' : 'It isn’t for sale'} the next time players load Life Sim.` })
     } catch (error) {
       setStatus({ tone: 'error', text: (error as Error).message })
     } finally { setBusy(null) }
@@ -427,7 +426,7 @@ export default function VehicleEditor() {
   }
 
 
-  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}), ...(v.lampShapes ? { lampShapes: v.lampShapes } : {}) })
+  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: { ...v.traffic, enabled: false }, wheelsRemoved: v.wheelsRemoved, game: 'lifesim', ...(v.parts ? { parts: v.parts } : {}), ...(v.lampShapes ? { lampShapes: v.lampShapes } : {}) })
 
   const allVehicles = useMemo(() => {
     if (!vehicles) return null
@@ -607,9 +606,9 @@ export default function VehicleEditor() {
 
         {step === 'publish' && <fieldset>
           <legend>Publish</legend>
-          <label className="ms-veh-inline"><input type="checkbox" checked={draft.dealer.forSale} onChange={event => patch({ dealer: { ...draft.dealer, forSale: event.target.checked } })}/> For sale at Maple Motors</label>
+          <p className="ms-veh-note">Vehicles made here are for Life Sim only. Fox Plains never sells them.</p>
+          <label className="ms-veh-inline"><input type="checkbox" checked={draft.dealer.forSale} onChange={event => patch({ dealer: { ...draft.dealer, forSale: event.target.checked } })}/> For sale at Life Sim’s dealership</label>
           <Num label="Price" suffix="$" step={100} min={0} max={LIMITS.priceMax} value={draft.dealer.price} onChange={price => patch({ dealer: { ...draft.dealer, price: Math.round(price) } })}/>
-          <label className="ms-veh-inline"><input type="checkbox" checked={draft.traffic.enabled} onChange={event => patch({ traffic: { ...draft.traffic, enabled: event.target.checked } })}/> Drives around town</label>
           <div className="ms-veh-choice ms-veh-choice-stack" role="radiogroup" aria-label="Quality">
             {(Object.keys(QUALITY) as Quality[]).map(id => <label key={id} className={draft.quality === id ? 'is-active' : ''}>
               <input type="radio" name="ms-veh-quality" value={id} checked={draft.quality === id} onChange={() => { patch({ quality: id }); setReport(null) }}/> <span><strong>{QUALITY[id].label}</strong> {QUALITY[id].hint}</span>
@@ -632,10 +631,6 @@ export default function VehicleEditor() {
                 <Num label={draft.dealer.fuel === 'electric' ? 'Battery' : 'Tank'} suffix={draft.dealer.fuel === 'electric' ? 'kWh' : 'gal'} step={0.5} min={0.5} max={200} value={draft.dealer.tank} onChange={tank => patch({ dealer: { ...draft.dealer, tank } })}/>
                 <Num label={draft.dealer.fuel === 'electric' ? 'Efficiency' : 'Economy'} suffix={draft.dealer.fuel === 'electric' ? 'mi/unit' : 'mpg'} step={1} min={1} max={500} value={draft.dealer.mpg} onChange={mpg => patch({ dealer: { ...draft.dealer, mpg } })}/>
               </div>
-              <h4 className="ms-veh-subhead">Neighbor traffic</h4>
-              <label>Driver name<input value={draft.traffic.driver} maxLength={40} placeholder={draft.name || 'Neighbor'} onChange={event => patch({ traffic: { ...draft.traffic, driver: event.target.value } })}/></label>
-              <label>Route<select value={draft.traffic.route} onChange={event => patch({ traffic: { ...draft.traffic, route: event.target.value as Draft['traffic']['route'] } })}>{TRAFFIC_ROUTES.map(r => <option key={r} value={r}>{ROUTE_LABEL[r]}</option>)}</select></label>
-              <Num label="Cruising speed" suffix="mph" step={1} min={3} max={60} value={draft.traffic.mph} onChange={mph => patch({ traffic: { ...draft.traffic, mph } })}/>
               <h4 className="ms-veh-subhead">Shape detail</h4>
               <Num label="Most triangles" step={1000} min={2000} max={LIMITS.trianglesMax} value={draft.maxTriangles} onChange={maxTriangles => { patch({ maxTriangles: Math.min(LIMITS.trianglesMax, Math.max(2000, Math.round(maxTriangles))) }); setReport(null) }}/>
               <p className="ms-veh-note">A model with fewer triangles than this is left exactly as it is.</p>
@@ -662,7 +657,7 @@ export default function VehicleEditor() {
     {drive && <TestDrive record={drive.record} onClose={() => setDrive(null)} onResult={result => setMeasured({ topMph: result.topMph, time: result.time })}/>}
 
     {view === 'library' && <>
-    <p className="adm-help">These are all the vehicles in the game right now, including the ones that ship with it. Change the price, dealer and traffic settings here. Retiring takes a vehicle off the dealer lot and out of traffic; players who already own it keep it in their garage. Drafts can always be deleted; a published or retired vehicle can be deleted only while nobody owns one, and built-in vehicles can only be retired.</p>
+    <p className="adm-help">These are the vehicles published from this creator, including the ones that ship with the game. Everything saved here is for Life Sim only: it is sold at Life Sim’s dealership, never in Fox Plains (Fox Plains keeps its own versions of the built-in vehicles). Change the price and dealer settings here, and tune speed and handling from Life Sim’s developer panel. Retiring takes a vehicle off the dealer lot; players who already own it keep it in their garage. Drafts can always be deleted; a published or retired vehicle can be deleted only while nobody owns one, and built-in vehicles can only be retired.</p>
     <DevInstanceNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadVehicles()}>Retry</button></p>}
     {listNotice && <p role="status" className="ms-items-ok">{listNotice}</p>}
@@ -671,12 +666,11 @@ export default function VehicleEditor() {
       {allVehicles.map(v => <li key={v.id} className={statusOf(v) === 'retired' ? 'is-retired' : statusOf(v) === 'draft' ? 'is-draft' : ''}>
         <div>
           <strong>{v.name}</strong>
-          <span>{TEMPLATE_LABEL[v.template]} · {v.targets.topSpeedMph} mph · 0–{v.targets.zeroToMph} in {v.targets.zeroToSeconds} s · {(v.physics.chassis.hx * 2).toFixed(2)} m long · {v.dealer.forSale ? money(v.dealer.price) : 'not for sale'}{v.traffic.enabled ? ` · traffic: ${ROUTE_LABEL[v.traffic.route]}` : ''}{v.hdUrl ? ' · HD textures' : ''}</span>
+          <span>{TEMPLATE_LABEL[v.template]} · {v.targets.topSpeedMph} mph · 0–{v.targets.zeroToMph} in {v.targets.zeroToSeconds} s · {(v.physics.chassis.hx * 2).toFixed(2)} m long · {v.dealer.forSale ? money(v.dealer.price) : 'not for sale'}{v.hdUrl ? ' · HD textures' : ''}</span>
         </div>
         <AssetStatusBadge status={statusOf(v)}/>
         <label className="ms-veh-inline">Price $<input key={`${v.id}-${v.dealer.price}`} type="number" step={100} min={0} max={LIMITS.priceMax} defaultValue={v.dealer.price} style={{ width: '6.5rem' }} onBlur={event => { const price = Math.round(Number(event.target.value)); if (Number.isFinite(price) && price >= 0 && price <= LIMITS.priceMax && price !== v.dealer.price) void change(v, { spec: { ...specOf(v), dealer: { ...v.dealer, price } } }) }}/></label>
         <label className="ms-veh-inline"><input type="checkbox" checked={v.dealer.forSale} onChange={event => void change(v, { spec: { ...specOf(v), dealer: { ...v.dealer, forSale: event.target.checked } } })}/> For sale</label>
-        <label className="ms-veh-inline"><input type="checkbox" checked={v.traffic.enabled} onChange={event => void change(v, { spec: { ...specOf(v), traffic: { ...v.traffic, enabled: event.target.checked } } })}/> In traffic</label>
         <button type="button" onClick={() => void openRecord(v)} disabled={!!busy} title="Open this vehicle in the editor to change its body, lights or any setting">{busy === 'open' && editing?.id !== v.id ? <LoaderCircle className="spin" size={12}/> : <SquarePen size={12} aria-hidden/>} Edit</button>
         <a href={v.modelUrl} download>Model</a>
         <AssetStatusActions status={statusOf(v)} onChange={next => void change(v, { status: next })}/>

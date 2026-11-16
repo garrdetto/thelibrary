@@ -33,7 +33,23 @@
       "preview": "01a1cdca-c903-75b2-9db0-9ddaf4166e9e",
       "credits": 15,
       "refine": "01a1cdce-0872-72fc-b5d0-888f5d35a6c0"
+    },
+    "helicopter": {
+      "kind": "text-to-3d",
+      "preview": "01a1e1df-32b5-77b6-97cd-014685d30e4d",
+      "credits": 15,
+      "refine": "01a1e1e0-4c8d-7660-94f4-4ef7e2c775e0",
+      "model": "meshy-t2 smart topology, 12k target",
+      "note": "Life Sim's Kestrel Two-Seat Helicopter; cut into body, rotor-main and rotor-tail by modules-src/foxlake/tools/build-helicopter.py (download to .meshy-cache/helicopter.glb first)"
+    },
+    "bubble-helicopter": {
+      "kind": "image-to-3d",
+      "image": "01a1e24c-6c7b-76ed-a011-99aed965867a",
+      "task": "01a1e24c-f2fc-7700-be00-6d78cf757f43",
+      "credits": 19,
+      "model": "nano-banana-2-1 design image, then meshy-t2.5 smart topology (16k) + meshy-n1",
+      "note": "Life Sim's Bumblebee Bubble Helicopter; download to .meshy-cache/bubble-helicopter.glb, then build-helicopter.py -- bubble. A first text-to-3D try (01a1e1f2-1504-..., 15 credits) closed the bubble and boom and was not used."
     }
   },
-  "credits": 75
+  "credits": 124
 }

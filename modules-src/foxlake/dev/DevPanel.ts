@@ -9,6 +9,7 @@
  * The panel is a `data-host-modal` overlay, so Rack & Reel's own input pauses
  * while it is open and typing an amount never moves the character.
  */
+import type { FieldSpec } from '../vehicles/Tuning'
 import { formatLeft } from './Placement'
 import { PLACE_AREAS, type Place } from './Places'
 import type { SpawnedRow } from './SharedCars'
@@ -48,6 +49,23 @@ export interface DevActions {
   goToPlayer(id: string): Outcome
   /** Opens Trace windows on the vehicle you are in, or the nearest one. */
   traceWindows(): Outcome
+  /** The kind of the vehicle you are driving, for the tuning picker. */
+  drivingKind(): string | null
+  /** A vehicle's tuning fields with their values now and their defaults; empty when it has none. */
+  tuningFields(kind: string): TuningRow[]
+  /** Changes one field live on this device (null puts the vehicle's own value back). */
+  tune(kind: string, key: FieldSpec['key'], value: number | null): Outcome
+  /** Every field of one vehicle back to its own numbers. */
+  resetTuning(kind: string): Outcome
+  /** Saves every vehicle's tuning for everyone; answers through `answer`. */
+  saveTuning(): Outcome
+  /** Vehicles whose tuning differs from what everyone has. */
+  unsavedTuning(): number
+}
+
+export interface TuningRow extends FieldSpec {
+  value: number
+  initial: number
 }
 
 const ANSWER_TIMEOUT_MS = 6000
@@ -81,6 +99,10 @@ export class DevPanel {
   private readonly placeAreas = el('div', 'fl-dev-areas')
   private readonly playerGrid = el('div', 'fl-dev-grid')
   private readonly spawnedText = new Map<string, HTMLElement>()
+  private readonly tuneKind = el('select')
+  private readonly tuneFields = el('div', 'fl-dev-tune')
+  private readonly tuneUnsaved = el('p')
+  private tuneKindsKey = ''
   private readonly busyButtons = new Set<HTMLButtonElement>()
   private playersKey = ''
   private spawnedKey = ''
@@ -104,7 +126,7 @@ export class DevPanel {
     this.status.setAttribute('role', 'status')
     this.status.setAttribute('aria-live', 'polite')
 
-    root.append(head, this.note, this.status, this.spawnSection(), this.teleportSection(), this.cashSection(), this.traceSection())
+    root.append(head, this.note, this.status, this.spawnSection(), this.tuningSection(), this.teleportSection(), this.cashSection(), this.traceSection())
     document.body.append(root)
 
     addEventListener('keydown', (e) => {
@@ -229,6 +251,92 @@ export class DevPanel {
     return section
   }
 
+  private tuningSection(): HTMLElement {
+    const section = el('section')
+    const mine = button('The one I’m in')
+    mine.addEventListener('click', () => {
+      const kind = this.actions.drivingKind()
+      if (!kind) return this.say('Get in a vehicle first, or pick one from the list.', true)
+      this.tuneKind.value = kind
+      this.renderTuning()
+    })
+    this.tuneKind.addEventListener('change', () => this.renderTuning())
+    const pick = el('div', 'fl-dev-pick')
+    pick.append(this.field('Vehicle', this.tuneKind), mine)
+    const reset = button('Reset this vehicle')
+    reset.addEventListener('click', () => {
+      this.run(reset, () => this.actions.resetTuning(this.tuneKind.value))
+      this.renderTuning()
+    })
+    const save = button('Save for everyone', true)
+    save.addEventListener('click', () => this.run(save, () => this.actions.saveTuning()))
+    const buttons = el('div', 'fl-dev-grid')
+    buttons.append(reset, save)
+    this.tuneUnsaved.setAttribute('aria-live', 'polite')
+    section.append(
+      el('h3', '', 'Vehicle tuning'),
+      el('p', '', 'Top speed and handling of any vehicle in Life Sim. Changes drive at once on this device; Save for everyone to keep them for every player (Fox Plains keeps its own numbers).'),
+      pick,
+      this.tuneFields,
+      this.tuneUnsaved,
+      buttons,
+    )
+    return section
+  }
+
+  private renderTuningKinds(force: boolean): void {
+    const all = this.actions.vehicles()
+    const key = all.map((v) => v.kind).join('|')
+    if (!force && key === this.tuneKindsKey) return
+    this.tuneKindsKey = key
+    const chosen = this.tuneKind.value || this.actions.drivingKind() || ''
+    this.tuneKind.replaceChildren(...all.map((v) => new Option(`${v.name} (${v.group})`, v.kind)))
+    this.tuneKind.value = all.some((v) => v.kind === chosen) ? chosen : all[0]?.kind ?? ''
+    this.renderTuning()
+  }
+
+  private renderTuning(): void {
+    const kind = this.tuneKind.value
+    const rows = kind ? this.actions.tuningFields(kind) : []
+    if (!rows.length) {
+      this.tuneFields.replaceChildren(el('p', 'fl-dev-empty', 'Pick a vehicle to tune.'))
+      return
+    }
+    this.tuneFields.replaceChildren(...rows.map((r) => {
+      const input = el('input')
+      input.type = 'number'
+      input.min = String(r.min)
+      input.max = String(r.max)
+      input.step = String(r.step)
+      input.value = String(r.value)
+      input.inputMode = 'decimal'
+      const label = el('label')
+      const name = el('span', '', r.unit ? `${r.label} (${r.unit})` : r.label)
+      const hint = el('small', '', `Default ${r.initial}`)
+      label.append(name, input, hint)
+      label.classList.toggle('changed', r.value !== r.initial)
+      input.addEventListener('change', () => {
+        const v = input.value.trim() === '' ? null : Number(input.value)
+        if (v !== null && (!Number.isFinite(v) || v < r.min || v > r.max)) {
+          this.say(`${r.label} must be between ${r.min} and ${r.max}.`, true)
+          input.value = String(r.value)
+          return
+        }
+        const outcome = this.actions.tune(kind, r.key, v)
+        if (outcome.state !== 'sent') this.say(outcome.text, outcome.state === 'refused')
+        this.renderTuning()
+      })
+      return label
+    }))
+    this.renderUnsaved()
+  }
+
+  private renderUnsaved(): void {
+    const n = this.actions.unsavedTuning()
+    const text = n ? `${n} vehicle${n === 1 ? '' : 's'} changed here and not saved for everyone yet.` : 'Everything here is what every player has.'
+    if (this.tuneUnsaved.textContent !== text) this.tuneUnsaved.textContent = text
+  }
+
   private teleportSection(): HTMLElement {
     const section = el('section')
     section.append(el('h3', '', 'Teleport'), el('p', '', 'Puts you on foot at the nearest safe ground. A vehicle you are in stays where it is.'), this.placeAreas, el('h4', '', 'Players'), this.playerGrid)
@@ -277,6 +385,8 @@ export class DevPanel {
       : 'Shared world: the server checks every request against your administrator session.'
     this.renderPlayers(all)
     this.renderVehicles(all)
+    this.renderTuningKinds(all)
+    this.renderUnsaved()
     this.renderSpawned(all)
     if (all) this.renderPlaces()
   }

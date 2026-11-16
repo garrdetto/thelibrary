@@ -17,6 +17,23 @@ export const isBuiltinVehicleKind = (kind: string): kind is BuiltinVehicleKind =
 
 export interface AxleTuning { x: number; radius: number; width: number; halfTrack: number; steer: boolean; drive: boolean; caster?: boolean }
 
+/**
+ * A helicopter (Life Sim): the skids are the raycast wheels, which it sits on until the pilot climbs; in the air
+ * the body is flown toward a target velocity instead of driven (foxlake/fp/physics/Flight.ts).
+ */
+export interface FlightTuning {
+  /** Climb and descent rate, m/s. */
+  climb: number;
+  /** Turn rate at full A or D, rad/s. */
+  yawRate: number;
+  /** How quickly it reaches the speed asked for, m/s². */
+  accel: number;
+  /** Nose-down pitch at full forward speed, radians. */
+  tilt: number;
+  /** Rotor hubs in the model's own frame (x forward, y up, z right, metres, before the record's model transform). */
+  rotors: { main: { x: number; y: number; z: number }; tail: { x: number; y: number; z: number } };
+}
+
 export interface VehicleTuning {
   kind: VehicleKind;
   label: string;
@@ -49,6 +66,8 @@ export interface VehicleTuning {
   paint: number;
   /** Haulers can run delivery jobs; mowers cut grass. */
   role?: 'hauler' | 'mower';
+  /** A helicopter instead of a car (Life Sim only). */
+  flight?: FlightTuning;
 }
 
 export const BUILTIN_TUNING: Record<BuiltinVehicleKind, VehicleTuning> = {

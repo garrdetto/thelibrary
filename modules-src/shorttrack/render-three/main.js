@@ -12,7 +12,7 @@ import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from 
 import { batchStatic } from '../../_shared/static-batch.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-schemes.js';
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
-import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
+import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage, vehicleCountsForRecords } from '../custom-cars.js';
 import { carIdOf, numberSpot, carGarage } from '../shared/CustomCars';
 import { boundsOf, parseRegions, STOCK_BOUNDS } from '../shared/carRepaint';
 import { spoilerTriangles } from '../shared/carClear';
@@ -1066,7 +1066,7 @@ function deformCar(c,lp,dir,amt){
 class Car{
   constructor(id,lv,o={}){
     this.lv=lv;this.m=buildCar(lv,{crisp:!!o.player});this.m.root.scale.setScalar(CFG.carScale);scene.add(this.m.root);
-    Object.assign(this,createCar(id,{local:o.local,ai:o.ai,pace:o.pace,player:o.player,stockCar:!!this.m.car}));
+    Object.assign(this,createCar(id,{local:o.local,ai:o.ai,pace:o.pace,player:o.player,stockCar:!!this.m.car,fl:this.m.footprint?.length,fw:this.m.footprint?.width}));
     if(!this.isPlayer){this.tag=makeTag(lv);this.m.root.add(this.tag);}
     Object.assign(this,{buf:[],wheelRot:0,aLat:0,aLong:0,prevVf:0,prevH:0,markT:0,smokeT:0,sndT:0,lastSeen:performance.now(),lastState:null});
   }
@@ -1141,8 +1141,10 @@ async function showRecords(boxId,mode){
   box.querySelector('p').textContent=res.error||`Top 20 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
-  if(ms<TRACK.minLap||WORLD.model!=='next'||TT.blocksLaps())return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
-  fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:REC_TRACK})})
+  if(ms<TRACK.minLap||WORLD.model!=='next'||TT.blocksLaps())return;
+  if(!vehicleCountsForRecords(myLv.veh)){if(!REC.offWarned){REC.offWarned=true;toast(`Laps in the ${VEHICLES[myLv.veh]?.name||'this vehicle'} don’t count toward records`);}return;}
+  const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
+  fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:REC_TRACK,vehicle:myLv.veh})})
     .then(async r=>{
       if(r.status===401||(r.status===403&&!REC.me)){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
       if(!r.ok){console.warn('lap submit',r.status);return;}
@@ -1172,7 +1174,7 @@ function swapCarModel(c){
   const old=c.m,m=buildCar(c.lv,{crisp:c.isPlayer});m.root.scale.setScalar(CFG.carScale);
   m.root.position.copy(old.root.position);m.root.quaternion.copy(old.root.quaternion);m.root.visible=old.root.visible;
   if(c.tag){old.root.remove(c.tag);m.root.add(c.tag);}
-  scene.add(m.root);Car.prototype.dispose.call({m:old});c.m=m;c.stockCar=!!m.car;
+  scene.add(m.root);Car.prototype.dispose.call({m:old});c.m=m;c.stockCar=!!m.car;c.fl=m.footprint?.length||1;c.fw=m.footprint?.width||1;
 }
 function clearCars(){cars.forEach(c=>c.dispose());cars.clear();player=null;}
 function beginRace(msg){
@@ -1392,15 +1394,15 @@ function updCamera(dt){
     if(camera.position.distanceToSquared(_gp)>900){camera.position.copy(_gp);menuLook.copy(_gl);}
     else{const k=1-Math.exp(-dt*4.5);camera.position.lerp(_gp,k);menuLook.lerp(_gl,k);}
     camera.up.set(0,1,0);camera.lookAt(menuLook);setFov(45);return;}
-  const c=player,pos=c.m.root.position;camH+=wrapA(c.h-camH)*(1-Math.exp(-dt*5));
+  const c=player,pos=c.m.root.position,ks=Math.max(0.55,c.m.size||1);camH+=wrapA(c.h-camH)*(1-Math.exp(-dt*5));
   const fx=Math.sin(camH),fz=Math.cos(camH),spd=Math.abs(c.vf);
   _n.set(0,1,0).applyQuaternion(c.m.root.quaternion);
   if(camMode==='hood'){
     _f.set(0,0,1).applyQuaternion(c.m.root.quaternion);
-    camera.position.copy(pos).addScaledVector(_f,0.4*CFG.carScale).addScaledVector(_n,1.3*CFG.carScale);camera.up.copy(_n);
+    camera.position.copy(pos).addScaledVector(_f,0.4*CFG.carScale*ks).addScaledVector(_n,1.3*CFG.carScale*ks);camera.up.copy(_n);
     _v.copy(camera.position).addScaledVector(_f,30).addScaledVector(_n,-0.6);camera.lookAt(_v);setFov(45+spd*0.2);
   }else{
-    const dist=(camMode==='far'?13.5:8.2)*CFG.carScale*CAM_ZOOM,hgt=(camMode==='far'?4.8:2.9)*CFG.carScale*CAM_ZOOM;
+    const dist=(camMode==='far'?13.5:8.2)*CFG.carScale*CAM_ZOOM*ks,hgt=(camMode==='far'?4.8:2.9)*CFG.carScale*CAM_ZOOM*ks;
     _v.set(pos.x-fx*dist,pos.y+hgt,pos.z-fz*dist);
     if(camSnap){camera.position.copy(_v);camSnap=false;}else camera.position.lerp(_v,1-Math.exp(-dt*8));
     camera.up.set(0,1,0);camera.lookAt(pos.x+fx*5,pos.y+1.0,pos.z+fz*5);setFov(45+spd*0.28);
@@ -1538,9 +1540,7 @@ function renderGarage(){
   {const p=NUM_PRESETS.find(x=>x.fill===n.numColor&&x.outline===n.numOutline&&x.accent===n.numAccent);$('gPreset').value=p?p.id:'';}
   for(const b of document.querySelectorAll('[data-gplace]'))b.setAttribute('aria-pressed',!!n[b.dataset.gplace]);
   for(const b of document.querySelectorAll('[data-gview]'))b.setAttribute('aria-pressed',b.dataset.gview===gView);
-  const gv=$('gVeh'),vSig=Object.keys(VEHICLES).join();
-  if(gv.dataset.sig!==vSig){gv.dataset.sig=vSig;gv.innerHTML=Object.entries(VEHICLES).map(([id,v])=>`<button type="button" data-gveh="${esc(id)}">${esc(v.name)}${v.draft?' (draft)':''}</button>`).join('');}
-  for(const b of gv.querySelectorAll('[data-gveh]'))b.setAttribute('aria-pressed',b.dataset.gveh===n.veh);
+  fillVehSelect($('gVehSel'),n.veh);
   $('gTailBtn').textContent=n.veh==='truck'?'Tailgate':'Tail';
   const gar=vehicleGarage(n.veh),custom=!!carIdOf(n.veh||'');
   for(const el of $('scrGarage').querySelectorAll('#gPat,#gP2,#gP3,[data-gstep^="gPat"]'))el.disabled=!gar.schemes;
@@ -1573,7 +1573,6 @@ for(const k in G)$(G[k]).addEventListener('input',readGarage);
 $('scrGarage').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if(d.gview){gView=d.gview;renderGarage();}
-  else if(d.gveh){setVehicle(d.gveh);renderGarage();}
   else if(d.gstep){const [id,dir]=d.gstep.split(':');stepPick(id,Number(dir));}
   else if(d.gslant)commitGarage({...myLv,numSlant:!myLv.numSlant});
   else if(d.gplace)commitGarage({...myLv,[d.gplace]:!myLv[d.gplace]});
@@ -1588,7 +1587,12 @@ const FLOW_STEPS={attack:['Mode','Track','Setup'],solo:['Mode','Track','Setup'],
 const stepsHtml=(flow,idx)=>FLOW_STEPS[flow].map((n,i)=>`<span class="${i<idx?'done':i===idx?'on':''}">${i+1}. ${n}</span>`).join('');
 function goFlow(f){WIZ.flow=f;WIZ.track=TRACK_ID;if(f==='multi'){mode='multi';document.querySelector('[data-steps="multi"]').innerHTML=stepsHtml('multi',1);showScreen('scrMulti');return;}showTrack();}
 function renderTrackCards(){$('trackCards').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<button class="tcard${id===WIZ.track?' on':''}" data-track="${id}" aria-pressed="${id===WIZ.track}"><b>${t.name}</b><span>${t.miles} \u00b7 ${t.surface==='dirt'?'Dirt':'Asphalt'} \u00b7 ${t.turnBank}\u00b0 banked turns${t.theme==='prison'?' \u00b7 extra grip':''}</span></button>`).join('');}
-function renderVehCards(){$('vehCards').innerHTML=Object.entries(VEHICLES).map(([id,v])=>`<button type="button" class="tcard${id===myLv.veh?' on':''}" data-veh="${esc(id)}" aria-pressed="${id===myLv.veh}"><b>${esc(v.name)}</b><span>${esc(v.desc)}</span><span>${v.draft?'Draft: only you can see it':'Same speed and handling'}</span></button>`).join('');}
+function vehLabel(v){return `${v.name}${v.draft?' (draft)':''}${v.records===false?' · no records':''}`;}
+function fillVehSelect(sel,veh){const sig=Object.keys(VEHICLES).map(k=>k+':'+vehLabel(VEHICLES[k])).join();
+  if(sel.dataset.sig!==sig){sel.dataset.sig=sig;sel.innerHTML=Object.entries(VEHICLES).map(([id,v])=>`<option value="${esc(id)}">${esc(vehLabel(v))}</option>`).join('');}
+  if(sel.value!==veh)sel.value=veh;}
+function renderVehCards(){fillVehSelect($('vehSel'),myLv.veh);const v=VEHICLES[myLv.veh];
+  $('vehNote').textContent=v?[v.desc,v.draft?'Draft: only you can see it':'',v.records===false?'Laps in it don’t count toward records':'Same speed and handling'].filter(Boolean).join(' · '):'';}
 function setVehicle(v){if(!VEHICLES[v]||v===myLv.veh)return;saveLv();const own=store.get(lvKey(v),null);
   myLv=cleanLv(own?{...own,veh:v,name:myLv.name}:{...myLv,veh:v});saveLv();if(mode==='garage')renderGarage();const me=NET.players.get(NET.myId);if(me)me.lv=myLv;renderVehCards();
   if(carIdOf(v)&&!customCarReady(v)){Promise.all([ensureCustomCar(v),carAssetReady]).then(([a])=>{if(!a)toast('That car could not load, so the stock car will be used');if(!player)rebuildMenuCar();});return;}
@@ -1600,7 +1604,8 @@ loadCustomCars().then(()=>{
   renderVehCards();if(mode==='garage')renderGarage();
   if(carIdOf(myLv.veh))Promise.all([ensureCustomCar(myLv.veh),carAssetReady]).then(()=>{if(!player)rebuildMenuCar();});
 });
-$('vehCards').addEventListener('click',e=>{const t=e.target.closest('[data-veh]');if(t)setVehicle(t.dataset.veh);});
+$('vehSel').addEventListener('change',e=>setVehicle(e.target.value));
+$('gVehSel').addEventListener('change',e=>{setVehicle(e.target.value);renderGarage();});
 function showTrack(){mode='track';syncNightToggle();$('trackSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?2:1);renderTrackCards();renderVehCards();showScreen('scrTrack');}
 function showSetup(){mode='setup';const att=WIZ.flow==='attack';$('setupSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?3:2);
   $('setupTitle').textContent=att?'Time Attack setup':WIZ.flow==='multi'?'Room setup':'Race setup';$('setupTrack').textContent=`${TRACK.name} \u00b7 ${TRACK.miles} \u00b7 ${DIRT?'dirt':'asphalt'}`;

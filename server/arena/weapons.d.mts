@@ -15,6 +15,7 @@ export interface WeaponSpec {
   magazine: number
   reload: number
   range: number
+  zoom: number
   recoil: { pitch: number; yaw: number; recover: number }
 }
 

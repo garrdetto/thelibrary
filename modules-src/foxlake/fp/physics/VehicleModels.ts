@@ -749,7 +749,7 @@ export class VehicleModels {
     view.onDestroy = () => this.live.delete(view);
     const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
     const procedural = !rec && PROCEDURAL.has(kind);
-    view.addWheels(!!rec || procedural, rec?.physics.axles);
+    view.addWheels((!!rec || procedural) && !tuning.flight, rec?.physics.axles);
     view.setStyle(style ?? null);
     if (procedural) { view.fillMower(); return view; }
     const url = rec ? rec.modelUrl : `/models/maplestreet/vehicles/${TUNING[kind] ? kind : 'sedan'}.glb`;

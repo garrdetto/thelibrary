@@ -44,6 +44,10 @@ export type CustomCarSpec = {
   garage?: CarGarage
   numbers: CarNumbers
   lights: { tail: Point3 | null }
+  /** Scales the whole placed car in the race (body, wheels, numbers, lights and its racing footprint). 1 when missing. */
+  size?: number
+  /** False keeps this car's laps off every record board. True when missing. */
+  records?: boolean
 }
 
 export type CarStatus = 'draft' | 'published' | 'retired'
@@ -72,6 +76,26 @@ export const STOCK_CAR = {
 }
 export const STOCK_LENGTH = STOCK_CAR.front - STOCK_CAR.rear
 
+/** The car's race size, with older saves (no `size`) at full size. */
+export const carSize = (spec: { size?: number | null }): number => Math.min(CAR_LIMITS.sizeMax, Math.max(CAR_LIMITS.sizeMin, spec.size ?? 1))
+/** Whether laps in this car may go on the record boards (older saves: yes). */
+export const carCountsForRecords = (spec: { records?: boolean | null }): boolean => spec.records !== false
+
+/**
+ * The racing footprint of a custom body relative to the stock car's (length, width), from its bounds in the car
+ * frame (`min`/`max` as [x, y, z]) and axles, times its race size. Bodies collide where they really are.
+ */
+export function carFootprint(spec: Pick<CustomCarSpec, 'axles' | 'size'>, bounds: { min: number[]; max: number[] }): { length: number; width: number } {
+  let front = bounds.max[0], rear = bounds.min[0], half = Math.max(Math.abs(bounds.min[2]), Math.abs(bounds.max[2]))
+  for (const a of spec.axles) {
+    front = Math.max(front, a.x + a.radius)
+    rear = Math.min(rear, a.x - a.radius)
+    half = Math.max(half, a.halfTrack + a.width / 2)
+  }
+  const size = carSize(spec), fit = (v: number) => Math.min(1.4, Math.max(0.2, v))
+  return { length: fit(((front - rear) * size) / STOCK_LENGTH), width: fit((2 * half * size) / STOCK_CAR.width) }
+}
+
 export const CAR_LIMITS = {
   nameMin: 2,
   nameMax: 32,
@@ -81,6 +105,8 @@ export const CAR_LIMITS = {
   lengthMax: 7,
   wheelRadiusMin: 0.22,
   wheelRadiusMax: 0.5,
+  sizeMin: 0.3,
+  sizeMax: 1.2,
 } as const
 
 export const CUSTOM_CAR_PREFIX = 'custom:'

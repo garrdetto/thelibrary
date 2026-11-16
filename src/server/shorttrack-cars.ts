@@ -35,6 +35,8 @@ export const carSpecSchema = z.object({
     tail: z.object({ y: n(0, 2.5), h: n(0.05, 0.5) }).strict().nullable(),
   }).strict(),
   lights: z.object({ tail: z.object({ x: n(-4, 4), y: n(0, 2.5), z: n(0, 1.5) }).strict().nullable() }).strict(),
+  size: n(CAR_LIMITS.sizeMin, CAR_LIMITS.sizeMax).optional(),
+  records: z.boolean().optional(),
 }).strict()
 
 function toRecord(asset: AssetRow): CustomCarRecord | null {

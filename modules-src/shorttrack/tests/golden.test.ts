@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { ICONIC_FIELD } from '../iconic-schemes.js'
-import { AI_LEVELS, TRACKS } from '../next/sim/config'
-import type { Difficulty, TrackId } from '../next/sim/config'
+import { TRACKS } from '../next/sim/config'
+import type { AiLevel, Difficulty, TrackId } from '../next/sim/config'
 import { rng } from '../next/sim/math'
 import { beginRace, buildGrid, createWorld, simCarFactory, standings, tick } from '../next/sim/race'
 import type { SimCar } from '../next/sim/car'
@@ -33,12 +33,19 @@ const FIELD = ICONIC_FIELD.map((f: { number: string }) => String(f.number ?? '')
 const STATE_KEYS = ['x', 'z', 'h', 'vx', 'vz', 'av', 'steer', 'cross', 'sp'] as const
 
 /** Replays the classic recorder (`recordRace` in main.js) on the TypeScript sim. */
+/** The difficulty table the classic recordings were made with (the live levels have since been made harder). */
+const AI_LEVELS: Record<Difficulty, AiLevel> = {
+  easy: { sk: [1.17, 0.03], dc: 10.7, pass: 33, gb: 1.065, pb: 1.03, lc: 1.9, ag: 0.4, pace: 1.05, vary: 0.010 },
+  medium: { sk: [1.2, 0.025], dc: 11.2, pass: 37, gb: 1.085, pb: 1.05, lc: 1.6, ag: 0.65, pace: 1.025, vary: 0.008 },
+  hard: { sk: [1.23, 0.02], dc: 11.7, pass: 41, gb: 1.105, pb: 1.065, lc: 1.3, ag: 0.85, pace: 1.0, vary: 0.006 },
+}
+
 function replay(f: Fixture, onTick: (tickNo: number, cars: Map<string, SimCar>) => void): Map<string, SimCar> {
   const m = f.meta
   let clock = 1000
   const rand = rng(m.seed)
   const w = createWorld(TRACKS[m.track], rand, () => clock)
-  const grid = buildGrid(rand, [{ id: 'host', number: '7' }], FIELD, { ai: m.ai, diff: m.diff }, m.base, w.cfg.maxCars)
+  const grid = buildGrid(rand, [{ id: 'host', number: '7' }], FIELD, { ai: m.ai, diff: m.diff, levels: AI_LEVELS }, m.base, w.cfg.maxCars)
   beginRace(w, grid, { attack: false, laps: m.laps, mode: 'race', myId: 'host', host: true, make: simCarFactory(() => m.veh !== 'truck') })
   const A = AI_LEVELS[m.diff], host = w.cars.get('host')!
   Object.assign(host, { isPlayer: false, ai: true, skill: A.sk[0] + A.sk[1] / 2, aiDecel: A.dc, passD: A.pass, gripB: A.gb, powB: A.pb, gripB0: A.gb, powB0: A.pb, laneCD: A.lc, aggr: A.ag, lapTgt: m.base ? m.base * A.pace : 0 })
