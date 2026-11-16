@@ -36,6 +36,10 @@ const WALK = ROAD + CURB
 
 interface Gap { x: number; z: number; r: number; full: boolean }
 
+/**
+ * Downtown sidewalks and street paint, and the highway lines. The street profiles were worked out before the World
+ * Editor's edits ran, so only the streets still on the map are painted.
+ */
 export function buildStreetPaint(scene: Scene, land: TelloLand): Mesh[] {
   const profiles = townProfiles(land.doc)
   const batches = new Map<string, Batch>()
@@ -56,7 +60,9 @@ export function buildStreetPaint(scene: Scene, land: TelloLand): Mesh[] {
     })
     b.indices.push(v, v + 1, v + 2, v, v + 2, v + 3)
   }
+  const live = new Set(land.doc.roads)
   for (const [road, prof] of profiles) {
+    if (!live.has(road)) continue
     const gaps = gapsFor(land, road)
     paintStreet(prof, gaps, quad)
     sidewalks(prof, gaps, quad, road.n === 'West Montello Street')

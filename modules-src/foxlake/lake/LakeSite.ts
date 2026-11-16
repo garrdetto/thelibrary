@@ -25,7 +25,7 @@ interface Footprint {
 }
 
 function footprints(land: TelloLand): Footprint[] {
-  return land.doc.buildings.map((b) => {
+  return land.doc.buildings.filter((b) => !b.x).map((b) => {
     let x0 = Infinity
     let z0 = Infinity
     let x1 = -Infinity

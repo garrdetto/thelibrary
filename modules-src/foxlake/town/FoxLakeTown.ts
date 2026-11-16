@@ -88,6 +88,8 @@ export interface TownOptions {
   /** Montello's land (after `foxLakeLand`) and where the lake gameplay stands on it. */
   land: TelloLand
   site: LakeSite
+  /** `?at=`: a Montello map point (metres) to stand on once play starts, the World Editor's "Open in Life Sim". */
+  at?: { x: number; z: number } | null
 }
 
 /** What the places in town (the outfitter's counter) call to open Rack & Reel's gear, wardrobe and catalog. */
@@ -140,10 +142,13 @@ export class FoxLakeTown implements GameExtension {
   private townWait = TOWN_BUILD_DELAY
   private townStarted = false
   private townReady = false
+  /** `?at=` until it has been done: the map point, and where the player was first put (scene) once they have been. */
+  private jump: { x: number; z: number; put: { x: number; z: number } | null } | null
 
   constructor(private readonly opts: TownOptions) {
     this.land = opts.land
     this.start = findMainStreet(opts.land)
+    this.jump = opts.at ? { x: opts.at.x, z: opts.at.z, put: null } : null
   }
 
   // ------------------------------------------------------------ frames
@@ -463,6 +468,7 @@ export class FoxLakeTown implements GameExtension {
     if (this.casinoMounted) this.casino.update(dt)
     this.map?.update(dt)
     this.montello.update(dt)
+    this.jumpToStart()
     this.startMontello(dt)
     this.places?.update(dt)
     this.netAcc += dt
@@ -514,6 +520,38 @@ export class FoxLakeTown implements GameExtension {
         this.townReady = true
       })
       .catch((e) => console.warn('[foxlake] Montello could not be built', e))
+  }
+
+  /**
+   * `?at=`: as play starts, puts the player on foot at that map point with the developer panel's teleport (dry ground
+   * clear of trunks and solids). That runs before Montello's build starts, so its ground and trees go up round the spot
+   * first; the ground is already solid from the loading screen. Once the buildings are solid too, a player who has not
+   * moved and finds a solid where they stand is put on safe ground again from the same point.
+   */
+  private jumpToStart(): void {
+    const jump = this.jump
+    if (!jump || !this.host.playing || !this.dev) return
+    const land = this.land
+    const label = `${Math.round(jump.x)}, ${Math.round(jump.z)}`
+    if (!jump.put) {
+      if (!land.playable(jump.x, jump.z, 2)) {
+        this.host.hud.toast(`${label} is outside Montello's playable area.`, 'warn')
+        this.jump = null
+        return
+      }
+      const outcome = this.dev.goTo(land.toSceneX(jump.x), land.toSceneZ(jump.z), this.host.facing, label)
+      if (outcome.state !== 'done') {
+        if (outcome.state === 'refused') this.host.hud.toast(outcome.text, 'warn')
+        this.jump = null
+        return
+      }
+      jump.put = { x: this.host.player.x, z: this.host.player.z }
+      return
+    }
+    if (!this.townReady) return
+    const p = this.host.player
+    if (!this.host.driving && Math.hypot(p.x - jump.put.x, p.z - jump.put.z) < 1.5 && this.obstacle(p.x, p.z, 0.5)) this.dev.goTo(land.toSceneX(jump.x), land.toSceneZ(jump.z), this.host.facing, label, true)
+    this.jump = null
   }
 
   // ------------------------------------------------------------ the walker

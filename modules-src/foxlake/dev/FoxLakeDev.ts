@@ -286,14 +286,17 @@ export class FoxLakeDev implements DevActions {
     return null
   }
 
-  /** Puts the player on foot at safe ground at or near a scene point, the way H (go home) does. */
-  private goTo(x: number, z: number, facing: number, label: string): Outcome {
+  /**
+   * Puts the player on foot at safe ground at or near a scene point, the way H (go home) does: the panel's teleports,
+   * and the town's `?at=` start (`quiet` leaves out the toast).
+   */
+  goTo(x: number, z: number, facing: number, label: string, quiet = false): Outcome {
     const { host } = this.hooks
     if (host.mode === 'bowfish' || host.mode === 'crew') return { state: 'refused', text: 'Finish the boat ride first.' }
     const spot = this.safeSpot(x, z)
     if (!spot) return { state: 'refused', text: `There is no safe ground to stand on near ${label}.` }
     host.teleport(new Vector3(spot.x, 0, spot.z), facing)
-    host.hud.toast(`Teleported to ${label}.`)
+    if (!quiet) host.hud.toast(`Teleported to ${label}.`)
     return { state: 'done', text: `Teleported to ${label}.`, close: true }
   }
 }

@@ -395,6 +395,11 @@ export function townProfiles(doc: MapDoc): Map<RoadData, StreetProfile> {
 }
 
 /** Every load-time correction, in order; a map is only fixed once, however many lands are made from it. */
+/** Marks a copy of an already fixed map as fixed, so a `TelloLand` built on it does not fix it twice (the World Editor's copies). */
+export function markStreetsFixed(doc: MapDoc): void {
+  fixed.add(doc)
+}
+
 export function fixStreets(doc: MapDoc, grids: MapGrids): void {
   if (fixed.has(doc)) return
   fixed.add(doc)

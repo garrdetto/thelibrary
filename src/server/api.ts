@@ -30,6 +30,7 @@ import { clipart } from './routes/clipart'
 import { groupChat } from './routes/chat'
 import { moduleScores } from './routes/scores'
 import { moduleLayout } from './routes/module-layout'
+import { worldEdits } from './routes/world-edits'
 import { scoreNotices } from './routes/score-notices'
 import { siteChanges } from './routes/site-changes'
 import { songmaker } from './routes/songmaker'
@@ -74,6 +75,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/group-chat': groupChat,
   '/api/module-scores': moduleScores,
   '/api/module-layout': moduleLayout,
+  '/api/world-edits': worldEdits,
   '/api/score-notices': scoreNotices,
   '/api/studio': studio,
   '/api/library': library,

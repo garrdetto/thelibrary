@@ -1,7 +1,9 @@
 /**
  * Montello inside the city limits, built into any host world on Fox Lake's engine: the surveyed ground, the water at
  * every level, the roads and bridges, every building on its real footprint, a tree under every crown in the lidar, the
- * walls at the edge of the playable area and the barricades where roads leave it.
+ * walls at the edge of the playable area and the barricades where roads leave it. The World Editor's edits are already
+ * in the map by the time it builds (`TelloLand`); the walls, lights and guardrail changes they leave in `doc.extras` go
+ * up with `EditedFeatures.ts`.
  *
  * Everything is laid out in Tello's town frame (map x, height, -map z), the frame Fox Lake's builders and Rapier
  * world use. `shift` moves that frame into the host's physics frame: zero in Tello, where Montello is the whole world,
@@ -23,6 +25,7 @@ import { buildStreetPaint } from './StreetPaint'
 import { BUILDING_CELL, buildBuildings, type ApartBuilding } from './Buildings'
 import { buildBarricades } from './Barricades'
 import { buildGuardrails } from './Guardrails'
+import { buildEditedFeatures, railRuns } from './EditedFeatures'
 import { buildStorefronts } from './Storefronts'
 import { buildStreetDressing } from './StreetDressing'
 import { buildIntersection, type Intersection } from './Intersection'
@@ -129,8 +132,10 @@ export class Montello {
     await pace('kits')
     buildBarricades(this.root, s.mats, this.sink, land, s.openExit)
     await pace('buildBarricades')
-    buildGuardrails(this.root, s.mats, this.sink, land)
+    buildGuardrails(this.root, s.mats, this.sink, land, railRuns(land))
     await pace('buildGuardrails')
+    buildEditedFeatures(this.root, s.mats, this.sink, land)
+    await pace('buildEditedFeatures')
     await buildStorefronts(this.root, s.mats, land, downtownKit, () => pace())
     await pace('buildStorefronts')
     await buildLandmarks(this.root, s.mats, this.sink, land)
