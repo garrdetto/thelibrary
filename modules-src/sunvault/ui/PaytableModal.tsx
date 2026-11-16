@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { JACKPOT_MULTIPLIERS, JACKPOT_TIERS, LINE_PAYS, PAYLINES, PICK_ODDS, SCATTER_PAYS, SYMBOLS, Sym, ZONE_MULTIPLIERS } from '../engine/paytable'
 import { formatMoney } from '../format'
+import { DAILY_BASE_CENTS, DAILY_STEP_CENTS, dailyAmount } from '../engine/daily'
 
 interface PaytableModalProps {
   open: boolean
@@ -116,6 +117,16 @@ export function PaytableModal({ open, bet, atlasUrl, onClose }: PaytableModalPro
           <h3 className="font-display text-sm font-bold uppercase tracking-[0.2em] text-gold-400">Jackpot Pick</h3>
           <p className="mt-1 text-sm text-sand-200">
             Any paid spin can open the Jackpot Pick at random (about 1 in {Math.round(1 / PICK_ODDS)} spins). Uncover tiles on a 3×3 board; the first jackpot to show three times is won. Every pick ends in a jackpot.
+          </p>
+        </section>
+
+        <section className="mt-5 rounded-xl border border-gold-700/40 bg-night-700/40 p-3">
+          <h3 className="font-display text-sm font-bold uppercase tracking-[0.2em] text-gold-400">Daily vault &amp; high scores</h3>
+          <p className="mt-1 text-sm text-sand-200">
+            Signed in on the library, your balance is kept on the server. Collect {formatMoney(DAILY_BASE_CENTS)} once a day, plus {formatMoney(DAILY_STEP_CENTS)} for every day in a row before it: five days in a row makes the next collect {formatMoney(dailyAmount(5))}. Miss a day and the streak starts over. Days turn over at midnight Central time.
+          </p>
+          <p className="mt-2 text-sm text-sand-200">
+            Every spin on a saved balance counts toward three boards below the vault: the biggest single win, the biggest win as a multiple of its bet, and the biggest total won. Practice mode and forced outcomes never count.
           </p>
         </section>
 

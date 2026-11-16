@@ -29,6 +29,9 @@ export const scoredModules = {
   'proskater-blitz': { title: 'Timed Blitz', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Blitz', note: 'One minute at any park. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
   'proskater-showdown': { title: 'Half-Pipe Showdown', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Showdown', note: 'Sixty seconds, with tricks started inside the half-pipe zone scoring double. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
   'proskater-free': { title: 'Biggest Combos', metric: 'Combo', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Free Skate', note: 'The biggest single combo banked in Free Skate. Saved the moment the combo lands.' },
+  'sunvault-win': { title: 'Biggest Wins', metric: 'Win', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000, parent: 'sunvault', label: 'Biggest win', serverOnly: true, note: 'The most won from one spin, counting every free spin, respin and jackpot it led to. Recorded by the vault on signed-in balances; forced outcomes never count.' },
+  'sunvault-multiple': { title: 'Biggest Multipliers', metric: 'Times bet', order: 'desc', unit: 'multiple', min: 1, max: 100_000_000, parent: 'sunvault', label: 'Biggest ×', serverOnly: true, note: "One spin's total win divided by its bet, so a small bet can top this board. Recorded by the vault on signed-in balances." },
+  'sunvault-total': { title: 'Biggest Total Wins', metric: 'Total won', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000_000, parent: 'sunvault', label: 'Total won', serverOnly: true, note: 'Everything you have won in Sun Vault, added up across every spin. Bets are not subtracted.' },
 } as const
 
 export type ScoredModuleId = keyof typeof scoredModules
@@ -36,6 +39,7 @@ export type ScoredModuleId = keyof typeof scoredModules
 export const scoreBoardGroups: Partial<Record<string, ScoredModuleId[]>> = {
   greible: ['greible-6', 'greible-7', 'greible-8'],
   proskater: ['proskater-blitz', 'proskater-showdown', 'proskater-story', 'proskater-free'],
+  sunvault: ['sunvault-win', 'sunvault-multiple', 'sunvault-total'],
 }
 
 export function scoreBoardParent(module: ScoredModuleId): string {
@@ -55,6 +59,10 @@ export function hasScoreBoard(moduleId: string) {
 export type ModuleScore = { username: string; value: number; date: string; detail?: string | null }
 
 export type ModuleScoreBoard = { module: ScoredModuleId; records: ModuleScore[]; personalBest: number | null; signedIn: boolean }
+
+export function isServerOnlyBoard(module: ScoredModuleId): boolean {
+  return 'serverOnly' in scoredModules[module]
+}
 
 export function isScoredModule(value: string): value is ScoredModuleId {
   return Object.prototype.hasOwnProperty.call(scoredModules, value)
@@ -78,5 +86,7 @@ export function formatScore(module: ScoredModuleId, value: number) {
   if (unit === 'wpm') return `${value.toLocaleString()} wpm`
   if (unit === 'dollars') return `$${value.toLocaleString()}`
   if (unit === 'hits') return `${value.toLocaleString()} hits`
+  if (unit === 'cents') return `$${(value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  if (unit === 'multiple') return `${(value / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}×`
   return value.toLocaleString()
 }

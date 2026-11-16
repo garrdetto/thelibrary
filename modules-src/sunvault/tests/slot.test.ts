@@ -4,6 +4,7 @@ import { BASE_STRIPS, BASE_STRIP_COUNTS, CELLS, FREE_STRIPS, JACKPOT_MULTIPLIERS
 import { createRng } from '../engine/rng'
 import { SlotEngine, SpinError, anticipationFor, evaluateLines, evaluateScatter, type Cell, type Grid, type SpinResult } from '../engine/slotEngine'
 import { simulate } from '../engine/simulate'
+import { dailyStatus, previousDay, vaultDay } from '../engine/daily'
 
 const cell = (sym: Sym, prize: CoinPrize | null = null, value = 0): Cell => ({ sym, prize, value })
 const gridOf = (rows: Sym[][]): Grid => Array.from({ length: REELS }, (_, reel) => Array.from({ length: ROWS }, (_, row) => cell(rows[row][reel])))
@@ -237,4 +238,44 @@ test('long-run return sits near 95%', () => {
   assert.ok(report.hitRate > 0.2 && report.hitRate < 0.4, `hit rate ${report.hitRate}`)
   assert.ok(report.respinEvery > 60 && report.respinEvery < 250, `respin every ${report.respinEvery}`)
   assert.ok(report.freeEvery > 80 && report.freeEvery < 300, `free every ${report.freeEvery}`)
+})
+
+test('an engine restored from its saved state continues identically', () => {
+  const a = new SlotEngine({ seed: 404, balance: 50000 })
+  for (let k = 0; k < 40; k++) finishRound(a, a.spin(100), 100)
+  a.spin(100, 'respin')
+  const saved = JSON.parse(JSON.stringify(a.toState()))
+  const b = SlotEngine.fromState(saved)
+  for (let k = 0; k < 60; k++) {
+    const left = a.spin(100)
+    const right = b.spin(100)
+    assert.deepEqual(right.grid, left.grid)
+    assert.equal(right.stepWin, left.stepWin)
+    assert.deepEqual(right.state, left.state)
+  }
+})
+
+test('daily collect pays $500 plus $50 for every consecutive day before today', () => {
+  const noon = (day: string) => Date.parse(`${day}T18:00:00Z`)
+  assert.equal(vaultDay(Date.parse('2026-11-16T05:30:00Z')), '2026-11-15')
+  assert.equal(previousDay('2026-03-01'), '2026-02-28')
+  const first = dailyStatus(null, 0, noon('2026-11-10'))
+  assert.equal(first.canCollect, true)
+  assert.equal(first.amount, 50000)
+  let streak = 0
+  let last: string | null = null
+  const paid: number[] = []
+  for (const day of ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15']) {
+    const status = dailyStatus(last, streak, noon(day))
+    assert.equal(status.canCollect, true)
+    paid.push(status.amount)
+    streak = status.nextStreak
+    last = status.today
+  }
+  assert.deepEqual(paid, [50000, 55000, 60000, 65000, 70000, 75000])
+  const again = dailyStatus(last, streak, noon('2026-11-15'))
+  assert.equal(again.canCollect, false)
+  const broken = dailyStatus(last, streak, noon('2026-11-17'))
+  assert.equal(broken.streak, 0)
+  assert.equal(broken.amount, 50000)
 })

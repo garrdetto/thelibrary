@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SlotAudio } from '../audio/synth'
+import type { DailyStatus } from '../engine/daily'
 import { BET_LEVELS_CENTS, type JackpotTier } from '../engine/paytable'
-import { SlotEngine, type EngineSnapshot, type ForceOutcome, type JackpotPick } from '../engine/slotEngine'
+import { SlotEngine, type EngineSnapshot, type ForceOutcome, type JackpotPick, type SpinResult } from '../engine/slotEngine'
+import { fetchVault, vaultCollect, vaultSpin, type VaultAccount } from '../net/vaultApi'
 import { Director, type Banner } from '../play/director'
 import type { Scene } from '../render/scene'
 import type { RenderOptions } from '../render/webgpuRenderer'
 import { formatMoney } from '../format'
 import { BannerOverlay } from './BannerOverlay'
 import { ControlBar } from './ControlBar'
+import { DailyCollect } from './DailyCollect'
 import { DebugPanel, type EffectTest } from './DebugPanel'
 import { JackpotBar } from './JackpotBar'
 import { JackpotPickBoard } from './JackpotPickBoard'
@@ -15,6 +18,10 @@ import { PaytableModal } from './PaytableModal'
 import { SlotCanvas, type StageFailure, type StageReady } from './SlotCanvas'
 
 type StageState = { status: 'loading' } | { status: 'ready'; adapter: string } | { status: 'failed'; failure: StageFailure }
+type AccountState =
+  | { status: 'checking' }
+  | { status: 'guest' }
+  | { status: 'member'; admin: boolean; daily: DailyStatus; receivedAt: number }
 
 declare global {
   interface Window {
@@ -24,6 +31,11 @@ declare global {
 
 const DEFAULT_BET_INDEX = 1
 const params = new URLSearchParams(window.location.search)
+const RECORD_LABELS: Record<string, string> = {
+  'sunvault-win': 'Biggest Wins',
+  'sunvault-multiple': 'Biggest Multipliers',
+  'sunvault-total': 'Biggest Total Wins',
+}
 
 export function App() {
   const engine = useMemo(() => new SlotEngine(), [])
@@ -36,8 +48,14 @@ export function App() {
   const betIndexRef = useRef(DEFAULT_BET_INDEX)
   const pendingForceRef = useRef<ForceOutcome | null>(null)
   const autoTimer = useRef(0)
+  const remoteRef = useRef(false)
+  const vaultSnapshotRef = useRef<EngineSnapshot | null>(null)
+  const resumeRef = useRef<VaultAccount['resume']>(null)
+  const resumedRef = useRef(false)
 
   const [stage, setStage] = useState<StageState>({ status: 'loading' })
+  const [account, setAccount] = useState<AccountState>({ status: 'checking' })
+  const [practice, setPractice] = useState(false)
   const [snapshot, setSnapshot] = useState<EngineSnapshot>(() => engine.snapshot())
   const [balance, setBalance] = useState(snapshot.balance)
   const [betIndex, setBetIndex] = useState(DEFAULT_BET_INDEX)
@@ -56,15 +74,57 @@ export function App() {
   const [flashTier, setFlashTier] = useState<JackpotTier | null>(null)
   const [anticipating, setAnticipating] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [recordNote, setRecordNote] = useState<string | null>(null)
   const [pendingForce, setPendingForce] = useState<ForceOutcome | null>(null)
   const [activePick, setActivePick] = useState<{ pick: JackpotPick; resolve: () => void } | null>(null)
+  const [collecting, setCollecting] = useState(false)
   const pickActiveRef = useRef(false)
   pickActiveRef.current = activePick !== null
 
   const bet = BET_LEVELS_CENTS[betIndex]
+  const member = account.status === 'member'
+  const remote = member && !practice
   betIndexRef.current = betIndex
   autoRef.current = auto
   turboRef.current = turbo
+  remoteRef.current = remote
+
+  const showSnapshot = useCallback((next: EngineSnapshot, withBalance = true) => {
+    setSnapshot(next)
+    if (withBalance) setBalance(next.balance)
+  }, [])
+
+  const applyAccount = useCallback((hello: VaultAccount) => {
+    vaultSnapshotRef.current = hello.snapshot
+    setAccount({ status: 'member', admin: hello.admin, daily: hello.daily, receivedAt: Date.now() })
+  }, [])
+
+  const refreshAccount = useCallback(async () => {
+    const hello = await fetchVault()
+    if (!hello.signedIn) {
+      setAccount({ status: 'guest' })
+      return
+    }
+    applyAccount(hello)
+    if (!busyRef.current && remoteRef.current) showSnapshot(hello.snapshot)
+  }, [applyAccount, showSnapshot])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchVault().then((hello) => {
+      if (cancelled) return
+      if (!hello.signedIn) {
+        setAccount({ status: 'guest' })
+        return
+      }
+      applyAccount(hello)
+      resumeRef.current = hello.resume
+      showSnapshot(hello.snapshot)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [applyAccount, showSnapshot])
 
   useEffect(() => () => {
     window.clearTimeout(autoTimer.current)
@@ -101,6 +161,19 @@ export function App() {
     setAuto(false)
   }, [])
 
+  const currentSnapshot = useCallback((): EngineSnapshot => {
+    if (remoteRef.current) return vaultSnapshotRef.current ?? engine.snapshot()
+    return engine.snapshot()
+  }, [engine])
+
+  const announceRecords = useCallback((records: string[]) => {
+    if (records.length === 0) return
+    const names = records.map((board) => RECORD_LABELS[board] ?? board)
+    setRecordNote(`New high score: ${names.join(' and ')}`)
+    window.setTimeout(() => setRecordNote(null), 6000)
+    if (window.parent !== window) window.parent.postMessage({ type: 'tl-score-saved', module: records[0] }, window.location.origin)
+  }, [])
+
   const run = useCallback(async (initialForce: ForceOutcome | null) => {
     const director = directorRef.current
     const scene = sceneRef.current
@@ -110,8 +183,11 @@ export function App() {
       return
     }
     const currentBet = BET_LEVELS_CENTS[betIndexRef.current]
-    if (!engine.inFeature && !engine.canSpin(currentBet)) {
-      setNotice('Not enough play credits for this bet. Lower the bet or add credits from the developer panel.')
+    const start = currentSnapshot()
+    if (start.mode === 'base' && start.balance < currentBet) {
+      setNotice(remoteRef.current
+        ? 'Not enough credits for this bet. Lower the bet, collect your daily credits, or turn on practice mode in the developer panel.'
+        : 'Not enough practice credits for this bet. Lower the bet or add credits from the developer panel.')
       setAuto(false)
       return
     }
@@ -123,18 +199,30 @@ export function App() {
     pendingForceRef.current = null
     setPendingForce(null)
     try {
+      let last: SpinResult | null = null
       do {
-        const before = engine.snapshot()
-        const result = engine.spin(currentBet, force)
+        const before = currentSnapshot()
+        const useServer = remoteRef.current
+        let records: string[] = []
+        let result: SpinResult
+        if (useServer) {
+          const response = await vaultSpin(currentBet, force)
+          result = response.result
+          records = response.records
+          vaultSnapshotRef.current = result.state
+        } else {
+          result = engine.spin(currentBet, force)
+        }
         force = null
-        if (result.mode === 'base') setBalance(before.balance - currentBet)
+        last = result
+        if (result.mode === 'base') setBalance(before.balance - result.bet)
         setSnapshot(result.state)
         if (result.state.mode !== 'respin' && result.mode !== 'respin') setRespins(null)
         await director.present(result, turboRef.current)
-        setBalance(result.state.balance)
-        setSnapshot(result.state)
+        showSnapshot(result.state)
         if (result.state.mode !== 'respin') setRespins(null)
-        if (engine.inFeature) {
+        announceRecords(records)
+        if (result.state.mode !== 'base') {
           await scene.wait(turboRef.current ? 0.2 : 0.5)
           if (pendingForceRef.current) {
             force = pendingForceRef.current
@@ -142,10 +230,11 @@ export function App() {
             setPendingForce(null)
           }
         }
-      } while (engine.inFeature)
+      } while (last && last.state.mode !== 'base')
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'That spin could not be played.')
       setAuto(false)
+      if (remoteRef.current) void refreshAccount()
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -155,7 +244,29 @@ export function App() {
         if (autoRef.current) void run(null)
       }, turboRef.current ? 150 : 350)
     }
-  }, [audio, engine])
+  }, [announceRecords, audio, currentSnapshot, engine, refreshAccount, showSnapshot])
+
+  useEffect(() => {
+    if (stage.status !== 'ready' || account.status === 'checking' || resumedRef.current) return
+    resumedRef.current = true
+    const scene = sceneRef.current
+    const vault = vaultSnapshotRef.current
+    if (!scene || account.status !== 'member' || !vault || vault.mode === 'base') return
+    const resume = resumeRef.current
+    const continueFeature = async () => {
+      if (vault.mode === 'respin' && resume) {
+        await scene.enterCells(resume.grid, resume.held)
+        setRespins({ left: vault.respinsLeft, reset: false })
+      } else if (vault.mode === 'free') {
+        scene.setTheme('free')
+        scene.setZone(vault.zoneLevel, true)
+      }
+      setNotice('Picking up the feature you left running.')
+      await scene.wait(1.2)
+      void run(null)
+    }
+    void continueFeature()
+  }, [stage.status, account.status, run])
 
   const spinPressed = useCallback(() => {
     if (autoRef.current) {
@@ -181,8 +292,8 @@ export function App() {
   }, [spinPressed, paytableOpen])
 
   useEffect(() => {
-    if (sceneRef.current && !engine.inFeature) sceneRef.current.bet = bet
-  }, [bet, engine])
+    if (sceneRef.current && snapshot.mode === 'base') sceneRef.current.bet = bet
+  }, [bet, snapshot.mode])
 
   const toggleAuto = () => {
     audio.click()
@@ -196,14 +307,56 @@ export function App() {
     if (!busyRef.current) void run(null)
   }
 
+  const forceLocked = remote && account.status === 'member' && !account.admin
+    ? 'Forcing is off on your saved balance so the high scores stay fair. Turn on practice mode to force features with practice credits.'
+    : null
+
   const force = (outcome: ForceOutcome) => {
-    if (stage.status !== 'ready') return
+    if (stage.status !== 'ready' || forceLocked) return
     if (busyRef.current) {
       pendingForceRef.current = outcome
       setPendingForce(outcome)
       return
     }
     void run(outcome)
+  }
+
+  const togglePractice = () => {
+    if (busyRef.current || snapshot.mode !== 'base' || !member) return
+    const next = !practice
+    setPractice(next)
+    remoteRef.current = !next
+    setAuto(false)
+    if (next) showSnapshot(engine.snapshot())
+    else if (vaultSnapshotRef.current) showSnapshot(vaultSnapshotRef.current)
+    setNotice(next ? 'Practice mode: practice credits, forcing allowed, nothing is saved or ranked.' : null)
+  }
+
+  const collect = async () => {
+    if (account.status !== 'member' || busyRef.current || collecting) return
+    audio.unlock()
+    setCollecting(true)
+    try {
+      const response = await vaultCollect()
+      applyAccount(response)
+      if (remoteRef.current) showSnapshot(response.snapshot)
+      audio.jackpot('mini')
+      sceneRef.current?.coinFountain(80)
+      setBanner({
+        id: Date.now(),
+        kicker: response.streak > 1 ? `${response.streak}-day streak` : 'Daily collect',
+        title: 'DAILY VAULT',
+        amount: response.collected,
+        subtitle: `Come back tomorrow for ${formatMoney(response.daily.amount)}.`,
+        tone: 'gold',
+      })
+      window.setTimeout(() => setBanner((current) => (current?.title === 'DAILY VAULT' ? null : current)), 3200)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'The daily collect could not be opened.')
+      void refreshAccount()
+    } finally {
+      setCollecting(false)
+    }
   }
 
   const effect = (kind: EffectTest) => {
@@ -225,7 +378,7 @@ export function App() {
     : snapshot.mode === 'respin'
       ? 'Vault Respins'
       : null
-  const ready = stage.status === 'ready'
+  const ready = stage.status === 'ready' && account.status !== 'checking'
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-night-900 font-body text-sand-100">
@@ -234,6 +387,17 @@ export function App() {
         flashing={flashTier}
         muted={muted}
         debugOpen={debugOpen}
+        daily={
+          <DailyCollect
+            status={account.status}
+            daily={account.status === 'member' ? account.daily : null}
+            receivedAt={account.status === 'member' ? account.receivedAt : 0}
+            busy={busy}
+            collecting={collecting}
+            onCollect={() => void collect()}
+            onExpired={() => void refreshAccount()}
+          />
+        }
         onToggleMute={() => {
           audio.unlock()
           audio.setMuted(!muted)
@@ -250,7 +414,7 @@ export function App() {
           </div>
         )}
         {stage.status === 'failed' && <StageFailureCard failure={stage.failure} />}
-        {ready && (
+        {stage.status === 'ready' && (
           <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-col gap-1.5">
             {snapshot.mode === 'free' && (
               <Chip tone="violet">
@@ -267,6 +431,7 @@ export function App() {
               </Chip>
             )}
             {anticipating && <Chip tone="ember">Reel 5…</Chip>}
+            {recordNote && <Chip tone="gold">{recordNote}</Chip>}
           </div>
         )}
         {activePick && (
@@ -305,20 +470,23 @@ export function App() {
           fps={fps}
           adapter={stage.status === 'ready' ? stage.adapter : 'WebGPU'}
           pendingForce={pendingForce}
+          forceLocked={forceLocked}
+          practice={{ available: member, on: practice, locked: busy || snapshot.mode !== 'base' }}
           onClose={() => setDebugOpen(false)}
           onForce={force}
+          onTogglePractice={togglePractice}
           onOptions={setRenderOptions}
           onEffect={effect}
-          onAddCredits={() => {
+          onAddCredits={remote ? null : () => {
             const next = engine.addCredits(100000)
-            setSnapshot(next)
-            setBalance((value) => value + 100000)
+            showSnapshot(next)
             setNotice(null)
           }}
         />
       </main>
       <ControlBar
         balance={balance}
+        balanceLabel={remote ? 'Balance' : 'Practice balance'}
         bet={bet}
         canLowerBet={betIndex > 0}
         canRaiseBet={betIndex < BET_LEVELS_CENTS.length - 1}

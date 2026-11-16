@@ -159,6 +159,27 @@ export class SpinError extends Error {
   }
 }
 
+export interface EngineState {
+  version: 1
+  rng: number[]
+  mode: Mode
+  balance: number
+  bet: number
+  freeSpinsLeft: number
+  freeSpinsTotal: number
+  freeTotal: number
+  zoneLevel: number
+  respinsLeft: number
+  respinGrid: Grid | null
+  held: boolean[][]
+  respinReturn: Mode
+  pendingFreeSpins: number
+  featureWin: number
+  forceFill: boolean
+  counter: number
+  stats: Stats
+}
+
 export interface EngineOptions {
   seed?: number | readonly number[]
   balance?: number
@@ -274,6 +295,49 @@ export class SlotEngine {
   constructor(options: EngineOptions = {}) {
     this.rng = createRng(options.seed ?? cryptoSeed())
     this.balance = options.balance ?? STARTING_BALANCE_CENTS
+  }
+
+  toState(): EngineState {
+    return {
+      version: 1,
+      rng: [...this.rng.state()],
+      mode: this.mode,
+      balance: this.balance,
+      bet: this.bet,
+      freeSpinsLeft: this.freeSpinsLeft,
+      freeSpinsTotal: this.freeSpinsTotal,
+      freeTotal: this.freeTotal,
+      zoneLevel: this.zoneLevel,
+      respinsLeft: this.respinsLeft,
+      respinGrid: this.respinGrid ? cloneGrid(this.respinGrid) : null,
+      held: this.held.map((reel) => [...reel]),
+      respinReturn: this.respinReturn,
+      pendingFreeSpins: this.pendingFreeSpins,
+      featureWin: this.featureWin,
+      forceFill: this.forceFill,
+      counter: this.counter,
+      stats: { ...this.stats, jackpots: { ...this.stats.jackpots } },
+    }
+  }
+
+  static fromState(state: EngineState): SlotEngine {
+    const engine = new SlotEngine({ seed: state.rng, balance: state.balance })
+    engine.mode = state.mode
+    engine.bet = state.bet
+    engine.freeSpinsLeft = state.freeSpinsLeft
+    engine.freeSpinsTotal = state.freeSpinsTotal
+    engine.freeTotal = state.freeTotal
+    engine.zoneLevel = state.zoneLevel
+    engine.respinsLeft = state.respinsLeft
+    engine.respinGrid = state.respinGrid ? cloneGrid(state.respinGrid) : null
+    engine.held = state.held.map((reel) => [...reel])
+    engine.respinReturn = state.respinReturn
+    engine.pendingFreeSpins = state.pendingFreeSpins
+    engine.featureWin = state.featureWin
+    engine.forceFill = state.forceFill
+    engine.counter = state.counter
+    engine.stats = { ...emptyStats(), ...state.stats, jackpots: { ...emptyStats().jackpots, ...state.stats.jackpots } }
+    return engine
   }
 
   snapshot(): EngineSnapshot {

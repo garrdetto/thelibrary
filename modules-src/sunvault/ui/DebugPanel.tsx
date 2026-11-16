@@ -14,11 +14,14 @@ interface DebugPanelProps {
   fps: number
   adapter: string
   pendingForce: ForceOutcome | null
+  forceLocked: string | null
+  practice: { available: boolean; on: boolean; locked: boolean }
   onClose: () => void
   onForce: (outcome: ForceOutcome) => void
+  onTogglePractice: () => void
   onOptions: (options: RenderOptions) => void
   onEffect: (effect: EffectTest) => void
-  onAddCredits: () => void
+  onAddCredits: (() => void) | null
 }
 
 const FORCES: readonly { outcome: ForceOutcome; label: string; hint: string }[] = [
@@ -93,14 +96,24 @@ export function DebugPanel(props: DebugPanelProps) {
                 key={force.outcome}
                 type="button"
                 onClick={() => props.onForce(force.outcome)}
-                className={`rounded-lg border px-3 py-2 text-left transition focus-visible:outline-2 focus-visible:outline-gold-300 ${props.pendingForce === force.outcome ? 'border-gold-300 bg-gold-500/20' : 'border-gold-700/40 bg-night-700 hover:border-gold-400'}`}
+                disabled={Boolean(props.forceLocked)}
+                className={`rounded-lg border px-3 py-2 text-left transition focus-visible:outline-2 focus-visible:outline-gold-300 ${props.pendingForce === force.outcome ? 'border-gold-300 bg-gold-500/20' : 'border-gold-700/40 bg-night-700 hover:border-gold-400'} disabled:cursor-not-allowed disabled:opacity-40`}
               >
                 <span className="block font-semibold text-gold-200">{force.label}</span>
                 <span className="block text-xs text-sand-300">{force.hint}</span>
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-xs text-sand-300/80">Spins straight away when idle; during a feature it applies to the next step.</p>
+          <p className="mt-1.5 text-xs text-sand-300/80">{props.forceLocked ?? 'Spins straight away when idle; during a feature it applies to the next step.'}</p>
+          {props.practice.available && (
+            <label className="mt-2 flex cursor-pointer items-center justify-between rounded-md border border-gold-700/40 bg-night-700 px-3 py-2">
+              <span>
+                <span className="block font-semibold text-gold-200">Practice mode</span>
+                <span className="block text-xs text-sand-300">Practice credits, forcing allowed, nothing saved or ranked.</span>
+              </span>
+              <input type="checkbox" checked={props.practice.on} disabled={props.practice.locked} onChange={props.onTogglePractice} className="h-4 w-4 accent-[#f8c64c]" />
+            </label>
+          )}
         </section>
 
         <section>
@@ -134,9 +147,9 @@ export function DebugPanel(props: DebugPanelProps) {
             <dt className="text-sand-300">Vault respins</dt><dd>{stats.respinTriggers}</dd>
             <dt className="text-sand-300">Jackpots</dt><dd>{stats.jackpots.mini}/{stats.jackpots.minor}/{stats.jackpots.major}/{stats.jackpots.grand}</dd>
           </dl>
-          <button type="button" onClick={props.onAddCredits} className="mt-2 w-full rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300">
-            Add $1,000 play credits
-          </button>
+          {props.onAddCredits && <button type="button" onClick={props.onAddCredits} className="mt-2 w-full rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300">
+            Add $1,000 practice credits
+          </button>}
         </section>
 
         <section>

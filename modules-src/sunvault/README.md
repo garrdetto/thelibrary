@@ -18,6 +18,10 @@ An original Egyptian-temple video reel module for the library, played on play cr
 - Jackpot Pick: about 1 in 600 paid spins opens a 3×3 board. The first jackpot revealed three times is won. The engine fixes the reveal order in advance, so the result doesn't depend on which tiles are clicked.
 - Reel 5 runs a 2.5 s anticipation spin when reels 1–4 show two scatters or five coins.
 
+## Accounts, daily collect and high scores
+
+Signed in on the library, spins run on the Worker (`/api/sunvault`) against a balance saved in D1, so balances and records can't be forged from the page. Members collect $500 once a day plus $50 for every consecutive day before it (five days in a row makes the next collect $750). When a round ends, the Worker records it on three boards shown under the frame: biggest win, biggest win as a multiple of the bet, and total won. Guests, and members who turn on practice mode in the developer panel, run the same engine in the page with practice credits; forcing works there and nothing is saved or ranked. The administrator can force outcomes on the saved balance, and forced rounds are never ranked.
+
 ## Tuning
 
 Change the numbers in `engine/paytable.ts`, then check the return:

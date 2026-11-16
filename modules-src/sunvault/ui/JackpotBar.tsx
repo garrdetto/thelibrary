@@ -14,12 +14,13 @@ interface JackpotBarProps {
   flashing: JackpotTier | null
   muted: boolean
   debugOpen: boolean
+  daily: React.ReactNode
   onToggleMute: () => void
   onOpenPaytable: () => void
   onToggleDebug: () => void
 }
 
-export function JackpotBar({ bet, flashing, muted, debugOpen, onToggleMute, onOpenPaytable, onToggleDebug }: JackpotBarProps) {
+export function JackpotBar({ bet, flashing, muted, debugOpen, daily, onToggleMute, onOpenPaytable, onToggleDebug }: JackpotBarProps) {
   return (
     <header className="relative z-10 flex flex-wrap items-center gap-2 border-b border-gold-700/40 bg-gradient-to-b from-night-800 to-night-900 px-3 py-2 sm:gap-3 sm:px-4">
       <h1 className="font-display text-lg font-black tracking-[0.18em] text-transparent bg-clip-text bg-gradient-to-b from-gold-200 via-gold-400 to-gold-700 sm:text-xl">
@@ -41,6 +42,7 @@ export function JackpotBar({ bet, flashing, muted, debugOpen, onToggleMute, onOp
         ))}
       </ul>
       <div className="ml-auto flex items-center gap-1 sm:ml-2">
+        {daily}
         <IconButton label="Paytable and rules" onClick={onOpenPaytable}>
           <BookOpen className="h-4 w-4" aria-hidden />
         </IconButton>

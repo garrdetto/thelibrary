@@ -4,6 +4,7 @@ import { useRollingNumber } from './useRollingNumber'
 
 interface ControlBarProps {
   balance: number
+  balanceLabel: string
   bet: number
   canLowerBet: boolean
   canRaiseBet: boolean
@@ -27,7 +28,7 @@ export function ControlBar(props: ControlBarProps) {
   return (
     <footer className="relative z-10 border-t border-gold-700/40 bg-gradient-to-t from-night-900 to-night-800 px-3 py-2 sm:px-4 sm:py-3">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <Readout label="Balance" value={formatMoney(props.balance)} />
+        <Readout label={props.balanceLabel} value={formatMoney(props.balance)} />
         <div className="flex flex-col items-center">
           <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sand-300/80">Total bet</span>
           <div className="mt-0.5 flex items-center gap-1.5">
