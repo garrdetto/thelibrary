@@ -20,6 +20,8 @@ import type { Ground, OutsideLand, TerrainShape } from '../rackreel/world/Terrai
 import { COVER } from './data/MapData'
 import type { BridgeData, Frame, MapDoc, MapGrids } from './data/MapData'
 import { fixStreets } from './data/Streets'
+import { applyWorldEdits, type EditReport } from './edits/Apply'
+import type { WorldEdits } from './edits/WorldEdits'
 
 /** How far in from the map's edge anyone may go. */
 export const EDGE_MARGIN = 36
@@ -44,10 +46,16 @@ export class TelloLand {
   /** scene = map + offset. */
   readonly offset: XZ
   private readonly decks: Deck[] = []
+  /** What the World Editor's edits did (null when there were none). */
+  readonly edits: EditReport | null = null
 
-  /** `at` is where the middle of the map lies in the scene: by default a whole map width north of the origin (Tello). */
-  constructor(readonly doc: MapDoc, readonly grids: MapGrids, at?: XZ) {
+  /**
+   * `at` is where the middle of the map lies in the scene: by default a whole map width north of the origin (Tello).
+   * `edits` (the World Editor's published edits) are replayed after Tello's own fixes and before the bridges are read.
+   */
+  constructor(readonly doc: MapDoc, readonly grids: MapGrids, at?: XZ, edits?: WorldEdits | null) {
     fixStreets(doc, grids)
+    if (edits && edits.ops.length) this.edits = applyWorldEdits(doc, grids, edits)
     const f = doc.frame
     this.frame = f
     this.side = grids.side
@@ -58,6 +66,12 @@ export class TelloLand {
     const centre = at ?? { x: 0, z: f.size }
     this.offset = { x: centre.x - (f.x0 + f.size / 2), z: centre.z - (f.z0 + f.size / 2) }
     for (const b of doc.bridges) this.decks.push(deckOf(b))
+  }
+
+  /** Reads the bridge decks again (after edits moved them). */
+  refreshDecks(): void {
+    this.decks.length = 0
+    for (const b of this.doc.bridges) this.decks.push(deckOf(b))
   }
 
   /** True inside the map, `margin` metres in from its edge. */

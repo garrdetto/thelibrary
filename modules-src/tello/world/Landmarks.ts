@@ -59,7 +59,7 @@ export function facingEdge(p: number[], face: [number, number]): { ax: number; a
  * bollards and a concrete apron to the street, two flagpoles and black iron fence along the lawn.
  */
 function municipalBuilding(chunks: ChunkedBuilders, mats: Mats, sink: StaticSink, land: TelloLand): boolean {
-  const b = land.doc.buildings.find((x) => x.n === 'Montello Fire Department')
+  const b = land.doc.buildings.find((x) => !x.x && x.n === 'Montello Fire Department')
   if (!b) return false
   const e = facingEdge(b.p, [1, 0])
   if (!e) return false
@@ -248,7 +248,7 @@ export function textured(mats: Mats, name: string, canvas: HTMLCanvasElement): M
 
 /** The mural over the river wall of its building: from just above the lowest ground to the eave. */
 function muralWall(chunks: ChunkedBuilders, mats: Mats, land: TelloLand): boolean {
-  const b = land.doc.buildings.find((x) => Math.hypot(x.r[0][0] - MURAL.at[0], x.r[0][1] - MURAL.at[1]) < 1)
+  const b = land.doc.buildings.find((x) => !x.x && Math.hypot(x.r[0][0] - MURAL.at[0], x.r[0][1] - MURAL.at[1]) < 1)
   if (!b) return false
   // The footprint edge whose outward side faces the river most squarely.
   const p = b.p

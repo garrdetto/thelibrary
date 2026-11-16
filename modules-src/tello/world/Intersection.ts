@@ -473,9 +473,10 @@ function parapets(kit: Kit, land: TelloLand): void {
 /**
  * The West Montello Street bridge's abutments: rock-faced stone walls along both banks of the Montello River under the
  * deck, from below the water up to the deck's beam, so the river runs between them and no bank shows under the bridge.
+ * The bridge is the one `fixBridge` marks `s` (its road index goes stale once the World Editor removes a road).
  */
 function abutments(kit: Kit, land: TelloLand): void {
-  const bridge = land.doc.bridges.find((b) => b.s && land.doc.roads[b.r]?.n === 'West Montello Street')
+  const bridge = land.doc.bridges.find((b) => b.s)
   if (!bridge) return
   const p = bridge.p
   const ax = p[0], az = p[1], bx = p[p.length - 2], bz = p[p.length - 1]

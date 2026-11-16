@@ -15,6 +15,7 @@ import type { Mats } from '../../foxlake/fp/core/Tex'
 import { DOWNTOWN_BOX, DOWNTOWN_STREETS } from '../data/Downtown'
 import { halfAt, isMainLeg, townProfiles } from '../data/Streets'
 import type { TelloLand } from '../region'
+import { lightCut } from './EditedFeatures'
 import type { StaticSink } from './Sink'
 import { SignAtlas } from './SignAtlas'
 
@@ -80,7 +81,10 @@ export function buildStreetDressing(root: TransformNode, mats: Mats, sink: Stati
   return { posts, tower: !!tower }
 }
 
-/** Where the lamp posts stand along the downtown streets, in Tello's town frame, with the direction out over the street. */
+/**
+ * Where the lamp posts stand along the downtown streets, in Tello's town frame, with the direction out over the street;
+ * none inside a World Editor light cut.
+ */
 export function lampSpots(land: TelloLand): { x: number; y: number; z: number; out: { x: number; z: number } }[] {
   const streets = land.doc.roads.filter((r) => DOWNTOWN_STREETS.includes(r.n) && !isMainLeg(r))
   const profiles = townProfiles(land.doc)
@@ -98,6 +102,7 @@ export function lampSpots(land: TelloLand): { x: number; y: number; z: number; o
         const nx = -at.tz * side, nz = at.tx * side
         const x = at.x + nx * half, z = at.z + nz * half
         if (nearRoad(crossing, x, z, 7.5) || nearRoad(alleys, x, z, 3.5)) continue
+        if (lightCut(land, x, z)) continue
         // Where two carriageways run side by side (Main Street's north end), keep off the other one.
         if (land.doc.roads.some((r) => r !== road && (DOWNTOWN_STREETS.includes(r.n) || r.n === 'State Highway 23') && nearRoad([r.p], x, z, halfAt(profiles, r, x, z) + 0.6))) continue
         // Town frame: z flips. The arm reaches out over the street (back toward the centre line).

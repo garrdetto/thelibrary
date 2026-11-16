@@ -8,7 +8,7 @@ Design and decisions: `docs/superpowers/specs/2026-11-11-fox-lake-design.md` (th
 
 Fox Lake **is** Rack & Reel's game (`modules-src/rackreel/game/Game.ts`) with a host-world extension. Everything Rack & Reel does works here unchanged, because it is the same code: the renderer and its tone mapping, cached sun and moon shadows, sky and fog, the skinned hunter and the character creator, fishing, hunting, the boat, UTV and quad, Wild Man's carp bowfishing, wildlife, the record books and the hunting party.
 
-`index.ts` loads Tello's map (`foxLakeLand`), finds where the lake gameplay stands (`findLakeSite`) and starts `new Game(canvas, { terrain: new TelloTerrain(land), extension: new FoxLakeTown({ land, site, ... }), bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site, ridesBought: true, homeName: 'the outfitter', look, shadows })`:
+`index.ts` loads Tello's map with the World Editor's edits replayed on it (`foxLakeLand`; see World edits below), finds where the lake gameplay stands (`findLakeSite`) and starts `new Game(canvas, { terrain: new TelloTerrain(land), extension: new FoxLakeTown({ land, site, ... }), bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site, ridesBought: true, homeName: 'the outfitter', look, shadows })`:
 
 - `terrain`: Tello's `TelloTerrain` (`tello/region.ts`): Montello's land beyond Rack & Reel's square, the water depth from Montello's own levels, the ground types from its cover. Rack & Reel's 1024 m lake country still stands in its square around the scene's origin, sealed by its rim of hills and switched off (`LAKE_COUNTRY_MESHES`, `RegionCuller`); Montello's land lies more than 600 m clear of it (about 7.8 km from the origin), so none of Bear Paw Lake is ever drawn or reachable.
 - `extension`: `FoxLakeTown` (`town/FoxLakeTown.ts`), Rack & Reel's `GameExtension` hook (build, ready, update, collide, obstacle, interact, prompt, spawn, place name, minimap; the shared world drives the clock).
@@ -30,6 +30,14 @@ town   the shared world's frame: (map.x, y, -map.z), right-handed; scene = (town
 Every number the shared world sends (lots, shop doors, pumps, players, vehicles) is in the town frame, so `MontelloPlaces.ts` (written by `scripts/montello-places.mjs`) is Montello's map with z turned. The script keeps its own copy of both constants and `tests/region.test.ts` keeps them equal. Snapshots to the shared world are in the town frame.
 
 `lake/Rebase.ts` (`rebaseLand`, `LAKE_LEVEL` 10.7) moves every height in Montello's baked map down by Lake Montello's level, after Tello's own street levelling ran on the survey's heights: grids, building floors, bridge decks and lots. That puts the lake's water surface at y = 0 like Bear Paw Lake's, which every Rack & Reel system assumes (the bobber, the splash, the boat's waterline, the dock deck at 0.55, the carp). Other waters (Buffalo Lake, the Fox River) sit at their own levels, below it, and are not fishable properly. `lake/Land.ts` (`foxLakeLand`) is the one place the land is placed and rebased; the page and the tests both use it.
+
+### World edits
+
+The administrator's World Editor (admin panel) changes Montello: terrain, water, rivers, roads, buildings, parking lots, trees, guardrails, lights and walls (`tello/edits/`; how they are replayed and built is in `modules-src/tello/README.md`). `index.ts` fetches the published edits from `GET /api/world-edits` (same origin, 5 s timeout) while the map loads and passes them to `foxLakeLand(doc, grids, edits)`, which replays them after Tello's street fixes and before the rebase, so they are in map metres on the surveyed heights. The last published copy is kept on the device (`foxlake/world-edits/v1`) for when the site can't be reached; with neither, Montello is as baked. Edits that no longer fit the map are skipped and listed with `console.warn`.
+
+- `?edits=draft` loads the administrator's saved draft (`GET /api/world-edits?draft=1`; for anyone else, or on any failure, the published edits). `?edits=none` loads none.
+- `?at=<x>,<z>` (Montello map metres; the editor's "Open in Life Sim" button) puts you on foot there as play starts (`FoxLakeTown.jumpToStart`) with the developer panel's teleport (`FoxLakeDev.goTo`: the nearest dry spot within 16 m clear of trunks and solids). It runs before Montello's build starts, so the ground and trees go up round that spot first; once the buildings are solid, a player who is still standing there inside one is moved to safe ground again. A point outside the playable area gets a toast and no move.
+- The shared world doesn't replay edits: the doors, pumps, lots for sale and other places in `MontelloPlaces.ts` stay where the baked map has them.
 
 ### The town (`fp/`, `town/`)
 
@@ -167,7 +175,7 @@ Rack & Reel's, plus E at your car (drive), at shops, bars and the bank (Maple Th
 
 ## Debugging
 
-`window.__foxlake.town.debug()` (connection, neighbors, colliders, cars, culling, Montello's build), `window.__foxlake.town.dev.debug()` (panel access, spawned vehicles, the one being driven), `window.__foxlake.game.host()`. `?solo=1` plays on this device (its own save, `foxlake/solo/v1`); `?hour=21` pins the sky. `node scripts/foxlake-capture.mjs` (screenshots at fixed spots) still lists the old Fox Plains spots and needs new ones.
+`window.__foxlake.town.debug()` (connection, neighbors, colliders, cars, culling, Montello's build), `window.__foxlake.town.dev.debug()` (panel access, spawned vehicles, the one being driven), `window.__foxlake.game.host()`. `?solo=1` plays on this device (its own save, `foxlake/solo/v1`); `?hour=21` pins the sky; `?edits=none` shows Montello as baked and `?at=x,z` starts at a map point (see World edits). `node scripts/foxlake-capture.mjs` (screenshots at fixed spots) still lists the old Fox Plains spots and needs new ones.
 
 ## Assets
 

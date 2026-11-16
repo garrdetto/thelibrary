@@ -49,8 +49,10 @@ export const REPLACED_BUILDINGS = new Set<string>()
 
 export { at, entryCanopy, wallNear, wallPacks, type Wall }
 
+/** The place's own building, or null when it has none or it was removed (at load or by the World Editor). */
 function placeBuilding(land: TelloLand, poi: PlacePoi): BuildingData | null {
-  return poi.i === undefined ? null : land.doc.buildings[poi.i] ?? null
+  const b = poi.i === undefined ? undefined : land.doc.buildings[poi.i]
+  return b && !b.x ? b : null
 }
 
 function findFree(land: TelloLand, from: [number, number], n: [number, number], offsets: number[], sides: number[], blocks: BuildingData[]): [number, number] | null {
@@ -208,7 +210,7 @@ function fuelStation(c: Ctx, poi: PlacePoi, hasCanopy: (x: number, z: number) =>
 function existingCanopies(c: Ctx): void {
   const fuel = c.land.doc.pois.filter((p) => p.k === 'fuel' && FUEL_NAMES.has(p.n))
   for (const b of c.land.doc.buildings) {
-    if (b.k !== 'canopy') continue
+    if (b.k !== 'canopy' || b.x) continue
     const [mx, mz] = b.r[0]
     let near: Poi | null = null
     let nd = 60
@@ -509,7 +511,7 @@ export function buildBusinesses(layer: PlaceLayer, signs: Signs, sink: StaticSin
   const c: Ctx = { land, layer, signs, sink, out, taken: [] }
   const done = new Set<number>()
   existingCanopies(c)
-  const canopyBuildings = land.doc.buildings.filter((b) => b.k === 'canopy')
+  const canopyBuildings = land.doc.buildings.filter((b) => b.k === 'canopy' && !b.x)
   const hasCanopy = (x: number, z: number) => canopyBuildings.some((b) => Math.hypot(b.r[0][0] - x, b.r[0][1] - z) < 14)
   for (const poi of land.doc.pois as PlacePoi[]) {
     const i = poi.i
@@ -524,8 +526,8 @@ export function buildBusinesses(layer: PlaceLayer, signs: Signs, sink: StaticSin
     else if (poi.n === "Foxtails Gentlemen's Club") foxtails(c, poi)
     else if (poi.n === 'Marquette County Sheriff Department') sheriff(c, poi)
     else if (poi.n === 'H A Freitag & Son') dealership(c, poi)
-    else if (poi.n === 'Montello Junior-Senior High School' && poi.i !== undefined && poi.d) {
-      const hs = land.doc.buildings[poi.i]
+    else if (poi.n === 'Montello Junior-Senior High School' && poi.d) {
+      const hs = placeBuilding(land, poi)
       const wall = hs ? wallNear(hs, poi.d) : null
       if (hs && wall) take(c, hs, wall)
     }

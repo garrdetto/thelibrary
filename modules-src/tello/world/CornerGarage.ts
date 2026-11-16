@@ -41,7 +41,7 @@ function wallFrame(chunks: ChunkedBuilders, b: BuildingData, e: Edge): { get: (m
 
 export function buildCornerGarage(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand): boolean {
   const g = CORNER_GARAGE
-  const b = land.doc.buildings.find((x) => Math.hypot(x.r[0][0] - g.at[0], x.r[0][1] - g.at[1]) < 1)
+  const b = land.doc.buildings.find((x) => !x.x && Math.hypot(x.r[0][0] - g.at[0], x.r[0][1] - g.at[1]) < 1)
   if (!b) return false
   const front = facingEdge(b.p, [0, -1])
   const side = facingEdge(b.p, [-1, 0])

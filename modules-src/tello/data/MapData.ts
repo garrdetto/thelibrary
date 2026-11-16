@@ -7,6 +7,8 @@
  * Map coordinates: x east and z north, metres from the origin near City Hall
  * (UTM zone 16N), y metres above `frame.base`.
  */
+import type { WorldExtras } from '../edits/WorldEdits'
+
 export interface Frame {
   lon: number
   lat: number
@@ -25,7 +27,8 @@ export interface Frame {
 
 /** 0 highway (lined), 1 street, 2 lane (driveways, aisles), 3 gravel, 4 walk (concrete), 5 trail (dirt). */
 export type RoadKind = 0 | 1 | 2 | 3 | 4 | 5
-export interface RoadData { k: RoadKind; w: number; n: string; c: string; p: number[] }
+/** `id`: set at load for the World Editor's edits (`r<index>`, or the edit that added it). */
+export interface RoadData { k: RoadKind; w: number; n: string; c: string; p: number[]; id?: string }
 /** `y` the deck height; `m` set when it was measured in the lidar point cloud; `s` a town bridge with stone parapets (set at load). */
 export interface BridgeData { r: number; k: RoadKind; w: number; y: number; p: number[]; m?: 1; s?: 1 }
 export type BuildingKind = 'house' | 'garage' | 'shed' | 'store' | 'industrial' | 'civic' | 'church' | 'canopy'
@@ -36,10 +39,11 @@ export type BuildingKind = 'house' | 'garage' | 'shed' | 'store' | 'industrial' 
  * first axis, roof type (see `ROOF`), eave and ridge in metres above the floor.
  */
 /** `x`: removed at load (`REMOVED_BUILDINGS`): nothing stands there, so it is never built, solid or in a road's way. */
-export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string; m?: 1; rc?: string; x?: 1 }
+export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string; m?: 1; rc?: string; x?: 1; id?: string }
 /** Roof types: a gable's ridge runs along the rectangle's first or second axis; a shed's high side is toward the named axis. */
 export const ROOF = { unmeasured: -1, flat: 0, gableFirst: 1, gableSecond: 2, hip: 3, shedPlusSecond: 4, shedMinusSecond: 5, shedPlusFirst: 6, shedMinusFirst: 7 } as const
-export interface LotData { f: number; p: number[] }
+/** `ns`: no stalls painted (a World Editor choice). */
+export interface LotData { f: number; p: number[]; n?: string; ns?: 1; id?: string }
 export interface Poi { n: string; k: string; /** The place's own OpenStreetMap type: its amenity, shop or man-made value. */ t?: string; x: number; z: number; /** The street its door faces. */ s?: string; /** Fuel pumps: x, z pairs under the canopy. */ pumps?: [number, number][]; /** The front door: x, z and the way it faces. */ d?: [number, number, number] }
 /** A road leaving the playable area: where it crosses the edge and the way out (heading, 0 = north). */
 export interface RoadExit { x: number; z: number; h: number; w: number }
@@ -66,6 +70,8 @@ export interface MapDoc {
   limits: Limits
   sources: string[]
   stats: Record<string, unknown>
+  /** Rails, lights and walls the World Editor's edits add, and the automatic ones they take down (set by `applyWorldEdits`). */
+  extras?: WorldExtras
 }
 
 /** 0 meadow, 1 lawn, 2 woods, 3 marsh, 4 bare, 5 lot, 6 field, 7 water. */

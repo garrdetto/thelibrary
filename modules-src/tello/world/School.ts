@@ -53,7 +53,7 @@ export function buildSchool(layer: PlaceLayer, signs: Signs, sink: StaticSink, l
   }
   const poi = (land.doc.pois as (Poi & { i?: number })[]).find((p) => p.n === HIGH_SCHOOL)
   const b = poi?.i === undefined ? null : land.doc.buildings[poi.i]
-  if (poi && b && poi.d) {
+  if (poi && b && !b.x && poi.d) {
     const wall = wallNear(b, poi.d)
     if (wall) {
       const { e } = wall

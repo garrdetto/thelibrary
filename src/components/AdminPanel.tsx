@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, Users } from 'lucide-react'
+import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
@@ -16,6 +16,7 @@ const ShortTrackHandling = lazy<ComponentType>(() => import.meta.env.SSR ? Promi
 const DartsSettings = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./darts/DartsSettings'))
 const ClipartGenerator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/ClipartGenerator'))
 const ImageEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/ImageEditor'))
+const WorldEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./world/WorldEditor'))
 const BushLeagueAssets = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./bushleague/BushLeagueAssets'))
 
 const areas = [
@@ -36,6 +37,7 @@ const sections = [
   { id: 'image-editor', area: 'site', group: 'Tools', label: 'Image editor', icon: ImageUp, title: 'Image editor', blurb: 'Upload images in bulk, select text to remove, rewrite or fill with Gemini, and save them as numbered files: name1, name2 and on until you change the name.' },
   { id: 'clipart', area: 'site', group: 'Tools', label: 'Clipart generator', icon: Brush, title: 'HD clipart generator', blurb: 'Turn batches of photographs into realistic HD clipart with free Cloudflare Workers AI image-to-image engines (or Gemini), with full style control, a reference image, before-and-after preview and ZIP export.' },
   { id: 'axiom-radar', area: 'site', group: 'Tools', label: 'Axiom Radar', icon: Radar, title: 'Axiom Radar', blurb: 'Coins ranked by live Axiom viewers with price moves, holder quality, smart holders and buy and watch signals. Opens on its own page.' },
+  { id: 'world-editor', area: 'modules', group: 'Life Sim', label: 'World editor', icon: Mountain, title: 'Life Sim world editor', blurb: 'Reshape Montello: raise, lower, flatten and smooth the land, fill or drain water and fix the rivers, build and redraw roads with sidewalks and smooth curves, change or remove buildings, draw and trim parking lots, plant or clear trees, and put up guardrails, streetlights and brick walls. Publish when it looks right.' },
   { id: 'maplestreet', area: 'modules', group: 'Fox Plains', label: 'Items', icon: Package, title: 'Fox Plains items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
   { id: 'vehicles', area: 'modules', group: 'Fox Plains', label: 'Vehicles', icon: Car, title: 'Fox Plains vehicles', blurb: 'Build, tune and publish vehicles for the dealer lot and neighbor traffic.' },
   { id: 'shorttrack-cars', area: 'modules', group: 'Short Track Showdown', label: 'Race cars', icon: Flag, title: 'Short Track race cars', blurb: 'Generate car bodies with Meshy, fit wheels, paint and race numbers, and publish them to the Short Track Showdown vehicle list.' },
@@ -136,6 +138,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
         {section === 'axiom-radar' && <p className="race-loading"><a href="/axiom-radar">Open the Axiom Radar</a> It runs on its own page.</p>}
         {section === 'image-editor' && <Suspense fallback={<Loading text="Opening the image editor…"/>}><ImageEditor/></Suspense>}
         {section === 'clipart' && <Suspense fallback={<Loading text="Opening the clipart generator…"/>}><ClipartGenerator/></Suspense>}
+        {section === 'world-editor' && <Suspense fallback={<Loading text="Opening the world editor…"/>}><WorldEditor/></Suspense>}
         {section === 'maplestreet' && <Suspense fallback={<Loading text="Opening the item editor…"/>}><MapleStreetItemEditor/></Suspense>}
         {section === 'vehicles' && <Suspense fallback={<Loading text="Opening the vehicle editor…"/>}><MapleStreetVehicleEditor/></Suspense>}
         {section === 'shorttrack-cars' && <Suspense fallback={<Loading text="Opening the car editor…"/>}><ShortTrackCarEditor/></Suspense>}
