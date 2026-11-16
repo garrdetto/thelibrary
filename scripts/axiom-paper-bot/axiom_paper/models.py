@@ -17,6 +17,11 @@ def _chance(source: Any, key: str) -> float | None:
     return number(source.get(key)) if isinstance(source, dict) else None
 
 
+def _count(source: dict[str, Any], key: str) -> int | None:
+    value = number(source.get(key))
+    return None if value is None else int(value)
+
+
 def _first(values: Any) -> str | None:
     return str(values[0])[:140] if isinstance(values, list) and values else None
 
@@ -82,6 +87,30 @@ class Coin:
     holders_per_min: float | None = None
     holders_seen_at: float | None = None
     dex_score: float | None = None
+    wallet_score: float | None = None
+    whales: int | None = None
+    good_whales: int | None = None
+    bad_whales: int | None = None
+    smart_usd: float | None = None
+    wallet_summary: str | None = None
+
+    def below_high_pct(self) -> float | None:
+        """How far under its 10-minute high the coin is, in percent."""
+        if self.price is None or not self.recent_high or self.recent_high <= 0:
+            return None
+        return max(0.0, (1 - self.price / self.recent_high) * 100)
+
+    def liquidity_share_pct(self) -> float | None:
+        """Liquidity as a share of market cap: how much a seller can take out before the price caves."""
+        if self.liquidity is None or not self.market_cap or self.market_cap <= 0:
+            return None
+        return self.liquidity / self.market_cap * 100
+
+    def turnover_pct(self) -> float | None:
+        """The last 5 minutes' volume as a share of market cap."""
+        if self.volume_5m is None or not self.market_cap or self.market_cap <= 0:
+            return None
+        return self.volume_5m / self.market_cap * 100
 
     @staticmethod
     def from_token(token: dict[str, Any], sol_usd: float = 1.0) -> "Coin":
@@ -106,6 +135,7 @@ class Coin:
         seen = [stamp for stamp in (number(traits.get("checkedAt")), number(pulse.get("seenAt"))) if stamp]
         holders_per_min = number(holder_gains.get("m1"))
         dex = token.get("dex") if isinstance(token.get("dex"), dict) else {}
+        wallets = token.get("wallets") if isinstance(token.get("wallets"), dict) else {}
         return Coin(
             mint=str(token.get("mint", "")),
             symbol=str(token.get("symbol") or "?")[:16],
@@ -147,6 +177,12 @@ class Coin:
             holders_per_min=holders_per_min if holders_per_min is not None else number(token.get("holdersPerMin")),
             holders_seen_at=max(seen) if seen else None,
             dex_score=number(dex.get("score")),
+            wallet_score=number(wallets.get("score")),
+            whales=_count(wallets, "whales"),
+            good_whales=_count(wallets, "goodWhales"),
+            bad_whales=_count(wallets, "badWhales"),
+            smart_usd=number(wallets.get("smartUsd")),
+            wallet_summary=str(wallets["summary"])[:160] if isinstance(wallets.get("summary"), str) else None,
         )
 
     def entry_facts(self) -> dict[str, Any]:
@@ -158,6 +194,9 @@ class Coin:
             "quality": self.quality, "failedChecks": self.failed_checks, "failedLabels": list(self.failed_labels), "smartHolders": self.smart_holders,
             "runnerChance": self.runner_chance, "explodeChance": self.explode_chance, "makerChance": self.maker_chance,
             "phase": self.phase, "minutesLeft": self.minutes_left, "adviceExit": self.advice_exit, "adviceRebuy": self.advice_rebuy,
+            "gain30s": self.gain_30s, "belowHighPct": self.below_high_pct(), "holdersPerMin": self.holders_per_min,
+            "walletScore": self.wallet_score, "whales": self.whales, "goodWhales": self.good_whales, "badWhales": self.bad_whales,
+            "smartUsd": self.smart_usd, "walletSummary": self.wallet_summary,
         }
 
 

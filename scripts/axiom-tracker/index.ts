@@ -18,6 +18,7 @@ import { startScoring } from './scoring.js'
 import { startSelfCheck } from './self-check.js'
 import { startSitePublisher } from './site-publisher.js'
 import { startWalletTracker } from './wallet-tracker.js'
+import { startWalletScores } from './wallet-score.js'
 
 const logger = createLogger('orchestrator')
 const controller = new AbortController()
@@ -45,6 +46,7 @@ const tasks = [
   startLiveMarket(database, controller.signal),
   startAxiomCollector(database, controller.signal),
   startWalletTracker(database, controller.signal),
+  startWalletScores(database, controller.signal),
   startScoring(database, controller.signal),
   startSitePublisher(database, controller.signal),
   startExtensionIntake(database, controller.signal),
