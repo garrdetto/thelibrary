@@ -4,7 +4,7 @@ import { activeCandidates, trackerState, type JupiterReading } from './state.js'
 
 const logger = createLogger('jupiter')
 const jupiterApi = 'https://lite-api.jup.ag/tokens/v2'
-const refreshMs = 4_000
+const refreshMs = 5_000
 const holderHistoryMs = 6 * 60_000
 const readingTtlMs = 60_000
 const perRequest = 100
@@ -41,7 +41,7 @@ type JupiterToken = {
 }
 
 const holderHistory = new Map<string, Array<{ t: number; holders: number }>>()
-const moverList = { at: 0, mints: [] as string[] }
+const moverList = { at: 0, mints: [] as string[], loading: false }
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null
 const link = (value: unknown) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()) ? value.trim().slice(0, 300) : null
 
@@ -110,10 +110,7 @@ export function jupiterReading(mint: string, now: number) {
   return reading && now - reading.readAt < readingTtlMs ? reading : null
 }
 
-/** Coins Jupiter lists as trending or most traded over the last 5 minutes, to widen what the radar watches without the Pulse tab. */
-export async function jupiterMoverMints(now = Date.now()) {
-  if (now - moverList.at < moverListMs) return moverList.mints
-  moverList.at = now
+async function refreshMoverMints() {
   const mints = new Set<string>()
   for (const path of ['toptrending/5m', 'toptraded/5m', 'toporganicscore/5m']) {
     try {
@@ -124,6 +121,18 @@ export async function jupiterMoverMints(now = Date.now()) {
     }
   }
   if (mints.size) moverList.mints = [...mints]
+}
+
+/**
+ * Coins Jupiter lists as trending or most traded over the last 5 minutes, to widen what the radar watches without the Pulse tab.
+ * Returns the newest lists at once and refreshes them in the background, so discovery never waits on Jupiter's request queue.
+ */
+export async function jupiterMoverMints(now = Date.now()) {
+  if (!moverList.loading && now - moverList.at >= moverListMs) {
+    moverList.at = now
+    moverList.loading = true
+    void refreshMoverMints().finally(() => { moverList.loading = false; moverList.at = Date.now() })
+  }
   return moverList.mints
 }
 
