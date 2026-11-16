@@ -20,7 +20,7 @@ export function registerMapPlaces(doc: MapDoc): void {
   REPLACED_BUILDINGS.add(FOXTAILS)
   for (const shop of MONTELLO_SHOPS) {
     if (shop.kind === 'clothing') doc.pois.push(row(shop.name, 'shop:clothes', shop.x, shop.z, shop.street, 0))
-    else if (shop.kind === 'bodyshop') doc.pois.push(row(shop.name, 'shop:car_repair', shop.x, shop.z, shop.street, 0))
+    else if (shop.kind === 'bodyshop' && !doc.pois.some((p) => p.n === shop.name)) doc.pois.push(row(shop.name, 'shop:car_repair', shop.x, shop.z, shop.street, 0))
     else if (shop.kind === 'outfitter') doc.pois.push(row('Fox Outfitters', 'shop:outdoor', shop.x, shop.z, shop.street, 0))
   }
   if (MONTELLO_DEPOT) doc.pois.push(row(MONTELLO_DEPOT.name, 'depot', MONTELLO_DEPOT.x, MONTELLO_DEPOT.z, '', 0))

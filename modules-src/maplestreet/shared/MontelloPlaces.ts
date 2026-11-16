@@ -31,6 +31,7 @@ export const MONTELLO_SHOPS: readonly MontelloShop[] = [
   { id: "mt-freitag-s-food-center", kind: 'grocery', name: "Freitag's Food Center", x: 268.7, z: 1272.1, street: "Main Street" },
   { id: "mt-drew-s-lakeside-bar-grill", kind: 'bar', name: "Drew's Lakeside Bar & Grill", x: -263.3, z: 786.2, street: "West Water Street" },
   { id: "mt-foxtails-gentlemen-s-club", kind: 'bar', name: "Foxtails Gentlemen's Club", x: 1695.2, z: -432.3, street: "16th Road" },
+  { id: "mt-napralla-tire", kind: 'bodyshop', name: "Napralla Tire", x: 1670.9, z: -340.3, street: "State Highway 23" },
   { id: "mt-maple-threads", kind: 'clothing', name: "Maple Threads", x: 196.5, z: 2.2, street: "East Montello Street" },
   { id: "mt-montello-body-wheel", kind: 'bodyshop', name: "Montello Body & Wheel", x: 138.4, z: 142.3, street: "Main Street" },
 ];

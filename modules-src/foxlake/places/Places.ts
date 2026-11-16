@@ -2,7 +2,7 @@
  * Fox Lake's working places, all Montello's (MontelloPlaces.ts, baked from
  * OpenStreetMap): the gas stations (Kwik Trip, BP, Mobil), Freitag's grocery
  * and its freight depot, the bars, the dealership, Maple Threads, the body
- * shop, the bank, the outfitter's counter, the sheriff's office, the fire
+ * shops (Montello Body & Wheel and Napralla Tire), the bank, the outfitter's counter, the sheriff's office, the fire
  * station, the fuel pumps and the tow for a car that ran dry. FoxLakeTown asks
  * it for the on-foot prompt and hands it E; the shared world (RoomLogic) is the
  * authority for every purchase, loan, fill-up, repair and job. The casino is
@@ -91,9 +91,10 @@ export class Places {
     })
   }
 
-  /** Your cars standing in the body shop's lot (a car you are driving counts), the nearest first. */
+  /** Your cars standing in the lot of the repair shop you are at (Montello Body & Wheel or Napralla Tire; a car you are driving counts), the nearest first. */
   private parkedAtShop(): VehicleKind[] {
-    const shop = PLACES.find((p) => p.kind === 'bodyshop')
+    const me = this.here()
+    const shop = PLACES.filter((p) => p.kind === 'bodyshop').sort((a, b) => Math.hypot(me.x - a.x, me.z - a.z) - Math.hypot(me.x - b.x, me.z - b.z))[0]
     const acc = this.hooks.account()
     if (!shop || !acc) return []
     const found: { kind: VehicleKind; d: number }[] = []

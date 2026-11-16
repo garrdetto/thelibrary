@@ -541,12 +541,12 @@ export class NeighborhoodLogic {
     this.sendAccount(sessionId, acc, car.damage >= 0.999 ? `Your ${VEHICLES[kind]?.name ?? 'car'} is wrecked — it barely runs until it's repaired at the body shop` : added >= 0.15 ? `Crunch! Your ${VEHICLES[kind]?.name ?? 'car'} is at ${pct}% condition — the body shop can fix it` : undefined);
   }
 
-  /** Maple Body & Wheel: repairs and upgrades for a car the player owns, parked in one of the bays. */
+  /** Maple Body & Wheel (in Fox Lake, the nearest Montello repair shop: Montello Body & Wheel or Napralla Tire): repairs and upgrades for a car the player owns, parked in one of the bays. */
   private handleService(sessionId: string, s: Session, acc: Account, kind: unknown, raw: unknown) {
     if (typeof kind !== 'string' || !acc.garage.includes(kind as VehicleKind)) return;
     const k = kind as VehicleKind, name = VEHICLES[k]?.name ?? 'car';
     const pos = this.position(s);
-    const montello = this.foxLake ? MONTELLO_SHOPS.find(d => d.kind === 'bodyshop') : null;
+    const montello = this.foxLake && pos ? MONTELLO_SHOPS.filter(d => d.kind === 'bodyshop').sort((a, b) => Math.hypot(pos.x - a.x, pos.z - a.z) - Math.hypot(pos.x - b.x, pos.z - b.z))[0] ?? null : null;
     if (this.foxLake) {
       if (!montello || !pos || Math.hypot(pos.x - montello.x, pos.z - montello.z) > BODY_SHOP_REACH) return this.sendAccount(sessionId, acc, `Walk up to ${montello?.name ?? 'the body shop'} first`);
     } else if (!pos || !atBodyShop(pos.x, pos.z)) return this.sendAccount(sessionId, acc, `Walk up to ${BODY_SHOP.name} first`);

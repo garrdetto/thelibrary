@@ -233,6 +233,7 @@ export function placesSource(doc, grids = null) {
     if (p.k === 'bar') return 'bar'
     if (p.k === 'bank') return 'bank'
     if (p.t === 'shop:car') return 'dealer'
+    if (p.t === 'shop:tyres' || p.t === 'shop:car_repair') return 'bodyshop'
     if (/paddle & sports/i.test(p.n)) return 'outfitter'
     if (/feed mill/i.test(p.n)) return 'hardware'
     if (p.t === 'police' && /sheriff/i.test(p.n)) return 'police'

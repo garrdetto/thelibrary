@@ -122,6 +122,9 @@ The shared world checks you are at the door for every purchase and service.
 - **Montello Body & Wheel** (a shop on Main Street, `places/BodyShop.ts`): repairs, paint, tint, rims, lift and performance parts for
   a car parked in the lot out front (`RoomLogic.handleService` in Fox Lake: you at the door, the car within `BODY_SHOP_REACH` + 12 m;
   Fox Plains' bays are not used).
+- **Napralla Tire** (its own building on State Highway 23, `shop=tyres` in the map, so `scripts/montello-places.mjs` makes it a
+  `bodyshop` counter): the same window as Montello Body & Wheel (tires and rims, repairs, paint, lift and parts) for a car in
+  its dirt yard; `RoomLogic.handleService` and `Places.parkedAtShop` use whichever repair shop is nearest.
 - **Bank**: National Exchange Bank & Trust lends and takes repayments.
 - **Fox Outfitters**: the counter is Rendezvous Paddle & Sports on Main Street (gear rack, wardrobe, order desk through
   `FoxLakeTown.gear`; `setGearRackHere` lets 1 and 2 take the rod and rifle while you stand at it).
