@@ -32,8 +32,9 @@ const CATCH_U=[0,-4];
 /* Home plate geometry (world feet): the plate's back point sits on the origin where the foul lines meet,
    so the 17" front edge is 17" toward the mound. The pitch crosses the zone over the middle of the plate. */
 const PLATE_W=17/12,PLATE_D=PLATE_W,ZZ=-PLATE_D/2;
-const ZW=PLATE_W/2,ZC=1.84,ZH=.75,BALL_R=.189,PITCH_SPEED=1.5625; // zone: hollow of the knee (~1.1 ft) to midway between belt and shoulders (~2.6 ft) on the 4.5-ft players
-const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
+const ZW=PLATE_W/2,BALL_R=.189,PITCH_SPEED=1.5625;
+let ZC=1.84,ZH=.75; // zone: hollow of the knee (.242 of height) to midway between belt and shoulders (.575 of height); set per batter by setZone
+const BATX=2.4,BATZ=ZZ+.1; // batter stands mid-box; a 1.00-height batter is 2.4 ft off the plate's center line, taller batters stand back in proportion
 
 /* ================= THREE SETUP ================= */
 const cv=$('gl'),hud=$('hud'),hx=hud.getContext('2d');
@@ -255,8 +256,8 @@ function headTexture(L,i){
    UNIFORMS[team]: jersey, trim, letters, lettersOutline, undershirt, pants, belt, socks, stirrups,
      cleats, cleatTrim, sole, cap, bill, capLogo, helmet, name.
    At runtime: rig.setLook({...}) for one player, setUniform(team,{...}) for a whole side. */
-const RIG_S=1.5;          // rig units -> feet across
-const RIG_H=.75;          // height squash: a 1.00-height build stands 4'6"
+const RIG_S=1.125;        // rig units -> feet, the same on every axis: a 1.00-height build stands 4'6" with the model's own proportions
+const PLAYER_FT=4*RIG_S;  // standing height in feet of a 1.00-height build
 const HAIR_STYLE={bun:'long',dreads:'dreads',curly:'curly',wild:'curly',messy:'short',bob:'long',mohawk:'short',short:'short',buzz:'buzz',long:'long',bald:'bald'};
 // [height, shoulder width, limb mass, head size] per roster slot
 const BUILD=[[0.95,0.94,0.92,1.00],[1.05,1.05,1.01,1.00],[1.00,0.95,0.96,0.98],[1.00,1.00,0.98,1.00],[1.02,0.96,0.96,1.00],[1.06,1.06,1.02,1.00],[1.02,0.95,0.95,0.98],[1.06,1.04,1.01,1.00],[1.00,0.98,0.96,1.00],[0.98,0.96,0.96,1.00],[1.06,1.07,1.02,1.02],[1.00,0.96,0.96,1.00],[0.95,0.94,0.92,1.04],[0.96,0.94,0.93,1.00],[1.00,0.94,0.93,1.00],[0.94,0.94,0.92,1.04],[1.03,0.98,0.97,1.00],[1.04,0.94,0.93,1.00],[0.95,0.94,0.92,1.02],[0.98,0.94,0.92,1.00],[0.97,0.94,0.95,1.00],[1.03,0.98,0.96,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.93,1.00],[1.06,1.04,1.00,1.00],[1.06,1.07,1.02,0.98],[1.03,0.97,0.96,1.00],[1.00,0.95,0.96,1.00],[1.03,1.09,1.10,1.00],[0.97,0.94,0.95,1.00],[1.00,0.96,0.96,1.00],[1.00,1.06,1.10,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.92,1.00]];
@@ -483,7 +484,7 @@ class Rig{
     if(ATHLETE)this.buildBody();else this.buildTrunk();
     const collar=M(new THREE.TorusGeometry(.158,.022,8,28),m.trim);collar.rotation.x=PI/2-.12;collar.scale.set(1.05,1,.95);collar.position.y=.035;this.neck.add(collar);this.collar=collar;
     this.headMat=SKIN('#ffffff');this.paintHead();
-    this.head=M(GEO.head,this.headMat);this.head.scale.set(HEAD_S[0]*lk.head,HEAD_S[1]*lk.head/RIG_H,HEAD_S[2]*lk.head);this.head.position.y=.42;this.neck.add(this.head);
+    this.head=M(GEO.head,this.headMat);this.head.scale.set(HEAD_S[0]*lk.head,HEAD_S[1]*lk.head,HEAD_S[2]*lk.head);this.head.position.y=.42;this.neck.add(this.head);
     for(const s of[1,-1]){const e=M(GEO.sph,m.skin);e.scale.set(.09,.26,.16);e.position.set(s*.86,-.06,-.06);e.rotation.y=s*.25;this.head.add(e);const lobe=M(GEO.sph,m.skin,false);lobe.scale.set(.6,.35,.5);lobe.position.set(0,-.75,.1);e.add(lobe)}
     this.face(i);batchStatic(this.head);this.buildHair();this.buildHeadwear();
     if(!ATHLETE)this.buildLimbs();
@@ -659,7 +660,7 @@ class Rig{
     this.last=p;
     this.mirrorState(mir);
     this.apply(p,o,now);
-    const vs=(o.vis||1)*this.bh*RIG_S;r.scale.set(mir?-vs:vs,vs*RIG_H,vs);this.ring.visible=o.ring!==false}
+    const vs=(o.vis||1)*this.bh*RIG_S;r.scale.set(mir?-vs:vs,vs,vs);this.ring.visible=o.ring!==false}
   // mirrored (left-handed) stance flips the model; flip the lettering back so it still reads correctly
   mirrorState(mm){if(mm===this.mirror)return;this.mirror=mm;for(const t of[this.mats.jersey.map,this.mats.logo.map])if(t){t.repeat.x=mm?-1:1;t.offset.x=mm?(t===this.mats.jersey.map?.5:1):0}}
   apply(p,o,now){
@@ -675,7 +676,7 @@ class Rig{
     const body=!!this.bones,side=['L','R'];
     if(body){const bw=this.bw;this.setBoneMatrix('hips',this.hips.matrix,bw,1,1);this.setBoneMatrix('chest',_m,bw,1,.88+.12*bw);
       this.neck.updateMatrix();_mn.multiplyMatrices(_m,this.neck.matrix);this.setBoneMatrix('neck',_mn,1,1,1);
-      if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,1,1/RIG_H,1)}}
+      if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,1,1,1)}}
     else this.updateAbdomen();
     // arms: shoulder -> elbow -> wrist, biceps side facing away from the elbow pole
     const HL=V3(...p.hl),HR=V3(...p.hr_),lb=this.lb,lg=Math.pow(lb,.8);
@@ -1304,6 +1305,7 @@ const trailLine=new THREE.Line(trailGeo,new THREE.LineBasicMaterial({color:0xfff
 const userBats=()=>S.half==='top';
 const batTeam=()=>userBats()?team:cpuTeam,fieldTeam=()=>userBats()?cpuTeam:team;
 const batterId=()=>batTeam()[S.ord[S.half]%9];
+function setZone(id){const h=PLAYER_FT*(rigs[id]?rigs[id].bh:PLAYER_LOOK[id].height),lo=.2417*h,hi=.575*h;ZC=(lo+hi)/2;ZH=(hi-lo)/2}
 const pitcherId=()=>fieldTeam()[0];
 const POS=['P','C','1B','2B','SS','3B','LF','CF','RF'],POSN=['pitcher','catcher','first baseman','second baseman','shortstop','third baseman','left fielder','center fielder','right fielder'];
 const HOME=[[0,40.3],[0,-3],[37,50],[22,80],[-22,80],[-37,50],[-95,168],[0,198],[95,168]];
@@ -1788,7 +1790,7 @@ function layout(now,dt,ball){
   if(P){for(const r of P.runners){const rg=rigs[r.id];if(r.state==='out'&&P.t-r.outT>1.2){continue}
       const[x,y]=pathPos(r.d),[wx,wz]=W(x,y);const o={look:ball||moundPt,state:r.state==='hold'||r.state==='safe'?'lead':'idle',face:faceTo(wx,wz,0,mz*.6)};
       if(r.bat){if(!P.batDropped&&P.t>.28&&rg.bat.visible){P.batDropped=1;dropBat(rg)}o.noBat=P.t>.28;
-        if(P.t<.3){o.face=PI/2;o.mirror=rg.lefty;o.noRun=true;o.state='stance';go(rg,rg.lefty?BATX:-BATX,BATZ,o);continue}}
+        if(P.t<.3){o.face=PI/2;o.mirror=rg.lefty;o.noRun=true;o.state='stance';go(rg,(rg.lefty?BATX:-BATX)*rg.bh,BATZ,o);continue}}
       if(r.state==='scored'){if(P.t-(P.runs.find(x=>x.id===r.id)||{t:0}).t>1.6)continue;o.state='cheer'}
       go(rg,wx,wz,o)}}
   else{
@@ -1799,7 +1801,7 @@ function layout(now,dt,ball){
       go(rigs[c],wx,wz,{state:sl?'slide':'lead',noRun:sl,face:sl?faceTo(wx,wz,...W(...BU[(i+2)%4])):faceTo(wx,wz,0,mz*.6),look:ball||moundPt})});
     if(phase!=='cpu'&&phase!=='over'){const rg=rigs[bid],o={face:PI/2,mirror:rg.lefty,noRun:true,look:ball&&phase==='pitch'?ball:moundPt};
       const ub=userBats();o.state=ub&&bunt?'bunt':(phase==='pitch'&&pitch&&!pitch.swung)?'load':'stance';
-      go(rg,rg.lefty?BATX:-BATX,BATZ,o)}}
+      go(rg,(rg.lefty?BATX:-BATX)*rg.bh,BATZ,o)}}
   all.forEach(r=>{if(!r.used)r.root.visible=false})}
 function ballTick(now){
   let pos=null;
@@ -1930,6 +1932,7 @@ function frame(real){if(lastReal==null)lastReal=real;if(adaptRes&&!document.hidd
 function step(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
   const due=timers.filter(t=>now>=t.t);if(due.length){timers=timers.filter(t=>now<t.t);due.forEach(t=>t.fn())}
+  if(S&&phase!=='pitch'&&phase!=='field')setZone(batterId());
   if(phase==='windup'&&now-wt>1300)launch(now);
   if(phase==='uwind'&&uwind&&now-uwind.t0>1300)userLaunch(now);
   if(phase==='pitch'&&pitch){const p=(now-pitch.t0)/pitch.dur;
