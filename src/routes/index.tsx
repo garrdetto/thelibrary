@@ -475,7 +475,7 @@ function Studio() {
   return <div className="studio-shell">
     {mobileOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`}>
-      <a className="brand" href="/" aria-label="the library home"><BrandMark /><span><span className="brand-name"><em>the</em> library</span><small>LEARNING MODULES</small></span></a>
+      <a className="brand" href="/" aria-label="the library home"><BrandMark /><span><span className="brand-name"><em>the</em>library</span><small>LEARNING MODULES</small></span></a>
       {!access.isAdmin && access.pages.length > 0 && <button className="new-session" onClick={() => switchView(access.pages[0] as StudioView)} disabled={busy}><Plus size={17} /> New creation <span>↗</span></button>}
       <nav aria-label="Site navigation">
         <button className={`nav-item nav-home ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')} disabled={busy}><Sparkles size={19} strokeWidth={1.7}/><span>Module Library</span>{view === 'home' && <span className="active-dot" />}</button>
