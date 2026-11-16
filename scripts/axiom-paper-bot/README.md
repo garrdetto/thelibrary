@@ -83,9 +83,9 @@ There are about twenty dials, each with a plain description on the Radar page an
 
 | Group | Dials |
 | --- | --- |
-| Buying | Score to buy on (Score, DexScreener, Quality or Blend), buy when the score reaches, how picky (strict, normal, loose), SOL per buy, most coins held at once, stop buying for the day after losing |
+| Buying | Score to buy on (Score, DexScreener, Quality or Blend), buy when the score reaches, how picky (strict, normal, loose), SOL per buy, most coins held at once, stop buying for the day after losing, Wallet Score needed to buy |
 | Selling | Profit target, stay in while momentum is strong (on or off), while staying in sell this far off the high, stop loss, longest hold |
-| Learning | Learn from trades and watched coins, learn the best moment to buy |
+| Learning | Learn from trades and watched coins, learn the best moment to buy, learn from bad buys |
 | Fees | Network fee (auto with a speed and max fee, or your own priority fee and bribe) |
 | Account | Starting balance in SOL for the next reset |
 
@@ -109,7 +109,19 @@ The Radar and DexScreener sometimes return a price from a minute earlier. On 202
 - From the last three days of results, a band seen at least 20 times that averages worse than -2% after costs and wins under 40% blocks a buy. A timing band makes the bot wait instead, and names the band that pays best, so a coin right after a spike is bought on the dip if dips are what pay.
 - After 8 or more recent trades, a win rate under 40% raises the buy level 5 points (10 under 25%); over 60% lowers it 3. Each losing trade writes a lesson to the activity log.
 
+- The bands also cover the coin's holders (Wallet Score, whales holding $1k+), liquidity and volume as a share of market cap, and (timing) whether 5-minute volume grew or shrank over the last minute and liquidity over the last two minutes. The bot reads those trends from its own pulls.
+
 The Trading bot tab shows what it has learned under Learning.
+
+## Learning from bad buys
+
+`axiom_paper/review.py` looks back at every closed trade (`trade_reviews`, kept through account resets; trades made before it existed are reviewed on the first start). It records what the coin looked like at the moment of the buy and what the price did afterwards, and writes the reason to the activity log, for example: "Why BANK lost -24%: it never rose more than 0% after the buy, so it was bought at the top. At the buy: bought late in the run (Radar said overdue)."
+
+Each buy gets the mistake tags that could have been read before buying: right after a 20%+ minute, late in the run (up 75%+ in 5 minutes or the Radar's phase late or overdue), at its 10-minute high after a climb, 5-minute volume shrinking 15%+ over the last minute, liquidity falling 5%+ over two minutes, liquidity under 15% of market cap, 5-minute volume under 20% of market cap, under 53% buys, a Wallet Score under 40, and no whale holding $1k+. Over the last 7 days, a tag seen on at least 5 trades that lost on 65% or more of them and averaged -4% or worse becomes a lesson: with **Learn from bad buys** on, coins that show it are skipped ("learned from bad buys: ...") until the sign clears. The Trading bot tab lists every tag with its record and the latest reviews.
+
+## Wallet Score
+
+The tracker (`scripts/axiom-tracker/wallet-score.ts`) scores who holds each coin from its latest top holders. Every wallet gets a record from the coins it held a real stake in before (0.3% of supply or more): a coin that grew 3x to $50k+ counts for it only if it held before the peak, and a coin that ended without that counts against it. Bigger stakes count more (2% of supply counts in full). Each holder with $100 or more in the coin moves the score by how much better or worse than average its earlier coins did; tiny holders are ignored and pools are skipped. 50 means no holder has a record yet. On the tracker's history, coins scoring 88+ grew 3x about 26% of the time against 5.6% for all coins, and coins under 27 about 3%. A whale is a holder with $1,000+ in the coin. The coin's drawer on the Radar page shows the score and its biggest holders with their records; **Wallet Score needed to buy** (default 35, 0 turns it off) skips coins under it, and coins not scored yet still pass.
 
 ## The SOL account
 

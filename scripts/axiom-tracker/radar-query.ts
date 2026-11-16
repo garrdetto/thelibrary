@@ -18,6 +18,7 @@ import { forgetScoreTrails, recordScore, scoreTrailFor } from './score-trail.js'
 import { chartHistory, withChartHistory } from './chart-history.js'
 import { pageStatsAt } from './page-stats.js'
 import { rankHolderWallets } from './wallet-ranking.js'
+import { walletScoreFor } from './wallet-score.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -512,6 +513,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     scoreLedger: runner.ledger,
     scoreTrail: scoreTrailFor(token.mint),
     dex,
+    wallets: walletScoreFor(database, token.mint, marketCap, now),
   }
   return { token: built, liquidityChange1m: live.liquidityChange1m }
 }

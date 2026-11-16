@@ -43,6 +43,12 @@ FEATURES: dict[str, Feature] = {
     "run5m": Feature("Last 5 minutes", True, (0, 25, 75), ("falling over 5 minutes", "up 0–25% in 5 minutes", "up 25–75% in 5 minutes", "up 75%+ in 5 minutes")),
     "dip": Feature("Below its 10-minute high", True, (5, 15), ("at its 10-minute high", "5–15% under its 10-minute high", "over 15% under its 10-minute high")),
     "hour": Feature("Time of day", True, (6, 12, 18), ("bought at night (0–6)", "bought in the morning (6–12)", "bought in the afternoon (12–18)", "bought in the evening (18–24)")),
+    "wallets": Feature("Wallet Score", False, (35, 50, 65, 80), ("a Wallet Score under 35", "a Wallet Score of 35–49", "a Wallet Score of 50–64", "a Wallet Score of 65–79", "a Wallet Score of 80+")),
+    "whales": Feature("Whales holding", False, (1, 3), ("no whale holding $1k+", "1–2 whales holding $1k+", "3+ whales holding $1k+")),
+    "liqshare": Feature("Liquidity vs market cap", False, (15, 30), ("liquidity under 15% of market cap", "liquidity 15–30% of market cap", "liquidity over 30% of market cap")),
+    "turnover": Feature("Trading volume", False, (20, 60, 150), ("5-minute volume under 20% of market cap", "5-minute volume 20–60% of market cap", "5-minute volume 60–150% of market cap", "5-minute volume over 150% of market cap")),
+    "voltrend": Feature("Volume trend", True, (-20, 10), ("volume shrinking over the last minute", "volume steady over the last minute", "volume growing over the last minute")),
+    "liqtrend": Feature("Liquidity trend", True, (-5, 3), ("liquidity being pulled", "liquidity steady", "liquidity growing")),
 }
 COLUMNS = tuple(f"f_{name}" for name in FEATURES)
 
@@ -67,15 +73,17 @@ def _band(value: float | None, feature: Feature) -> str | None:
     return feature.bands[-1]
 
 
-def features(coin: Coin, value: float | None, at_ms: int) -> dict[str, str | None]:
-    """Which band of each feature the coin is in right now. `value` is the number the bot buys on."""
-    below = None
-    if coin.price and coin.recent_high and coin.recent_high > 0:
-        below = max(0.0, (1 - coin.price / coin.recent_high) * 100)
+def features(coin: Coin, value: float | None, at_ms: int, market: Mapping[str, float | None] | None = None) -> dict[str, str | None]:
+    """Which band of each feature the coin is in right now. `value` is the number the bot buys on; `market` holds the
+    volume and liquidity trends from the bot's own pulls."""
     hour = datetime.fromtimestamp(at_ms / 1000).hour
+    market = market or {}
     raw = {
         "score": value, "age": coin.age_minutes, "buys": coin.buy_share_pct, "liquidity": coin.liquidity, "viewers": coin.viewers,
-        "run1m": coin.gain_1m, "run5m": coin.gain_5m, "dip": below, "hour": float(hour),
+        "run1m": coin.gain_1m, "run5m": coin.gain_5m, "dip": coin.below_high_pct(), "hour": float(hour),
+        "wallets": coin.wallet_score, "whales": None if coin.whales is None else float(coin.whales),
+        "liqshare": coin.liquidity_share_pct(), "turnover": coin.turnover_pct(),
+        "voltrend": market.get("volume_trend"), "liqtrend": market.get("liquidity_trend"),
     }
     return {name: _band(raw[name], feature) for name, feature in FEATURES.items()}
 
@@ -120,6 +128,10 @@ class Learner:
 
     def __post_init__(self) -> None:
         self.db.executescript(SCHEMA)
+        present = {row[1] for row in self.db.execute("PRAGMA table_info(learn_samples)")}
+        for column in COLUMNS:
+            if column not in present:
+                self.db.execute(f"ALTER TABLE learn_samples ADD COLUMN {column} TEXT")
         for row in self.db.execute("SELECT id, mint, t, price, target, stop, horizon_ms, high, low, last, last_at FROM learn_samples WHERE outcome IS NULL"):
             sample = _Sample(*row)
             self.open.setdefault(sample.mint, []).append(sample)
@@ -128,7 +140,7 @@ class Learner:
     def _samples_today(self, mint: str, now: int) -> int:
         return self.db.execute("SELECT COUNT(*) FROM learn_samples WHERE mint = ? AND t >= ? AND source = 'watch'", (mint, now - 86_400_000)).fetchone()[0]
 
-    def watch(self, coins: Mapping[str, Coin], values: Mapping[str, float | None], buy_at: float, target_pct: float, stop_pct: float, horizon_minutes: float, now: int) -> None:
+    def watch(self, coins: Mapping[str, Coin], values: Mapping[str, float | None], buy_at: float, target_pct: float, stop_pct: float, horizon_minutes: float, now: int, markets: Mapping[str, Mapping[str, float | None]] | None = None) -> None:
         """Called with each new Radar reading. `values` is each coin's number in the buy mode."""
         horizon = int(max(5.0, min(60.0, horizon_minutes or 30.0)) * 60_000)
         target, stop = target_pct / 100, (stop_pct or 50) / 100
@@ -142,7 +154,7 @@ class Learner:
                 continue
             if self._samples_today(mint, now) >= SAMPLES_PER_COIN_DAY:
                 continue
-            self._add("watch", coin.mint, coin.symbol, now, coin.price, target, stop, horizon, features(coin, value, now))
+            self._add("watch", coin.mint, coin.symbol, now, coin.price, target, stop, horizon, features(coin, value, now, (markets or {}).get(mint)))
             self.last_sampled[mint] = now
         for mint, samples in list(self.open.items()):
             if mint in coins:
@@ -233,9 +245,9 @@ class Learner:
         good = [(band, stat) for band, stat in self.table.get(name, {}).items() if stat.seen >= MIN_SEEN and stat.mean - self.cost > 0]
         return max(good, key=lambda item: item[1].mean) if good else None
 
-    def check(self, coin: Coin, value: float | None, now: int, timing: bool) -> str | None:
+    def check(self, coin: Coin, value: float | None, now: int, timing: bool, market: Mapping[str, float | None] | None = None) -> str | None:
         """Why the notebook says not to buy this coin now, or None."""
-        bands = features(coin, value, now)
+        bands = features(coin, value, now, market)
         worst: tuple[str, str, Stat] | None = None
         for name, feature in FEATURES.items():
             if feature.timing and not timing:

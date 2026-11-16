@@ -68,6 +68,7 @@
 .radar-bot-lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
 .radar-bot-lessons li { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) 60px minmax(110px, auto); gap: 10px; align-items: baseline; }
 .radar-bot-lessons li > span:first-child { color: var(--muted); }
+.radar-bot-reviews { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; line-height: 1.45; }
 @media (max-width: 640px) {
   .radar-bot-lessons li { grid-template-columns: minmax(0, 1fr) auto; }
   .radar-bot-lessons li > span:first-child, .radar-bot-lessons li > span:last-child { grid-column: 1 / -1; }

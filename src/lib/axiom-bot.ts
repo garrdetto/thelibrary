@@ -54,25 +54,34 @@ export const botPresets: Array<{ id: string; label: string; summary: string; val
   {
     id: 'careful',
     label: 'Careful',
-    summary: 'Strict safety checks and the Radar\'s own buy call, three coins at most. Sells at +20% unless the chart is still climbing, stop loss at -15%.',
-    values: { 'buy.picky': 'strict', 'buy.max_coins': 3, 'sell.target_pct': 20, 'sell.stop_loss_pct': 15, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 8 },
+    summary: 'Strict safety checks and the Radar\'s own buy call, three coins at most, Wallet Score 50+. Sells at +20% unless the chart is still climbing, stop loss at -15%.',
+    values: { 'buy.picky': 'strict', 'buy.max_coins': 3, 'buy.min_wallet_score': 50, 'sell.target_pct': 20, 'sell.stop_loss_pct': 15, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 8 },
   },
   {
     id: 'balanced',
     label: 'Balanced',
-    summary: 'The defaults: any coin that reaches the score with the usual safety checks. Sells at +30% unless momentum is strong, stop loss at -20%.',
-    values: { 'buy.picky': 'normal', 'buy.max_coins': 5, 'sell.target_pct': 30, 'sell.stop_loss_pct': 20, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 12 },
+    summary: 'The defaults: any coin that reaches the score with the usual safety checks and a Wallet Score of 35+. Sells at +30% unless momentum is strong, stop loss at -20%.',
+    values: { 'buy.picky': 'normal', 'buy.max_coins': 5, 'buy.min_wallet_score': 35, 'sell.target_pct': 30, 'sell.stop_loss_pct': 20, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 12 },
   },
   {
     id: 'bold',
     label: 'Bold',
-    summary: 'Looser checks and up to eight coins. Aims for +50% and gives coins room: stop loss at -25%, rides momentum with a 15% trail.',
-    values: { 'buy.picky': 'loose', 'buy.max_coins': 8, 'sell.target_pct': 50, 'sell.stop_loss_pct': 25, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 15 },
+    summary: 'Looser checks (Wallet Score 25+) and up to eight coins. Aims for +50% and gives coins room: stop loss at -25%, rides momentum with a 15% trail.',
+    values: { 'buy.picky': 'loose', 'buy.max_coins': 8, 'buy.min_wallet_score': 25, 'sell.target_pct': 50, 'sell.stop_loss_pct': 25, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 15 },
   },
 ]
 
 /** One thing the bot learned: how coins in one band of one feature did after it saw them. */
 export type BotLesson = { feature: string; band: string; seen: number; avgPct: number; winPct: number; timing: boolean }
+
+/** One kind of bad buy the bot reads at the moment of buying, and how its trades with it went (review.py). */
+export type BotMistake = { tag: string; label: string; trades: number; losses: number; avgPct: number; active: boolean }
+
+/** A closed trade looked back on: what it made, its peak after the buy, and why in plain words. */
+export type BotTradeReview = { symbol: string; mint: string; closedAt: number; pnlPct: number; peakPct: number | null; tags: string[]; text: string }
+
+/** What the bot learned from its own buys. */
+export type BotMistakes = { enabled: boolean; reviewed: number; minTrades: number; lessons: BotMistake[]; recent: BotTradeReview[] }
 
 /** What the bot's learner knows, as it reported it. */
 export type BotLearning = {
@@ -89,6 +98,7 @@ export type BotLearning = {
   minSeen: number
   buyLevel: number
   lessons: BotLesson[]
+  mistakes?: BotMistakes
 }
 
 export type BotPosition = {

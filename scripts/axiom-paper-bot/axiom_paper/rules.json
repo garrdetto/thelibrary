@@ -672,6 +672,17 @@
    "help": ""
   },
   {
+   "key": "entry.min_wallet_score",
+   "type": "number",
+   "default": 0,
+   "min": 0,
+   "max": 100,
+   "step": 1,
+   "unit": "",
+   "label": "Minimum Wallet Score",
+   "help": "Skip coins whose Wallet Score is under this. 0 turns it off. Coins without a score yet pass."
+  },
+  {
    "key": "entry.max_data_age_seconds",
    "type": "number",
    "default": 90,

@@ -20,6 +20,8 @@ const clockWithSeconds = (value: number) => new Date(value).toLocaleTimeString([
 
 type TokenDrawerProps = { token: RadarToken; chartWindow: ChartWindow; fast: boolean; onClose: () => void; onTogglePin: (mint: string) => void }
 
+const walletVerdict = { good: 'Winning', bad: 'Coins died', mixed: 'Mixed', new: 'No record' } as const
+
 export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: TokenDrawerProps) {
   const [span, setSpan] = useState<ChartWindow>(chartWindow)
   const { mode: scoreMode } = useScoreMode()
@@ -243,6 +245,22 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div><dt>Freeze authority</dt><dd className={live.safety.freezeAuthority ? 'radar-bad' : ''}>{authorityLabel(live.safety.freezeAuthority)}</dd></div>
         </dl>
       </section>
+
+      {live.wallets && <section className="radar-drawer-section" aria-labelledby="radar-wallets-title">
+        <h3 id="radar-wallets-title">Wallet Score {live.wallets.score} <small>who holds it, how much, and how their earlier coins ended</small></h3>
+        <p className="radar-note">{live.wallets.summary}. 50 means no holder with a real stake has a record yet; holders under $100 or 0.3% of supply are left out.</p>
+        {live.wallets.top.length > 0 && <div className="radar-table-wrap">
+          <table className="radar-mini-table">
+            <thead><tr><th scope="col">Wallet</th><th scope="col">Holds</th><th scope="col">Earlier coins</th><th scope="col">Record</th></tr></thead>
+            <tbody>{live.wallets.top.map(holder => <tr key={holder.wallet}>
+              <td><a href={solscanAccountUrl(holder.wallet)} target="_blank" rel="noopener noreferrer" className="mono">{shortAddress(holder.wallet)}</a>{holder.whale && <span className="radar-tag" title="$1,000 or more in this coin">whale</span>}</td>
+              <td className="tabular">{holder.pct.toFixed(1)}%{holder.usd !== null ? ` · ${formatUsd(holder.usd)}` : ''}</td>
+              <td className="tabular">{holder.wins} grew 3x · {holder.losses} died</td>
+              <td className={holder.verdict === 'good' ? 'radar-delta up' : holder.verdict === 'bad' ? 'radar-delta down' : 'radar-muted'}>{walletVerdict[holder.verdict]}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+      </section>}
 
       <section className="radar-drawer-section">
         <h3>Smart holders in this coin</h3>

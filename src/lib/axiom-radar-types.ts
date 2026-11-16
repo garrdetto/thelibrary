@@ -96,6 +96,26 @@ export type RadarRunnerPattern = { tag: string; label: string; count: number; fa
 
 export type RadarRunnerSummary = { threshold: number; normalThreshold: number; rollingWinRate: number | null; rollingDecided: number; alerts: RadarRunnerAlert[]; patterns: RadarRunnerPattern[]; updatedAt: number }
 
+/** One of a coin's top holders as the Wallet Score sees it: its stake now and how the coins it held before ended. */
+export type RadarWalletHolder = { wallet: string; pct: number; usd: number | null; wins: number; losses: number; verdict: 'good' | 'bad' | 'mixed' | 'new'; whale: boolean }
+
+/** Who holds the coin and how much: 0–100, 50 when no holder with a real stake has a record yet (scripts/axiom-tracker/wallet-score.ts). */
+export type RadarWalletScore = {
+  score: number
+  holders: number
+  known: number
+  whales: number
+  goodWhales: number
+  badWhales: number
+  smartUsd: number | null
+  smartPct: number
+  ignored: number
+  top: RadarWalletHolder[]
+  summary: string
+  checkedAt: number | null
+  at: number
+}
+
 export type RadarGainWindow = 's5' | 's15' | 's30' | 'm1'
 export type RadarGainWindows = Record<RadarGainWindow, number | null>
 
@@ -167,6 +187,7 @@ export type RadarToken = {
   scoreLedger?: RadarScoreLedger | null
   scoreTrail?: RadarScoreTrail | null
   dex?: RadarDexScore | null
+  wallets?: RadarWalletScore | null
 }
 
 export type RadarPaperTrade = {
