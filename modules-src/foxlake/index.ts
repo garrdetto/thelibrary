@@ -209,7 +209,7 @@ async function boot(): Promise<void> {
     else inviteRequested = true
   })
   setShadowProxies(FOX_LAKE_SHADOWS)
-  const game = new Game(canvas, { terrain: new TelloTerrain(montello.land), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site: montello.site, ridesBought: true, jump: true, homeName: 'the outfitter', look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS, reverseDepth: true })
+  const game = new Game(canvas, { terrain: new TelloTerrain(montello.land), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site: montello.site, ridesBought: true, jump: true, homeName: 'the outfitter', look: FOX_LAKE_LOOK, tailored: true, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS, reverseDepth: true })
   window.__foxlake = { game, town }
   await game.start()
 }

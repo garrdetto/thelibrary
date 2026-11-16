@@ -46,6 +46,20 @@ export const BEARDS: HeadOption[] = [
   { id: 'silver', name: 'Long white' },
 ]
 
+/** Hairstyles with a shape of their own, grown over the scalp in the hair colour picked above. `painted` is the scan's own hair. */
+export const HAIRSTYLES: HeadOption[] = [
+  { id: 'painted', name: 'Natural' },
+  { id: 'crop', name: 'Short crop' },
+  { id: 'quiff', name: 'Quiff' },
+  { id: 'spiky', name: 'Spiky' },
+  { id: 'curly', name: 'Curly top' },
+  { id: 'afro', name: 'Afro' },
+  { id: 'mohawk', name: 'Mohawk' },
+  { id: 'bun', name: 'Man bun' },
+  { id: 'ponytail', name: 'Ponytail' },
+  { id: 'long', name: 'Shoulder length' },
+]
+
 export const SHAPE_SLIDERS = ['jaw', 'chin', 'nose', 'brow', 'cheeks'] as const
 export const BODY_SLIDERS = ['height', 'build', 'shoulders'] as const
 export type ShapeSlider = typeof SHAPE_SLIDERS[number]
@@ -66,15 +80,17 @@ export interface Appearance extends Record<ShapeSlider | BodySlider, number> {
   face: string
   hair: string
   beard: string
+  /** One of `HAIRSTYLES`. */
+  style: string
 }
 
 /**
  * Bumped whenever the options change enough that everyone deserves one more look in the mirror: a profile whose
  * `fitted` is lower is offered the character screen once.
  */
-export const APPEARANCE_VERSION = 2
+export const APPEARANCE_VERSION = 3
 
-export const DEFAULT_APPEARANCE: Appearance = { face: 'base', hair: 'base', beard: 'base', jaw: 0, chin: 0, nose: 0, brow: 0, cheeks: 0, height: 0, build: 0, shoulders: 0 }
+export const DEFAULT_APPEARANCE: Appearance = { face: 'base', hair: 'base', beard: 'base', style: 'painted', jaw: 0, chin: 0, nose: 0, brow: 0, cheeks: 0, height: 0, build: 0, shoulders: 0 }
 
 const SLIDERS: (ShapeSlider | BodySlider)[] = [...SHAPE_SLIDERS, ...BODY_SLIDERS]
 const has = (list: HeadOption[], id: unknown): id is string => typeof id === 'string' && list.some((o) => o.id === id)
@@ -87,23 +103,24 @@ export function normalizeAppearance(raw: unknown): Appearance {
   if (has(FACES, r.face)) out.face = r.face
   if (has(HAIR, r.hair)) out.hair = r.hair
   if (has(BEARDS, r.beard)) out.beard = r.beard
+  if (has(HAIRSTYLES, r.style)) out.style = r.style
   for (const key of SLIDERS) out[key] = step(r[key]) + 0
   return out
 }
 
 export function sameAppearance(a: Appearance, b: Appearance): boolean {
-  return a.face === b.face && a.hair === b.hair && a.beard === b.beard && SLIDERS.every((key) => a[key] === b[key])
+  return a.face === b.face && a.hair === b.hair && a.beard === b.beard && a.style === b.style && SLIDERS.every((key) => a[key] === b[key])
 }
 
-/** A short string for the wire: the three picks, then the eight sliders as tenths. */
+/** A short string for the wire: the three picks, the eight sliders as tenths, then the hairstyle (older pages ignore it). */
 export function packAppearance(a: Appearance): string {
-  return [a.face, a.hair, a.beard, ...SLIDERS.map((key) => Math.round(a[key] * 10))].join('.')
+  return [a.face, a.hair, a.beard, ...SLIDERS.map((key) => Math.round(a[key] * 10)), a.style].join('.')
 }
 
 export function unpackAppearance(packed: unknown): Appearance {
   if (typeof packed !== 'string' || packed.length > 80) return { ...DEFAULT_APPEARANCE }
   const parts = packed.split('.')
-  const raw: Record<string, unknown> = { face: parts[0], hair: parts[1], beard: parts[2] }
+  const raw: Record<string, unknown> = { face: parts[0], hair: parts[1], beard: parts[2], style: parts[3 + SLIDERS.length] }
   SLIDERS.forEach((key, i) => {
     raw[key] = Number(parts[3 + i]) / 10
   })

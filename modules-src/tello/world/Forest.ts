@@ -262,9 +262,16 @@ export class Forest {
     for (const key of this.near(mx, mz, radius)) this.plantStand(key)
   }
 
+  /** The tree cell each focus point stood in last step: a point that hasn't left its cell has nothing new to plant or make solid. */
+  private readonly lastSolidCell: number[] = []
+
   /** Trunks become solid for cars as anything that drives comes within about 50 m of them (points in map coordinates). */
   solidTrees(points: readonly { x: number; z: number }[]): void {
-    for (const p of points) {
+    for (let n = 0; n < points.length; n++) {
+      const p = points[n]
+      const cell = treeKey(p.x, p.z)
+      if (this.lastSolidCell[n] === cell) continue
+      this.lastSolidCell[n] = cell
       if (!this.land.inside(p.x, p.z, -60)) continue
       this.ensureAround(p.x, p.z, 60)
       for (let i = -3; i <= 3; i++) {

@@ -1,4 +1,4 @@
-import { ITEMS, ITEM_BY_ID, TASK_BY_ID } from '../shared/Economy'
+import { ITEMS, ITEM_BY_ID, TASK_BY_ID, offered } from '../shared/Economy'
 import type { Item, Slot } from '../shared/Economy'
 import type { Progress } from '../game/Progress'
 import { SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
@@ -147,7 +147,7 @@ export class Panels {
       this.note.textContent = (this.spot === 'desk' ? 'Order from the outfitter\'s catalog. Paid in cash earned from fish, game, tasks and time outdoors.' : 'Order at the trading desk inside the cabin.') + guest
       const groups = new Map<string, Item[]>()
       for (const item of ITEMS) {
-        if (item.price === 0) continue
+        if (item.price === 0 || !offered(item.id)) continue
         if (!groups.has(item.group)) groups.set(item.group, [])
         groups.get(item.group)!.push(item)
       }
@@ -272,7 +272,7 @@ export class Panels {
     for (const { slot, label } of slots) {
       const section = h('section', 'panel-section')
       section.append(h('h3', undefined, label))
-      const options = ITEMS.filter((i) => i.slot === slot && p.owned.includes(i.id))
+      const options = ITEMS.filter((i) => i.slot === slot && p.owned.includes(i.id) && offered(i.id))
       if (slot === 'call' || slot === 'scent') options.unshift({ id: '', name: 'None', slot, group: 'Hunting', price: 0, blurb: 'Leave it at the cabin.' })
       if (!options.length) section.append(h('p', 'panel-note', 'Nothing owned yet — see the catalog.'))
       for (const item of options) {
@@ -288,7 +288,7 @@ export class Panels {
         row.append(b)
         section.append(row)
       }
-      const locked = ITEMS.filter((i) => i.slot === slot && !p.owned.includes(i.id))
+      const locked = ITEMS.filter((i) => i.slot === slot && !p.owned.includes(i.id) && offered(i.id))
       if (locked.length) section.append(h('p', 'panel-note', `In the catalog: ${locked.map((i) => `${i.name} ($${i.price})`).join(', ')}`))
       this.body.append(section)
     }

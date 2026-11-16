@@ -11,6 +11,8 @@ export interface Item {
   group: ShopGroup
   price: number
   blurb: string
+  /** Drawn only on the tailored body (Life Sim): kept out of Rack & Reel's own catalog and wardrobe. */
+  tailored?: boolean
 }
 
 export const ITEMS: Item[] = [
@@ -71,9 +73,32 @@ export const ITEMS: Item[] = [
   { id: 'pants-chinos', name: 'Chinos', slot: 'pants', group: 'Clothing', price: 45, blurb: 'Tan cotton chinos with a leather belt.' },
   { id: 'pants-joggers', name: 'Joggers', slot: 'pants', group: 'Clothing', price: 35, blurb: 'Heather grey sweatpants with cuffed ankles.' },
   { id: 'pants-shorts', name: 'Cargo shorts', slot: 'pants', group: 'Clothing', price: 30, blurb: 'Khaki cargo shorts for summer days.' },
+  { id: 'jacket-jersey-red', name: 'Red basketball jersey', slot: 'jacket', group: 'Clothing', price: 60, blurb: 'Mesh, sleeveless, number 23 front and back.', tailored: true },
+  { id: 'jacket-jersey-white', name: 'White basketball jersey', slot: 'jacket', group: 'Clothing', price: 60, blurb: 'Home whites with navy trim and number 8.', tailored: true },
+  { id: 'jacket-jersey-blue', name: 'Blue basketball jersey', slot: 'jacket', group: 'Clothing', price: 60, blurb: 'Royal blue with gold trim and number 33.', tailored: true },
+  { id: 'jacket-raglan', name: 'Baseball tee', slot: 'jacket', group: 'Clothing', price: 30, blurb: 'White body, navy three-quarter sleeves.', tailored: true },
+  { id: 'jacket-longsleeve', name: 'Olive long-sleeve tee', slot: 'jacket', group: 'Clothing', price: 30, blurb: 'A soft heather olive long-sleeve.', tailored: true },
+  { id: 'pants-bball-red', name: 'Red basketball shorts', slot: 'pants', group: 'Clothing', price: 45, blurb: 'Long mesh shorts with white side stripes and high-tops.', tailored: true },
+  { id: 'pants-bball-white', name: 'White basketball shorts', slot: 'pants', group: 'Clothing', price: 45, blurb: 'Home whites with navy stripes and high-tops.', tailored: true },
+  { id: 'pants-bball-blue', name: 'Blue basketball shorts', slot: 'pants', group: 'Clothing', price: 45, blurb: 'Royal blue with gold stripes and high-tops.', tailored: true },
+  { id: 'pants-gym', name: 'Gym shorts', slot: 'pants', group: 'Clothing', price: 25, blurb: 'Short charcoal running shorts with a white stripe.', tailored: true },
+  { id: 'pants-jorts', name: 'Jean shorts', slot: 'pants', group: 'Clothing', price: 35, blurb: 'Faded denim cut off above the knee.', tailored: true },
   { id: 'pack-none', name: 'No pack', slot: 'pack', group: 'Clothing', price: 0, blurb: 'Travel light.' },
   { id: 'pack-hunting', name: 'Hunting pack', slot: 'pack', group: 'Clothing', price: 140, blurb: 'Room for a thermos and a drag rope.' },
 ]
+
+let tailoredClothes = false
+
+/** The page draws the tailored body (Life Sim), so the clothes made only for it are offered. Pages only; the Worker never calls it. */
+export function setTailoredClothes(on: boolean): void {
+  tailoredClothes = on
+}
+
+/** Whether this page offers an item: everything, except the tailored-only clothes where the body isn't tailored. */
+export function offered(id: string): boolean {
+  const item = ITEM_BY_ID[id]
+  return !item?.tailored || tailoredClothes
+}
 
 export const ITEM_BY_ID: Record<string, Item> = Object.fromEntries(ITEMS.map((i) => [i.id, i]))
 
@@ -354,10 +379,10 @@ export type Look = Record<LookSlot, string>
  * catalog. Whatever is picked is given free and worn.
  */
 export const CHARACTER_CHOICES: Record<LookSlot, string[]> = {
-  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas', 'jacket-angler', 'jacket-tank', 'jacket-tee-white', 'jacket-tee-black', 'jacket-tee-navy', 'jacket-tee-heather', 'jacket-hoodie-grey', 'jacket-polo'],
+  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas', 'jacket-angler', 'jacket-tank', 'jacket-tee-white', 'jacket-tee-black', 'jacket-tee-navy', 'jacket-tee-heather', 'jacket-hoodie-grey', 'jacket-polo', 'jacket-jersey-red', 'jacket-jersey-white', 'jacket-jersey-blue', 'jacket-raglan', 'jacket-longsleeve'],
   vest: ['vest-blaze', 'vest-none'],
   cap: ['cap-blaze', 'cap-camo', 'cap-bucket', 'cap-backwards', 'cap-visor', 'cap-cowboy', 'cap-none'],
-  pants: ['pants-camo', 'pants-jeans', 'pants-khaki', 'pants-darkjeans', 'pants-chinos', 'pants-joggers', 'pants-shorts'],
+  pants: ['pants-camo', 'pants-jeans', 'pants-khaki', 'pants-darkjeans', 'pants-chinos', 'pants-joggers', 'pants-shorts', 'pants-bball-red', 'pants-bball-white', 'pants-bball-blue', 'pants-gym', 'pants-jorts'],
   pack: ['pack-none'],
 }
 

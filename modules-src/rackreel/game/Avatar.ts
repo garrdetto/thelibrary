@@ -2,6 +2,8 @@ import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { disposeSkinned } from '../core/SkinnedModel'
+import type { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { buildHair, hairMaterial, placeHair, scalpSource } from './Hair'
 import { bodyScale, sameAppearance } from '../shared/Appearance'
 import type { Appearance } from '../shared/Appearance'
 import { isNeutral, shapeFace } from '../systems/FaceShape'
@@ -96,6 +98,13 @@ export class Avatar {
   private faceScratch: Float32Array | null = null
   private hat = ''
   private gone = false
+  private hairMesh: Mesh | null = null
+  /** Toe and ankle joints with their height above the sole at rest, for planting the feet. */
+  private soles: [TransformNode, number][] | null = null
+  private footLift = 0
+  /** The ground's height under a point, so a foot on a slope rises with it (never lower than the root's own level). */
+  groundAt: ((x: number, z: number) => number) | null = null
+  private hairTurn = 0
 
   constructor(readonly rig: AvatarRig) {
     this.root = rig.root
@@ -109,6 +118,14 @@ export class Avatar {
     for (const name of ARM_JOINTS) this.ikQuat.set(this.j[name], new Quaternion())
     this.hipBase = this.j.hips.position.y
     this.hipRest.copyFrom(this.j.hips.position)
+    if (this.skin && this.j.toeL && this.j.toeR && this.j.footL && this.j.footR) {
+      const rest = (node: TransformNode) => {
+        let y = 0
+        for (let n: TransformNode | null = node; n && n !== this.root; n = n.parent as TransformNode | null) y += n.position.y
+        return y
+      }
+      this.soles = [this.j.toeL, this.j.toeR, this.j.footL, this.j.footR].map((n) => [n, rest(n)] as [TransformNode, number])
+    }
     if (this.skin) {
       const n = this.skin.order.length
       this.gaits = gaitSet(this.skin.clips)
@@ -214,11 +231,13 @@ export class Avatar {
     const shaped = this.look !== null && !isNeutral(this.look)
     if (!shaped && !tuck) {
       skin.shapeFace(null)
+      this.refreshHair(skin.faceBase)
       return
     }
     const out = (this.faceScratch ??= new Float32Array(skin.faceBase.length))
     if (shaped) shapeFace(skin.faceBase, skin.meta.head, this.look!, out)
     else out.set(skin.faceBase)
+    const share = shaped ? undefined : `tuck:${this.hat}`
     if (tuck) {
       for (let i = 0; i < tuck.index.length; i++) {
         const at = tuck.index[i] * 3
@@ -227,7 +246,33 @@ export class Avatar {
         out[at + 2] += tuck.move[i * 3 + 2]
       }
     }
-    skin.shapeFace(out)
+    skin.shapeFace(out, share)
+    this.refreshHair(out)
+  }
+
+  /** Grows (or hides) the hairstyle over the face as it is shaped now; a hat hides all but a ponytail. */
+  private refreshHair(positions: Float32Array): void {
+    const skin = this.skin
+    const look = this.look
+    if (!skin || !look) return
+    const style = look.style
+    if ((!style || style === 'painted') && !this.hairMesh) return
+    const turn = ++this.hairTurn
+    const face = this.rig.partMeshes.get('face') as Mesh
+    const headJoint = this.jointIndex.get(this.j.head) ?? 0
+    const snapshot = positions === skin.faceBase ? positions : positions.slice()
+    const hatted = this.hat !== ''
+    void scalpSource(face, skin.meta.head, headJoint).then((src) => {
+      if (!src || turn !== this.hairTurn || this.gone) return
+      const data = buildHair(style, src, snapshot, hatted)
+      const scene = this.root.getScene()
+      const mesh = placeHair(this.hairMesh, data, { root: this.root, skeleton: skin.skeleton, scene }, hairMaterial(scene, look.hair), (m) => skin.register?.(m))
+      if (mesh && !this.hairMesh) {
+        this.meshes.push(mesh)
+        mesh.isVisible = this.meshes[0]?.isVisible ?? true
+      }
+      this.hairMesh = mesh
+    }, () => undefined)
   }
 
   /** Frees the rig. Unparent anything riding a hand first. */
@@ -509,6 +554,36 @@ export class Avatar {
     const hw = this.clipWeight[0]
     if (posed) hips.position.set(lerp(this.hipRest.x, blend.hips[0], hw), lerp(this.hipRest.y, blend.hips[1] * this.tall, hw), lerp(this.hipRest.z, blend.hips[2], hw))
     else hips.position.copyFrom(this.hipRest)
+    this.plantFeet(dt, standing)
+  }
+
+  /**
+   * Standing, the clips' hips sit a few centimetres lower than the model's own, which pushed the soles into the
+   * ground. The lower of the two feet (its toe or its heel, whichever is lower) is measured against where that joint sits
+   * above the sole at rest, and the hips are lifted (or lowered a little) so that sole meets the ground: under the root,
+   * or under the foot itself on a slope when `groundAt` is given.
+   */
+  private plantFeet(dt: number, standing: boolean): void {
+    if (!this.soles) return
+    const want = standing ? this.lowestSole() : 0
+    this.footLift += (Math.max(-0.03, Math.min(0.08, want)) - this.footLift) * Math.min(1, dt * 12)
+    this.j.hips.position.y += this.footLift
+  }
+
+  private lowestSole(): number {
+    const soles = this.soles!
+    this.refresh(this.j.toeL)
+    this.refresh(this.j.toeR)
+    const base = this.root.getAbsolutePosition().y
+    const scale = this.tall
+    let low = Infinity
+    const hipRest = this.hipRest.y
+    for (const [joint, rest] of soles) {
+      const at = joint.getAbsolutePosition()
+      const ground = this.groundAt ? Math.max(base, this.groundAt(at.x, at.z)) : base
+      low = Math.min(low, at.y - ground - (hipRest + (rest - hipRest) * scale))
+    }
+    return Number.isFinite(low) ? -low : 0
   }
 
   /**

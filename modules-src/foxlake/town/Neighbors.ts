@@ -23,7 +23,7 @@ import { Avatar, HIP_HEIGHT } from '../../rackreel/game/Avatar'
 import { instantiateSkinned } from '../../rackreel/core/SkinnedModel'
 import type { SkinnedTemplate } from '../../rackreel/core/SkinnedModel'
 import type { HeadPaint } from '../../rackreel/game/HeadPaint'
-import { BEARDS, DEFAULT_APPEARANCE, FACES, HAIR } from '../../rackreel/shared/Appearance'
+import { BEARDS, DEFAULT_APPEARANCE, FACES, HAIR, HAIRSTYLES } from '../../rackreel/shared/Appearance'
 import { townToScene, townYawToHeading } from '../region'
 
 const INTERP_DELAY_MS = 120
@@ -33,6 +33,11 @@ const W_SPAWN = 110
 const W_DESPAWN = 140
 const TAG_RANGE = 70
 const isNpc = (id: string) => id.startsWith('npc-')
+/**
+ * Neighbors wear one painted head whole (its own face, hair and beard), so a head is one shared texture per id instead
+ * of a mixed 1024 square texture for nearly every neighbor; hairstyles and builds still vary by name.
+ */
+const PLAIN_HEADS = FACES.map((f) => f.id).filter((id) => HAIR.some((h) => h.id === id) && BEARDS.some((b) => b.id === id))
 
 /** Everyday outfits neighbors wear (picked from their name, so each neighbor always looks the same). */
 const OUTFITS: string[][] = [
@@ -100,6 +105,8 @@ export interface NeighborHost {
   townRoot: TransformNode
   register(mesh: AbstractMesh): void
   unregister(mesh: AbstractMesh): void
+  /** Texture size neighbors' tailored clothes are painted at (the detail level). */
+  clothSize?(): number
 }
 
 export class Neighbors {
@@ -172,9 +179,11 @@ export class Neighbors {
 
   private makeAvatar(rp: RemotePlayer): Avatar {
     const avatar = new Avatar(instantiateSkinned(this.host.hunter, this.host.scene, (mesh) => this.host.register(mesh)))
+    if (avatar.rig.skin) avatar.rig.skin.clothSize = this.host.clothSize?.() ?? 1024
     avatar.setOutfit(rp.outfit)
     const h = hashName(rp.name)
-    avatar.setAppearance({ ...DEFAULT_APPEARANCE, face: FACES[h % FACES.length].id, hair: HAIR[(h >>> 4) % HAIR.length].id, beard: BEARDS[(h >>> 8) % BEARDS.length].id }, this.host.paint)
+    const head = PLAIN_HEADS[h % PLAIN_HEADS.length]
+    avatar.setAppearance({ ...DEFAULT_APPEARANCE, face: head, hair: head, beard: head, style: HAIRSTYLES[(h >>> 12) % HAIRSTYLES.length].id }, this.host.paint)
     return avatar
   }
 
@@ -218,6 +227,7 @@ export class Neighbors {
   private release(rv: RemoteVehicle): void {
     rv.view?.destroy()
     rv.view = null
+    rv.rotors = null
     if (rv.body) this.physics.world.removeRigidBody(rv.body)
     rv.body = null
   }
@@ -301,9 +311,13 @@ export class Neighbors {
       }
       _p.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k)
       const d2 = (_p.x - focus.x) ** 2 + (_p.z - focus.z) ** 2
-      if (rp.npc && !rp.avatar && d2 > W_SPAWN * W_SPAWN) continue
-      if (rp.npc && rp.avatar && d2 > W_DESPAWN * W_DESPAWN) {
+      if (!rp.avatar && d2 > W_SPAWN * W_SPAWN) {
+        this.placeTag(rp, null, 0)
+        continue
+      }
+      if (rp.avatar && d2 > W_DESPAWN * W_DESPAWN) {
         this.dropAvatar(rp)
+        this.placeTag(rp, null, 0)
         continue
       }
       if (!rp.avatar) rp.avatar = this.makeAvatar(rp)

@@ -6,7 +6,7 @@ import { createCharacter, defaultProfile, lookOf, makeover, normalizeProfile, ou
 import { SHAPE_REACH, isNeutral, shapeFace } from '../systems/FaceShape'
 import type { HeadFrame } from '../systems/FaceShape'
 
-const LOOK: Appearance = { face: 'young', hair: 'ginger', beard: 'silver', jaw: 0.5, chin: -0.3, nose: 1, brow: -1, cheeks: 0.2, height: 0.4, build: -0.6, shoulders: 0.9 }
+const LOOK: Appearance = { face: 'young', hair: 'ginger', beard: 'silver', style: 'quiff', jaw: 0.5, chin: -0.3, nose: 1, brow: -1, cheeks: 0.2, height: 0.4, build: -0.6, shoulders: 0.9 }
 
 test('an appearance is always complete and in range', () => {
   assert.deepEqual(normalizeAppearance(undefined), DEFAULT_APPEARANCE)

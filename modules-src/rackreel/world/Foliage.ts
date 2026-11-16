@@ -53,6 +53,10 @@ export class Foliage {
   hostCasters: ((focus: Vector3) => readonly AbstractMesh[]) | null = null
   private hostList: readonly AbstractMesh[] | null = null
   readonly grass: GrassField
+  /** Called for every stand planted after the woods were built (a host world's trees), so the host can cull it. */
+  onStand: ((stand: Stand) => void) | null = null
+  private treeLow = 115
+  private treeOut = 640
   private shadowStands = new Set<Stand>()
   private shadowsStale = true
   private primed = false
@@ -227,8 +231,22 @@ export class Foliage {
         this.addTree(stand, kind, 'crown', matrices, this.crownTints[kind].toArray(), this.crownMaterial(kind))
       }
       this.stands.push(stand)
+      this.onStand?.(stand)
     }
     this.shadowsStale = true
+  }
+
+  /** Trees swap to their low models at `low` metres and are gone at `out`, for every stand now and later. */
+  setTreeDistances(low: number, out: number): void {
+    this.treeLow = low
+    this.treeOut = out
+    for (const stand of this.stands) {
+      for (const mesh of stand.casters) {
+        const levels = mesh.getLODLevels()
+        for (const level of levels) level.distanceOrScreenCoverage = level.mesh ? low : out
+        levels.sort((a, b) => b.distanceOrScreenCoverage - a.distanceOrScreenCoverage)
+      }
+    }
   }
 
   private scatter(kind: Scatter, cx: number, cz: number, x: number, y: number, z: number, yaw: number, scale: number, sy = scale): void {
@@ -245,8 +263,8 @@ export class Foliage {
     const hi = this.thinMesh(stand, `${kind}-${part}`, this.models.get(kind)!.parts.get(part)!.mesh, matrices, tints, material)
     const lo = this.thinMesh(stand, `${kind}-${part}-lo`, this.models.get(LOD_MODEL[kind])!.parts.get(part)!.mesh, matrices, tints, material, true)
     if (USE_LOD) {
-      hi.addLODLevel(115, lo)
-      hi.addLODLevel(640, null)
+      hi.addLODLevel(this.treeLow, lo)
+      hi.addLODLevel(this.treeOut, null)
     } else lo.setEnabled(false)
     stand.casters.push(hi)
   }

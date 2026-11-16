@@ -16,6 +16,8 @@ import { perfModeFromSearch } from '../core/PerfTrend'
 import { MODEL_NAMES, disposeRig, instantiate, loadModel, partMesh } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { instantiateSkinned, loadSkinned } from '../core/SkinnedModel'
+import { HERO_TEXTURE, Tailor, cleanThroat, refitBody, throatMask } from './Tailor'
+import { HEAD_TEXTURE } from './HeadPaint'
 import type { SkinnedTemplate } from '../core/SkinnedModel'
 import { Audio } from '../systems/Audio'
 import { EncounterDirector } from '../systems/EncounterDirector'
@@ -52,7 +54,7 @@ import type { CreatorMode, CreatorTab } from '../ui/CharacterCreator'
 import { packAppearance } from '../shared/Appearance'
 import type { Appearance } from '../shared/Appearance'
 import { HeadPaint } from './HeadPaint'
-import { lookOf, owedMakeover } from '../shared/Economy'
+import { lookOf, owedMakeover, setTailoredClothes } from '../shared/Economy'
 import type { Look } from '../shared/Economy'
 import type { PanelTab } from '../ui/Panels'
 import { CABIN, Cabin, FOX_OUTFITTERS } from '../world/Cabin'
@@ -63,6 +65,7 @@ import type { MapMarker } from '../ui/Minimap'
 import { Online, fetchLobbies } from './Online'
 import type { PlayerState } from './Online'
 import { LobbyBrowser, PauseMenu, loadGraphics, loadSensitivity, saveGraphics, saveSensitivity } from '../ui/PauseMenu'
+import type { DetailSwitch } from '../ui/PauseMenu'
 import { formatValue as fmtValue } from '../systems/LootTableManager'
 import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
@@ -153,6 +156,8 @@ export interface GameExtension {
   placeName?(x: number, z: number): string | null
   /** The host world's own keys, listed in the Esc menu after Rack & Reel's. */
   controls?(): ControlRow[]
+  /** The host world's detail switch for the Esc menu (Life Sim: Standard by default, High on request). */
+  detail?: DetailSwitch
   /**
    * Draws the corner map in place of Rack & Reel's (player feet, camera yaw, facing, the live markers, asked only
    * when drawn). Return false to fall back to Rack & Reel's map.
@@ -202,6 +207,11 @@ export interface GameOptions {
   reverseDepth?: boolean
   /** Space jumps while on foot (Life Sim). */
   jump?: boolean
+  /**
+   * People wear clothes painted from the body's shape on a refitted, slimmer body (`Tailor`), receive no shadows, and
+   * the player's own clothes are painted at the sharper size (Life Sim).
+   */
+  tailored?: boolean
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -468,7 +478,16 @@ export class Game {
       this.hud.setLoading(0.1 + (loaded / names.length) * 0.5, `Bringing in the ${name.replace('fish-', '').replace('-lo', '').replace('treestand', 'tree stand')}…`)
     }))
     this.hunter = await hunter
-    this.headPaint = new HeadPaint(scene, (head) => texturedMaterial(scene, `hunter-head-${head}`, this.materials))
+    let throat: Uint8Array | null = null
+    if (this.options.tailored) {
+      setTailoredClothes(true)
+      const body = refitBody(this.hunter)
+      this.hunter.tailor = new Tailor(scene, body)
+      throat = throatMask(this.hunter, body, HEAD_TEXTURE)
+      this.hunter.noShadows = true
+    }
+    const mask = throat
+    this.headPaint = new HeadPaint(scene, (head) => texturedMaterial(scene, `hunter-head-${head}`, this.materials), mask ? (ctx, size) => cleanThroat(ctx, size, mask) : undefined)
     this.hud.setLoading(0.65, 'Planting the woods…')
     await nextFrame()
     const own = findLandmarks(this.terrain)
@@ -517,6 +536,8 @@ export class Game {
     this.anchorLine = createAnchorLine(scene, this.boat.root)
     this.dockEnd.copyFrom(landmarks.dock.end)
     this.avatar = new Avatar(instantiateSkinned(this.hunter, scene, reg))
+    if (this.avatar.rig.skin) this.avatar.rig.skin.clothSize = HERO_TEXTURE
+    this.avatar.groundAt = (x, z) => (this.mode === 'foot' && Math.abs(this.foot.y - this.terrain.heightAt(this.foot.x, this.foot.z)) < 0.05 ? this.terrain.heightAt(x, z) : -Infinity)
     this.buildGear(reg)
     this.bowfish = new Bowfishing({
       ctx: this.ctx, terrain: this.terrain, models: this.models, hud: this.hud, audio: this.audio, loot: this.loot, lighting: this.lighting, clock: this.clock,
@@ -918,6 +939,7 @@ export class Game {
         saveSensitivity(s)
       },
       controls: () => this.ext?.controls?.() ?? [],
+      detail: this.ext?.detail,
       graphics: () => ({ shadows: this.ctx.shadowLayers.enabled }),
       graphicsLocked: () => this.options.shadows === false,
       setGraphics: (g) => {

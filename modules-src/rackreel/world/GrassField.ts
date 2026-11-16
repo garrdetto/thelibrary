@@ -57,6 +57,8 @@ export class GrassField {
   private settled = false
   private made = 0
   private restored: Nullable<Observer<AbstractEngine>>
+  /** How far the grass reaches, as a share of `GRASS`'s distances (a host's lighter detail level draws less of it). */
+  private range = 1
 
   constructor(private readonly ctx: EngineContext, terrain: Terrain, private readonly template: Mesh, private readonly shading: FoliageShading, holes: readonly GrassHole[]) {
     this.builder = new GrassBuilder(terrain, holes)
@@ -70,6 +72,17 @@ export class GrassField {
     }))
     shading.fade.set(0, 0, GRASS.fadeStart, 1 / (GRASS.fadeEnd - GRASS.fadeStart))
     this.restored = ctx.engine.onContextRestoredObservable.add(() => this.reset())
+  }
+
+  /** Draws the grass out to `share` of its usual distances (fading, dropping and thinning all move in together). */
+  setRange(share: number): void {
+    const k = Math.max(0.3, Math.min(1, share))
+    if (k === this.range) return
+    this.range = k
+    this.shading.fade.z = GRASS.fadeStart * k
+    this.shading.fade.w = 1 / ((GRASS.fadeEnd - GRASS.fadeStart) * k)
+    this.settled = false
+    this.scanned.set(1e9, 0, 1e9)
   }
 
   /** Fills every chunk in range at once (the loading screen). */
@@ -92,7 +105,7 @@ export class GrassField {
     const chunks = this.chunks
     for (let i = chunks.length - 1; i >= 0; i--) {
       const chunk = chunks[i]
-      if (grassChunkDistance(chunk.cx, chunk.cz, center.x, center.z) <= GRASS.release) continue
+      if (grassChunkDistance(chunk.cx, chunk.cz, center.x, center.z) <= GRASS.release * this.range) continue
       chunk.mesh.setEnabled(false)
       this.known.delete(grassChunkKey(chunk.cx, chunk.cz))
       this.pool.push(chunk)
@@ -102,7 +115,7 @@ export class GrassField {
     const ex = this.emptyX
     const ez = this.emptyZ
     for (let i = ex.length - 1; i >= 0; i--) {
-      if (grassChunkDistance(ex[i], ez[i], center.x, center.z) <= GRASS.release) continue
+      if (grassChunkDistance(ex[i], ez[i], center.x, center.z) <= GRASS.release * this.range) continue
       this.known.delete(grassChunkKey(ex[i], ez[i]))
       ex[i] = ex[ex.length - 1]
       ez[i] = ez[ez.length - 1]
@@ -114,7 +127,7 @@ export class GrassField {
   /** Fills missing chunks nearest first until the time budget runs out; true once none are missing. */
   private stream(center: Vector3, budgetMs: number): boolean {
     const size = GRASS.chunk
-    const reach = GRASS.fadeEnd
+    const reach = GRASS.fadeEnd * this.range
     const cx0 = Math.floor((center.x - reach) / size)
     const cx1 = Math.floor((center.x + reach) / size)
     const cz0 = Math.floor((center.z - reach) / size)
@@ -149,11 +162,13 @@ export class GrassField {
       const chunk = this.chunks[i]
       const d = Math.hypot((chunk.cx + 0.5) * size - center.x, (chunk.cz + 0.5) * size - center.z)
       let tier = chunk.tier
-      if (tier < 0) tier = d < GRASS.near ? 0 : d < GRASS.mid ? 1 : 2
-      else if (tier === 0 && d > GRASS.near + LOD_SLACK) tier = 1
-      else if (tier === 1 && d < GRASS.near - LOD_SLACK) tier = 0
-      else if (tier === 1 && d > GRASS.mid + LOD_SLACK) tier = 2
-      else if (tier === 2 && d < GRASS.mid - LOD_SLACK) tier = 1
+      const near = GRASS.near * this.range
+      const mid = GRASS.mid * this.range
+      if (tier < 0) tier = d < near ? 0 : d < mid ? 1 : 2
+      else if (tier === 0 && d > near + LOD_SLACK) tier = 1
+      else if (tier === 1 && d < near - LOD_SLACK) tier = 0
+      else if (tier === 1 && d > mid + LOD_SLACK) tier = 2
+      else if (tier === 2 && d < mid - LOD_SLACK) tier = 1
       if (tier !== chunk.tier) {
         chunk.tier = tier
         chunk.mesh.material = this.materials[tier]
