@@ -25,6 +25,7 @@
     "modules-src/hood/tests/**",
     "modules-src/rackreel/tests/**",
     "modules-src/foxlake/tests/**",
+    "modules-src/foxlake/tools/**",
     "modules-src/tello/tests/**",
     "modules-src/foxlake/*.old",
     "modules-src/darts/tests/**"

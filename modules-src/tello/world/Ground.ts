@@ -74,7 +74,7 @@ export function groundSink(clear: number): number {
   return 0.05 + 0.16 * (1 - smoothstep(-0.5, 2.2, clear))
 }
 
-/** Chunks within this many metres of the walker or driver are kept built (the town culls beyond 640 m), and the ones past `GROUND_DROP` are given back. */
+/** Chunks within this many metres of the walker or driver are kept built (the town culls beyond 860 m, `CULL_REACH` in foxlake/town/FoxLakeTown.ts), and the ones past `GROUND_DROP` are given back. */
 const GROUND_BUILD = 1000
 const GROUND_DROP = 1900
 /** Chunks this close to the walker are built at once (a teleport lands on ground); farther ones one at a time. */

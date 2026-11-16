@@ -20,7 +20,7 @@ import type { RegionCuller } from '../../foxlake/core/RegionCuller'
 import type { TelloLand } from '../region'
 import { GroundStream } from './Ground'
 import { Water, WATER_CHUNK } from './Water'
-import { bridgeSolids, buildBridges, buildRoads } from './Roads'
+import { bridgeSolids, buildBridges, buildRoads, releaseVertices } from './Roads'
 import { buildStreetPaint } from './StreetPaint'
 import { BUILDING_CELL, buildBuildings, type ApartBuilding } from './Buildings'
 import { buildBarricades } from './Barricades'
@@ -167,7 +167,7 @@ export class Montello {
     const still = this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen)
     this.s.culler.addByCell(still, BUILDING_CELL)
     // Once on the GPU, the town's still, unpickable meshes need no copy of their vertices in memory.
-    for (const m of still) if (!m.isPickable && m instanceof Mesh) m.geometry?.clearCachedData()
+    for (const m of still) if (!m.isPickable && m instanceof Mesh) releaseVertices(m)
   }
 
   update(dt: number, focus?: { x: number; z: number }): void {

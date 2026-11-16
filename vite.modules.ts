@@ -2,6 +2,7 @@ import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build, type InlineConfig, type Plugin } from 'vite'
+import { bakeFoxLakeMap } from './modules-src/foxlake/tools/bake-map'
 
 const repoRoot = dirname(fileURLToPath(import.meta.url))
 const modulesSrc = join(repoRoot, 'modules-src')
@@ -50,6 +51,18 @@ function cleanPreviousOutput(ids: string[]): Plugin {
   }
 }
 
+/** Bakes Fox Lake's packed Montello map (`modules-src/foxlake/tools/bake-map.ts`) whenever Fox Lake is built; unchanged inputs are skipped. */
+function foxLakeMap(): Plugin {
+  return {
+    name: 'thelibrary:foxlake-map',
+    buildStart(options) {
+      const input = options.input
+      const ids = typeof input === 'string' ? [input] : Array.isArray(input) ? input : Object.keys(input)
+      if (ids.includes('foxlake')) bakeFoxLakeMap(repoRoot, (text) => this.info(text))
+    },
+  }
+}
+
 export function learningModulesConfig(watch = false): InlineConfig {
   const ids = learningModuleIds()
   return {
@@ -58,7 +71,7 @@ export function learningModulesConfig(watch = false): InlineConfig {
     base: '/modules/',
     publicDir: false,
     logLevel: 'warn',
-    plugins: [cleanPreviousOutput(ids), renameModulePages()],
+    plugins: [cleanPreviousOutput(ids), renameModulePages(), foxLakeMap()],
     build: {
       outDir: modulesOut,
       emptyOutDir: false,

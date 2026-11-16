@@ -108,9 +108,31 @@ export class TelloLand {
     return this.node(this.grids.ground, x, z) / 100
   }
 
+  /** Bridge decks by `DECK_CELL` square (only the squares a deck's bounds touch), so a point away from bridges looks at none. */
+  private deckCells: Map<number, Deck[]> | null = null
+
+  private decksNear(x: number, z: number): Deck[] | undefined {
+    if (!this.deckCells) {
+      this.deckCells = new Map()
+      for (const d of this.decks) {
+        for (let j = Math.floor(d.z0 / DECK_CELL); j <= Math.floor(d.z1 / DECK_CELL); j++) {
+          for (let i = Math.floor(d.x0 / DECK_CELL); i <= Math.floor(d.x1 / DECK_CELL); i++) {
+            const key = deckKey(i, j)
+            const list = this.deckCells.get(key)
+            if (list) list.push(d)
+            else this.deckCells.set(key, [d])
+          }
+        }
+      }
+    }
+    return this.deckCells.get(deckKey(Math.floor(x / DECK_CELL), Math.floor(z / DECK_CELL)))
+  }
+
   /** The bridge deck over (x, z), or null. */
   deckAt(x: number, z: number): number | null {
-    for (const d of this.decks) {
+    const near = this.decksNear(x, z)
+    if (!near) return null
+    for (const d of near) {
       if (x < d.x0 || x > d.x1 || z < d.z0 || z > d.z1) continue
       const p = d.pts
       for (let k = 0; k + 3 < p.length; k += 2) {
@@ -250,6 +272,12 @@ export class TelloLand {
   lonLat(x: number, z: number): { lon: number; lat: number } {
     return utmToLonLat(this.frame.utmE + x, this.frame.utmN + z, this.frame.utmZone)
   }
+}
+
+const DECK_CELL = 32
+
+function deckKey(i: number, j: number): number {
+  return (i + 32768) * 65536 + (j + 32768)
 }
 
 function deckOf(b: BridgeData): Deck {

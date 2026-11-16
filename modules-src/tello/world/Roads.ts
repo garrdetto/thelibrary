@@ -53,9 +53,15 @@ function surface(scene: Scene, name: string, texture: Texture, tint?: Color3, zO
   return mat
 }
 
+/**
+ * A still, unpickable mesh from a batch. Nothing reads a road's vertices back once they are on the GPU, so the copies
+ * Babylon would keep are dropped (`clearCachedData`): the roads, street paint and decals held about 130 MB of plain
+ * number arrays for the whole session before.
+ */
 export function toMesh(scene: Scene, name: string, b: Batch, mat: StandardMaterial): Mesh {
-  const normals: number[] = []
-  VertexData.ComputeNormals(b.positions, b.indices, normals, { useRightHandedSystem: false })
+  const positions = Float32Array.from(b.positions)
+  const normals = new Float32Array(positions.length)
+  VertexData.ComputeNormals(positions, b.indices, normals, { useRightHandedSystem: false })
   for (let i = 1; i < normals.length; i += 3) {
     if (normals[i] < 0) {
       normals[i - 1] = -normals[i - 1]
@@ -64,10 +70,10 @@ export function toMesh(scene: Scene, name: string, b: Batch, mat: StandardMateri
     }
   }
   const data = new VertexData()
-  data.positions = b.positions
-  data.indices = b.indices
+  data.positions = positions
+  data.indices = positions.length / 3 > 65535 ? Uint32Array.from(b.indices) : Uint16Array.from(b.indices)
   data.normals = normals
-  data.uvs = b.uvs
+  data.uvs = Float32Array.from(b.uvs)
   const mesh = new Mesh(name, scene)
   data.applyToMesh(mesh, false)
   mesh.material = mat
@@ -75,7 +81,19 @@ export function toMesh(scene: Scene, name: string, b: Batch, mat: StandardMateri
   mesh.isPickable = false
   mesh.freezeWorldMatrix()
   mesh.doNotSyncBoundingInfo = true
+  releaseVertices(mesh)
   return mesh
+}
+
+/**
+ * Drops the copy of a mesh's vertices and indices Babylon keeps after uploading them. Only once: clearing a second time
+ * would record zero indices, and Babylon would then stop treating the mesh's one submesh as the whole mesh (a
+ * see-through one then has no bounds to sort by).
+ */
+export function releaseVertices(mesh: Mesh): void {
+  const geometry = mesh.geometry
+  if (!geometry || !geometry.getIndices(false)?.length) return
+  geometry.clearCachedData()
 }
 
 /** Where drivable roads meet or end: the points two or more of them share, and each road's ends, with the widest road there. */

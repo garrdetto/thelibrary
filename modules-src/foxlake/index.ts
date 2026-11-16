@@ -21,6 +21,7 @@ import { WORLD_EDITS_VERSION, WORLD_ID, type WorldEdits } from '../tello/edits/W
 import { TelloTerrain } from '../tello/region'
 import type { TelloLand } from '../tello/region'
 import { foxLakeLand } from './lake/Land'
+import { MAP_PACK_DIR, type MapPackManifest } from './lake/MapPack'
 import { findLakeSite, type LakeSite } from './lake/LakeSite'
 import { FoxLakeTown } from './town/FoxLakeTown'
 
@@ -97,6 +98,25 @@ async function registerPublished(): Promise<void> {
   registerCustomItems(items ?? (store.json<unknown[]>(IK) ?? []).filter(isValidRecord))
 }
 
+/**
+ * Montello's map as the build baked it for Fox Lake (`lake/MapPack.ts`): streets already fixed and a smaller
+ * download. The World Editor's edits and the move down to Lake Montello's level still run here, on the surveyed heights.
+ * Null when the page was built without it, and Tello's own files are read instead.
+ */
+async function loadPacked(): Promise<Awaited<ReturnType<typeof loadMap>> | null> {
+  const base = new URL(`./${MAP_PACK_DIR}/`, location.href).href
+  let manifest: MapPackManifest
+  try {
+    const res = await fetch(`${base}manifest.json`, { cache: 'no-cache' })
+    if (!res.ok) return null
+    manifest = (await res.json()) as MapPackManifest
+    if (typeof manifest.doc !== 'string' || typeof manifest.grids !== 'string') return null
+  } catch {
+    return null
+  }
+  return loadMap(base, { doc: manifest.doc, grids: manifest.grids })
+}
+
 const EDITS_KEY = 'foxlake/world-edits/v1'
 
 function isWorldEdits(v: unknown): v is WorldEdits {
@@ -157,7 +177,7 @@ function startAt(): { x: number; z: number } | null {
  * on it, and where the lake gameplay stands on it.
  */
 async function loadMontello(): Promise<{ land: TelloLand; site: LakeSite }> {
-  const [map, edits] = await Promise.all([loadMap(new URL('./tello/', location.href).href), loadEdits()])
+  const [map, edits] = await Promise.all([loadPacked().then((m) => m ?? loadMap(new URL('./tello/', location.href).href)), loadEdits()])
   const land = foxLakeLand(map.doc, map.grids, edits)
   if (land.edits?.skipped.length) console.warn(`[foxlake] ${land.edits.skipped.length} world edit(s) skipped`, land.edits.skipped)
   return { land, site: findLakeSite(land) }
@@ -196,7 +216,7 @@ async function boot(): Promise<void> {
     else inviteRequested = true
   })
   setShadowProxies(FOX_LAKE_SHADOWS)
-  const game = new Game(canvas, { terrain: new TelloTerrain(montello.land), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site: montello.site, ridesBought: true, homeName: 'the outfitter', look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS })
+  const game = new Game(canvas, { terrain: new TelloTerrain(montello.land), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site: montello.site, ridesBought: true, homeName: 'the outfitter', look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS, reverseDepth: true })
   window.__foxlake = { game, town }
   await game.start()
 }

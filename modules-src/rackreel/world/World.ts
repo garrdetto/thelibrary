@@ -158,6 +158,7 @@ export function buildSky(ctx: EngineContext): { mesh: Mesh; material: ShaderMate
     attributes: ['position'],
     uniforms: ['worldViewProjection', 'sunDir', 'moonDir', 'night', 'glow', 'time'],
     shaderLanguage: ctx.engine.isWebGPU ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
+    defines: ctx.engine.useReverseDepthBuffer ? ['#define REVERSE_DEPTH'] : [],
   })
   material.setVector3('sunDir', ctx.sunDirection.scale(-1))
   material.setVector3('moonDir', ctx.sunDirection.clone())

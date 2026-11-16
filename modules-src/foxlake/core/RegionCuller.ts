@@ -2,46 +2,99 @@
  * Switches whole groups of static meshes off when they are farther from the
  * camera than the fog lets anyone see (`reach`), so the town is not even
  * looked at from the lake and the lake country's woods are not looked at from
- * town. Babylon checks every enabled mesh every frame; a disabled one costs
- * nothing. Groups are buckets of nearby meshes (a town cell, one of Rack &
+ * town. Groups are buckets of nearby meshes (a town cell, one of Rack &
  * Reel's tree stands), checked a few times a second with some slack so a
  * group at the edge doesn't flicker.
+ *
+ * Babylon looks at every mesh in the scene every frame to choose what to draw,
+ * disabled or not; Montello has about ten thousand. Once `attach`ed, the
+ * culler hands Babylon its own list instead (`getActiveMeshCandidates`):
+ * every mesh it does not manage, and the meshes of groups that are on and whose
+ * bounding sphere is inside the camera's view. A whole cell behind the camera
+ * costs one sphere test.
  */
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import type { Scene } from '@babylonjs/core/scene'
 
 const SLACK = 60
 const EVERY = 0.35
 
 interface Group {
   x: number
+  y: number
   z: number
   radius: number
+  /** Bounding sphere radius in 3D (the group's height counted), for the view test. */
+  sphere: number
   meshes: AbstractMesh[]
   on: boolean
 }
 
 export class RegionCuller {
   private readonly groups: Group[] = []
+  private readonly groupOf = new Map<AbstractMesh, Group>()
   private timer = 0
+  private scene: Scene | null = null
+  private others: AbstractMesh[] = []
+  private othersDirty = true
+  private readonly candidates: AbstractMesh[] = []
 
   constructor(private readonly reach: number) {}
 
+  /** Starts choosing the scene's draw candidates (see the file note). */
+  attach(scene: Scene): void {
+    if (this.scene) return
+    this.scene = scene
+    scene.onNewMeshAddedObservable.add(() => (this.othersDirty = true))
+    scene.onMeshRemovedObservable.add((mesh) => {
+      this.othersDirty = true
+      if (this.groupOf.has(mesh)) this.remove([mesh])
+    })
+    const list = { data: this.candidates, length: 0 }
+    scene.getActiveMeshCandidates = () => {
+      this.select()
+      list.length = this.candidates.length
+      return list
+    }
+  }
+
   /** Adds meshes as one group around (x, z), `radius` across from its centre to its farthest mesh. */
   addGroup(meshes: AbstractMesh[], x: number, z: number, radius: number): void {
-    const live = meshes.filter((m) => m.isEnabled(false))
-    if (live.length) this.groups.push({ x, z, radius, meshes: live, on: true })
+    const live = meshes.filter((m) => m.isEnabled(false) && !m.isDisposed() && !this.groupOf.has(m))
+    if (!live.length) return
+    let y0 = Infinity
+    let y1 = -Infinity
+    let reach = 0
+    for (const m of live) {
+      const b = m.getBoundingInfo().boundingBox
+      y0 = Math.min(y0, b.minimumWorld.y)
+      y1 = Math.max(y1, b.maximumWorld.y)
+      reach = Math.max(reach, Math.hypot(b.centerWorld.x - x, b.centerWorld.z - z) + Math.hypot(b.extendSizeWorld.x, b.extendSizeWorld.z))
+    }
+    const flat = Math.max(radius, reach)
+    const g: Group = { x, y: (y0 + y1) / 2, z, radius, sphere: Math.hypot(flat, (y1 - y0) / 2), meshes: live, on: true }
+    this.groups.push(g)
+    for (const m of live) this.groupOf.set(m, g)
+    this.othersDirty = true
   }
 
   /** Takes meshes out of every group (a mesh that is being disposed); groups left empty go. */
   remove(meshes: readonly AbstractMesh[]): void {
-    const gone = new Set<AbstractMesh>(meshes)
-    for (let k = this.groups.length - 1; k >= 0; k--) {
-      const g = this.groups[k]
-      if (!g.meshes.some((m) => gone.has(m))) continue
-      g.meshes = g.meshes.filter((m) => !gone.has(m))
-      if (!g.meshes.length) this.groups.splice(k, 1)
+    const touched = new Set<Group>()
+    for (const m of meshes) {
+      const g = this.groupOf.get(m)
+      if (!g) continue
+      this.groupOf.delete(m)
+      touched.add(g)
     }
+    if (!touched.size) return
+    const gone = new Set<AbstractMesh>(meshes)
+    for (const g of touched) {
+      g.meshes = g.meshes.filter((m) => !gone.has(m))
+      if (!g.meshes.length) this.groups.splice(this.groups.indexOf(g), 1)
+    }
+    this.othersDirty = true
   }
 
   /** Buckets meshes by where their bounds sit into `cell`-sized groups. */
@@ -67,14 +120,14 @@ export class RegionCuller {
   }
 
   /** How many groups and meshes are switched on. */
-  stats(): { groups: number; on: number; meshesOn: number } {
+  stats(): { groups: number; on: number; meshesOn: number; candidates: number } {
     let on = 0
     let meshesOn = 0
     for (const g of this.groups) if (g.on) {
       on++
       meshesOn += g.meshes.length
     }
-    return { groups: this.groups.length, on, meshesOn }
+    return { groups: this.groups.length, on, meshesOn, candidates: this.candidates.length }
   }
 
   update(dt: number, eye: Vector3, force = false): void {
@@ -88,5 +141,34 @@ export class RegionCuller {
       g.on = on
       for (const m of g.meshes) if (!m.isDisposed()) m.setEnabled(on)
     }
+  }
+
+  /** This frame's draw candidates: the unmanaged meshes, then the meshes of every group that is on and in view. */
+  private select(): AbstractMesh[] {
+    const scene = this.scene!
+    if (this.othersDirty) {
+      this.othersDirty = false
+      this.others = scene.meshes.filter((m) => !this.groupOf.has(m))
+    }
+    const out = this.candidates
+    out.length = 0
+    for (const m of this.others) out.push(m)
+    const planes = scene.frustumPlanes
+    for (const g of this.groups) {
+      if (!g.on) continue
+      let inside = true
+      if (planes) {
+        for (let p = 0; p < planes.length; p++) {
+          const plane = planes[p]
+          if (plane.normal.x * g.x + plane.normal.y * g.y + plane.normal.z * g.z + plane.d < -g.sphere) {
+            inside = false
+            break
+          }
+        }
+      }
+      if (!inside) continue
+      for (const m of g.meshes) out.push(m)
+    }
+    return out
   }
 }
