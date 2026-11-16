@@ -28,13 +28,13 @@ type Area = (typeof areas)[number]['id']
 
 const sections = [
   { id: 'overview', area: 'site', group: 'Dashboard', label: 'Overview', icon: LayoutDashboard, title: 'Overview', blurb: 'Everything you manage on the library at a glance.' },
+  { id: 'changes', area: 'site', group: 'Dashboard', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
   { id: 'library', area: 'site', group: 'Library', label: 'Module order', icon: LayoutGrid, title: 'Module order', blurb: 'Arrange the homepage library and sidebar, pick the featured module and hide modules you are not ready to show.' },
   { id: 'chat', area: 'site', group: 'Studios', label: 'AI Chat', icon: MessageCircle, title: 'AI Chat', blurb: 'Talk ideas through with Gemini.' },
   { id: 'image', area: 'site', group: 'Studios', label: 'Image Studio', icon: Image, title: 'Image Studio', blurb: 'Create and edit pictures from a description with Gemini.' },
   { id: 'lyrics', area: 'site', group: 'Studios', label: 'Lyric Studio', icon: Music2, title: 'Lyric Studio', blurb: 'Write, fine-tune and revamp song lyrics with Gemini.' },
   { id: 'voice', area: 'site', group: 'Studios', label: 'Voice Generator', icon: AudioLines, title: 'Voice Generator', blurb: 'Design, remix and delete ElevenLabs voices, then hear them read your own text.' },
   { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
-  { id: 'changes', area: 'site', group: 'Site', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
   { id: 'image-editor', area: 'site', group: 'Tools', label: 'Image editor', icon: ImageUp, title: 'Image editor', blurb: 'Upload images in bulk, select text to remove, rewrite or fill with Gemini, and save them as numbered files: name1, name2 and on until you change the name.' },
   { id: 'clipart', area: 'site', group: 'Tools', label: 'Clipart generator', icon: Brush, title: 'HD clipart generator', blurb: 'Turn batches of photographs into realistic HD clipart with free Cloudflare Workers AI image-to-image engines (or Gemini), with full style control, a reference image, before-and-after preview and ZIP export.' },
   { id: 'axiom-radar', area: 'site', group: 'Tools', label: 'Axiom Radar', icon: Radar, title: 'Axiom Radar', blurb: 'Coins ranked by live Axiom viewers with price moves, holder quality, smart holders and buy and watch signals. Opens on its own page.' },
