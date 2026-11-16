@@ -1,5 +1,20 @@
 # Fox Lake (Life Sim) — performance and leak check
 
+## 2026-11-16 (later): tailored people, Standard detail, memory pass
+
+Same probe (`node scripts/foxlake-perf.mjs`, Standard detail, the new default) after the tailored characters, hairstyles
+and the memory fixes listed in `modules-src/foxlake/README.md` (Memory):
+
+| | Result |
+| --- | --- |
+| JS heap after GC, Main Street / downtown / lake / houses / country / night | 226 / 228 / 228 / 230 / 234 / 234 MB |
+| Leak laps (4 × Main Street → country → houses → lake) | flat: heap 234–235 MB, 10,050–10,057 meshes, 230 materials, 206 textures, 9,768 geometries |
+| Start button | 7.5 s |
+| Page errors | none |
+
+Frame times from this run are not compared with the table below: the PC was running other sessions and builds at the
+time, and headless timings swing 2–4x with load.
+
 ## 2026-11-16: load, flashing, frame rate and memory
 
 Measured with `node scripts/foxlake-perf.mjs` (Chrome, headless, WebGPU on a Windows desktop GPU, 1280 × 720, `?solo=1`, files served locally, so download time is not in these numbers) and `node scripts/foxlake-flicker.mjs`. Headless timings are noisy and this PC was shared with other work: the before run may have been slowed by load, so the side-by-side figure below (same page, same moment) is the trustworthy one for frame time.

@@ -39,7 +39,7 @@ const TAUBIN = { lambda: 0.5, mu: -0.53 }
 /** Texture size for the player's own outfit (sharp up to a 1440-line frame) and for everyone else's. */
 export const HERO_TEXTURE = 2048
 export const CROWD_TEXTURE = 1024
-const SLICE_MS = 6
+const SLICE_MS = 10
 const SCAN_TEXTURE = 'hunter-base'
 const SCAN_SIZE = 1024
 

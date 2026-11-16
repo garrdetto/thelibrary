@@ -162,7 +162,7 @@ refitted and dressed by `rackreel/game/Tailor.ts`:
 - **Hairstyles** (`HAIRSTYLES` in `rackreel/shared/Appearance.ts`, `rackreel/game/Hair.ts`): Natural (the scan's own
   painted hair), short crop, quiff, spiky, curly top, afro, mohawk, man bun, ponytail and shoulder length, in the picked
   hair colour. The shell grows over the scalp marked by the heads' hair mask, follows the face sliders and is hidden
-  under a hat (a ponytail stays out the back). `APPEARANCE_VERSION` 3 offers everyone one free makeover to pick one.
+  under a hat. `APPEARANCE_VERSION` 3 offers everyone one free makeover to pick one.
   Neighbors take a hairstyle from their name and wear one painted head whole (one shared head texture per head).
 - **The throat.** Every head texture is cleaned once at load (`cleanThroat`): the scan's painted jacket collar under
   the beard becomes skin.

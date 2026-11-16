@@ -4,7 +4,7 @@
  * round afro, a mohawk strip, a long fall down the back) plus a bun or a ponytail where the style has one. The shell
  * tapers to nothing at the hairline, follows the face sliders (it is rebuilt from the shaped face), is skinned with the
  * face's own weights so it moves with the head, and wears a strand texture tinted to the picked hair colour. Hats
- * hide it, except a ponytail, which hangs out the back.
+ * hide it (the head's painted hair is tucked under the hat as before).
  */
 import { BoundingInfo } from '@babylonjs/core/Culling/boundingInfo'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
@@ -135,19 +135,18 @@ export interface HairBuild {
 }
 
 /**
- * The hair geometry for a style over the face's current positions, or null for the scan's own painted hair. Under a
- * hat only a ponytail survives.
+ * The hair geometry for a style over the face's current positions, or null for the scan's own painted hair or under a
+ * hat.
  */
 export function buildHair(style: string, src: ScalpSource, positions: Float32Array, hatted: boolean): VertexData | null {
   if (style === 'painted' || !style) return null
-  if (hatted && style !== 'ponytail') return null
+  if (hatted) return null
   const { head } = src
   const cx = head.centre[0]
   const cz = head.centre[1]
   const cy = (head.top + head.chin) / 2 + 0.02
   const n = positions.length / 3
   const out: number[] = []
-  const nor: number[] = []
   const uv: number[] = []
   const mi: number[] = []
   const mw: number[] = []
@@ -163,47 +162,44 @@ export function buildHair(style: string, src: ScalpSource, positions: Float32Arr
     scalp[i] = src.hair[i] * smooth(lim, lim + 0.4, vy / reach)
   }
   const use = (i: number) => scalp[i] > 0.03
-  if (!hatted) {
-    for (let t = 0; t < src.indices.length; t += 3) {
-      const a = src.indices[t]
-      const b = src.indices[t + 1]
-      const c = src.indices[t + 2]
-      if (!use(a) || !use(b) || !use(c)) continue
-      for (const i of [a, b, c]) {
-        if (map[i] >= 0) continue
-        const px = positions[i * 3]
-        const py = positions[i * 3 + 1]
-        const pz = positions[i * 3 + 2]
-        const vx = px - cx
-        const vy = py - cy
-        const vz = pz - cz
-        const reach = Math.hypot(vx, vy, vz) || 1
-        const taper = smooth(0.03, 0.8, scalp[i])
-        let grow = thickness(style, vx / reach, vy / reach, vz / reach, px, py, pz, reach) * taper + 0.001
-        if (style === 'long') grow += smooth(0.0, -0.6, vy / reach) * smooth(0, -0.5, vz / reach) * 0.03 * taper
-        const nx = src.normals[i * 3]
-        const ny = src.normals[i * 3 + 1]
-        const nz = src.normals[i * 3 + 2]
-        const radial = style === 'afro' ? 0.7 : 0.25
-        const gx = nx * (1 - radial) + (vx / reach) * radial
-        const gy = ny * (1 - radial) + (vy / reach) * radial
-        const gz = nz * (1 - radial) + (vz / reach) * radial
-        const gl = Math.hypot(gx, gy, gz) || 1
-        map[i] = out.length / 3
-        out.push(px + (gx / gl) * grow, py + (gy / gl) * grow, pz + (gz / gl) * grow)
-        nor.push(0, 0, 0)
-        uv.push((px + pz * 0.7) * 30, (py - pz * 0.35) * 6)
-        for (let k = 0; k < 4; k++) {
-          mi.push(src.matricesIndices[i * 4 + k])
-          mw.push(src.matricesWeights[i * 4 + k])
-        }
+  for (let t = 0; t < src.indices.length; t += 3) {
+    const a = src.indices[t]
+    const b = src.indices[t + 1]
+    const c = src.indices[t + 2]
+    if (!use(a) || !use(b) || !use(c)) continue
+    for (const i of [a, b, c]) {
+      if (map[i] >= 0) continue
+      const px = positions[i * 3]
+      const py = positions[i * 3 + 1]
+      const pz = positions[i * 3 + 2]
+      const vx = px - cx
+      const vy = py - cy
+      const vz = pz - cz
+      const reach = Math.hypot(vx, vy, vz) || 1
+      const taper = smooth(0.03, 0.8, scalp[i])
+      let grow = thickness(style, vx / reach, vy / reach, vz / reach, px, py, pz, reach) * taper + 0.001
+      if (style === 'long') grow += smooth(0.0, -0.6, vy / reach) * smooth(0, -0.5, vz / reach) * 0.03 * taper
+      const nx = src.normals[i * 3]
+      const ny = src.normals[i * 3 + 1]
+      const nz = src.normals[i * 3 + 2]
+      const radial = style === 'afro' ? 0.7 : 0.25
+      const gx = nx * (1 - radial) + (vx / reach) * radial
+      const gy = ny * (1 - radial) + (vy / reach) * radial
+      const gz = nz * (1 - radial) + (vz / reach) * radial
+      const gl = Math.hypot(gx, gy, gz) || 1
+      map[i] = out.length / 3
+      out.push(px + (gx / gl) * grow, py + (gy / gl) * grow, pz + (gz / gl) * grow)
+      uv.push((px + pz * 0.7) * 30, (py - pz * 0.35) * 6)
+      for (let k = 0; k < 4; k++) {
+        mi.push(src.matricesIndices[i * 4 + k])
+        mw.push(src.matricesWeights[i * 4 + k])
       }
-      tri.push(map[a], map[b], map[c])
     }
-    if (style === 'long') addFall(out, uv, mi, mw, tri, src, positions, map, scalp, cx, cy, cz)
+    tri.push(map[a], map[b], map[c])
   }
+  if (style === 'long') addFall(out, uv, mi, mw, tri, src, positions, map, scalp, cx, cy, cz)
   if (style === 'bun') addBlob(out, uv, mi, mw, tri, src.headJoint, cx, head.top - 0.035, cz - 0.1, 0.038, 0.034)
-  if (style === 'ponytail') addTail(out, uv, mi, mw, tri, src.headJoint, cx, head.top - 0.07, cz - 0.1 - (hatted ? 0.01 : 0))
+  if (style === 'ponytail') addTail(out, uv, mi, mw, tri, src.headJoint, cx, head.top - 0.07, cz - 0.1)
   if (!tri.length) return null
   const data = new VertexData()
   data.positions = out
