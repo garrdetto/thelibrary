@@ -1,8 +1,18 @@
 /** PeerJS room-code rooms: host with retry on taken ids, join, broadcast, guest rejoin, tl-host/tl-room hub bridge and ?room= auto-join. */
-import Peer, { type DataConnection } from 'peerjs'
+import type Peer from 'peerjs'
+import type { DataConnection } from 'peerjs'
 import type { NetConfig } from '../config'
 import { HubBridge } from './HubBridge'
 import type { RoomFormat } from './RoomFormats'
+
+/**
+ * PeerJS opens a WebRTC connection when it is imported, to see what the browser supports (over a second on a slow
+ * machine), so it is loaded only when a room is first hosted or joined.
+ */
+let peerLibrary: Promise<typeof Peer> | null = null
+function loadPeer(): Promise<typeof Peer> {
+  return (peerLibrary ??= import('peerjs').then((m) => m.default))
+}
 
 export type RoomStatus = 'idle' | 'opening' | 'open' | 'connecting' | 'connected' | 'disconnected' | 'error'
 
@@ -22,6 +32,8 @@ export class PeerRoom<M> {
   private readonly guests = new Map<string, DataConnection>()
   private rejoinTimer = 0
   private unbridge: (() => void) | null = null
+  /** Bumped by `close`, so a host or join still waiting for PeerJS to load gives up. */
+  private session = 0
 
   constructor(
     readonly format: RoomFormat,
@@ -51,9 +63,13 @@ export class PeerRoom<M> {
     return this.format.prefix + (this.format.wireCase === 'lower' ? code.toLowerCase() : code.toUpperCase())
   }
 
-  host(): Promise<string> {
+  async host(): Promise<string> {
     this.close()
     this.isHost = true
+    const session = this.session
+    this.setStatus('opening')
+    const Peer = await loadPeer()
+    if (session !== this.session) throw new Error('The room was closed')
     return new Promise((resolve, reject) => {
       let attempts = 0
       const attempt = () => {
@@ -82,12 +98,15 @@ export class PeerRoom<M> {
     })
   }
 
-  join(rawCode: string): Promise<void> {
+  async join(rawCode: string): Promise<void> {
     this.close()
     this.isHost = false
     this.code = this.normalize(rawCode)
-    if (this.code.length !== this.format.length) return Promise.reject(new Error(`Room codes are ${this.format.length} characters`))
+    if (this.code.length !== this.format.length) throw new Error(`Room codes are ${this.format.length} characters`)
     this.setStatus('connecting')
+    const session = this.session
+    const Peer = await loadPeer()
+    if (session !== this.session) throw new Error('The room was closed')
     const peer = new Peer({ debug: 0 })
     this.peer = peer
     return new Promise((resolve, reject) => {
@@ -133,6 +152,7 @@ export class PeerRoom<M> {
   }
 
   close(): void {
+    this.session++
     window.clearInterval(this.rejoinTimer)
     this.rejoinTimer = 0
     for (const connection of this.guests.values()) connection.close()

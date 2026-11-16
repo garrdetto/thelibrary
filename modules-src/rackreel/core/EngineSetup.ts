@@ -84,9 +84,11 @@ export interface EngineContext {
   resolution: Resolution
 }
 
-export async function createEngineSetup(canvas: HTMLCanvasElement, shadowMapSize = SHADOW_MAP_SIZE): Promise<EngineContext> {
+/** `reverseDepth`: depth runs from 1 near to 0 far (see `GameOptions.reverseDepth`); the sky shader follows it. */
+export async function createEngineSetup(canvas: HTMLCanvasElement, shadowMapSize = SHADOW_MAP_SIZE, reverseDepth = false): Promise<EngineContext> {
   const { engine, backend, watchFirstFrame } = await createEngine(canvas)
   engine.enableOfflineSupport = false
+  engine.useReverseDepthBuffer = reverseDepth
   const resolution = attachResolution(engine, canvas)
 
   const scene = new Scene(engine)

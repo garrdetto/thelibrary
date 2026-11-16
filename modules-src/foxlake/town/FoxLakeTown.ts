@@ -57,12 +57,19 @@ import { LAKE_COUNTRY_MESHES, LAKE_COUNTRY_REACH, TOWN_OFFSET, headingToTownYaw,
 import { Places } from '../places/Places'
 
 const STEP = 1 / 60
-const CULL_REACH = 640
+/**
+ * Town cells, ground chunks and tree stands farther than this are switched off. The day fog (exp², 0.0024) still lets
+ * about 9 % of a building through at 640 m, so switching there made distant buildings pop in and out as you drove; at
+ * 860 m it lets through about 1.5 %, too little to see.
+ */
+const CULL_REACH = 860
 const MAX_STEPS = 4
 const NET_HZ = 15
 /** Camera near plane (metres) on foot (the rod and rifle are held close) and at the wheel. */
 const NEAR_ON_FOOT = 0.08
 const NEAR_DRIVING = 0.4
+/** Rack & Reel's cabin lights, in the sealed lake country. */
+const SEALED_LIGHTS = ['cabin-lamp', 'cabin-stove']
 const GARAGE_KEY = 'KeyV'
 const HOME_KEY = 'KeyH'
 const GO_HOME_COOLDOWN_MS = 15 * 60 * 1000
@@ -166,6 +173,7 @@ export class FoxLakeTown implements GameExtension {
     const land = this.land
     const { scene } = host.ctx
     this.gfx = new TownGfx(scene, (mesh, add) => (add ? host.addCaster(mesh) : host.removeCaster(mesh)))
+    this.culler.attach(scene)
     setRenderer(this.gfx)
     setAnisotropy(8)
     this.root = new TransformNode('fox-lake-town', scene)
@@ -257,6 +265,9 @@ export class FoxLakeTown implements GameExtension {
     })
     this.culler.addGroup(country, 0, 0, LAKE_COUNTRY_REACH)
     this.culler.update(0, host.ctx.camera.globalPosition, true)
+    // The sealed lake country's cabin lamps light nothing anyone can reach, but every material in Montello computed both
+    // point lights for every pixel, and bowfishing switching them off and on recompiled every shader in town.
+    for (const name of SEALED_LIGHTS) scene.getLightByName(name)?.dispose()
     await this.connect()
   }
 

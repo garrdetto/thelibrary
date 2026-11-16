@@ -194,6 +194,12 @@ export interface GameOptions {
   shadowMapSize?: number
   /** False: no sun or moon shadows at all, for everyone, and no Shadows switch in the menu (Fox Lake). */
   shadows?: boolean
+  /**
+   * Draws with a reversed depth buffer (`EngineSetup`): near 1, far 0, so depth keeps its precision all the way out and
+   * surfaces a centimetre apart stop fighting at a distance. Only with `shadows: false`: the cached shadow layer writes
+   * depth itself the ordinary way round.
+   */
+  reverseDepth?: boolean
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -421,7 +427,7 @@ export class Game {
   }
 
   async start(): Promise<void> {
-    this.ctx = await createEngineSetup(this.canvas, this.options.shadowMapSize)
+    this.ctx = await createEngineSetup(this.canvas, this.options.shadowMapSize, this.options.reverseDepth === true && this.options.shadows === false)
     const perfMode = perfModeFromSearch(location.search)
     if (perfMode !== 'off') {
       const ctx = this.ctx

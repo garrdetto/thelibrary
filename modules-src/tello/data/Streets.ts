@@ -401,7 +401,7 @@ export function markStreetsFixed(doc: MapDoc): void {
 }
 
 export function fixStreets(doc: MapDoc, grids: MapGrids): void {
-  if (fixed.has(doc)) return
+  if (fixed.has(doc) || doc.prepared?.streets) return
   fixed.add(doc)
   fixMainSplit(doc)
   fixBridge(doc, grids)

@@ -324,14 +324,31 @@ export interface MatOpts { keepGloss?: boolean; color?: number | [number, number
 
 interface Surface { painted: GlossOnly; map: RawTexture; normal: RawTexture; recipe: Recipe; rough: Map<string, RawTexture> }
 
-/** A plain PBR material with the town's defaults (opaque, metallic-roughness, image processing in post). */
+interface DirtyFlag { _blockDirtyMechanism: boolean }
+
+/**
+ * A plain PBR material with the town's defaults (opaque, metallic-roughness, image processing in post).
+ *
+ * Every property set on a Babylon material looks through every mesh in the scene for the ones that use it, so they
+ * re-check their shaders; Montello has about ten thousand meshes and sets a dozen properties on each of hundreds of new
+ * materials while it builds. A new material is used by no mesh, so it is made with that look-through switched off, and
+ * `settled` switches it back on (without the one full look-through Babylon's own setter does) when the material is ready.
+ */
 export function pbr(name: string, scene: Scene) {
   const m = new PBRMaterial(name, scene);
+  (m as unknown as DirtyFlag)._blockDirtyMechanism = true;
   m.metallic = 0;
   m.roughness = ruledRoughness(0.42);
   m.useRadianceOverAlpha = true;
   m.useSpecularOverAlpha = true;
   m.enableSpecularAntiAliasing = true;
+  queueMicrotask(() => settled(m));
+  return m;
+}
+
+/** Turns dirty marking back on for a material `pbr` made, before any mesh has drawn with it. */
+export function settled<T extends PBRMaterial>(m: T): T {
+  (m as unknown as DirtyFlag)._blockDirtyMechanism = false;
   return m;
 }
 
@@ -503,7 +520,15 @@ export class Mats {
   setNight(night: number) {
     if (Math.abs(night - this.lastNight) < 0.005) return;
     this.lastNight = night;
-    for (const g of this.nightGlow) g.m.emissiveIntensity = night * g.k;
+    // The glow is a uniform, read every frame: setting the field directly skips Babylon's look through every mesh in the
+    // scene for each glowing material, which ran every few frames through dusk and dawn. Leaving or reaching zero still
+    // goes through the setter, so the shaders re-check once.
+    for (const g of this.nightGlow) {
+      const v = night * g.k;
+      const held = g.m as unknown as { _emissiveIntensity: number };
+      if (v === 0 || held._emissiveIntensity === 0) g.m.emissiveIntensity = v;
+      else held._emissiveIntensity = v;
+    }
   }
 
   /** Every cached material (warm-up and debugging). */

@@ -40,7 +40,11 @@ void main() {
   vDir = position;
   vec4 p = worldViewProjection * vec4(position, 1.0);
   gl_Position = p.xyww;
+#ifdef REVERSE_DEPTH
+  gl_Position.z = p.w * 0.00001;
+#else
   gl_Position.z = p.w * 0.99999;
+#endif
 }`
 
 Effect.ShadersStore.rrSkyFragmentShader = /* glsl */ `
@@ -205,7 +209,11 @@ varying vDir: vec3f;
 fn main(input: VertexInputs) -> FragmentInputs {
   vertexOutputs.vDir = vertexInputs.position;
   let p = uniforms.worldViewProjection * vec4f(vertexInputs.position, 1.0);
+#ifdef REVERSE_DEPTH
+  vertexOutputs.position = vec4f(p.x, p.y, p.w * 0.00001, p.w);
+#else
   vertexOutputs.position = vec4f(p.x, p.y, p.w * 0.99999, p.w);
+#endif
 }`
 
 ShaderStore.ShadersStoreWGSL.rrSkyFragmentShader = /* wgsl */ `

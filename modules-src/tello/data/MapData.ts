@@ -72,6 +72,11 @@ export interface MapDoc {
   stats: Record<string, unknown>
   /** Rails, lights and walls the World Editor's edits add, and the automatic ones they take down (set by `applyWorldEdits`). */
   extras?: WorldExtras
+  /**
+   * Set on a map baked ahead for a host (Fox Lake's `lake/MapPack.ts`): `streets` when the street fixes (`fixStreets`) already
+   * ran on it.
+   */
+  prepared?: { streets: 1 }
 }
 
 /** 0 meadow, 1 lawn, 2 woods, 3 marsh, 4 bare, 5 lot, 6 field, 7 water. */
@@ -102,7 +107,14 @@ export interface MapGrids {
   play: Int8Array
 }
 
-interface Section { name: string; type: 'u16' | 'u8' | 'i8'; side: number; count: number; offset: number; bytes: number }
+/**
+ * `filter` (maps baked ahead only) says how the values were stored for a smaller download: `left` each value less the one
+ * before it in its row, `up` less the one above it, `grad` less left + up - up-left; all wrap at the type's width.
+ */
+interface Section { name: string; type: 'u16' | 'i16' | 'u8' | 'i8'; side: number; count: number; offset: number; bytes: number; filter?: SectionFilter }
+
+export type SectionFilter = 'left' | 'up' | 'grad'
+type Grid = Uint16Array | Int16Array | Uint8Array | Int8Array
 
 const MAGIC = [0x54, 0x45, 0x4c, 0x4c, 0x4f, 0x01]
 
@@ -118,16 +130,21 @@ export function parseGrids(bytes: Uint8Array): MapGrids {
   const headAt = MAGIC.length + 4
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(headAt, headAt + headLen))) as { sections: Section[] }
   const base = headAt + headLen
-  const out: Record<string, Uint16Array | Uint8Array | Int8Array> = {}
+  const out: Record<string, Grid> = {}
   let side = 0
   let fineSide = 0
   for (const s of header.sections) {
     const from = base + s.offset
-    if (s.type === 'u16') {
+    let grid: Grid
+    if (s.type === 'u16' || s.type === 'i16') {
       const aligned = (bytes.byteOffset + from) % 2 === 0
-      out[s.name] = aligned ? new Uint16Array(bytes.buffer, bytes.byteOffset + from, s.count) : new Uint16Array(bytes.slice(from, from + s.bytes).buffer, 0, s.count)
-    } else if (s.type === 'i8') out[s.name] = new Int8Array(bytes.buffer, bytes.byteOffset + from, s.count)
-    else out[s.name] = bytes.subarray(from, from + s.bytes)
+      const buffer = aligned ? bytes.buffer : bytes.slice(from, from + s.bytes).buffer
+      const at = aligned ? bytes.byteOffset + from : 0
+      grid = s.type === 'u16' ? new Uint16Array(buffer, at, s.count) : new Int16Array(buffer, at, s.count)
+    } else if (s.type === 'i8') grid = new Int8Array(bytes.buffer, bytes.byteOffset + from, s.count)
+    else grid = bytes.subarray(from, from + s.bytes)
+    if (s.filter) unfilter(grid, s.side || s.count, s.filter)
+    out[s.name] = grid
     if (s.name === 'ground') side = s.side
     if (s.name === 'clear') fineSide = s.side
   }
@@ -135,17 +152,97 @@ export function parseGrids(bytes: Uint8Array): MapGrids {
   return { side, fineSide, ground: out.ground as Uint16Array, water: out.water as Uint16Array, cover: out.cover as Uint8Array, tone: out.tone as Uint8Array, canopy: out.canopy as Uint8Array, clear: out.clear as Int8Array, treeX: out.treeX as Uint16Array, treeZ: out.treeZ as Uint16Array, treeS: out.treeS as Uint8Array, treeH: out.treeH as Uint8Array, play: out.play as Int8Array }
 }
 
-async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))
-  return new Uint8Array(await new Response(stream).arrayBuffer())
+/** Undoes `filterGrid` in place; the typed array wraps each sum at its own width, as the filter did. */
+function unfilter(a: Grid, side: number, filter: SectionFilter): void {
+  const n = a.length
+  if (filter === 'left') {
+    for (let row = 0; row < n; row += side) {
+      const end = Math.min(n, row + side)
+      for (let i = row + 1; i < end; i++) a[i] += a[i - 1]
+    }
+  } else if (filter === 'up') {
+    for (let i = side; i < n; i++) a[i] += a[i - side]
+  } else {
+    for (let i = 1; i < side && i < n; i++) a[i] += a[i - 1]
+    for (let row = side; row < n; row += side) {
+      a[row] += a[row - side]
+      const end = Math.min(n, row + side)
+      for (let i = row + 1; i < end; i++) a[i] += a[i - 1] + a[i - side] - a[i - side - 1]
+    }
+  }
 }
 
-/** Loads both map files from `base` (the page's `tello/` folder). A host that already unpacked the grid file is handled too. */
-export async function loadMap(base: string): Promise<{ doc: MapDoc; grids: MapGrids }> {
-  const [docRes, binRes] = await Promise.all([fetch(`${base}montello.json`), fetch(`${base}montello.bin`)])
+/** Stores a grid as differences from its neighbours (see `Section.filter`) in a new array; `parseGrids` restores it. */
+export function filterGrid<T extends Grid>(a: T, side: number, filter: SectionFilter): T {
+  const o = a.slice() as T
+  const n = a.length
+  if (filter === 'left') {
+    for (let i = 0; i < n; i++) if (i % side) o[i] = a[i] - a[i - 1]
+  } else if (filter === 'up') {
+    for (let i = side; i < n; i++) o[i] = a[i] - a[i - side]
+  } else {
+    for (let i = 1; i < side && i < n; i++) o[i] = a[i] - a[i - 1]
+    for (let row = side; row < n; row += side) {
+      o[row] = a[row] - a[row - side]
+      const end = Math.min(n, row + side)
+      for (let i = row + 1; i < end; i++) o[i] = a[i] - (a[i - 1] + a[i - side] - a[i - side - 1])
+    }
+  }
+  return o
+}
+
+export interface GridSection { name: string; type: Section['type']; side: number; data: Grid; filter?: SectionFilter }
+
+/** Writes a grid file `parseGrids` reads: the magic, the header's length and JSON, then every section 4-byte aligned. */
+export function writeGrids(sections: GridSection[]): Uint8Array {
+  const meta: Section[] = []
+  let offset = 0
+  for (const s of sections) {
+    meta.push({ name: s.name, type: s.type, side: s.side, count: s.data.length, offset, bytes: s.data.byteLength, ...(s.filter ? { filter: s.filter } : {}) })
+    offset += Math.ceil(s.data.byteLength / 4) * 4
+  }
+  const json = JSON.stringify({ sections: meta })
+  const pad = (4 - ((MAGIC.length + 4 + json.length) % 4)) % 4
+  const head = new TextEncoder().encode(json + ' '.repeat(pad))
+  const base = MAGIC.length + 4 + head.length
+  const out = new Uint8Array(base + offset)
+  out.set(MAGIC, 0)
+  new DataView(out.buffer).setUint32(MAGIC.length, head.length, true)
+  out.set(head, MAGIC.length + 4)
+  sections.forEach((s, k) => out.set(new Uint8Array(s.data.buffer, s.data.byteOffset, s.data.byteLength), base + meta[k].offset))
+  return out
+}
+
+/**
+ * Unpacks a gzip file straight into one buffer of its final size (the gzip trailer holds it), so a 200 MB map never has
+ * the decompressed chunks and a joined copy of them in memory at the same time.
+ */
+async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
+  const n = bytes.length
+  const size = (bytes[n - 4] | (bytes[n - 3] << 8) | (bytes[n - 2] << 16) | (bytes[n - 1] << 24)) >>> 0
+  const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip')).getReader()
+  let out = new Uint8Array(size)
+  let at = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (at + value.length > out.length) {
+      const grown = new Uint8Array(Math.max(out.length * 2, at + value.length))
+      grown.set(out.subarray(0, at))
+      out = grown
+    }
+    out.set(value, at)
+    at += value.length
+  }
+  return at === out.length ? out : out.subarray(0, at)
+}
+
+/** Loads both map files from `base` (the page's `tello/` folder), or the two named files there. A host that already unpacked the grid file is handled too. */
+export async function loadMap(base: string, files = { doc: 'montello.json', grids: 'montello.bin' }): Promise<{ doc: MapDoc; grids: MapGrids }> {
+  const [docRes, binRes] = await Promise.all([fetch(`${base}${files.doc}`), fetch(`${base}${files.grids}`)])
   if (!docRes.ok || !binRes.ok) throw new Error('The Montello map could not be loaded')
-  const doc = (await docRes.json()) as MapDoc
-  let bytes: Uint8Array = new Uint8Array(await binRes.arrayBuffer())
+  const [doc, packed] = await Promise.all([docRes.json() as Promise<MapDoc>, binRes.arrayBuffer()])
+  let bytes: Uint8Array = new Uint8Array(packed)
   if (isGzip(bytes)) bytes = await gunzip(bytes)
   return { doc, grids: parseGrids(bytes) }
 }

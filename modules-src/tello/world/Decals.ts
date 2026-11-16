@@ -120,7 +120,11 @@ export class Decals {
       if (!mat) mats.set(kind, (mat = decalMaterial(scene, kind, concrete)))
       const mesh = toMesh(scene, `${name}:${key}`, b, mat)
       mesh.parent = root
+      // `toMesh` froze the bounds before the mesh hung under the (moved, mirrored) town root; they must follow it, or
+      // Babylon tests the decal for view at the wrong place and it blinks in and out as the camera turns.
+      mesh.doNotSyncBoundingInfo = false
       mesh.freezeWorldMatrix()
+      mesh.doNotSyncBoundingInfo = true
       out.push(mesh)
     }
     this.batches.clear()

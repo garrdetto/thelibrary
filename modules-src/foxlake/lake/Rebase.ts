@@ -15,24 +15,40 @@ interface WithDecks {
  * surveyed heights). Heights below Lake Montello go negative, so the grids become signed.
  */
 export function rebaseLand(land: TelloLand, level = LAKE_LEVEL): TelloLand {
-  const cm = Math.round(level * 100)
-  const grids = land.grids as MapGrids & { ground: ArrayLike<number>; water: ArrayLike<number> }
-  const ground = new Int16Array(grids.ground.length)
-  for (let k = 0; k < ground.length; k++) ground[k] = grids.ground[k] - cm
-  const water = new Int16Array(grids.water.length)
-  for (let k = 0; k < water.length; k++) {
-    if (!grids.water[k]) continue
-    const v = grids.water[k] - cm
-    water[k] = v === 0 ? 1 : v
-  }
-  grids.ground = ground as unknown as Uint16Array
-  grids.water = water as unknown as Uint16Array
+  rebaseGrids(land.grids, level)
   rebaseDoc(land.doc, level)
   for (const deck of (land as unknown as WithDecks).decks) deck.y -= level
   return land
 }
 
-function rebaseDoc(doc: MapDoc, level: number): void {
+/**
+ * The ground and water grids moved down by `level` metres, as signed centimetres (water 0 stays "no water"). The grids
+ * are rewritten in their own memory as signed values when every moved height fits, so the 4 m grids (34 MB each) are not
+ * held twice; the unsigned arrays they were must not be read afterwards.
+ */
+export function rebaseGrids(grids: MapGrids, level: number): void {
+  const cm = Math.round(level * 100)
+  grids.ground = shifted(grids.ground, cm, false) as unknown as Uint16Array
+  grids.water = shifted(grids.water, cm, true) as unknown as Uint16Array
+}
+
+function shifted(src: ArrayLike<number>, cm: number, water: boolean): Int16Array {
+  let fits = src instanceof Uint16Array
+  if (fits) for (let k = 0; k < src.length; k++) if (src[k] - cm > 32767) { fits = false; break }
+  const out = fits ? new Int16Array((src as Uint16Array).buffer, (src as Uint16Array).byteOffset, src.length) : new Int16Array(src.length)
+  for (let k = 0; k < out.length; k++) {
+    const v = src[k]
+    if (water && !v) {
+      out[k] = 0
+      continue
+    }
+    const moved = v - cm
+    out[k] = water && moved === 0 ? 1 : moved
+  }
+  return out
+}
+
+export function rebaseDoc(doc: MapDoc, level: number): void {
   const r = (v: number) => Math.round((v - level) * 100) / 100
   for (const b of doc.buildings) {
     b.f = r(b.f)
