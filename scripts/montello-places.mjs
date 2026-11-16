@@ -5,13 +5,14 @@
  *
  *   node scripts/montello-places.mjs          (rerun after re-baking the map; a test checks the file is current)
  */
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 /** Every lot already offered in Fox Lake, kept as it was (`keepIssued`). */
-const ISSUED = JSON.parse(readFileSync(`${root}scripts/montello-lots.json`, 'utf8')).lots
+const LOTS_FILE = existsSync(`${root}scripts/montello-lots.json`) ? `${root}scripts/montello-lots.json` : 'scripts/montello-lots.json'
+const ISSUED = JSON.parse(readFileSync(LOTS_FILE, 'utf8')).lots
 /** Fox Lake's town origin in the scene (modules-src/foxlake/region.ts TOWN_OFFSET); a test keeps them equal. */
 export const TOWN_OFFSET = { x: -4200, y: 0, z: -6600 }
 /** Where the middle of Montello's map lies in Fox Lake's scene (modules-src/foxlake/region.ts MONTELLO_AT); a test keeps them equal. */
