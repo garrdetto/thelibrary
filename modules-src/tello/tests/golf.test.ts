@@ -74,7 +74,7 @@ test('driveways run from a building to the edge of a road, never over it', () =>
   const drives = doc.roads.filter((r) => r.c === DRIVEWAY_CLASS)
   assert.ok(drives.length > 300, `${drives.length} driveways`)
   assert.ok(drives.some((r) => r.k === 3) && drives.some((r) => r.k === 2), 'both gravel and paved')
-  const streets = doc.roads.filter((r) => r.k <= 1)
+  const streets = doc.roads.filter((r) => r.k <= 3 && r.c !== DRIVEWAY_CLASS)
   const inside = (x: number, z: number) => {
     let best = -Infinity
     for (const s of streets) {
@@ -98,7 +98,7 @@ test('driveways run from a building to the edge of a road, never over it', () =>
     const n = p.length / 2
     assert.ok(inside(p[(n - 1) * 2], p[(n - 1) * 2 + 1]) > -0.6, 'a drive ends on a road edge')
   }
-  assert.ok(over <= checked * 0.01, `${over} of ${checked} driveway points lie on a street`)
+  assert.ok(over <= checked * 0.01, `${over} of ${checked} driveway points lie on a road`)
 })
 
 test('a driveway meeting a road gets no end cap reaching into it', () => {

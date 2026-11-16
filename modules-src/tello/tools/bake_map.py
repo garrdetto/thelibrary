@@ -1300,6 +1300,13 @@ def playable_area(city, osm):
         area = max(area.geoms, key=lambda g: g.area)
     return Polygon(area.exterior).simplify(1.0)
 
+def offered_lots():
+    """The vacant lots Fox Lake already sells (`scripts/montello-lots.json`, town frame: map x, minus map z), so no
+    driveway found in the photo runs across one."""
+    path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'scripts', 'montello-lots.json')
+    lots = json.load(open(path))['lots'] if os.path.exists(path) else []
+    return unary_union([box(l['x'], -l['z'] - l['d'], l['x'] + l['w'], -l['z']) for l in lots if l['id'].startswith('V')])
+
 def link_road(roads):
     """State Highway 23's easternmost way, which Fox Lake's road used to join at the playable area's edge."""
     return max((r for r in roads if LINK_ROAD in (r['name'], r['ref'])), key=lambda r: max(x for x, _z in r['pts']))
@@ -1881,6 +1888,9 @@ def main():
     drive_stats = {}
     fetch_naip_fine(cache, seen)
     drives = find_driveways(cache, buildings, roads, maps['ndsm'], mask_f, near_city, (X0, Z0, SIZE, FINE), drive_stats)
+    offered = offered_lots()
+    drive_stats['onLot'] = sum(1 for d in drives if LineString(d['pts']).buffer(d['width'] / 2).intersects(offered))
+    drives = [d for d in drives if not LineString(d['pts']).buffer(d['width'] / 2).intersects(offered)]
     roads += drives
     step(f'{len(drives)} driveways from the aerial photo: {drive_stats}')
     naip_fine = FineNaip(cache, X0, Z0, SIZE)

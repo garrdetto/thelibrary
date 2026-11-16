@@ -15,7 +15,8 @@ OpenStreetMap maps only a few of Montello's driveways. The rest are read off the
     (asphalt, concrete) is paved.
 
 Each kept drive stops on the road's edge, so it never lies over the road, and at the wall it serves. Garages are done
-first and a house next to a garage that has one is left alone, so a farmstead gets one drive, not three.
+first and a house next to a garage that has one is left alone, so a farmstead gets one drive, not three; a drive
+that would run along one already laid (a lane shared by several buildings) is left out, so drives never lie on each other.
 """
 import math
 import os
@@ -28,6 +29,7 @@ from shapely.strtree import STRtree
 
 TILE = 1024                  # metres (and pixels) a side of each fine aerial tile
 REACH = 260.0                # the longest drive looked for
+SHARED_RUN = 8.0             # a drive running this far along one already laid is the same lane, so it is left out
 SERVED = 2.5                 # a building this close to a mapped lane or track already has its drive
 STREET_FRONT = 1.6           # a building this close to a street fronts on it (downtown) and needs none
 NEAR_GARAGE = 26.0           # a house this close to a garage with a drive shares it
@@ -293,6 +295,9 @@ def find_driveways(cache, buildings, roads, ndsm, water_f, near_city, frame, sta
         drive = LineString(pts)
         if any(o.intersects(drive.buffer(width / 2 + 0.3)) for o in others):
             counts['rejected'] += 1
+            continue
+        if any(m.intersects(drive) and drive.intersection(m.buffer(1.5)).length > SHARED_RUN for m in made_polys[-400:]):
+            counts['shared'] += 1
             continue
         made.append({'id': f'drive-{len(made)}', 'kind': 3 if kind_name == 'gravel' else 2, 'width': round(width, 1), 'name': '', 'ref': '',
                      'pts': [(float(x), float(z)) for x, z in pts], 'bridge': False, 'oneway': False, 'class': DRIVE_CLASS, 'drive': True})
