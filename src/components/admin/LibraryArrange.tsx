@@ -115,7 +115,7 @@ export function LibraryArrange() {
     </div>
 
     {tab === 'categories' ? <LibraryCategories draft={draft} setDraft={setDraft}/> : <>
-    <p className="adm-help">Drag a module by its handle, or focus the handle and use the arrow keys (Home and End jump to the ends). The order here is the order of the homepage grid and of each sidebar category; the star picks the featured module at the top of the homepage.</p>
+    <p className="adm-help">Drag a module by its handle, or focus the handle and use the arrow keys (Home and End jump to the ends). The order here is the order of the homepage grid and of each sidebar category; the star picks the featured module at the top of the homepage. Hide takes a module off the site: it leaves the homepage, the sidebar and the Top 5, and its links stop opening it for everyone but administrators.</p>
 
     <ol ref={listRef} className={`adm-arrange-list${dragging ? ' is-dragging' : ''}`} aria-label="Module order">
       {draft.order.map((id, index) => {
@@ -137,7 +137,7 @@ export function LibraryArrange() {
             <button type="button" className="adm-icon" onClick={() => reorder(id, index - 1)} disabled={index === 0} title="Move up" aria-label={`Move ${item.title} up`}><ArrowUp size={16} aria-hidden/></button>
             <button type="button" className="adm-icon" onClick={() => reorder(id, index + 1)} disabled={index === draft.order.length - 1} title="Move down" aria-label={`Move ${item.title} down`}><ArrowDown size={16} aria-hidden/></button>
             <button type="button" className={`adm-icon${featuredId === id ? ' is-on' : ''}`} onClick={() => setDraft(current => ({ ...current, featured: id }))} disabled={isHidden} aria-pressed={featuredId === id} title="Feature on the homepage" aria-label={`Feature ${item.title} on the homepage`}><Star size={16} aria-hidden/></button>
-            <button type="button" className={`adm-icon${isHidden ? ' is-off' : ''}`} onClick={() => toggleHidden(id)} aria-pressed={!isHidden} title={isHidden ? 'Show in the library' : 'Hide from the library'} aria-label={isHidden ? `Show ${item.title} in the library` : `Hide ${item.title} from the library`}>{isHidden ? <EyeOff size={16} aria-hidden/> : <Eye size={16} aria-hidden/>}</button>
+            <button type="button" className={`adm-hide-toggle${isHidden ? ' is-off' : ''}`} onClick={() => toggleHidden(id)} aria-pressed={isHidden} title={isHidden ? 'Hidden from the site. Click to show it again' : 'Hide from the site'} aria-label={isHidden ? `Show ${item.title} on the site` : `Hide ${item.title} from the site`}>{isHidden ? <EyeOff size={15} aria-hidden/> : <Eye size={15} aria-hidden/>}<span>{isHidden ? 'Hidden' : 'Hide'}</span></button>
           </span>
         </li>
       })}

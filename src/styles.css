@@ -1593,6 +1593,10 @@ body{background:var(--paper);color:var(--tone-0)}
 .adm-icon:disabled{opacity:.3;cursor:default}
 .adm-icon.is-on{color:#f5b942}.adm-icon.is-on svg{fill:currentColor}
 .adm-icon.is-off{color:var(--lib-dim)}
+.adm-hide-toggle{display:inline-flex;align-items:center;gap:6px;height:34px;min-width:84px;padding:0 12px;margin-left:4px;border-radius:9px;border:1px solid var(--lib-line);background:var(--lib-chip);color:var(--lib-text);font:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.adm-hide-toggle:hover{border-color:var(--lib-accent)}
+.adm-hide-toggle:focus-visible{outline:2px solid var(--lib-accent);outline-offset:2px}
+.adm-hide-toggle.is-off{background:transparent;color:var(--lib-dim);border-style:dashed}
 .adm-pill{display:inline-flex;align-items:center;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--lib-chip);border:1px solid var(--lib-line);color:var(--lib-muted);font-size:12.5px;font-style:normal;font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle}
 .adm-pill-accent{background:var(--adm-accent-soft);border-color:transparent;color:var(--lib-accent)}
 .adm-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px}
