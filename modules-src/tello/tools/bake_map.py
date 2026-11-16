@@ -63,8 +63,9 @@ def fetch(url, path, timeout=240):
             req = urllib.request.Request(url, headers={'User-Agent': 'thelibrary-tello-bake/1.0'})
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 data = r.read()
-            with open(path, 'wb') as f:
+            with open(path + '.part', 'wb') as f:
                 f.write(data)
+            os.replace(path + '.part', path)
             return path
         except Exception as e:  # noqa: BLE001
             last = e
@@ -1241,6 +1242,10 @@ PLAY_PAD = 4828.032  # how far past the city limits you may walk and drive: thre
 LINK_ROAD = 'State Highway 23'
 VIS_PAD = 240.0      # how far past that the ground, water and woods are still drawn
 CITY_PAD = 8.0       # buildings whose footprint centre lies this close to the playable area are built
+# Areas added to the playable ring: a circle `radius` metres round the middle of the named lake (White Lake, on the
+# map's east side, a mile round it), with any golf course centred in it (White Lake Golf Club, east of the lake).
+EXPANSIONS = [{'lake': 'White Lake', 'radius': 1609.344}]
+GOLF_MARGIN = 80.0
 
 def city_limits(osm):
     """The City of Montello's boundary (OpenStreetMap relation, admin level 8): its largest part, holes filled."""
@@ -1253,9 +1258,44 @@ def city_limits(osm):
             return Polygon(max(parts, key=lambda g: g.area).exterior)
     raise SystemExit('The City of Montello boundary is missing from the OpenStreetMap extract')
 
-def playable_area(city):
-    """The city limits widened by three miles, inside the frame."""
-    area = city.buffer(PLAY_PAD).intersection(WORLD)
+def area_of(g):
+    """A polygon from `Osm.polygons`' result: the polygon itself, or a multipolygon's member lines pieced together."""
+    if not isinstance(g, list):
+        return g
+    faces = list(polygonize(unary_union(g)))
+    return unary_union(faces) if faces else Polygon()
+
+def lake_named(osm, name):
+    """The largest water area OpenStreetMap names `name`."""
+    hits = [area_of(g) for tags, g in osm.polygons(lambda t: t.get('natural') == 'water' and t.get('name') == name)]
+    hits = [g for g in hits if not g.is_empty]
+    if not hits:
+        raise SystemExit(f'{name} is missing from the OpenStreetMap extract')
+    return max(hits, key=lambda g: g.area)
+
+def golf_courses(osm):
+    """Golf courses in the frame (leisure=golf_course), as polygons."""
+    out = []
+    for tags, g in osm.polygons(lambda t: t.get('leisure') == 'golf_course'):
+        p = area_of(g)
+        if not p.is_empty and p.intersects(WORLD):
+            out.append((tags, p))
+    return out
+
+def playable_area(city, osm):
+    """
+    The city limits widened by three miles, plus each of `EXPANSIONS` (a circle round a lake's centre, and every golf
+    course whose middle lies in it with a margin), inside the frame. An expansion stops `VIS_PAD` short of the frame's
+    edge so the land past its wall is still drawn.
+    """
+    area = city.buffer(PLAY_PAD)
+    room = WORLD.buffer(-VIS_PAD, join_style=2)
+    courses = golf_courses(osm)
+    for e in EXPANSIONS:
+        circle = lake_named(osm, e['lake']).centroid.buffer(e['radius'], 64)
+        extra = unary_union([circle] + [p.buffer(GOLF_MARGIN) for _t, p in courses if circle.contains(p.centroid)])
+        area = area.union(extra.intersection(room))
+    area = area.intersection(WORLD)
     if area.geom_type != 'Polygon':
         area = max(area.geoms, key=lambda g: g.area)
     return Polygon(area.exterior).simplify(1.0)
@@ -1297,7 +1337,7 @@ def road_exits(roads, area, link):
     out = []
     edge = area.exterior
     for r in roads:
-        if r is link or r['kind'] > 2:
+        if r is link or r['kind'] > 2 or r.get('drive'):
             continue
         line = LineString(r['pts'])
         cross = line.intersection(edge)
@@ -1318,7 +1358,7 @@ def street_side(poly, roads, near=60.0, only=None):
     c = poly.representative_point()
     best = None
     for r in roads:
-        if r['kind'] > 2 or (only and (r['name'] or r['ref']) != only):
+        if r['kind'] > 2 or r.get('drive') or (only and (r['name'] or r['ref']) != only):
             continue
         line = LineString(r['pts'])
         if line.distance(c) > near + 40:
@@ -1648,6 +1688,11 @@ def extra_places():
         out.append({**e, 'x': x, 'z': z})
     return out
 
+def fetch_naip_fine(cache, area):
+    """The one-metre aerial tiles the driveway finder reads (`bake_driveways.py`)."""
+    from bake_driveways import fetch_naip_fine as fetch_tiles_1m
+    return fetch_tiles_1m(cache, area, fetch, X0, Z0, E0, N0, SIZE)
+
 def chunk_origins(area):
     """South-west corners (cell indices) of the working windows that touch `area`."""
     out = []
@@ -1765,6 +1810,7 @@ def main():
     ap.add_argument('--cache', default='.tello-cache')
     ap.add_argument('--out', default=os.path.join(os.path.dirname(__file__), '..', '..', '..', 'public', 'modules', 'tello'))
     ap.add_argument('--debug', default='')
+    ap.add_argument('--fetch-only', action='store_true', help='download every source into the cache and stop')
     args = ap.parse_args()
     cache = args.cache
     os.makedirs(cache, exist_ok=True)
@@ -1778,10 +1824,17 @@ def main():
 
     # Only the city limits and three miles round them are built: the playable area, the woods you can see past it.
     city = city_limits(osm)
-    play = playable_area(city)
+    play = playable_area(city, osm)
     seen = play.buffer(VIS_PAD)
     near_city = play.buffer(CITY_PAD)
     shapely.prepare(seen); shapely.prepare(near_city)
+    step(f'playable area {play.area / 1e6:.1f} km2')
+    if args.fetch_only:
+        load_dem(cache, seen.buffer(200)); load_naip(cache, seen.buffer(200)); ms_buildings(cache)
+        tiles = fetch_tiles(lidar_tiles(cache, seen))
+        fetch_naip_fine(cache, seen)
+        step(f'downloaded: {len(tiles)} lidar tiles')
+        return
     dem = load_dem(cache, seen.buffer(200))
     naip = load_naip(cache, seen.buffer(200))
     step('dem and naip read')
@@ -1822,6 +1875,25 @@ def main():
     del roof_points
     step(f'{len(found)} buildings from the point cloud, {measured} roofs measured')
 
+    # Driveways the aerial photo shows, and the golf course laid out hole by hole.
+    from bake_driveways import FineNaip, find_driveways
+    from bake_golf import COURSE_NAME, golf_layout, shape_ground
+    drive_stats = {}
+    fetch_naip_fine(cache, seen)
+    drives = find_driveways(cache, buildings, roads, maps['ndsm'], mask_f, near_city, (X0, Z0, SIZE, FINE), drive_stats)
+    roads += drives
+    step(f'{len(drives)} driveways from the aerial photo: {drive_stats}')
+    naip_fine = FineNaip(cache, X0, Z0, SIZE)
+    golf = []
+    golf_shapes = []
+    for _tags, course in golf_courses(osm):
+        if not near_city.contains(course.centroid):
+            continue
+        record, shapes = golf_layout(osm, course, naip_fine, maps['ndsm'], water, roads, buildings, (X0, Z0, SIZE))
+        golf.append((course, record))
+        golf_shapes.append(shapes)
+    step(f'golf: {[(r["n"], len(r["holes"]), len(r["bunkers"])) for _c, r in golf]}')
+
     ground, bridges, culvert, road_w = grade_roads(roads, dem, ground, level_ext, wet, mask_f, maps['nlast'])
     wet = wet & ~culvert
     depth = np.where(wet, depth, 0)
@@ -1842,6 +1914,8 @@ def main():
     shore = (ndimage.maximum_filter(wet.astype(np.uint8), 5) > 0) & ~wet
     ground = np.where(shore, np.maximum(ground, level_ext + 0.14), ground)
     ground = np.where(wet, np.minimum(ground, level_ext - depth), ground)
+    for shapes in golf_shapes:
+        shape_ground(ground, shapes, (X0, Z0), CELL)
     step('roads graded')
 
     # Hard surfaces (1 m windows): distance to pavement and walls, for grass, trees and shoulders.
@@ -1870,10 +1944,17 @@ def main():
         'lot': unary_union([l['poly'] for l in lots]) if lots else Polygon(),
     }
     cover, tone, canopy = classify(naip, ndvi, canopy_f, mask_f, sdf_f, bldg_dist_f, zones, wet, level_ext, ground)
+    for (course, record), shapes in zip(golf, golf_shapes):
+        # The course is mown: lawn wherever it is open, sand in the bunkers.
+        on = (raster([course], CELL, NC) > 0) & ~wet & (canopy < 128) & (cover != 5)
+        cover[on] = 1
+        cover[(raster(shapes['bunkers'], CELL, NC) > 0) & ~wet] = 4
     del canopy_f
     step('cover')
     pois = collect_pois(osm, bodies)
     pois = add_extra_places(pois, buildings, extras)
+    for _course, record in golf:
+        pois.append({'n': record['n'], 'k': 'park', 't': 'leisure:golf_course', 'x': record['c'][0], 'z': record['c'][1]})
     pitches = collect_pitches(osm)
     slipways = collect_slipways(osm)
 
@@ -1924,6 +2005,7 @@ def main():
         'homes': homes,
         'pitches': pitches,
         'slipways': slipways,
+        'golf': [record for _c, record in golf],
         'limits': {'city': flat(list(city.simplify(1.0).exterior.coords)[:-1]), 'play': flat(list(play.exterior.coords)[:-1]), 'exits': exits,
                    'link': flat(LineString(link['pts']).intersection(WORLD).coords), 'pad': PLAY_PAD, 'seen': VIS_PAD},
         'sources': [
@@ -1946,6 +2028,7 @@ def main():
     doc['stats'] = {
         'roads': len(roads), 'roadKm': round(sum(LineString(r['pts']).length for r in roads) / 1000, 1), 'bridges': len(bridges),
         'bridgesMeasured': sum(1 for b in bridges if b['measured']),
+        'driveways': len(drives), 'drivewaysGravel': sum(1 for d in drives if d['kind'] == 3), 'golfHoles': sum(len(r['holes']) for _c, r in golf),
         'buildings': len(buildings), 'buildingsFromOsm': sum(1 for b in buildings if b['src'] == 'osm'), 'buildingsFromLidar': len(found), 'buildingKinds': kinds,
         'roofsMeasured': measured, 'roofKinds': roof_kinds, 'buildingsNotStandingIn2018': sum(1 for b in buildings if b['seen'] < 0.2),
         'waterBodies': len(bodies), 'waterShare': round(float(wet.mean()), 4), 'trees': int(tx.size), 'treeKinds': [int((tk == k).sum()) for k in range(3)],

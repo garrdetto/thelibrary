@@ -11,9 +11,10 @@ import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { detailTexture } from '../../rackreel/world/World'
 import type { TelloLand } from '../region'
+import { triangulate } from './Poly'
 import { batchOf, toMesh, type Batch } from './Roads'
 
-export type PaintKind = 'white' | 'yellow' | 'dirt' | 'clay' | 'track' | 'curb' | 'bright' | 'dark' | 'mow' | 'pad' | 'chalk' | 'court'
+export type PaintKind = 'white' | 'yellow' | 'dirt' | 'clay' | 'track' | 'curb' | 'bright' | 'dark' | 'mow' | 'pad' | 'chalk' | 'court' | 'fairway' | 'fringe' | 'green' | 'tee' | 'sand'
 
 const CELL = 256
 
@@ -30,7 +31,15 @@ const LOOKS: Record<PaintKind, { color: [number, number, number]; texture?: bool
   pad: { color: [0.55, 0.55, 0.53], texture: true, zOffset: -5 },
   chalk: { color: [0.95, 0.95, 0.92], zOffset: -6 },
   court: { color: [0.2, 0.42, 0.36], texture: true, zOffset: -5 },
+  fairway: { color: [0.34, 0.52, 0.19], texture: true, zOffset: -2 },
+  fringe: { color: [0.31, 0.5, 0.18], texture: true, zOffset: -3 },
+  green: { color: [0.29, 0.55, 0.2], zOffset: -4 },
+  tee: { color: [0.33, 0.55, 0.2], zOffset: -4 },
+  sand: { color: [0.82, 0.75, 0.58], texture: true, zOffset: -5 },
 }
+
+/** Triangles are cut down to this edge length so a polygon decal follows the 4 m ground grid. */
+const DRAPE_EDGE = 2
 
 export class Decals {
   private readonly batches = new Map<string, Batch>()
@@ -79,6 +88,40 @@ export class Decals {
       for (let x = bounds.x0; x < bounds.x1; x += step) {
         if (!inside(x + step / 2, z + step / 2)) continue
         this.quad(kind, [[x, z], [x + step, z], [x + step, z + step], [x, z + step]], lift)
+      }
+    }
+  }
+
+  /** A filled outline (map x, z pairs), each triangle cut small so it follows the ground. */
+  polygon(kind: PaintKind, ring: ArrayLike<number>, lift = 0.09): void {
+    const tri = triangulate(ring)
+    for (let k = 0; k < tri.length; k += 3) {
+      const a = tri[k] * 2, b = tri[k + 1] * 2, c = tri[k + 2] * 2
+      this.triangle(kind, ring[a], ring[a + 1], ring[b], ring[b + 1], ring[c], ring[c + 1], lift)
+    }
+  }
+
+  /** One triangle split into a grid of small ones, draped on the ground. */
+  triangle(kind: PaintKind, x0: number, z0: number, x1: number, z1: number, x2: number, z2: number, lift = 0.09): void {
+    const longest = Math.max(Math.hypot(x1 - x0, z1 - z0), Math.hypot(x2 - x1, z2 - z1), Math.hypot(x0 - x2, z0 - z2))
+    const n = Math.max(1, Math.min(48, Math.ceil(longest / DRAPE_EDGE)))
+    const b = this.batch(kind, (x0 + x1 + x2) / 3, (z0 + z1 + z2) / 3)
+    const base = b.positions.length / 3
+    const row = (i: number) => (i * (i + 1)) / 2
+    for (let i = 0; i <= n; i++) {
+      for (let j = 0; j <= i; j++) {
+        const u = 1 - i / n, v = (i - j) / n, w = j / n
+        const x = x0 * u + x1 * v + x2 * w
+        const z = z0 * u + z1 * v + z2 * w
+        b.positions.push(x, this.land.heightAt(x, z) + lift, -z)
+        b.uvs.push(x, z)
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j <= i; j++) {
+        const a = base + row(i) + j, l = base + row(i + 1) + j, r = l + 1
+        b.indices.push(a, l, r)
+        if (j < i) b.indices.push(a, r, a + 1)
       }
     }
   }
