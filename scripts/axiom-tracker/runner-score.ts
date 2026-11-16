@@ -33,6 +33,20 @@ export const movementWindows = [
 ] as const
 /** Points a rising coin earns for movement, and the most a falling one loses. */
 export const movementPoints = 10
+/** A coin under this market cap starts `floorPenalty` points down: a coin that has faded to a few thousand dollars is not a runner, whatever else it shows. */
+export const marketCapFloor = { usd: 10_000, penalty: 50 }
+/**
+ * Market-cap growth that gets runners noticed, added after the stretch: +1 for every 10% the market cap rose in the last minute
+ * ($10K to $15K is +5, to $20K is +10) or every 20% in the last 5 minutes ($10K to $30K is +10), whichever is more, up to `max`.
+ */
+export const marketCapGrowth = { perMinute: 10, perFiveMinutes: 20, max: 20 }
+
+/** Growth points from the 1-minute and 5-minute change (market cap moves with price, the supply is fixed). */
+export function marketCapGrowthPoints(change: Pick<RunnerInput['priceChange'], 'm1' | 'm5'>) {
+  const fromMinute = change.m1 !== null && change.m1 > 0 ? change.m1 / marketCapGrowth.perMinute : 0
+  const fromFive = change.m5 !== null && change.m5 > 0 ? change.m5 / marketCapGrowth.perFiveMinutes : 0
+  return { points: Math.min(marketCapGrowth.max, Math.round(Math.max(fromMinute, fromFive))), window: fromMinute >= fromFive ? '1m' : '5m' }
+}
 
 /** The weighted movement from -1 (falling hard in every window) to +1. A window with no reading yet counts as no move, so a lone 5-second spike can earn only its 10% share. */
 export function movementSignal(change: RunnerInput['priceChange']) {
@@ -268,7 +282,7 @@ const sum = (checks: RadarScoreCheck[]) => checks.reduce((total, item) => total 
  * over 35%, bundlers over 35%, fresh wallets over 10%, dead charts, bot climbs, a big holder sell-off right now); a serial
  * launcher is capped at 40 and a recycled name, copied links or small holder trims cost points. Then holder percentages (20), Axiom demand and growth: viewers, viewer and holder growth a
  * minute, buy share, holders, volume, fees (45), chart and liquidity (25, with movement over 5s, 30s, 1m and 5m weighted toward 5m) and hype (15); a falling move costs up to 10, raised by `scoreStretch`; a top 10 under 35% costs
- * nothing unless it is falling fast (the sell watch), and market cap or distance to migration never costs points; plus or minus what past alerts taught. `ledger` lists every
+ * nothing unless it is falling fast (the sell watch); a market cap under $10K costs 50 off the final score, market cap growth adds up to 20 (+1 per 10% in 1m or per 20% in 5m), and distance to migration never costs points; plus or minus what past alerts taught. `ledger` lists every
  * gate, rule, adjustment and cap with the reading it used.
  */
 export function scoreRunner(input: RunnerInput): RunnerScore {
@@ -429,6 +443,20 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     cuts.push(`Falling (${movement?.readings.join(', ')}): -${movementCost}`)
     parts.push({ key: 'penalty', label: 'Price falling', points: -movementCost, max: 0, detail: movement?.readings.join(', ') ?? '', available: true })
   }
+  const underFloor = input.marketCap !== null && input.marketCap < marketCapFloor.usd
+  const floorCost = underFloor ? marketCapFloor.penalty : 0
+  adjustments.push({ label: `Market cap under ${money(marketCapFloor.usd)}: -${marketCapFloor.penalty}`, reading: input.marketCap === null ? 'not read yet' : money(input.marketCap), points: -floorCost, max: 0, status: input.marketCap === null ? 'unknown' : floorCost ? 'missed' : 'earned' })
+  if (floorCost) {
+    cuts.push(`Market cap ${money(input.marketCap as number)}, under ${money(marketCapFloor.usd)}: -${floorCost}`)
+    parts.push({ key: 'penalty', label: `Under ${money(marketCapFloor.usd)} market cap`, points: -floorCost, max: 0, detail: money(input.marketCap as number), available: true })
+  }
+  const growth = marketCapGrowthPoints(input.priceChange)
+  adjustments.push({ label: `Market cap growth: +1 per 10% in 1m or per 20% in 5m, up to +${marketCapGrowth.max}`, reading: `1m ${input.priceChange.m1 === null ? '?' : `${signed(input.priceChange.m1)}%`}, 5m ${input.priceChange.m5 === null ? '?' : `${signed(input.priceChange.m5)}%`}`, points: growth.points, max: marketCapGrowth.max, status: input.priceChange.m1 === null && input.priceChange.m5 === null ? 'unknown' : growth.points ? 'earned' : 'missed' })
+  if (growth.points) {
+    tags.push('mcap-growing')
+    thesis.push(`market cap up ${Math.round((growth.window === '1m' ? input.priceChange.m1 : input.priceChange.m5) as number)}% in ${growth.window}`)
+    parts.push({ key: 'growth', label: 'Market cap growth', points: growth.points, max: marketCapGrowth.max, detail: `up ${Math.round((growth.window === '1m' ? input.priceChange.m1 : input.priceChange.m5) as number)}% in ${growth.window}`, available: true })
+  }
   const learnedTotal = input.learned.reduce((total, item) => total + item.points, 0)
   const learned = Math.max(learnedLimits.minimum, Math.min(learnedLimits.maximum, learnedTotal))
   for (const item of input.learned) adjustments.push({ label: `Learned: ${item.label}`, reading: 'pattern seen in past alerts', points: item.points, max: Math.max(0, item.points), status: item.points >= 0 ? 'earned' : 'missed' })
@@ -437,7 +465,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     parts.push({ key: 'learned', label: 'Learned from past alerts', points: learned, max: learnedLimits.maximum, detail: input.learned.map(item => `${item.label} ${item.points > 0 ? '+' : ''}${item.points}`).join(', '), available: true })
     cuts.push(...input.learned.filter(item => item.points < 0).map(item => `${item.label}: ${item.points}`))
   }
-  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch - recycledCost - sellingCost - movementCost)))
+  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch + growth.points - recycledCost - sellingCost - movementCost)) - floorCost)
   adjustments.push({ label: `Points raised by a quarter (x${scoreStretch}), deductions not raised`, reading: `${round1(base + learned)} points`, points: round1((base + learned) * (scoreStretch - 1)), max: 0, status: 'earned' })
   let score = beforeCaps
   if (disqualified.length) score = 0
