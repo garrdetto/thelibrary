@@ -416,7 +416,7 @@ function shoe(kind: Shoe, p: BodyPoint, f: BodyFrame, out: RGB, boot: RGB): bool
 }
 
 function makeBottom(cut: BottomCut): Shade {
-  return (p, f, out, hand, boot) => {
+  return (p, f, out, _hand, boot) => {
     if (shoe(cut.shoe, p, f, out, boot)) return
     const end = cut.length === 'full' ? f.leg + 0.2 : cut.length
     if (p.legT > end) {
