@@ -18,6 +18,8 @@ const pulseWindowMs = 3 * 60_000
 const enrichmentsPerCycle = 5
 const enrichmentRefreshMs = 30 * 60_000
 const enrichedAt = new Map<string, number>()
+let enriching = false
+let lastEnriched = 0
 /** The site takes at most 160 coins per update; Pulse coins come first, then the best of the rest. */
 export const trackedLimit = 150
 
@@ -165,9 +167,15 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   }
   for (const mint of trackerState.market.keys()) if (!ranked.some(entry => entry.pair.baseToken.address === mint)) trackerState.market.delete(mint)
 
-  const enriched = await enrichCandidates(database, trackerState.active)
+  if (!enriching) {
+    enriching = true
+    void enrichCandidates(database, trackerState.active)
+      .then(count => { lastEnriched = count })
+      .catch(error => logger.warn('RugCheck enrichment failed', { error: errorMessage(error) }))
+      .finally(() => { enriching = false })
+  }
   recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} tracked of ${best.size} coins checked, ${fromPulse.length} of ${trackerState.pulse.size} Pulse coins${fromCards ? ` (${fromCards} followed from their cards until DexScreener lists them)` : ''}`)
-  logger.info('Discovery cycle complete', { sourced: sources.mints.length, fromJupiter: jupiterMints.length, botClimbsSkipped: trackerState.botClimbs.size, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, fromCards, onPulse: trackerState.pulse.size, active: trackerState.active.length, enriched, sourceFailures: sources.failures })
+  logger.info('Discovery cycle complete', { sourced: sources.mints.length, fromJupiter: jupiterMints.length, botClimbsSkipped: trackerState.botClimbs.size, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, fromCards, onPulse: trackerState.pulse.size, active: trackerState.active.length, enriched: lastEnriched, sourceFailures: sources.failures })
 }
 
 export function startDiscovery(database: TrackerDatabase, signal: AbortSignal) {
