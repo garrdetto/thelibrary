@@ -199,16 +199,24 @@ Checked with a read-through of the play-time paths and `scripts/foxlake-perf.mjs
 
 ## Foxtails Lounge & Casino (`casino/`)
 
-A walk-in casino inside Foxtails Gentlemen's Club, east of Montello on State Highway 23. The layout in `CasinoLayout.ts` stays in the
-casino's own 32 by 24 m frame; `SITE` (`MONTELLO_CASINO`, found by `scripts/montello-places.mjs`) says where it stands in the town frame
-(the nearest floor to the mapped club that clears every other building and street, turned so the doorway faces the highway), and
-`localToTown`, `townToLocal` and `siteYaw` carry points across; `CasinoHost` builds under a rotated frame node and moves the colliders
-(`PlacedColliders`). The club's own scanned building (a 184 m2 footprint, too small for the floor) is taken down (`lotHouses` +
-`Montello.clearHouse`), Tello draws only the club's pole sign (`REPLACED_BUILDINGS`) and `FoxLakeTown.mountCasino` mounts it. Its
-neon signs read FOXTAILS CASINO and FOXTAILS BAR. Not placed by eye: the floor is built on the lot at the mean ground height and trees
-baked there are not cleared.
+A walk-in casino inside Foxtails Gentlemen's Club's own building on 16th Road, just north of State Highway 23 (the building on the
+highway in front of it is Napralla Tire, with its dirt drive). The casino keeps the club's real footprint (`MONTELLO_CASINO.outline`,
+building #2404, an L of about 465 m2: a 10.6 m hall running north, a wider wing across its north end and a small bay off the back),
+squared to the casino's own frame (`CasinoLayout.ts` `FOOTPRINT`, `ROOMS`); local +z runs up the building and local +x away from its
+front on 16th Road. `SITE` (written by `scripts/montello-places.mjs`) places that frame in the town, and `localToTown`, `townToLocal`
+and `siteYaw` carry points across; `CasinoHost` builds under a rotated frame node and turns every collider with it
+(`PlacedColliders`). Tello leaves the club's own shell out (`REPLACED_BUILDINGS`, `lotHouses` + `Montello.clearHouse`) and draws
+only its pole sign; `FoxLakeTown.mountCasino` mounts it.
 
-- **Building** (`CasinoBuilding.ts`, `CabinetModel.ts`): brick shell with the doorway and canopy, carpet, a coffered ceiling with light panels, the bar (counter, brass rail, back bar with lit bottle shelves, pendant lamps, eight stools), the blackjack table and ten upright video-slot cabinets (plinth, lower door, bill acceptor, ticket printer, card reader, lit button deck, chrome-trimmed screen bezel with speaker grilles, topper, candle light, LED edges) with slot chairs. It is built with the town's builders and colliders, so it is culled, shadowed and solid like the rest of town.
+- **Outside**: dark block walls with a parapet; the doorway under a marquee canopy on chrome posts; pink and cyan neon tube bands
+  along the walls facing the road and the highway, a purple band low down; marquee bulbs along every parapet, the canopy and round
+  the stage in three groups that chase (`CasinoLights`, animated by `CasinoHost.animateLights`; the neon breathes and the pink
+  stutters now and then); neon lettering FOXTAILS (over the door and on the highway end), GENTLEMEN'S CLUB, CASINO · BAR, and
+  FOXTAILS BAR behind the bar.
+- **Inside**: slots down both long walls of the hall, blackjack mid-floor, a round pole stage with a chrome pole and two lounge
+  chairs at the hall's north end, a DJ booth in the back bay and the bar across the north wing; dark carpet, a black ceiling with
+  LED panels and a purple LED cove round the walls.
+- **Building** (`CasinoBuilding.ts`, `CabinetModel.ts`): the shell, neon and stage above, the bar (counter, brass rail, back bar with lit bottle shelves, pendant lamps, five stools), the blackjack table and ten upright video-slot cabinets (plinth, lower door, bill acceptor, ticket printer, card reader, lit button deck, chrome-trimmed screen bezel with speaker grilles, topper, candle light, LED edges) with slot chairs. It is built with the town's builders and colliders, so it is culled, shadowed and solid like the rest of town.
 - **Displays** (`screen/MachineDisplay.ts`): each cabinet's portrait screen and topper are self-lit textures in scene space: an attract page when idle; while playing, the header (title, meters), the reel window and CREDIT / BET / WIN; jackpot plaques on the topper at the current bet.
 - **Math layer** (`math/`, no Babylon or DOM): `rng.ts` (crypto on the server, seeded for tests), `reels.ts` (strips, stops, 1,024/243-ways wins with multiplying wilds), `lines.ts` (25/20 lines), `machines.ts` (the ten machines; a spin resolves completely into a timeline the screen replays), `blackjack.ts` (six decks, S17, 3:2, double, one split). `node scripts/casino-sim.mjs [spins]` prints each machine's return, base share, feature frequency and average feature win; `scale` in each definition sets the return (about 94%).
 - **The ten machines**, five game styles in two original themes each (rules researched from the real cabinets; names, symbols and art are this game's own): link Hold & Spin (Northern Lights Link, Gold Pan Link), house-building free games with a storm blowdown (Lodge Builders, Hay Day Barns), gold-head 1,024-ways free games (Moose Gold, Mustang Gold), the same with the Revolution wheel (Moose Gold Revolution, Mustang Gold Revolution), and gem collectors with Cash Collect, free games and a jackpot pick (Bigfoot Bucks, Lake Monster Loot).

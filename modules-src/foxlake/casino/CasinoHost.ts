@@ -1,7 +1,7 @@
 /**
- * The Foxtails Lounge & Casino inside Fox Lake: builds the room on Foxtails
- * Gentlemen's Club's lot east of Montello, the ten machines' displays, the neon
- * signs, the bartender and the dealer; shows the "E — ..." prompts at seats;
+ * The Foxtails Lounge & Casino inside Fox Lake: builds Foxtails Gentlemen's
+ * Club on its own footprint on 16th Road, the ten machines' displays, the neon
+ * signs (and chases the marquee bulbs), the bartender and the dealer; shows the "E — ..." prompts at seats;
  * sits the player down (Rack & Reel's seat and fixed-camera hooks) and opens the
  * machine, table or bar. The layout is in the casino's own frame (CasinoLayout);
  * every place it meets the town goes through `localToTown` and `SITE`.
@@ -21,7 +21,7 @@ import { DEFAULT_APPEARANCE } from '../../rackreel/shared/Appearance'
 import type { Mats } from '../fp/core/Tex'
 import type { Physics } from '../fp/physics/Physics'
 import { sceneToTown, townToScene, townYawToHeading } from '../region'
-import { buildCasino, type CasinoColliders } from './CasinoBuilding'
+import { buildCasino, type CasinoColliders, type CasinoLights } from './CasinoBuilding'
 import { BAR, BLACKJACK, CASINO, MACHINE_SPOTS, SITE, insideCasino, localToTown, nearestSeat, siteYaw, townToLocal, type MachineSpot, type Seat } from './CasinoLayout'
 import { CasinoClient } from './CasinoClient'
 import { MACHINES } from './math/machines'
@@ -37,9 +37,8 @@ class PlacedColliders implements CasinoColliders {
   constructor(private readonly physics: Physics) {}
 
   addStaticAABB(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, prop = false) {
-    const a = localToTown(x0, z0)
-    const b = localToTown(x1, z1)
-    return this.physics.addStaticAABB(Math.min(a.x, b.x), y0 + SITE.y, Math.min(a.z, b.z), Math.max(a.x, b.x), y1 + SITE.y, Math.max(a.z, b.z), prop)
+    const c = localToTown((x0 + x1) / 2, (z0 + z1) / 2)
+    return this.physics.addStaticBox({ cx: c.x, cy: (y0 + y1) / 2 + SITE.y, cz: c.z, hx: Math.abs(x1 - x0) / 2, hy: Math.abs(y1 - y0) / 2, hz: Math.abs(z1 - z0) / 2, rotY: SITE.yaw, prop })
   }
 
   addStaticCylinder(x: number, y: number, z: number, halfH: number, r: number) {
@@ -78,6 +77,8 @@ export class CasinoHost {
   private readonly extras: { dispose(): void }[] = []
   private host!: GameHost
   private frame: TransformNode | null = null
+  private lights: CasinoLights | null = null
+  private clock = 0
 
   /** Builds the room into the town where Foxtails stands (call while the town is being built, so it is culled and shadowed with it). */
   build(root: TransformNode, mats: Mats, physics: Physics): void {
@@ -87,7 +88,7 @@ export class CasinoHost {
     const origin = localToTown(0, 0)
     frame.position.set(origin.x, SITE.y, origin.z)
     this.frame = frame
-    buildCasino(frame, mats, new PlacedColliders(physics))
+    this.lights = buildCasino(frame, mats, new PlacedColliders(physics))
   }
 
   /** Where the money is: the online Fox Lake world (by account or this browser's guest key) or the solo town. */
@@ -107,9 +108,18 @@ export class CasinoHost {
       const def = MACHINES[spot.index]
       this.displays.push(new MachineDisplay(scene, placeSpot(spot), def, THEMES[def.id]))
     })
-    this.sign('FOXTAILS CASINO', '#ff5ac8', CASINO.door.x, 4.75, CASINO.z0 - 0.08, Math.PI, 8.5, 1.15)
-    this.sign('FOXTAILS BAR', '#ffb040', 115, 4.45, CASINO.z1 - CASINO.wall - 0.03, Math.PI, 4.2, 0.8)
-    this.sign('BLACKJACK', '#50ffb0', BLACKJACK.x, 2.55, BLACKJACK.z + 1.5, Math.PI, 2.2, 0.42)
+    const { hall, wing, door, height: H } = CASINO
+    const road = -Math.PI / 2
+    const boardX = (hall.x0 + hall.x1) / 2
+    this.sign('FOXTAIL', '#ff2020', boardX - 0.13, H + 2.05, door.z + 2.6, road, 3.0, 0.95)
+    this.sign('FOXTAIL', '#ff2020', boardX + 0.13, H + 2.05, door.z + 2.6, -road, 3.0, 0.95)
+    this.sign('FOXTAILS', '#ff3cc8', hall.x0 - 1.45, door.height + 0.85, door.z, road, 2.3, 0.55)
+    this.sign("GENTLEMEN'S CLUB", '#30e0ff', wing.x0 - 0.12, 2.6, (wing.z0 + wing.z1) / 2, road, 6.0, 0.55)
+    this.sign('CASINO', '#ffc040', hall.x0 - 0.12, 2.7, door.z + 3.1, road, 1.9, 0.42)
+    this.sign('ATM INSIDE', '#ff3030', wing.x0 - 0.12, 1.1, wing.z1 - 1.6, road, 1.2, 0.4)
+    this.sign('FOXTAILS', '#ff3cc8', (hall.x0 + hall.x1) / 2, 2.25, hall.z0 - 0.12, Math.PI, 5.0, 0.9)
+    this.sign('FOXTAILS BAR', '#ffb040', BAR.bartender.x, 2.66, BAR.backBar.z1 - 0.03, Math.PI, 3.4, 0.32)
+    this.sign('BLACKJACK', '#50ffb0', BLACKJACK.x, 2.45, BLACKJACK.z + 1.5, Math.PI, 2.2, 0.42)
     this.staff.push(this.npc(BAR.bartender, ['jacket-oxford', 'vest-none', 'cap-none', 'pants-chinos', 'pack-none'], 'young'))
     this.staff.push(this.npc({ x: BLACKJACK.dealer.x, z: BLACKJACK.dealer.z, yaw: BLACKJACK.dealer.yaw }, ['jacket-oxford', 'vest-none', 'cap-none', 'pants-darkjeans', 'pack-none'], 'stern'))
     await this.client.refresh()
@@ -285,7 +295,18 @@ export class CasinoHost {
     this.mugs.push(glass)
   }
 
+  /** Marquee bulbs chase round in three groups; the neon breathes and now and then stutters. */
+  private animateLights(dt: number): void {
+    if (!this.lights) return
+    this.clock += dt
+    const step = Math.floor(this.clock * 7) % 3
+    this.lights.chase.forEach((m, i) => (m.emissiveIntensity = i === step ? 3.4 : 0.45))
+    const flicker = Math.sin(this.clock * 23.0) > 0.97 ? 0.35 : 1
+    this.lights.neon.forEach((m, i) => (m.emissiveIntensity = (2.6 + 0.6 * Math.sin(this.clock * 1.7 + i * 2.1)) * (i === 0 ? flicker : 1)))
+  }
+
   update(dt: number): void {
+    this.animateLights(dt)
     const cam = this.host.ctx.camera.globalPosition
     const c = this.center()
     if (Math.hypot(cam.x - c.x, cam.z - c.z) > STAFF_RANGE) return
@@ -294,7 +315,7 @@ export class CasinoHost {
 
   /** The building's middle in scene coordinates. */
   center(): { x: number; z: number } {
-    return this.scenePoint((CASINO.x0 + CASINO.x1) / 2, 0, (CASINO.z0 + CASINO.z1) / 2)
+    return this.scenePoint((CASINO.hall.x0 + CASINO.hall.x1) / 2, 0, (CASINO.hall.z0 + CASINO.hall.z1) / 2)
   }
 
   /** The screens and signs (static once built): the town culls them with the building. */

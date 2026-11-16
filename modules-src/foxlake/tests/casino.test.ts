@@ -5,7 +5,7 @@ import { evaluateLines, LINES_25 } from '../casino/math/lines'
 import { seededRng, type Rng } from '../casino/math/rng'
 import { MACHINES, MACHINE_BY_ID, playSpin, type MachineState, type SpinResult } from '../casino/math/machines'
 import { act, deal, newShoe, publicView, total } from '../casino/math/blackjack'
-import { BAR, BLACKJACK, CASINO, MACHINE_SPOTS, insideCasino, nearestSeat } from '../casino/CasinoLayout'
+import { BAR, BLACKJACK, MACHINE_SPOTS, insideCasino, nearestSeat } from '../casino/CasinoLayout'
 
 test('every machine returns between 80% and 110% of what is bet over a long run, with its features firing', () => {
   for (const def of MACHINES) {
@@ -183,11 +183,12 @@ test('blackjack: totals, the dealer hides the hole card, stands on 17, and settl
   }
 })
 
-test('the casino fits on its corner: inside the woods ring, off the roads, seats inside', () => {
-  assert.ok(CASINO.z0 > 59, 'north of South St and its sidewalk')
-  assert.ok(CASINO.x0 > 92, 'east of East Ave')
+test('the club holds every seat: ten machines, five stools, five blackjack spots, all inside its walls and apart', () => {
   for (const m of MACHINE_SPOTS) assert.ok(insideCasino(m.seat.x, m.seat.z))
   for (const s of [...BAR.stools, ...BLACKJACK.seats]) assert.ok(insideCasino(s.x, s.z))
   assert.equal(MACHINE_SPOTS.length, 10)
+  assert.equal(BAR.stools.length, 5)
   assert.equal(nearestSeat(BAR.stools[2].x, BAR.stools[2].z + 0.3, 1)?.kind, 'stool')
+  const all = [...MACHINE_SPOTS.map((m) => m.seat), ...BAR.stools, ...BLACKJACK.seats]
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(Math.hypot(all[i].x - all[j].x, all[i].z - all[j].z) > 0.8, `seats ${i} and ${j} overlap`)
 })

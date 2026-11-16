@@ -30,7 +30,7 @@ export const MONTELLO_SHOPS: readonly MontelloShop[] = [
   { id: "mt-bp", kind: 'gas', name: "BP", x: 235.1, z: 899.1, street: "Main Street" },
   { id: "mt-freitag-s-food-center", kind: 'grocery', name: "Freitag's Food Center", x: 268.7, z: 1272.1, street: "Main Street" },
   { id: "mt-drew-s-lakeside-bar-grill", kind: 'bar', name: "Drew's Lakeside Bar & Grill", x: -263.3, z: 786.2, street: "West Water Street" },
-  { id: "mt-foxtails-gentlemen-s-club", kind: 'bar', name: "Foxtails Gentlemen's Club", x: 1670.9, z: -340.3, street: "State Highway 23" },
+  { id: "mt-foxtails-gentlemen-s-club", kind: 'bar', name: "Foxtails Gentlemen's Club", x: 1695.2, z: -432.3, street: "16th Road" },
   { id: "mt-maple-threads", kind: 'clothing', name: "Maple Threads", x: 196.5, z: 2.2, street: "East Montello Street" },
   { id: "mt-montello-body-wheel", kind: 'bodyshop', name: "Montello Body & Wheel", x: 138.4, z: 142.3, street: "Main Street" },
 ];
@@ -60,12 +60,12 @@ export const MONTELLO_SHERIFF = { x: -44.8, z: -172.9, name: "Marquette County S
 export const MONTELLO_DEALER = { x: 123.2, z: 87.1, name: "H A Freitag & Son" };
 
 /**
- * Where Fox Lake's casino stands: the building of Foxtails Gentlemen's Club, east of town on State Highway 23, rebuilt as
- * the Foxtails Lounge & Casino. `x`, `z` is the middle of its 32 by 24 m floor in the town frame, `yaw` is 0 or pi (pi turns the
- * doorway to face +z, the way the club fronts the highway), `y` the floor, `building` the club's footprint in Tello's baked
- * buildings, which is left out of the town.
+ * Where Fox Lake's casino stands: inside Foxtails Gentlemen's Club's own building on 16th Road, north of State Highway 23,
+ * dressed as the Foxtails Lounge & Casino. `x`, `z` is the town point of the casino frame's origin (`CASINO_ORIGIN`),
+ * `yaw` turns the casino's frame onto the town's, `y` is the floor, `building` the club's footprint in Tello's baked buildings (the casino builds its walls itself, so Tello leaves it out) and `outline` that footprint in the
+ * casino's frame (x, z pairs).
  */
-export const MONTELLO_CASINO: { x: number; z: number; yaw: number; y: number; building: number; name: string } | null = {"x":1669.5,"z":-350.5,"yaw":3.141592653589793,"y":19.66,"building":2111,"name":"Foxtails Lounge & Casino"};
+export const MONTELLO_CASINO: { x: number; z: number; yaw: number; y: number; building: number; name: string; outline: number[] } | null = {"x":1699.9,"z":-419.1,"yaw":-3.03289,"y":20.13,"building":2404,"outline":[103.21,95.23,100,95.18,100.03,105.04,113.81,105.04,113.79,95.98,116.62,95.89,116.61,88.64,113.79,88.64,113.75,66,103.18,66.05],"name":"Foxtails Lounge & Casino"};
 
 export const MONTELLO_STREETS: readonly string[] = ["","Barry Street","Central Avenue","Underwood Avenue","County Road Y","Cass Street","East Park Street","Clay Street","East Montello Street","West Montello Street","County Highway C","Sunset Drive","Island Drive","Main Street","West Water Street","East Water Street","Neenah Street","East 2nd Street","Lake Avenue","Pine Drive","Timber Trail","Fern Drive","Locust Lane","Ash Street","Oakwood Drive","Schmidt Street","Doty Street","Cotters Bay Road","County Highway K","County Highway B","Fox Lane","County Road XX","Siesta Drive","Carriage Road","Ember Lane","Douglas Avenue","14th Road","Evergreen Lane","County Road C","Clearwater Drive","4th Street","Lake Drive","Gray Drive","Stevens Avenue","County Highway F","Fox River Road","Ember Avenue","Brentwood Way","11th Road","Glencoe Avenue","Shore Drive","North Street","14th Court","Lakeshore Drive","Dandy Street","Church Street","Cottage Court","16th Road","Tall Timber Circle","Fawn Avenue","Lake Street","Oak Street","Daisy Lane","State Highway 22","Mill Street","Fern Avenue","Woodland Avenue","Fox Road","11th Drive","Flynn Drive","Bayview Court","14th Drive","Kilby Lake Road","Timmey Avenue","Williams Road","West 2nd Street","Ellis Street","Clark Street","Shirley Lane","State Highway 23","3rd Street","Brentwood Court","CTH D","Morningside Court","Water Street","Spruce Lane","15th Road","Oak Lane","Forest Lane","White Lake Drive","Indian Echoes Lane","18th Road","17th Court","Pinecrest Drive","Lower Locks Road","Evergreen Avenue","Whitetail Court","White Lake Court","Lakeview Drive","Rex Lane"];
 /** Every house's front step: x, z and its street's index in MONTELLO_STREETS, three numbers per house. */

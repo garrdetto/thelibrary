@@ -195,64 +195,34 @@ function doorOf(doc, index) {
   return { x: Math.round((cx + ux * (reach + 1.5)) * 10) / 10, z: Math.round((cz + uz * (reach + 1.5)) * 10) / 10, street }
 }
 
-/** The casino's footprint in its own frame (modules-src/foxlake/casino/CasinoLayout.ts): 32 by 24 m, doorway in the south wall. */
-const CASINO_SIZE = { w: 32, d: 24 }
+/** Where the casino's own frame starts (modules-src/foxlake/casino/CasinoLayout.ts `LOCAL_ORIGIN`): the footprint's front-most (east) point at x 100, its south wall at z 66. */
+export const CASINO_ORIGIN = { x: 100, z: 66 }
 
 /**
- * Where Foxtails' casino stands: the footprint (32 by 24 m) nearest the mapped club that clears every other building and
- * street, turned so its doorway faces the street the club fronts. Returned in the town frame with the floor height.
+ * Where Foxtails' casino stands: inside the club's own building, on its real footprint. The casino's frame runs along the
+ * building's long side: local +z points up the building (north), local +x across it away from the front, which faces
+ * the street (16th Road, east), so the footprint's front-most point is at x = 100 and its south wall at z = 66. Returned in
+ * the town frame: the town point of that origin, the yaw that turns the casino's frame onto the town's (`localToTown` in CasinoLayout.ts), the
+ * floor (the building's pad) and the footprint `outline` in the casino's frame.
  */
-export function casinoSite(doc, grids, buildingIndex, town = (x, z) => [x, -z]) {
-  const home = polyBox(doc.buildings[buildingIndex].p)
-  const cx = (home[0] + home[2]) / 2, cz = (home[1] + home[3]) / 2
-  const others = doc.buildings.map((b, i) => (i === buildingIndex ? null : polyBox(b.p)))
-  const half = { x: CASINO_SIZE.w / 2 + 2, z: CASINO_SIZE.d / 2 + 2 }
-  const clearOfStreets = (x, z) => {
-    for (const road of doc.roads) {
-      if (road.k > 2) continue
-      const reach = road.w / 2
-      for (let k = 0; k + 3 < road.p.length; k += 2) {
-        const ax = road.p[k], az = road.p[k + 1], bx = road.p[k + 2], bz = road.p[k + 3]
-        const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 4))
-        for (let s = 0; s <= steps; s++) {
-          const px = ax + ((bx - ax) * s) / steps, pz = az + ((bz - az) * s) / steps
-          if (Math.abs(px - x) < half.x + reach && Math.abs(pz - z) < half.z + reach) return false
-        }
-      }
-    }
-    return true
-  }
-  let best = null
-  for (let dz = -34; dz <= 34; dz += 2) for (let dx = -34; dx <= 34; dx += 2) {
-    const x = cx + dx, z = cz + dz
-    if (others.some((o) => o && x - half.x < o[2] && x + half.x > o[0] && z - half.z < o[3] && z + half.z > o[1])) continue
-    if (!clearOfStreets(x, z)) continue
-    const d = Math.hypot(dx, dz)
-    if (!best || d < best.d) best = { d, x, z }
-  }
-  if (!best) best = { d: 0, x: cx, z: cz }
-  let nearest = { d: Infinity, z: best.z }
-  for (const road of doc.roads) {
-    if (road.k > 2) continue
-    for (let k = 0; k < road.p.length; k += 2) {
-      const d = Math.hypot(road.p[k] - best.x, road.p[k + 1] - best.z)
-      if (d < nearest.d) nearest = { d, z: road.p[k + 1] }
-    }
-  }
-  const turned = nearest.z < best.z
-  let y
-  if (grids) {
-    const f = doc.frame, n = grids.side
-    let sum = 0, count = 0
-    for (let x = best.x - CASINO_SIZE.w / 2; x <= best.x + CASINO_SIZE.w / 2; x += 4) for (let z = best.z - CASINO_SIZE.d / 2; z <= best.z + CASINO_SIZE.d / 2; z += 4) {
-      const gx = Math.min(n - 1, Math.max(0, Math.round((x - f.x0) / f.cell))), gz = Math.min(n - 1, Math.max(0, Math.round((z - f.z0) / f.cell)))
-      sum += grids.ground[gz * n + gx] / 100
-      count++
-    }
-    y = sum / count - LAKE_LEVEL
-  } else y = doc.buildings[buildingIndex].f - LAKE_LEVEL
-  const [tx, tz] = town(best.x, best.z)
-  return { x: Math.round(tx * 10) / 10, z: Math.round(tz * 10) / 10, yaw: turned ? Math.PI : 0, y: Math.round(y * 100) / 100, building: buildingIndex }
+export function casinoSite(doc, buildingIndex, town = (x, z) => [x, -z]) {
+  const b = doc.buildings[buildingIndex]
+  const angle = b.r?.length ? b.r[0][4] : 0
+  let ux = Math.cos(angle), uz = Math.sin(angle)
+  if (Math.abs(uz) < Math.abs(ux)) [ux, uz] = [-uz, ux]
+  if (uz < 0) [ux, uz] = [-ux, -uz]
+  const ax = -uz, az = ux
+  const pts = []
+  for (let k = 0; k < b.p.length; k += 2) pts.push([b.p[k], b.p[k + 1]])
+  const across = pts.map(([x, z]) => x * ax + z * az)
+  const along = pts.map(([x, z]) => x * ux + z * uz)
+  const a0 = Math.min(...across), s0 = Math.min(...along)
+  const outline = []
+  for (let i = 0; i < pts.length; i++) outline.push(Math.round((CASINO_ORIGIN.x + across[i] - a0) * 100) / 100, Math.round((CASINO_ORIGIN.z + along[i] - s0) * 100) / 100)
+  const ox = a0 * ax + s0 * ux, oz = a0 * az + s0 * uz
+  const [tx, tz] = town(ox, oz)
+  const yaw = Math.atan2(ux, -uz)
+  return { x: Math.round(tx * 100) / 100, z: Math.round(tz * 100) / 100, yaw: Math.round(yaw * 1e5) / 1e5, y: Math.round((b.f - LAKE_LEVEL) * 100) / 100, building: buildingIndex, outline }
 }
 
 export function placesSource(doc, grids = null) {
@@ -299,7 +269,7 @@ export function placesSource(doc, grids = null) {
     shops.push({ id: `mt-${slug(extra.name)}`, kind: extra.kind, name: extra.name, x, z, street: door.street })
   }
   const foxtails = doc.pois.find((p) => /^foxtails/i.test(p.n) && p.d)
-  const site = foxtails ? casinoSite(doc, grids, foxtails.i, town) : null
+  const site = foxtails ? casinoSite(doc, foxtails.i, town) : null
   const pumps = []
   for (const p of doc.pois) for (const [x, z] of p.pumps ?? []) {
     const t = town(x, z)
@@ -352,12 +322,12 @@ export const MONTELLO_SHERIFF = ${sheriff ? at(sheriff) : 'null'};
 export const MONTELLO_DEALER = ${dealer ? at(dealer) : 'null'};
 
 /**
- * Where Fox Lake's casino stands: the building of Foxtails Gentlemen's Club, east of town on State Highway 23, rebuilt as
- * the Foxtails Lounge & Casino. \`x\`, \`z\` is the middle of its 32 by 24 m floor in the town frame, \`yaw\` is 0 or pi (pi turns the
- * doorway to face +z, the way the club fronts the highway), \`y\` the floor, \`building\` the club's footprint in Tello's baked
- * buildings, which is left out of the town.
+ * Where Fox Lake's casino stands: inside Foxtails Gentlemen's Club's own building on 16th Road, north of State Highway 23,
+ * dressed as the Foxtails Lounge & Casino. \`x\`, \`z\` is the town point of the casino frame's origin (\`CASINO_ORIGIN\`),
+ * \`yaw\` turns the casino's frame onto the town's, \`y\` is the floor, \`building\` the club's footprint in Tello's baked buildings (the casino builds its walls itself, so Tello leaves it out) and \`outline\` that footprint in the
+ * casino's frame (x, z pairs).
  */
-export const MONTELLO_CASINO: { x: number; z: number; yaw: number; y: number; building: number; name: string } | null = ${site ? JSON.stringify({ ...site, name: 'Foxtails Lounge & Casino' }) : 'null'};
+export const MONTELLO_CASINO: { x: number; z: number; yaw: number; y: number; building: number; name: string; outline: number[] } | null = ${site ? JSON.stringify({ ...site, name: 'Foxtails Lounge & Casino' }) : 'null'};
 
 export const MONTELLO_STREETS: readonly string[] = ${JSON.stringify(streets)};
 /** Every house's front step: x, z and its street's index in MONTELLO_STREETS, three numbers per house. */

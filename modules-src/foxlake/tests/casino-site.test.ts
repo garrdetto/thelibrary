@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CASINO, MACHINE_SPOTS, SITE, localToTown, townToLocal } from '../casino/CasinoLayout'
+import { CASINO, FOOTPRINT, LOCAL_ORIGIN, MACHINE_SPOTS, ROOMS, SITE, insideCasino, localToTown, townToLocal } from '../casino/CasinoLayout'
 import { MONTELLO_SHOPS } from '../../maplestreet/shared/MontelloPlaces'
 import { registerMapPlaces } from '../places/MapPlaces'
 import { REPLACED_BUILDINGS } from '../../tello/world/Businesses'
@@ -8,34 +8,35 @@ import { doc } from './montello-land'
 
 const foxtails = MONTELLO_SHOPS.find((s) => s.name === "Foxtails Gentlemen's Club")!
 
-test('the casino stands on the Foxtails lot, turned toward the highway, its floor the size of the old Northwoods Lodge', () => {
+test("the casino is Foxtails' own building on 16th Road, on its real footprint, with the doorway at the club's door", () => {
   assert.equal(SITE.name, 'Foxtails Lounge & Casino')
-  assert.equal(doc.buildings[SITE.building].k, 'store')
-  assert.ok(Math.hypot(SITE.x - foxtails.x, SITE.z - foxtails.z) < 30, 'within a lot of the club\'s own door')
-  const door = localToTown(CASINO.door.x, CASINO.z0)
-  assert.ok(Math.hypot(door.x - foxtails.x, door.z - foxtails.z) < 10, `the doorway is by the club's door (${door.x}, ${door.z})`)
-  assert.ok(Math.abs(Math.abs(SITE.yaw) - Math.PI) < 1e-9 || SITE.yaw === 0)
+  const club = doc.buildings[SITE.building]
+  assert.equal(club.k, 'store')
+  assert.equal(club.n, "Foxtails Gentlemen's Club")
+  assert.equal(foxtails.street, '16th Road')
+  const door = localToTown(CASINO.door.x, CASINO.door.z)
+  assert.ok(Math.hypot(door.x - foxtails.x, door.z - foxtails.z) < 3, `the doorway is at the club's door (${door.x}, ${door.z})`)
+  for (let k = 0; k < club.p.length; k += 2) {
+    const l = townToLocal(club.p[k], -club.p[k + 1])
+    const near = Math.min(...FOOTPRINT.map((p) => Math.hypot(p.x - l.x, p.z - l.z)))
+    assert.ok(near < 0.15, `footprint corner ${k / 2} is ${near.toFixed(2)} m off the survey`)
+  }
+  const area = ROOMS.reduce((a, r) => a + (r.x1 - r.x0) * (r.z1 - r.z0), 0)
+  assert.ok(Math.abs(area - 465) < 15, `floor area ${area.toFixed(0)} m2`)
 })
 
-test('the casino frame and the town frame are each other\'s inverse, and every machine lands inside the floor', () => {
-  for (const [x, z] of [[100, 66], [132, 90], [116, 78], [104.3, 85.2]]) {
+test("the casino frame and the town frame are each other's inverse, and every machine lands inside the footprint", () => {
+  for (const [x, z] of [[100, 66], [116, 105], [108, 78], [104.3, 85.2]]) {
     const t = localToTown(x, z)
     const back = townToLocal(t.x, t.z)
     assert.ok(Math.hypot(back.x - x, back.z - z) < 1e-9)
   }
-  const middle = localToTown((CASINO.x0 + CASINO.x1) / 2, (CASINO.z0 + CASINO.z1) / 2)
-  assert.ok(Math.hypot(middle.x - SITE.x, middle.z - SITE.z) < 1e-9)
-  for (const spot of MACHINE_SPOTS) {
-    const t = localToTown(spot.x, spot.z)
-    assert.ok(Math.abs(t.x - SITE.x) < 16 && Math.abs(t.z - SITE.z) < 12)
-  }
+  const origin = localToTown(LOCAL_ORIGIN.x, LOCAL_ORIGIN.z)
+  assert.ok(Math.hypot(origin.x - SITE.x, origin.z - SITE.z) < 1e-9)
+  for (const spot of MACHINE_SPOTS) assert.ok(insideCasino(spot.x, spot.z) && insideCasino(spot.seat.x, spot.seat.z))
 })
 
-test('the casino floor clears every street and every other building', () => {
-  const x0 = SITE.x - (CASINO.x1 - CASINO.x0) / 2
-  const x1 = SITE.x + (CASINO.x1 - CASINO.x0) / 2
-  const z0 = SITE.z - (CASINO.z1 - CASINO.z0) / 2
-  const z1 = SITE.z + (CASINO.z1 - CASINO.z0) / 2
+test('no street runs through the club and no other building stands inside it', () => {
   for (const road of doc.roads) {
     if (road.k > 2) continue
     for (let k = 0; k + 3 < road.p.length; k += 2) {
@@ -43,24 +44,37 @@ test('the casino floor clears every street and every other building', () => {
       for (let s = 0; s <= steps; s++) {
         const x = road.p[k] + ((road.p[k + 2] - road.p[k]) * s) / steps
         const z = -(road.p[k + 1] + ((road.p[k + 3] - road.p[k + 1]) * s) / steps)
-        assert.ok(!(x > x0 - road.w / 2 && x < x1 + road.w / 2 && z > z0 - road.w / 2 && z < z1 + road.w / 2), `${road.n} runs through the casino`)
+        const l = townToLocal(x, z)
+        assert.ok(!insideCasino(l.x, l.z, road.w / 2), `${road.n} runs through the casino`)
       }
     }
   }
   doc.buildings.forEach((b, i) => {
     if (i === SITE.building) return
-    let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity
     for (let k = 0; k < b.p.length; k += 2) {
-      bx0 = Math.min(bx0, b.p[k]); bx1 = Math.max(bx1, b.p[k])
-      bz0 = Math.min(bz0, -b.p[k + 1]); bz1 = Math.max(bz1, -b.p[k + 1])
+      const l = townToLocal(b.p[k], -b.p[k + 1])
+      assert.ok(!insideCasino(l.x, l.z), `building ${i} is inside the casino`)
     }
-    assert.ok(!(bx0 < x1 && bx1 > x0 && bz0 < z1 && bz1 > z0), `building ${i} is inside the casino`)
   })
 })
 
-test('the map lists the casino, the body shop and Maple Threads, and Tello leaves the club\'s own shell out', () => {
+test("the map lists the casino, the body shop and Maple Threads, and Tello leaves the club's own shell out", () => {
   const copy = { ...doc, pois: [...doc.pois] }
   registerMapPlaces(copy)
   for (const name of ['Foxtails Lounge & Casino', 'Montello Body & Wheel', 'Maple Threads', 'Fox Outfitters']) assert.ok(copy.pois.some((p) => p.n === name), name)
   assert.ok(REPLACED_BUILDINGS.has("Foxtails Gentlemen's Club"))
+})
+
+test('Napralla Tire is back in its own building on the highway, with a dirt drive and no paved lot', () => {
+  const poi = doc.pois.find((p) => p.n === 'Napralla Tire')
+  assert.ok(poi && poi.i !== undefined && poi.d, 'Napralla Tire is on the map')
+  const shop = doc.buildings[poi.i]
+  assert.equal(shop.n, 'Napralla Tire')
+  assert.equal(shop.k, 'store')
+  assert.notEqual(poi.i, SITE.building)
+  assert.ok(!doc.lots.some((l) => l.n === 'Foxtails lot'))
+  const drive = doc.roads.find((r) => r.n === 'Napralla Tire driveway')
+  assert.ok(drive, 'the driveway is drawn')
+  assert.equal(drive.k, 5, 'dirt')
+  assert.ok(Math.hypot(drive.p[0] - poi.d[0], drive.p[1] - poi.d[1]) < 4, 'it starts at the door')
 })
