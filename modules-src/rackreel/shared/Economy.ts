@@ -381,6 +381,16 @@ export function createCharacter(p: Profile, look: Look, appearance?: unknown): s
   return null
 }
 
+/**
+ * Unmakes the character (admin reset): face, hair and build go back to the defaults and the character creator shows
+ * on the next Head out. Cash, owned gear and clothes, stats and tasks are kept.
+ */
+export function resetCharacter(p: Profile): void {
+  p.verified = false
+  p.appearance = { ...DEFAULT_APPEARANCE }
+  p.fitted = 0
+}
+
 /** True when a made character is owed its one free change of face, hair and build. */
 export function owedMakeover(p: Profile): boolean {
   return p.verified && p.fitted < APPEARANCE_VERSION

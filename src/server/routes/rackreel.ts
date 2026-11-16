@@ -6,7 +6,7 @@ import { ensureRackreelTables, loadCategoryBoard, loadRackreelProfile, loadRecor
 import { adjustSharedWallet } from '../shared-wallet.js'
 import { canResetRecords } from '../records.js'
 import { CATEGORY_BY_ID } from '../../../modules-src/rackreel/shared/Records'
-import { ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, eventCooldown, makeover, purchase } from '../../../modules-src/rackreel/shared/Economy'
+import { ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, eventCooldown, makeover, purchase, resetCharacter } from '../../../modules-src/rackreel/shared/Economy'
 import type { GameEvent, Profile, Slot } from '../../../modules-src/rackreel/shared/Economy'
 import { RECORD_BOOK_SEED, SPECIES_BY_ID, classify } from '../../../modules-src/rackreel/systems/LootTableManager'
 import type { SpeciesId } from '../../../modules-src/rackreel/systems/LootTableManager'
@@ -29,6 +29,7 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('equip'), slot: z.enum(slots), item: z.string().max(40) }),
   z.object({ action: z.literal('create-character'), look: z.object({ jacket: z.string().max(40), vest: z.string().max(40), cap: z.string().max(40), pants: z.string().max(40), pack: z.string().max(40) }), appearance: appearanceSchema.optional() }),
   z.object({ action: z.literal('makeover'), appearance: appearanceSchema, look: z.object({ jacket: z.string().max(40), vest: z.string().max(40), cap: z.string().max(40), pants: z.string().max(40), pack: z.string().max(40) }).optional() }),
+  z.object({ action: z.literal('reset-character'), username: z.string().trim().toLowerCase().min(3).max(20).regex(/^[a-z0-9_-]+$/).optional() }),
   z.object({ action: z.literal('reset-records'), category: z.string().max(40).refine((id) => id in CATEGORY_BY_ID).optional(), password: z.string().min(1).max(128).optional() }),
 ])
 
@@ -116,6 +117,20 @@ export async function rackreel(request: Request, env: Env) {
     if (!await canResetRecords(user, input.password)) return json({ error: 'Only the administrator can reset records.' }, 403)
     await resetRecordBoard(env, input.category)
     return json({ reset: true, records: {} })
+  }
+  if (input.action === 'reset-character') {
+    if (!user.isAdmin) return json({ error: 'Only an administrator can reset characters.' }, 403)
+    const target = input.username && input.username !== user.username
+      ? await env.DB.prepare('SELECT id, username FROM users WHERE username = ?').bind(input.username).first<{ id: string; username: string }>()
+      : { id: user.id, username: user.username }
+    if (!target) throw new HttpError(404, `There is no account named ${input.username}.`)
+    const targetKey = profileKey(target.id, foxLake, game === 'tello')
+    const row = await env.DB.prepare('SELECT 1 FROM rackreel_profiles WHERE user_id = ?').bind(targetKey).first()
+    if (!row) return json({ reset: false, username: target.username, message: `${target.username} hasn't made a character yet.` })
+    const current = await loadRackreelProfile(env, targetKey, target.username)
+    resetCharacter(current.profile)
+    await saveRackreelProfile(env, targetKey, target.username, current.profile, Math.max(now, current.updatedAt + 1))
+    return json({ reset: true, username: target.username, message: `${target.username}'s character was reset. The character creator opens on their next Head out.` })
   }
   const loaded = await loadRackreelProfile(env, key, user.username)
   const profile = loaded.profile

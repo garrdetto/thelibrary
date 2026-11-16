@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, Users } from 'lucide-react'
+import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, UserRoundX, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
@@ -17,6 +17,7 @@ const DartsSettings = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.re
 const ClipartGenerator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/ClipartGenerator'))
 const ImageEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/ImageEditor'))
 const WorldEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./world/WorldEditor'))
+const LifeSimResetCharacter = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./lifesim/ResetCharacter'))
 const BushLeagueAssets = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./bushleague/BushLeagueAssets'))
 
 const areas = [
@@ -39,6 +40,7 @@ const sections = [
   { id: 'axiom-radar', area: 'site', group: 'Tools', label: 'Axiom Radar', icon: Radar, title: 'Axiom Radar', blurb: 'Coins ranked by live Axiom viewers with price moves, holder quality, smart holders and buy and watch signals. Opens on its own page.' },
   { id: 'world-editor', area: 'modules', group: 'Life Sim', label: 'World editor', icon: Mountain, title: 'Life Sim world editor', blurb: 'Reshape Montello: raise, lower, flatten and smooth the land, fill or drain water and fix the rivers, build and redraw roads with sidewalks and smooth curves, change or remove buildings, draw and trim parking lots, plant or clear trees, and put up guardrails, streetlights and brick walls. Publish when it looks right.' },
   { id: 'vehicles', area: 'modules', group: 'Life Sim', label: 'Vehicles', icon: Car, title: 'Life Sim vehicles', blurb: 'Build and publish vehicles for Life Sim’s dealership. They are for Life Sim only; tune their top speed and handling in Life Sim’s developer panel (F8).' },
+  { id: 'lifesim-reset', area: 'modules', group: 'Life Sim', label: 'Reset character', icon: UserRoundX, title: 'Reset a Life Sim character', blurb: 'Send yourself or any player back to the character creator. Cash, gear and clothes are kept.' },
   { id: 'maplestreet', area: 'modules', group: 'Fox Plains', label: 'Items', icon: Package, title: 'Fox Plains items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
   { id: 'shorttrack-cars', area: 'modules', group: 'Short Track Showdown', label: 'Race cars', icon: Flag, title: 'Short Track race cars', blurb: 'Generate car bodies with Meshy, fit wheels, paint and race numbers, and publish them to the Short Track Showdown vehicle list.' },
   { id: 'shorttrack-handling', area: 'modules', group: 'Short Track Showdown', label: 'Handling', icon: Gauge, title: 'Short Track handling', blurb: 'Grip, power, brakes and steering for each track. Changes apply to every driver and the AI field from their next race.' },
@@ -139,6 +141,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
         {section === 'image-editor' && <Suspense fallback={<Loading text="Opening the image editor…"/>}><ImageEditor/></Suspense>}
         {section === 'clipart' && <Suspense fallback={<Loading text="Opening the clipart generator…"/>}><ClipartGenerator/></Suspense>}
         {section === 'world-editor' && <Suspense fallback={<Loading text="Opening the world editor…"/>}><WorldEditor/></Suspense>}
+        {section === 'lifesim-reset' && <Suspense fallback={<Loading text="Opening the character reset…"/>}><LifeSimResetCharacter/></Suspense>}
         {section === 'maplestreet' && <Suspense fallback={<Loading text="Opening the item editor…"/>}><MapleStreetItemEditor/></Suspense>}
         {section === 'vehicles' && <Suspense fallback={<Loading text="Opening the vehicle editor…"/>}><MapleStreetVehicleEditor/></Suspense>}
         {section === 'shorttrack-cars' && <Suspense fallback={<Loading text="Opening the car editor…"/>}><ShortTrackCarEditor/></Suspense>}
