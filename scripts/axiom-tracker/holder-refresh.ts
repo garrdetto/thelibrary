@@ -9,8 +9,8 @@ const logger = createLogger('holder-refresh')
 const tickMs = 250
 const maxInFlight = 4
 const importantEveryMs = 4_000
-const othersEveryMs = 7_000
-const onPulseEveryMs = 60_000
+const othersEveryMs = 5_000
+const onPulseEveryMs = 5_000
 const pauseAfterLimitMs = 30_000
 
 const flag = (value: boolean | null) => value === null ? null : value ? 1 : 0

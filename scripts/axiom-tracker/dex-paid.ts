@@ -5,7 +5,7 @@ import { activeCandidates } from './state.js'
 const logger = createLogger('dex-paid')
 const ordersApi = 'https://api.dexscreener.com/orders/v1/solana'
 const requestGapMs = 2_000
-const recheckUnpaidMs = 2 * 60_000
+const recheckUnpaidMs = 5_000
 const pauseAfterLimitMs = 60_000
 
 type Orders = { orders?: Array<{ type?: string; status?: string }>; boosts?: unknown[] }

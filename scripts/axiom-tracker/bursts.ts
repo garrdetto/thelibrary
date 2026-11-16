@@ -337,7 +337,7 @@ export function startExplosions(database: TrackerDatabase, signal: AbortSignal) 
       trainedAt = now
       summarizedAt = 0
     }
-    if (now - summarizedAt >= 10_000) {
+    if (now - summarizedAt >= 5_000) {
       learnerState.explosions = summarize(database, model, candidates, now)
       summarizedAt = now
       recordHeartbeat(database, 'explosions', 'ok', `${model.rows.length} jumps studied, ${model.labels.filter(Boolean).length} exploded, ${watching} live`)

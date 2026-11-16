@@ -118,7 +118,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   for (const [mint, firstSeen] of trackerState.watchlist) if (now - firstSeen > watchlistTtlMs && !pinned.has(mint) && !trackerState.pulse.has(mint)) trackerState.watchlist.delete(mint)
   const watched = [...new Set([...pinned, ...trackerState.pulse.keys(), ...[...trackerState.watchlist.entries()].sort((first, second) => second[1] - first[1]).map(([mint]) => mint)])].slice(0, watchlistLimit)
 
-  const best = bestPairByMint(await fetchPairsForMints(watched))
+  const best = bestPairByMint(await fetchPairsForMints(watched, trackerConfig.discoveryIntervalMs))
   let fromCards = 0
   for (const mint of trackerState.pulse.keys()) {
     if (best.has(mint)) continue
