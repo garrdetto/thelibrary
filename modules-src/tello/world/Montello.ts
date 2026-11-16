@@ -25,6 +25,7 @@ import { buildStreetPaint } from './StreetPaint'
 import { BUILDING_CELL, buildBuildings, type ApartBuilding } from './Buildings'
 import { buildBarricades } from './Barricades'
 import { buildGuardrails } from './Guardrails'
+import { buildRetainingWalls } from './RetainingWall'
 import { buildEditedFeatures, railRuns } from './EditedFeatures'
 import { buildStorefronts } from './Storefronts'
 import { buildStreetDressing } from './StreetDressing'
@@ -134,6 +135,8 @@ export class Montello {
     await pace('buildBarricades')
     buildGuardrails(this.root, s.mats, this.sink, land, railRuns(land))
     await pace('buildGuardrails')
+    buildRetainingWalls(this.root, s.mats, this.sink, land)
+    await pace('buildRetainingWalls')
     buildEditedFeatures(this.root, s.mats, this.sink, land)
     await pace('buildEditedFeatures')
     await buildStorefronts(this.root, s.mats, land, downtownKit, () => pace())

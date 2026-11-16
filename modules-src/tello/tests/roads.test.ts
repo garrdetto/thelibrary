@@ -5,6 +5,8 @@ import { test } from 'node:test'
 import { isGzip, parseGrids, type MapDoc, type RoadData } from '../data/MapData'
 import { BUILDING_MARGIN, FROZEN, guardrailRuns, isFrozen, WallIndex } from '../data/RoadFixes'
 import { halfAt, townProfiles } from '../data/Streets'
+import { sidewalkStations } from '../data/LevelStreets'
+import { riverWalls } from '../data/RiverWall'
 import { TelloLand } from '../region'
 import { junctionFills, junctionNodes } from '../world/JunctionShapes'
 import { postsAlong, POST_SPACING } from '../world/Guardrails'
@@ -259,4 +261,42 @@ test('residential streets carry no painted lines; highways and county roads do',
 
 test('the frozen downtown block still holds Main Street and the light', () => {
   assert.ok(FROZEN.x0 < 0 && FROZEN.x1 > 150 && FROZEN.z0 < -100 && FROZEN.z1 > 30)
+})
+
+test('streets with sidewalks are level from side to side', () => {
+  const stations = sidewalkStations(doc)
+  let measured = 0, tilted = 0
+  for (const s of stations) {
+    if (land.deckAt(s.x, s.z) !== null) continue
+    const l = land.heightAt(s.x + s.nx * s.l, s.z + s.nz * s.l)
+    const r = land.heightAt(s.x - s.nx * s.r, s.z - s.nz * s.r)
+    measured++
+    if (Math.abs(l - r) > 0.05) tilted++
+  }
+  assert.ok(measured > 1000, `${measured} sidewalk stations`)
+  assert.ok(tilted / measured < 0.3, `${tilted} of ${measured} sidewalk stations lean more than 5 cm`)
+})
+
+test('Main Street has a concrete wall along the river, level with the street, with a straight level guardrail on it', () => {
+  const runs = riverWalls(doc).runs
+  assert.ok(runs.length >= 1, 'the wall is there')
+  const run = runs[0]
+  assert.ok(run.y.length * 2 >= 80, `the wall runs ${run.y.length * 2} m`)
+  for (let i = 0; i < run.y.length; i++) {
+    const x = run.pts[i * 2], z = run.pts[i * 2 + 1]
+    const centre = land.heightAt(x, z)
+    for (let d = -run.half; d <= run.half + 2; d += 0.5) {
+      assert.ok(Math.abs(land.heightAt(x + run.nx[i] * d, z + run.nz[i] * d) - centre) < 0.06, `level across at station ${i}, ${d} m`)
+    }
+    assert.ok(run.nx[i] < 0, 'the wall is on the west side, toward the river')
+  }
+  const rails = guardrailRuns(doc, land).filter((r) => doc.roads[r.road].n === 'Main Street')
+  const posts = rails.flatMap((r) => {
+    const p = postsAlong(r.pts, POST_SPACING)
+    const out: number[] = []
+    for (let k = 0; k < p.length; k += 2) out.push(land.heightAt(p[k], p[k + 1]))
+    return out.slice(1).map((y, k) => Math.abs(y - out[k]))
+  })
+  assert.ok(posts.length > 20, 'the rail runs along the wall')
+  assert.ok(Math.max(...posts) < 0.05, `post to post the rail steps at most ${Math.max(...posts).toFixed(3)} m`)
 })
