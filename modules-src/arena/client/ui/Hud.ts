@@ -20,7 +20,9 @@ export class Hud {
   private readonly dead = element('dead')
   private readonly feed = element('killfeed')
   private readonly crosshair = element('crosshair')
+  private readonly reserve = element('weapon-reserve')
   private lastAmmo = ''
+  private lastReserve = ''
   private lastHealth = -1
   private hitTimer = 0
   private damageTimer = 0
@@ -36,6 +38,12 @@ export class Hud {
         this.rounds.style.setProperty('--magazine', String(readout.magazine))
         this.rounds.style.setProperty('--share', String(readout.reloading ? 0 : readout.ammo / readout.magazine))
       }
+    }
+    const reserve = readout.reserve === null ? '' : `Reserve ${readout.reserve.toLocaleString()}`
+    if (this.reserve && reserve !== this.lastReserve) {
+      this.reserve.textContent = reserve
+      this.reserve.hidden = !reserve
+      this.lastReserve = reserve
     }
     if (this.reload) this.reload.style.transform = `scaleX(${readout.reloading ? readout.reloadProgress : 0})`
     if (this.crosshair) this.crosshair.style.setProperty('--gap', `${Math.round(4 + readout.spread * 260)}px`)

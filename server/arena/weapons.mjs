@@ -15,6 +15,7 @@ export const WEAPONS = Object.freeze({
     magazine: 32,
     reload: 2.0,
     range: 120,
+    zoom: 1,
     recoil: Object.freeze({ pitch: 0.012, yaw: 0.006, recover: 9 }),
   }),
   battle: Object.freeze({
@@ -31,6 +32,7 @@ export const WEAPONS = Object.freeze({
     magazine: 36,
     reload: 2.2,
     range: 200,
+    zoom: 2,
     recoil: Object.freeze({ pitch: 0.009, yaw: 0.003, recover: 11 }),
   }),
 })
