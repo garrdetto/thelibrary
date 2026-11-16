@@ -480,7 +480,7 @@ class Rig{
     this.chest=new THREE.Group();this.chest.position.y=.1;this.hips.add(this.chest);
     this.neck=new THREE.Group();this.neck.position.y=1.34;this.chest.add(this.neck);
     if(ATHLETE)this.buildBody();else this.buildTrunk();
-    const collar=M(new THREE.TorusGeometry(.158,.022,8,28),m.trim);collar.rotation.x=PI/2-.12;collar.scale.set(1.05,1,.95);collar.position.y=.035;this.neck.add(collar);
+    const collar=M(new THREE.TorusGeometry(.158,.022,8,28),m.trim);collar.rotation.x=PI/2-.12;collar.scale.set(1.05,1,.95);collar.position.y=.035;this.neck.add(collar);this.collar=collar;
     this.headMat=SKIN('#ffffff');this.paintHead();
     this.head=M(GEO.head,this.headMat);this.head.scale.set(HEAD_S[0]*lk.head,HEAD_S[1]*lk.head,HEAD_S[2]*lk.head);this.head.position.y=.42;this.neck.add(this.head);
     for(const s of[1,-1]){const e=M(GEO.sph,m.skin);e.scale.set(.09,.26,.16);e.position.set(s*.86,-.06,-.06);e.rotation.y=s*.25;this.head.add(e);const lobe=M(GEO.sph,m.skin,false);lobe.scale.set(.6,.35,.5);lobe.position.set(0,-.75,.1);e.add(lobe)}
@@ -496,7 +496,8 @@ class Rig{
     this.state='idle';this.snap=null;this.fadeT=0;this.fade=.2;this.t0=0;this.one=null;this.yaw=0;this.phase=0;this.speed=0;this.prev=null;this.last=null;
     this.pos=V3();this.reach=null;this.reachW=0;this.lookW=0;this.lookT=V3();this.mirror=false;
     this.dressFor(team);this.setHeadwear('cap');
-    root.visible=false;rigs[i]=this}
+    root.visible=false;rigs[i]=this;
+    const toon=window.__toon;if(toon)toon(i).then(parts=>{if(parts)this.useToon(parts)})}
   // Blender athlete (tools/build-athlete.py): one skinned body per player on its own flat skeleton, sharing the loaded geometry
   buildBody(){
     const m=this.mats,lk=this.look,bones={},list=[];m.buckle=STD('#c9ccd0',{metalness:.8,roughness:.3});m.button=STD('#f4f2ec',{roughness:.4});
@@ -508,6 +509,18 @@ class Rig{
     this.body=ATHLETE.map(p=>{const n=(p.material.name||'').replace(/^athlete_/,''),s=new THREE.SkinnedMesh(p.geometry,slot(n));s.name=n;
       s.castShadow=true;s.receiveShadow=true;s.frustumCulled=false;this.root.add(s);s.bind(skel,p.bindMatrix);return s});
     this.forearmMesh=this.body.find(s=>s.name==='forearm');this.bones=bones}
+  // draft character (tools/build-toons.py): the card's Meshy model fitted to the athlete skeleton plus head, hand and foot bones
+  useToon(parts){
+    if(this.toon)return;const bones={},list=[],src=parts[0].skeleton;
+    src.bones.forEach(b=>{const n=new THREE.Bone();n.name=b.name;n.matrixAutoUpdate=false;this.root.add(n);bones[b.name]=n;list.push(n)});
+    const skel=new THREE.Skeleton(list,src.boneInverses.map(x=>x.clone()));
+    this.toon=parts.map(p=>{const mat=new THREE.MeshStandardMaterial({map:p.material.map||null,color:p.material.map?0xffffff:p.material.color,roughness:.78,metalness:0,envMap:ENV,envMapIntensity:.35});
+      const s=new THREE.SkinnedMesh(p.geometry,mat);s.castShadow=true;s.receiveShadow=true;s.frustumCulled=false;this.root.add(s);s.bind(skel,p.bindMatrix);return s});
+    if(this.body)this.body.forEach(s=>s.visible=false);
+    for(const g of[...(this.arm||[]),...(this.leg||[])])g.mesh.visible=false;if(this.abs)this.abs.mesh.visible=false;
+    this.hips.visible=false;this.ft.forEach(f=>f.visible=false);
+    this.hand.forEach(h=>h.children.forEach(c=>{if(c!==this.glove)c.visible=false}));
+    this.bones=bones}
   buildTrunk(){
     const m=this.mats,M=(g,mat)=>{const x=new THREE.Mesh(g,mat);x.castShadow=true;x.receiveShadow=true;return x};
     this.pelvis=M(pelvisGeo(this.bw),m.pantsPlain);this.hips.add(this.pelvis);
@@ -660,7 +673,8 @@ class Rig{
     this.hips.updateMatrix();this.chest.updateMatrix();_m.multiplyMatrices(this.hips.matrix,this.chest.matrix);
     const body=!!this.bones,side=['L','R'];
     if(body){const bw=this.bw;this.setBoneMatrix('hips',this.hips.matrix,bw,1,1);this.setBoneMatrix('chest',_m,bw,1,.88+.12*bw);
-      this.neck.updateMatrix();_mn.multiplyMatrices(_m,this.neck.matrix);this.setBoneMatrix('neck',_mn,1,1,1)}
+      this.neck.updateMatrix();_mn.multiplyMatrices(_m,this.neck.matrix);this.setBoneMatrix('neck',_mn,1,1,1);
+      if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,1,1,1)}}
     else this.updateAbdomen();
     // arms: shoulder -> elbow -> wrist, biceps side facing away from the elbow pole
     const HL=V3(...p.hl),HR=V3(...p.hr_),lb=this.lb,lg=Math.pow(lb,.8);
@@ -671,19 +685,21 @@ class Rig{
       if(body){limbFrames(S,E,Te,pole.negate());this.setBone('upperarm_'+side[s],S,_t1,_n1,lb,1,lb);this.setBone('forearm_'+side[s],E,_t2,_n2,lb,1,lb);_mb.makeBasis(_bx.crossVectors(_t2,_n2),_t2,_n2)}
       else{const A=this.arm[s];A.update(S,E,Te,pole.clone().negate(),-sg);_mb.makeBasis(A.endB,A.endT,A.endN)}
       h.quaternion.setFromRotationMatrix(_mb);
-      h.userData.fingers.forEach(f=>f.visible=!(s===0&&o.glove))}
+      if(this.toon){_mt.compose(h.position,h.quaternion,_bs.set(1,1,1));this.setBoneMatrix('hand_'+side[s],_mt,1,1,1)}
+      else h.userData.fingers.forEach(f=>f.visible=!(s===0&&o.glove))}
     // legs: hip -> knee -> ankle, knee leading toward the facing direction
     _e.set(0,p.hr[1],0);_q.setFromEuler(_e);const fwd=V3(0,.2,1).applyQuaternion(_q);
     for(const s of[0,1]){const sg=s?-1:1,Hj=V3(sg*.25*this.bw,-.12,0).applyMatrix4(this.hips.matrix),F=s?p.fr:p.fl,T=V3(F[0],F[1]+.2,F[2]);
       const Kn=V3(),Te=V3();ik(Hj,T,LL[0],LL[1],fwd,Kn,Te);
       if(body){limbFrames(Hj,Kn,Te,fwd);this.setBone('thigh_'+side[s],Hj,_t1,_n1,lg,1,lg);this.setBone('shin_'+side[s],Kn,_t2,_n2,lg,1,lg)}
       else this.leg[s].update(Hj,Kn,Te,fwd,-sg);
-      const f=this.ft[s],fp=p.fp?p.fp[s]:F[1]>.15?-.35:0;f.position.set(Te.x,Math.max(0,Te.y-.19)+Math.max(0,Math.sin(fp))*.14,Te.z);f.rotation.set(fp,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ')}
+      const f=this.ft[s],fp=p.fp?p.fp[s]:F[1]>.15?-.35:0;f.position.set(Te.x,Math.max(0,Te.y-.19)+Math.max(0,Math.sin(fp))*.14,Te.z);f.rotation.set(fp,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ');
+      if(this.toon){_mt.compose(_d.set(Te.x,f.position.y+.19,Te.z),f.quaternion,_bs.set(1,1,1));this.setBoneMatrix('foot_'+side[s],_mt,1,1,1)}}
     this.bat.visible=p.bat>.5&&!o.noBat;
     if(this.bat.visible){const dvec=batDir(p.ba[0],p.ba[1],_a);this.bat.position.set(p.bg[0]-dvec.x*.1,p.bg[1]-dvec.y*.1,p.bg[2]-dvec.z*.1);this.bat.quaternion.setFromUnitVectors(UP,dvec)}
     this.glove.visible=!!o.glove;
     this.blob.position.set(p.hip[0],.05,p.hip[2])}}
-const _mb=new THREE.Matrix4(),_mn=new THREE.Matrix4(),_bx=V3(),_bs=V3(),_t1=V3(),_n1=V3(),_t2=V3(),_n2=V3(),_lq=new THREE.Quaternion();
+const _mb=new THREE.Matrix4(),_mn=new THREE.Matrix4(),_mt=new THREE.Matrix4(),_mh=new THREE.Matrix4(),_bx=V3(),_bs=V3(),_t1=V3(),_n1=V3(),_t2=V3(),_n2=V3(),_lq=new THREE.Quaternion();
 // upper and lower limb frames: the front direction projected off the upper bone, then carried through the joint bend
 function limbFrames(A,B,C,front){_t1.subVectors(B,A).normalize();_t2.subVectors(C,B).normalize();
   _n1.copy(front).addScaledVector(_t1,-front.dot(_t1));if(_n1.lengthSq()<1e-8)_n1.set(_t1.y,-_t1.x,0);if(_n1.lengthSq()<1e-8)_n1.set(0,0,1);_n1.normalize();
@@ -1989,7 +2005,7 @@ try{const sv=JSON.parse(store.get('ss3dTeam')||'[]');if(Array.isArray(sv)&&sv.le
 function renderRoster(){
   $('roster').innerHTML=CH.map(c=>`<button class="card${pick.includes(c.i)?' sel':''}" data-i="${c.i}" aria-pressed="${pick.includes(c.i)}"><span class="no">${pick.indexOf(c.i)>=0?["P","C","1B","2B","SS","3B","LF","CF","RF"][pick.indexOf(c.i)]:""}</span><img src="${c.src}" alt="" loading="lazy"><span class="nm">${c.n}</span><span class="rl">${c.r}</span><span class="bars"><span>PWR</span><span class="bar"><i style="width:${c.p*20}%"></i></span><span>CON</span><span class="bar"><i style="width:${c.c*20}%"></i></span><span>SPD</span><span class="bar"><i style="width:${c.s*20}%"></i></span></span></button>`).join('');
   $('pickCount').textContent=pick.length+' of 9 · order sets batting and positions (1 pitches, 2 catches, then 1B, 2B, SS, 3B, LF, CF, RF)';const ok=pick.length===9;$('play').disabled=!ok;$('play').textContent=ok?'Play ball':`Pick ${9-pick.length} more`}
-$('roster').addEventListener('click',e=>{const b=e.target.closest('.card');if(!b)return;const i=+b.dataset.i;const k=pick.indexOf(i);if(k>=0)pick.splice(k,1);else if(pick.length<9)pick.push(i);renderRoster()});
+$('roster').addEventListener('click',e=>{const b=e.target.closest('.card');if(!b)return;const i=+b.dataset.i;const k=pick.indexOf(i);if(k>=0)pick.splice(k,1);else if(pick.length<9){pick.push(i);if(window.__toon)window.__toon(i)}renderRoster()});
 $('auto').onclick=()=>{const pool=CH.map(c=>c.i).filter(i=>!pick.includes(i)).sort(()=>Math.random()-.5);while(pick.length<9)pick.push(pool.pop());
   // speed at top, power in the middle
   pick.sort((a,b)=>0);renderRoster()};
@@ -2000,7 +2016,7 @@ function seg(id,opts,cur,fn){const el=$(id);el.querySelectorAll('button').forEac
 seg('diffSeg',DIFF.map(d=>d.n),diffIx,i=>diffIx=i);
 seg('innSeg',['3','6','9'],0,i=>INN=[3,6,9][i]);
 $('play').onclick=()=>{audio();if(pick.length<9)return;team=pick.slice();store.set('ss3dTeam',JSON.stringify(team));
-  cpuTeam=CH.map(c=>c.i).filter(i=>!team.includes(i)).sort(()=>Math.random()-.5).slice(0,9);D=DIFF[diffIx];
+  cpuTeam=CH.map(c=>c.i).filter(i=>!team.includes(i)).sort(()=>Math.random()-.5).slice(0,9);D=DIFF[diffIx];if(window.__toon)team.concat(cpuTeam).forEach(i=>window.__toon(i));
   if(PK!==PARKS[parkIx])buildWorld(PARKS[parkIx]);newGame();banner('Play Ball!',PK.name,true);sfx.cheer(false)};
 $('again').onclick=()=>{cpuTeam=CH.map(c=>c.i).filter(i=>!team.includes(i)).sort(()=>Math.random()-.5).slice(0,9);newGame();banner('Play Ball!',PK.name,true)};
 $('redraft').onclick=showTitle;

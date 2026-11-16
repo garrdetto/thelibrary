@@ -1368,5 +1368,345 @@
   "matsBefore": 7,
   "matsAfter": 2,
   "preset": "rig"
+ },
+ "sandlot3d/toons/p02.glb": {
+  "hash": "651b819bef37d19b588d37831eb8dc0ee6cf7491",
+  "before": 1593900,
+  "after": 290836,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p00.glb": {
+  "hash": "8c4085813232ccfd8f214f45053c88b7421e0377",
+  "before": 1451204,
+  "after": 326352,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p03.glb": {
+  "hash": "6b7086df22abfb0157674273b626b179bee7b93b",
+  "before": 1679628,
+  "after": 372320,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p01.glb": {
+  "hash": "8c2babb265865f98c577952d8b3423abeae5ec3a",
+  "before": 1647728,
+  "after": 387896,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p04.glb": {
+  "hash": "be0fde6d7350927e97668c99ed44953f140eed62",
+  "before": 1451112,
+  "after": 325176,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p06.glb": {
+  "hash": "38e6d8f3a53080502522b1697cb269f342fc045b",
+  "before": 1454836,
+  "after": 331536,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p07.glb": {
+  "hash": "cb8c123cc64039f0e0651f676bfae3dce9e1c6bb",
+  "before": 1614924,
+  "after": 357960,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p05.glb": {
+  "hash": "bb2b6d5bd3d94703ebbfd78ac5cbf432a4cfc3b9",
+  "before": 1614160,
+  "after": 328912,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p09.glb": {
+  "hash": "66782f196429c96246d61f53593e092eee0bad92",
+  "before": 1498332,
+  "after": 344080,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p08.glb": {
+  "hash": "470450ebe49b5bc164395215f01dc2c52e102059",
+  "before": 1739516,
+  "after": 377776,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p11.glb": {
+  "hash": "ec89ae55ec2562c767fec01f4d693049983ad058",
+  "before": 1419092,
+  "after": 315456,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p10.glb": {
+  "hash": "3a8968356cdbc5405f0a56b76837b6a4adeca25f",
+  "before": 1644124,
+  "after": 365300,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p12.glb": {
+  "hash": "3f2d103f618993d34ef0a9110aed1053ad56cb8c",
+  "before": 1711036,
+  "after": 374236,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p13.glb": {
+  "hash": "2eb4cc64e4725d362980091a0d37132caa58751d",
+  "before": 1567892,
+  "after": 355044,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p15.glb": {
+  "hash": "1f421b7b0f13e892607aa5765badc7c476725824",
+  "before": 1442772,
+  "after": 314652,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p14.glb": {
+  "hash": "3306fcfd3aca511d42f9cff8778939cb114192be",
+  "before": 1563248,
+  "after": 350512,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p16.glb": {
+  "hash": "27e6ffccaa19173556c277630c88b88bb9f3f9eb",
+  "before": 1535040,
+  "after": 336100,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p17.glb": {
+  "hash": "2fa52a910a37f32a4aa56d1cc43c5ebe4d43e91f",
+  "before": 1581912,
+  "after": 316024,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p18.glb": {
+  "hash": "fa1240ff0e6bc3608785f434ea8ec901cbf10f83",
+  "before": 1627560,
+  "after": 367212,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p19.glb": {
+  "hash": "ebae392cc675f20d912999706cca03f247baae79",
+  "before": 1489092,
+  "after": 344220,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p20.glb": {
+  "hash": "ee7bb51644e93d457c20afaf852ccda9f7b969cb",
+  "before": 1416160,
+  "after": 328104,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p21.glb": {
+  "hash": "5dbbe2154f72810c895d5af70cc73f6563953f9d",
+  "before": 1582476,
+  "after": 377244,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p22.glb": {
+  "hash": "5a1db268ab96024a78da015336c39e6b200f3b68",
+  "before": 1609376,
+  "after": 362180,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p23.glb": {
+  "hash": "f8a6cd66041d569a5a6b4601108fa8297ac33c3f",
+  "before": 1421952,
+  "after": 347704,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p24.glb": {
+  "hash": "11d5b4ee9814c49679ab140bdc7252f306589c3b",
+  "before": 1717952,
+  "after": 388352,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p25.glb": {
+  "hash": "f8cddeebba1e8729f90eabe302f86d8738de0606",
+  "before": 1661056,
+  "after": 350180,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p27.glb": {
+  "hash": "386ceb1cfb3b709f0d8ed386a867dfb3f9b8ff7c",
+  "before": 1485140,
+  "after": 309288,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p26.glb": {
+  "hash": "2abbd1c0441d83033d64f22c97c5d36eb3010a94",
+  "before": 1518480,
+  "after": 338820,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p29.glb": {
+  "hash": "424e2d0ca0cfd5e437b0cec48529bb9e638de864",
+  "before": 1524872,
+  "after": 335252,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p28.glb": {
+  "hash": "1c6a45a28dfb95af604742ba6524fdd0ebd5cc8f",
+  "before": 1550240,
+  "after": 391768,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p30.glb": {
+  "hash": "b95aee3829935a1b35c74bc91569f59dcf3531dd",
+  "before": 1384964,
+  "after": 319548,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p31.glb": {
+  "hash": "90bbdf774dfcde8534a17064eba5d5c0d8c5b765",
+  "before": 1531988,
+  "after": 393840,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p32.glb": {
+  "hash": "fc561d6e63c7f8bd34ae604864094b7b91faf8f9",
+  "before": 1511240,
+  "after": 332968,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
+ },
+ "sandlot3d/toons/p33.glb": {
+  "hash": "c16967ef01e58771a40290fc41d1b6d556e790e3",
+  "before": 1441460,
+  "after": 321524,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
  }
 }

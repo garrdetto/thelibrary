@@ -20,6 +20,7 @@ declare global {
     __adaptiveResolution: typeof createAdaptiveResolution;
     __batchStatic: typeof batchStatic;
     __athlete: SkinnedMesh[] | null;
+    __toon: ((index: number) => Promise<SkinnedMesh[] | null>) | null;
     __field: { grass: FieldMaps; dirt: FieldMaps } | null;
     __renderer: WebGPURenderer;
     __bloom: typeof bloom;
@@ -48,6 +49,29 @@ async function loadAthlete(): Promise<SkinnedMesh[] | null> {
     return null;
   }
 }
+
+const toons = new Map<number, Promise<SkinnedMesh[] | null>>();
+
+function loadToon(index: number): Promise<SkinnedMesh[] | null> {
+  let pending = toons.get(index);
+  if (!pending) {
+    pending = loader
+      .loadAsync(`/models/sandlot3d/toons/p${String(index).padStart(2, '0')}.glb`)
+      .then((gltf) => {
+        gltf.scene.updateMatrixWorld(true);
+        const parts: SkinnedMesh[] = [];
+        gltf.scene.traverse((node) => {
+          if ((node as SkinnedMesh).isSkinnedMesh) parts.push(node as SkinnedMesh);
+        });
+        return parts.length ? parts : null;
+      })
+      .catch(() => null);
+    toons.set(index, pending);
+  }
+  return pending;
+}
+
+window.__toon = params.get('toon') === '0' ? null : loadToon;
 
 async function loadField(): Promise<Window['__field']> {
   try {
