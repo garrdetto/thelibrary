@@ -2,13 +2,13 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { HttpError, json, parseStored, readJson, requireSameOrigin } from '../http'
 import { requireUser } from '../auth'
+import { ONLINE_WINDOW, touchPresence } from '../chat-presence'
 
 const GROUP_HISTORY = 80
 const PRIVATE_HISTORY = 200
 const KEEP = 3000
 const MIN_GAP = 1000
 const PER_MINUTE = 24
-const ONLINE_WINDOW = 45000
 const MAX_MEMBERS = 8
 const READS_WINDOW = 7 * 24 * 60 * 60 * 1000
 
@@ -88,13 +88,9 @@ export async function groupChat(request: Request, env: Env) {
       const mine = await env.DB.prepare(`SELECT ${columns} FROM chat_messages WHERE thread IS NOT NULL AND ${member} ORDER BY id DESC LIMIT ?`).bind(me, PRIVATE_HISTORY).all<Row>()
       rows = [...group.results, ...mine.results].sort((a, b) => a.id - b.id)
     }
-    const [, online] = await env.DB.batch([
-      env.DB.prepare('INSERT INTO chat_presence (user_id, username, activity, last_seen) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, activity = excluded.activity, last_seen = excluded.last_seen')
-        .bind(user.id, me, doing.success ? doing.data : 'home', now),
-      env.DB.prepare('SELECT username, activity FROM chat_presence WHERE last_seen > ? ORDER BY username ASC LIMIT 200').bind(now - ONLINE_WINDOW),
-    ]) as [unknown, { results: { username: string; activity: string | null }[] }]
+    const presence = await touchPresence(env, user, doing.success ? doing.data : 'home', url.searchParams.get('active') === '1', now)
     const reads = await readsFor(env, user.id, me, now)
-    return json({ messages: rows.map(shape), me, isAdmin: user.isAdmin, online: online.results, reads })
+    return json({ messages: rows.map(shape), me, isAdmin: user.isAdmin, online: presence.online, recent: presence.recent, reads, now })
   }
   if (request.method !== 'POST') throw new HttpError(405, 'This request is not allowed.')
   requireSameOrigin(request)

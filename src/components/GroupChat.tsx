@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent } from 'react'
-import { ArrowLeft, Check, CheckCheck, Gamepad2, Lock, MessageCircle, Plus, Send, Trash2, Users, X } from 'lucide-react'
+import type { FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
+import { ArrowLeft, Check, CheckCheck, Gamepad2, Lock, MessageCircle, Minus, Plus, Send, Trash2, Users } from 'lucide-react'
 import { useBlinkingFavicon } from '@/lib/use-blinking-favicon'
+import { agoLabel, isTabActive, lastActiveLabel, placeLabel, presenceStatus } from '@/lib/chat-presence'
+import type { ChatPresence, PresenceStatus } from '@/lib/chat-presence'
 
 export type ChatInvite = { module: string; label: string; code: string | null }
 export type InviteKind = 'room' | 'pool' | 'link'
 export type ChatModule = { id: string; label: string; invite: InviteKind | null }
 
 type ChatMessage = { id: number; username: string; text: string; at: number; thread: string | null; meta: { invite?: ChatInvite } | null }
-type OnlineUser = { username: string; activity: string | null }
 type ReadMark = { username: string; thread: string | null; id: number }
-type Pane = { kind: 'list' } | { kind: 'online' } | { kind: 'new' } | { kind: 'thread'; key: string }
+type Pane = { kind: 'list' } | { kind: 'people' } | { kind: 'new' } | { kind: 'thread'; key: string }
+type Thread = { key: string; last: ChatMessage | null; unread: number; lastUnread: ChatMessage | null }
 
 const GROUP = ''
 const seenKey = (user: string) => `tl_chat_seen:${user}`
@@ -35,6 +37,17 @@ function hueFor(name: string) {
 
 const threadKey = (members: string[]) => [...new Set(members)].sort().join(',')
 const othersIn = (key: string, me: string) => key.split(',').filter(name => name && name !== me)
+const keepsFocus = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest('input, textarea, select, [data-gc-text]'))
+const newestOf = (threads: Thread[]) => threads.reduce<ChatMessage | null>((best, item) => item.lastUnread && (!best || item.lastUnread.id > best.id) ? item.lastUnread : best, null)
+const compactAgo = (at: number, now: number) => { const label = agoLabel(at, now); return label === 'just now' ? 'now' : label.replace(' ago', '') }
+
+function Avatar({ name, status, group }: { name: string; status?: PresenceStatus; group?: number }) {
+  const everyone = group === 0
+  return <span className={`gc-avatar${everyone ? ' is-group' : ''}`} style={everyone ? undefined : { background: `hsl(${hueFor(name)} 38% 42%)` }} aria-hidden="true">
+    {everyone ? <Users size={14}/> : group && group > 1 ? group : name[0]?.toUpperCase()}
+    {status && status !== 'offline' && <i className={`gc-dot is-${status}`}/>}
+  </span>
+}
 
 export function GroupChat({ username, onSignIn, module, activityLabels, requestRoom, onPoolInvite, onJoinInvite }: {
   username: string | null
@@ -48,11 +61,14 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>({ kind: 'list' })
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [online, setOnline] = useState<OnlineUser[]>([])
+  const [online, setOnline] = useState<ChatPresence[]>([])
+  const [recent, setRecent] = useState<ChatPresence[]>([])
   const [onlineLoaded, setOnlineLoaded] = useState(false)
   const [guestCount, setGuestCount] = useState<number | null>(null)
   const [reads, setReads] = useState<ReadMark[]>([])
   const [visible, setVisible] = useState(true)
+  const [clockOffset, setClockOffset] = useState(0)
+  const [clock, setClock] = useState(() => Date.now())
   const reported = useRef<Record<string, number>>({})
   const [seen, setSeen] = useState<Record<string, number>>({})
   const [drafts, setDrafts] = useState<string[]>([])
@@ -63,6 +79,9 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const [sending, setSending] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const [typedName, setTypedName] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  const returnFocus = useRef<Element | null>(null)
+  const lastInput = useRef(0)
   const lastId = useRef(0)
   const loaded = useRef(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -72,6 +91,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const activity = module?.id ?? 'home'
   const activityRef = useRef(activity)
   activityRef.current = activity
+  const now = clock + clockOffset
 
   const merge = useCallback((incoming: ChatMessage[]) => {
     if (!incoming.length) return
@@ -87,11 +107,11 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const poll = useCallback(async () => {
     if (!username) return
     try {
-      const params = new URLSearchParams({ activity: activityRef.current })
+      const params = new URLSearchParams({ activity: activityRef.current, active: isTabActive(lastInput.current) ? '1' : '0' })
       if (lastId.current) params.set('after', String(lastId.current))
       const response = await fetch(`/api/group-chat?${params}`, { cache: 'no-store' })
       if (!response.ok) return
-      const data = await response.json() as { messages: ChatMessage[]; isAdmin: boolean; online: OnlineUser[]; reads?: ReadMark[] }
+      const data = await response.json() as { messages: ChatMessage[]; isAdmin: boolean; online: ChatPresence[]; recent?: ChatPresence[]; reads?: ReadMark[]; now?: number }
       if (!loaded.current) {
         loaded.current = true
         const stored = loadSeen(username)
@@ -105,14 +125,34 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
       }
       merge(data.messages)
       setOnline(data.online)
+      setRecent(data.recent ?? [])
       setOnlineLoaded(true)
       setReads(data.reads ?? [])
       setIsAdmin(data.isAdmin)
+      if (typeof data.now === 'number') setClockOffset(data.now - Date.now())
+      setClock(Date.now())
     } catch { /* offline: try again next tick */ }
   }, [username, merge])
 
   useEffect(() => {
-    setMessages([]); setOnline([]); setOnlineLoaded(false); setReads([]); setSeen({}); lastId.current = 0; loaded.current = false; reported.current = {}
+    const mark = () => { lastInput.current = Date.now() }
+    mark()
+    window.addEventListener('pointerdown', mark, true)
+    window.addEventListener('keydown', mark, true)
+    window.addEventListener('pointermove', mark, { passive: true })
+    window.addEventListener('focus', mark)
+    const timer = window.setInterval(() => setClock(Date.now()), 30000)
+    return () => {
+      window.removeEventListener('pointerdown', mark, true)
+      window.removeEventListener('keydown', mark, true)
+      window.removeEventListener('pointermove', mark)
+      window.removeEventListener('focus', mark)
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    setMessages([]); setOnline([]); setRecent([]); setOnlineLoaded(false); setReads([]); setSeen({}); lastId.current = 0; loaded.current = false; reported.current = {}
     if (!username) return
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
@@ -150,15 +190,63 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   useEffect(() => { if (open && username) void poll() }, [open, username, poll])
   useEffect(() => { if (username) void poll() }, [activity, username, poll])
 
+  useEffect(() => {
+    const remember = (event: FocusEvent) => {
+      if (event.target instanceof Element && !rootRef.current?.contains(event.target)) returnFocus.current = event.target
+    }
+    const rememberFrame = () => window.setTimeout(() => {
+      const active = document.activeElement
+      if (active instanceof HTMLIFrameElement && !rootRef.current?.contains(active)) returnFocus.current = active
+    }, 0)
+    document.addEventListener('focusin', remember)
+    window.addEventListener('blur', rememberFrame)
+    return () => { document.removeEventListener('focusin', remember); window.removeEventListener('blur', rememberFrame) }
+  }, [])
+
+  const minimize = useCallback((restore: boolean) => {
+    setOpen(false)
+    if (!restore || !rootRef.current?.contains(document.activeElement)) return
+    const target = returnFocus.current
+    if (target instanceof HTMLIFrameElement && target.isConnected) target.contentWindow?.focus()
+    else if (target instanceof HTMLElement && target.isConnected) target.focus({ preventScroll: true })
+    else (document.activeElement as HTMLElement | null)?.blur()
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    const outside = (event: PointerEvent) => { if (!rootRef.current?.contains(event.target as Node)) close() }
+    const frames = new Set<Document>()
+    const watchFrames = () => {
+      for (const frame of document.querySelectorAll('iframe')) {
+        try {
+          const doc = frame.contentDocument
+          if (doc && !frames.has(doc)) { doc.addEventListener('pointerdown', close, true); frames.add(doc) }
+        } catch { /* cross-origin frame: the window blur below covers it */ }
+      }
+    }
+    const blurred = () => window.setTimeout(() => { if (document.activeElement?.tagName === 'IFRAME') close() }, 0)
+    watchFrames()
+    const timer = window.setInterval(watchFrames, 1500)
+    document.addEventListener('pointerdown', outside, true)
+    window.addEventListener('blur', blurred)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('pointerdown', outside, true)
+      window.removeEventListener('blur', blurred)
+      for (const doc of frames) { try { doc.removeEventListener('pointerdown', close, true) } catch { /* frame gone */ } }
+    }
+  }, [open])
+
   const threads = useMemo(() => {
-    const map = new Map<string, { key: string; last: ChatMessage | null; unread: number }>()
-    map.set(GROUP, { key: GROUP, last: null, unread: 0 })
-    for (const key of drafts) if (!map.has(key)) map.set(key, { key, last: null, unread: 0 })
+    const map = new Map<string, Thread>()
+    map.set(GROUP, { key: GROUP, last: null, unread: 0, lastUnread: null })
+    for (const key of drafts) if (!map.has(key)) map.set(key, { key, last: null, unread: 0, lastUnread: null })
     for (const item of messages) {
       const key = item.thread ?? GROUP
-      const entry = map.get(key) ?? { key, last: null, unread: 0 }
+      const entry = map.get(key) ?? { key, last: null, unread: 0, lastUnread: null }
       entry.last = item
-      if (item.id > (seen[key] ?? 0) && item.username !== username) entry.unread += 1
+      if (item.id > (seen[key] ?? 0) && item.username !== username) { entry.unread += 1; entry.lastUnread = item }
       map.set(key, entry)
     }
     const list = [...map.values()]
@@ -199,11 +287,13 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   useEffect(() => { setError(''); setNotice(''); stickBottom.current = true }, [pane])
 
   const unreadTotal = threads.reduce((sum, item) => sum + item.unread, 0)
+  const newest = newestOf(threads)
+  const elsewhereNewest = newestOf(threads.filter(item => item.key !== activeKey))
   useBlinkingFavicon(unreadTotal > 0)
+  const people = useMemo(() => new Map([...recent, ...online].map(item => [item.username, item])), [online, recent])
   const others = online.filter(item => item.username !== username)
+  const recentOthers = recent.filter(item => item.username !== username)
   const onlineCount = username ? (onlineLoaded ? online.length : null) : guestCount
-  const onlineText = onlineCount === null ? '' : `${onlineCount} ${onlineCount === 1 ? 'player' : 'players'} online`
-  const label = (name: string | null) => !name || name === 'home' ? 'Browsing' : activityLabels[name] ?? 'Browsing'
   const titleFor = (key: string) => key === GROUP ? 'Everyone' : othersIn(key, username ?? '').join(', ') || 'Just you'
   const lastMine = [...shown].reverse().find(item => item.username === username) ?? null
   const seenBy = lastMine && activeKey !== null ? [...new Set(reads.filter(mark => (mark.thread ?? GROUP) === activeKey && mark.id >= lastMine.id && mark.username !== username).map(mark => mark.username))].sort() : []
@@ -213,11 +303,16 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
       : members.length > 1 && members.every(name => seenBy.includes(name)) ? 'Seen by everyone'
         : `Seen by ${seenBy.slice(0, 3).join(', ')}${seenBy.length > 3 ? ` +${seenBy.length - 3}` : ''}`
 
-  function openThread(members: string[]) {
+  function openThread(names: string[]) {
     if (!username) return
-    const key = members.length ? threadKey([username, ...members]) : GROUP
+    const key = names.length ? threadKey([username, ...names]) : GROUP
     if (key !== GROUP) setDrafts(current => current.includes(key) ? current : [...current, key])
     setPane({ kind: 'thread', key })
+  }
+
+  function openNewest() {
+    setOpen(true)
+    if (username && newest) setPane({ kind: 'thread', key: newest.thread ?? GROUP })
   }
 
   async function postJson(body: unknown) {
@@ -270,55 +365,107 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
     if (response?.ok) setMessages(current => current.filter(item => item.id !== id))
   }
 
-  function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() }
+  function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() }
   }
 
-  const knownNames = [...new Set([...others.map(item => item.username), ...messages.map(item => item.username), ...messages.flatMap(item => item.thread ? item.thread.split(',') : [])])].filter(name => name && name !== username).sort()
+  function onRootKey(event: KeyboardEvent<HTMLDivElement>) {
+    event.stopPropagation()
+    if (event.key === 'Escape' && open) { event.preventDefault(); minimize(true) }
+  }
+
+  function onRootMouseDown(event: ReactMouseEvent<HTMLDivElement>) {
+    const active = document.activeElement
+    if (active && active !== document.body && !event.currentTarget.contains(active)) returnFocus.current = active
+    if (!keepsFocus(event.target)) event.preventDefault()
+  }
+
+  const knownNames = [...new Set([...others.map(item => item.username), ...recentOthers.map(item => item.username), ...messages.map(item => item.username), ...messages.flatMap(item => item.thread ? item.thread.split(',') : [])])].filter(name => name && name !== username).sort()
   const canInvite = Boolean(module?.invite)
   const inviteNote = module?.invite ? `Invite to ${module.label}` : ''
 
-  const header = pane.kind === 'thread'
-    ? <><button type="button" className="gc-icon" aria-label="Back to chats" onClick={() => setPane({ kind: 'list' })}><ArrowLeft size={16}/></button><span className="gc-title">{pane.key === GROUP ? <Users size={14}/> : <Lock size={13}/>}{titleFor(pane.key)}</span></>
-    : pane.kind === 'new'
-      ? <><button type="button" className="gc-icon" aria-label="Back to chats" onClick={() => setPane({ kind: 'list' })}><ArrowLeft size={16}/></button><span className="gc-title">New private chat</span></>
-      : <span className="gc-title"><MessageCircle size={15}/> Chat</span>
+  function presenceLine(key: string) {
+    if (key === GROUP) return onlineCount === null ? 'Everyone signed in' : `${onlineCount} online now`
+    const names = othersIn(key, username ?? '')
+    if (names.length > 1) {
+      const here = names.filter(name => people.get(name)?.online).length
+      return here ? `${names.length} people · ${here} online` : `${names.length} people`
+    }
+    const person = people.get(names[0])
+    return person ? `${lastActiveLabel(person, now)} · ${placeLabel(person, activityLabels, now)}` : 'Not seen recently'
+  }
 
-  return <div className={`group-chat${open ? ' is-open' : ''}`}>
-    {open && <section className="group-chat-panel" role="dialog" aria-label="Chat">
+  function personRow(person: ChatPresence) {
+    const status = presenceStatus(person, now)
+    return <div key={person.username} className="gc-person">
+      <Avatar name={person.username} status={status}/>
+      <span className="gc-row-text">
+        <strong>{person.username}</strong>
+        <small>{placeLabel(person, activityLabels, now)}</small>
+      </span>
+      <span className={`gc-when is-${status}`}>{status === 'offline' ? agoLabel(Math.max(person.activeAt, person.lastSeen), now) : lastActiveLabel(person, now)}</span>
+      <span className="gc-person-actions">
+        <button type="button" className="gc-icon" onClick={() => openThread([person.username])} aria-label={`Message ${person.username}`} title="Message"><MessageCircle size={15}/></button>
+        {canInvite && person.online && <button type="button" className="gc-icon is-accent" disabled={sending} onClick={() => { openThread([person.username]); void invite([person.username]) }} aria-label={`${inviteNote}: ${person.username}`} title={inviteNote}><Gamepad2 size={15}/></button>}
+      </span>
+    </div>
+  }
+
+  const back = <button type="button" className="gc-icon" aria-label="Back to chats" onClick={() => setPane({ kind: 'list' })}><ArrowLeft size={16}/></button>
+  const threadNames = pane.kind === 'thread' ? othersIn(pane.key, username ?? '') : []
+  const header = pane.kind === 'thread'
+    ? <>{back}<Avatar name={threadNames[0] ?? 'everyone'} group={pane.key === GROUP ? 0 : threadNames.length} status={threadNames.length === 1 ? presenceStatus(people.get(threadNames[0]), now) : undefined}/><span className="gc-heading"><strong>{titleFor(pane.key)}{pane.key !== GROUP && <Lock size={10} aria-label="Private"/>}</strong><small>{presenceLine(pane.key)}</small></span></>
+    : pane.kind === 'new'
+      ? <>{back}<span className="gc-heading"><strong>New private chat</strong><small>Up to 8 people</small></span></>
+      : <span className="gc-heading"><strong>Messages</strong><small>{onlineCount === null ? 'Connecting…' : `${onlineCount} online now`}</small></span>
+
+  const alerting = unreadTotal > 0 && !open
+
+  return <div ref={rootRef} className={`group-chat${open ? ' is-open' : ''}`} onKeyDown={onRootKey} onKeyUp={event => event.stopPropagation()} onMouseDown={onRootMouseDown}>
+    {open && <section className="group-chat-panel" role="dialog" aria-label="Messages">
       <header>
         {header}
-        <button type="button" className="gc-icon gc-close" aria-label="Close chat" onClick={() => setOpen(false)}><X size={16}/></button>
+        <button type="button" className="gc-icon gc-close" aria-label="Minimize chat" title="Minimize" onClick={() => minimize(true)}><Minus size={16}/></button>
       </header>
       {!username ? <div className="group-chat-empty">
-        <p>Sign in to chat, see who's online and send invites.</p>
-        <button type="button" className="group-chat-signin" onClick={() => { setOpen(false); onSignIn() }}>Sign in</button>
+        <MessageCircle size={26} aria-hidden="true"/>
+        <p>Sign in to message people, see who's online and send invites.</p>
+        <button type="button" className="gc-primary" onClick={() => { setOpen(false); onSignIn() }}>Sign in</button>
       </div> : <>
-        {(pane.kind === 'list' || pane.kind === 'online') && <div className="gc-tabs" role="tablist">
+        {elsewhereNewest && pane.kind === 'thread' && <button type="button" className="gc-alert" onClick={() => setPane({ kind: 'thread', key: elsewhereNewest.thread ?? GROUP })}>
+          <span className="gc-alert-dot" aria-hidden="true"/>You have a new message! <small>from {elsewhereNewest.username}</small>
+        </button>}
+        {(pane.kind === 'list' || pane.kind === 'people') && <div className="gc-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={pane.kind === 'list'} className={pane.kind === 'list' ? 'is-active' : ''} onClick={() => setPane({ kind: 'list' })}>Chats{unreadTotal > 0 && <b>{unreadTotal}</b>}</button>
-          <button type="button" role="tab" aria-selected={pane.kind === 'online'} className={pane.kind === 'online' ? 'is-active' : ''} onClick={() => setPane({ kind: 'online' })}><span className="gc-live"/>Online <em>{online.length}</em></button>
+          <button type="button" role="tab" aria-selected={pane.kind === 'people'} className={pane.kind === 'people' ? 'is-active' : ''} onClick={() => setPane({ kind: 'people' })}>People <em>{online.length}</em></button>
         </div>}
 
         {pane.kind === 'list' && <div className="gc-scroll">
-          {threads.map(item => <button type="button" key={item.key || 'group'} className={`gc-row${item.unread ? ' has-unread' : ''}`} onClick={() => setPane({ kind: 'thread', key: item.key })}>
-            <span className="gc-avatar" style={item.key === GROUP ? undefined : { background: `hsl(${hueFor(item.key)} 55% 45%)` }}>{item.key === GROUP ? <Users size={15}/> : othersIn(item.key, username).length > 1 ? othersIn(item.key, username).length : othersIn(item.key, username)[0]?.[0]?.toUpperCase()}</span>
-            <span className="gc-row-text">
-              <strong>{titleFor(item.key)}{item.key !== GROUP && <Lock size={10}/>}</strong>
-              <small>{item.last ? `${item.last.username === username ? 'You' : item.last.username}: ${item.last.meta?.invite ? `invite to ${item.last.meta.invite.label}` : item.last.text}` : item.key === GROUP ? 'Everyone signed in can see this' : 'No messages yet'}</small>
-            </span>
-            {item.unread > 0 && <b className="gc-count">{item.unread}</b>}
-          </button>)}
+          {threads.map(item => {
+            const names = othersIn(item.key, username)
+            return <button type="button" key={item.key || 'group'} className={`gc-row${item.unread ? ' has-unread' : ''}`} onClick={() => setPane({ kind: 'thread', key: item.key })}>
+              <Avatar name={names[0] ?? 'everyone'} group={item.key === GROUP ? 0 : names.length} status={names.length === 1 ? presenceStatus(people.get(names[0]), now) : undefined}/>
+              <span className="gc-row-text">
+                <strong>{titleFor(item.key)}{item.key !== GROUP && <Lock size={10} aria-label="Private"/>}</strong>
+                <small>{item.last ? `${item.last.username === username ? 'You' : item.last.username}: ${item.last.meta?.invite ? `invite to ${item.last.meta.invite.label}` : item.last.text}` : item.key === GROUP ? 'Everyone signed in can see this' : 'No messages yet'}</small>
+              </span>
+              <span className="gc-row-side">
+                {item.last && <time>{compactAgo(item.last.at, now)}</time>}
+                {item.unread > 0 && <b className="gc-count">{item.unread}</b>}
+              </span>
+            </button>
+          })}
           <button type="button" className="gc-new" onClick={() => { setPicked([]); setTypedName(''); setPane({ kind: 'new' }) }}><Plus size={14}/> New private chat</button>
         </div>}
 
-        {pane.kind === 'online' && <div className="gc-scroll">
-          {canInvite && <p className="gc-hint">You're in <b>{module!.label}</b>. Invite someone to join you.</p>}
-          {!others.length ? <p className="gc-hint">No one else is online right now.</p> : others.map(item => <div key={item.username} className="gc-person">
-            <span className="gc-avatar" style={{ background: `hsl(${hueFor(item.username)} 55% 45%)` }}>{item.username[0].toUpperCase()}<i/></span>
-            <span className="gc-row-text"><strong>{item.username}</strong><small>{label(item.activity)}</small></span>
-            <button type="button" className="gc-mini" onClick={() => openThread([item.username])} aria-label={`Message ${item.username}`}><MessageCircle size={13}/> Message</button>
-            {canInvite && <button type="button" className="gc-mini is-accent" disabled={sending} onClick={() => { openThread([item.username]); void invite([item.username]) }} aria-label={`${inviteNote}: ${item.username}`}><Gamepad2 size={13}/> Invite</button>}
-          </div>)}
+        {pane.kind === 'people' && <div className="gc-scroll">
+          {canInvite && <p className="gc-hint">You're in <b>{module!.label}</b>. Invite someone online to join you.</p>}
+          <h3 className="gc-section">Online <span>{others.length}</span></h3>
+          {!others.length ? <p className="gc-hint">No one else is online right now.</p> : others.map(personRow)}
+          {recentOthers.length > 0 && <>
+            <h3 className="gc-section">Recently active</h3>
+            {recentOthers.map(personRow)}
+          </>}
           {error && <small className="group-chat-error">{error}</small>}
         </div>}
 
@@ -330,12 +477,12 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
           </form>
           {[...new Set([...picked, ...knownNames])].map(name => {
             const on = picked.includes(name)
-            const isOnline = others.some(item => item.username === name)
+            const status = presenceStatus(people.get(name), now)
             return <button type="button" key={name} className={`gc-pick${on ? ' is-on' : ''}`} aria-pressed={on} onClick={() => setPicked(current => on ? current.filter(item => item !== name) : current.length >= 7 ? current : [...current, name])}>
-              <span className="gc-check">{on && <Check size={12}/>}</span>{name}{isOnline && <span className="gc-live"/>}
+              <span className="gc-check">{on && <Check size={12}/>}</span>{name}{status !== 'offline' && <i className={`gc-dot is-${status} is-inline`} aria-label={status === 'active' ? 'Online' : 'Idle'}/>}
             </button>
           })}
-          <button type="button" className="group-chat-signin gc-start" disabled={!picked.length} onClick={() => openThread(picked)}>Start chat{picked.length > 1 ? ` with ${picked.length} people` : ''}</button>
+          <button type="button" className="gc-primary gc-start" disabled={!picked.length} onClick={() => openThread(picked)}>Start chat{picked.length > 1 ? ` with ${picked.length} people` : ''}</button>
         </div>}
 
         {pane.kind === 'thread' && <>
@@ -346,34 +493,36 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
               const grouped = index > 0 && shown[index - 1].username === item.username && item.at - shown[index - 1].at < 180000 && !item.meta?.invite
               const card = item.meta?.invite
               return <div key={item.id} className={`group-chat-msg${mine ? ' is-mine' : ''}${grouped ? ' is-grouped' : ''}`}>
-                {!grouped && <div className="group-chat-meta"><strong style={{ color: mine ? undefined : `hsl(${hueFor(item.username)} 75% var(--gc-name-l))` }}>{mine ? 'You' : item.username}</strong><time>{timeLabel(item.at)}</time></div>}
+                {!grouped && <div className="group-chat-meta"><strong style={{ color: mine ? undefined : `hsl(${hueFor(item.username)} 70% var(--gc-name-l))` }}>{mine ? 'You' : item.username}</strong><time>{timeLabel(item.at)}</time></div>}
                 {card ? <div className="gc-card">
                   <span><Gamepad2 size={14}/> {mine ? `You sent an invite to ${card.label}` : `${item.username} invited you to ${card.label}`}</span>
                   {card.code && <small>Room {card.code}</small>}
                   {!mine && <button type="button" onClick={() => { onJoinInvite(card); setOpen(false) }}>Join</button>}
-                </div> : <p>{item.text}</p>}
-                {lastMine?.id === item.id && <small className={`gc-receipt${seenBy.length ? ' is-seen' : ''}`} title={seenBy.length ? `Seen by ${seenBy.join(', ')}` : 'Not seen yet'}>{seenBy.length ? <CheckCheck size={13} aria-hidden="true"/> : <Check size={13} aria-hidden="true"/>}{receipt}</small>}
+                </div> : <p data-gc-text>{item.text}</p>}
+                {lastMine?.id === item.id && <small className={`gc-receipt${seenBy.length ? ' is-seen' : ''}`} title={seenBy.length ? `Seen by ${seenBy.join(', ')}` : 'Not seen yet'}>{seenBy.length ? <CheckCheck size={12} aria-hidden="true"/> : <Check size={12} aria-hidden="true"/>}{receipt}</small>}
                 {(isAdmin || mine) && <button type="button" className="group-chat-del" aria-label="Remove message" title="Remove message" onClick={() => void remove(item.id)}><Trash2 size={12}/></button>}
               </div>
             })}
           </div>
           {notice && !error && <small className="gc-notice">{notice}</small>}
           <form className="group-chat-form" onSubmit={send}>
-            <textarea value={draft} maxLength={500} rows={1} placeholder={pane.key === GROUP ? 'Message everyone…' : `Message ${titleFor(pane.key)}…`} aria-label="Message" onChange={event => { setDraft(event.target.value); setError('') }} onKeyDown={onKey}/>
-            <button type="submit" aria-label="Send" disabled={!draft.trim() || sending}><Send size={15}/></button>
+            <textarea value={draft} maxLength={500} rows={1} placeholder={pane.key === GROUP ? 'Message everyone…' : `Message ${titleFor(pane.key)}…`} aria-label="Message" onChange={event => { setDraft(event.target.value); setError('') }} onKeyDown={onComposerKey}/>
+            <button type="submit" aria-label="Send" disabled={!draft.trim() || sending}><Send size={14}/></button>
           </form>
           {error && <small className="group-chat-error">{error}</small>}
         </>}
       </>}
     </section>}
-    <div className="gc-dock">
-      <button type="button" className={`group-chat-toggle${unreadTotal ? ' has-unread' : ''}${unreadTotal ? ' is-blinking' : ''}`} aria-label={unreadTotal ? `Chat, ${unreadTotal} unread` : 'Chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        {open ? <X size={30}/> : <MessageCircle size={32}/>}
-        {unreadTotal > 0 && <i aria-hidden="true"/>}
-      </button>
-      {onlineCount !== null && <button type="button" className="gc-online-bar" aria-label={`${onlineText}. Open chat.`} onClick={() => { setOpen(true); if (username) setPane({ kind: 'online' }) }}>
-        <span className="gc-live" aria-hidden="true"/><span><b>{onlineCount}</b> {onlineCount === 1 ? 'player' : 'players'} online</span>
-      </button>}
-    </div>
+    <button type="button" className={`gc-pill${alerting ? ' is-alert' : ''}${open ? ' is-open' : ''}`} aria-expanded={open}
+      aria-label={alerting ? `You have a new message from ${newest?.username ?? 'someone'}. Open chat.` : open ? 'Minimize chat' : `Open chat${onlineCount !== null ? `, ${onlineCount} online` : ''}`}
+      onClick={() => open ? minimize(true) : alerting ? openNewest() : setOpen(true)}>
+      <span className="gc-pill-icon"><MessageCircle size={15}/></span>
+      {alerting ? <span className="gc-pill-text"><strong>You have a new message!</strong>{newest && <small>from {newest.username}</small>}</span> : <>
+        <span className="gc-pill-label">Chat</span>
+        {onlineCount !== null && <span className="gc-pill-online"><i className="gc-dot is-active is-inline" aria-hidden="true"/>{onlineCount} online</span>}
+      </>}
+      {unreadTotal > 0 && <b className="gc-pill-count">{unreadTotal > 99 ? '99+' : unreadTotal}</b>}
+    </button>
+    <span className="gc-live-region" role="status" aria-live="polite">{alerting && newest ? `You have a new message from ${newest.username}.` : ''}</span>
   </div>
 }
