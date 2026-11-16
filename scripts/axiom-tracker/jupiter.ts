@@ -9,7 +9,7 @@ const holderHistoryMs = 6 * 60_000
 const readingTtlMs = 60_000
 const perRequest = 100
 const requestGapMs = 1_200
-const moverListMs = 60_000
+const moverListMs = 5_000
 
 let requestChain: Promise<unknown> = Promise.resolve()
 let lastRequestAt = 0

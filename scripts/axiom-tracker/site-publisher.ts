@@ -7,9 +7,9 @@ import { applyRadarSettings } from './settings-store.js'
 const logger = createLogger('site-publisher')
 const watchingIntervalMs = 1_000
 const watchingPayloadMs = 3_000
-const idleIntervalMs = 20_000
-const watchingDetailsMs = 15_000
-const idleDetailsMs = 120_000
+const idleIntervalMs = 5_000
+const watchingDetailsMs = 5_000
+const idleDetailsMs = 5_000
 const maxBodyBytes = 1_800_000
 /** The site's ingest takes at most 160 coins; the list is already ordered pinned, then most watched. */
 export const siteTokenLimit = 160
@@ -108,7 +108,7 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
         if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`)
         if (detailsDue && body.includes('"details"')) lastDetailsAt = started
         if (payloadDue) lastPayloadAt = started
-        if (Boolean(result.watching) !== watching) logger.info(result.watching ? 'An admin is watching; sending viewers every second' : 'Nobody is watching; sending every 20 seconds')
+        if (Boolean(result.watching) !== watching) logger.info(result.watching ? 'An admin is watching; sending viewers every second' : 'Nobody is watching; sending every 5 seconds')
         watching = Boolean(result.watching)
         failures = 0
         recordHeartbeat(database, 'site-publisher', 'ok', `${payload.tokens.length} coins sent${watching ? ', admin watching' : ''}`)

@@ -1,6 +1,6 @@
 import type { TrackerDatabase } from './db.js'
-import { bestPairByMint, readMarket, type DexPair } from './dexscreener.js'
-import { chunk, createLogger, errorMessage, fetchJson, sleep } from './runtime.js'
+import { bestPairByMint, fetchTokenPairs, readMarket } from './dexscreener.js'
+import { chunk, createLogger, errorMessage, sleep } from './runtime.js'
 import { activeCandidates, freshViewerCount, trackerState } from './state.js'
 import { applyPulseMarket } from './pulse-market.js'
 
@@ -38,7 +38,7 @@ export function tickAt(ticks: MarketTick[], target: number, tolerance: number, f
 }
 
 async function fetchMarketsFast(mints: string[]) {
-  const groups = await Promise.all(chunk(mints, 30).map(group => fetchJson<DexPair[]>(`https://api.dexscreener.com/tokens/v1/solana/${group.join(',')}`, { retries: 0, timeoutMs: 4_000 })))
+  const groups = await Promise.all(chunk(mints, 30).map(group => fetchTokenPairs(group, { retries: 0, timeoutMs: 4_000 })))
   const now = Date.now()
   return new Map([...bestPairByMint(groups.flatMap(group => Array.isArray(group) ? group : []))].map(([mint, pair]) => [mint, readMarket(pair, now)]))
 }

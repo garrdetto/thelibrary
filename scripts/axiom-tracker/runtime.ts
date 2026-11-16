@@ -12,11 +12,11 @@ function envNumber(name: string, fallback: number) {
 
 export const trackerConfig = {
   maxPairAgeMs: 5 * 60 * 60 * 1000,
-  discoveryIntervalMs: 20_000,
-  snapshotIntervalMs: 10_000,
+  discoveryIntervalMs: 5_000,
+  snapshotIntervalMs: 5_000,
   scoringIntervalMs: 5_000,
-  runnerScanIntervalMs: 60_000,
-  walletSwapIntervalMs: 30_000,
+  runnerScanIntervalMs: 5_000,
+  walletSwapIntervalMs: 5_000,
   maxCandidates: envNumber('AXIOM_MAX_CANDIDATES', 30),
   minVolume5m: envNumber('AXIOM_MIN_VOLUME_5M', 3_000),
   minTxns5m: envNumber('AXIOM_MIN_TXNS_5M', 40),

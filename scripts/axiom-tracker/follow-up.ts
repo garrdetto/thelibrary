@@ -5,7 +5,7 @@ import { createLogger, runLoop } from './runtime.js'
 import { activeCandidates } from './state.js'
 
 const logger = createLogger('follow-up')
-const cycleMs = 30_000
+const cycleMs = 5_000
 const maxFollowed = 150
 
 export function startFollowUp(database: TrackerDatabase, signal: AbortSignal) {
@@ -20,7 +20,7 @@ export function startFollowUp(database: TrackerDatabase, signal: AbortSignal) {
       recordHeartbeat(database, 'follow-up', 'ok', 'No coins to follow after the radar')
       return
     }
-    const markets = await fetchMarketsForMints(mints)
+    const markets = await fetchMarketsForMints(mints, cycleMs)
     const now = Date.now()
     let saved = 0
     database.transaction(() => {

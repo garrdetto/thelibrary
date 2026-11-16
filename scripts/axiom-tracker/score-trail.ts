@@ -1,7 +1,7 @@
 import type { RadarScoreChange, RadarScoreLedger, RadarScoreTrail } from '../../src/lib/axiom-radar-types.js'
 
 export const trailWindowMs = 15 * 60_000
-export const trailSampleMs = 15_000
+export const trailSampleMs = 5_000
 export const trailPointLimit = 120
 export const changeLimit = 25
 const forgetAfterMs = 30 * 60_000

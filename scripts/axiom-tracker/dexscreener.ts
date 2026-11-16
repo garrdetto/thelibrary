@@ -1,4 +1,4 @@
-import { chunk, errorMessage, fetchJson } from './runtime.js'
+import { chunk, errorMessage, fetchJson, sleep } from './runtime.js'
 import { geckoAnswered, geckoCalled, geckoLimited, geckoReady } from './gecko-limit.js'
 
 const dexScreenerApi = 'https://api.dexscreener.com'
@@ -92,12 +92,51 @@ export async function fetchDiscoverySources() {
   return { mints: [...mints], boosted, failures }
 }
 
-export async function fetchPairsForMints(mints: string[]) {
-  const pairs: DexPair[] = []
-  for (const group of chunk([...new Set(mints)], 30)) {
-    const result = await fetchJson<DexPair[]>(`${dexScreenerApi}/tokens/v1/solana/${group.join(',')}`)
-    if (Array.isArray(result)) pairs.push(...result)
+/** DexScreener allows 300 token lookups a minute; every caller waits its turn here so polling every few seconds stays under it. */
+export const tokenLookupGapMs = 250
+const tokenLookupCoolDownMs = 10_000
+let nextTokenLookupAt = 0
+const recentPairs = new Map<string, { pair: DexPair; at: number }>()
+
+async function tokenLookupTurn() {
+  const now = Date.now()
+  const at = Math.max(now, nextTokenLookupAt)
+  nextTokenLookupAt = at + tokenLookupGapMs
+  if (at > now) await sleep(at - now)
+}
+
+/** One DexScreener token lookup (up to 30 mints), paced with every other lookup and remembered for `recentPairsFor`. */
+export async function fetchTokenPairs(mints: string[], options?: { retries?: number; timeoutMs?: number }) {
+  await tokenLookupTurn()
+  let result: DexPair[]
+  try {
+    result = await fetchJson<DexPair[]>(`${dexScreenerApi}/tokens/v1/solana/${mints.join(',')}`, options)
+  } catch (error) {
+    if (/429/.test(errorMessage(error))) nextTokenLookupAt = Math.max(nextTokenLookupAt, Date.now() + tokenLookupCoolDownMs)
+    throw error
   }
+  const pairs = Array.isArray(result) ? result : []
+  const now = Date.now()
+  for (const [mint, pair] of bestPairByMint(pairs)) recentPairs.set(mint, { pair, at: now })
+  for (const [mint, entry] of recentPairs) if (now - entry.at > 10 * 60_000) recentPairs.delete(mint)
+  return pairs
+}
+
+/** Pairs another loop read in the last `maxAgeMs`, so the same coin is not looked up twice within a few seconds. */
+export function recentPairsFor(mints: string[], maxAgeMs: number, now = Date.now()) {
+  const found = new Map<string, DexPair>()
+  for (const mint of mints) {
+    const entry = recentPairs.get(mint)
+    if (entry && now - entry.at <= maxAgeMs) found.set(mint, entry.pair)
+  }
+  return found
+}
+
+export async function fetchPairsForMints(mints: string[], reuseWithinMs = 0) {
+  const unique = [...new Set(mints)]
+  const reused = reuseWithinMs > 0 ? recentPairsFor(unique, reuseWithinMs) : new Map<string, DexPair>()
+  const pairs: DexPair[] = [...reused.values()]
+  for (const group of chunk(unique.filter(mint => !reused.has(mint)), 30)) pairs.push(...await fetchTokenPairs(group))
   return pairs
 }
 
@@ -134,8 +173,8 @@ export function socialsOf(pair: DexPair) {
   return { twitter: find('twitter') ?? find('x'), telegram: find('telegram'), website: pair.info?.websites?.[0]?.url ?? null }
 }
 
-export async function fetchMarketsForMints(mints: string[]) {
-  const best = bestPairByMint(await fetchPairsForMints(mints))
+export async function fetchMarketsForMints(mints: string[], reuseWithinMs = 0) {
+  const best = bestPairByMint(await fetchPairsForMints(mints, reuseWithinMs))
   const now = Date.now()
   return new Map([...best].map(([mint, pair]) => [mint, readMarket(pair, now)]))
 }
