@@ -5,6 +5,10 @@ const BLOOM_PER_ROUND = 0.0035
 const BLOOM_LIMIT = 0.03
 const BLOOM_DECAY = 0.06
 
+export interface AmmoPool {
+  rounds: number
+}
+
 export class WeaponState {
   ammo: number
   reloadLeft = 0
@@ -12,6 +16,7 @@ export class WeaponState {
   private burstLeft = 0
   private triggerWasDown = false
   bloom = 0
+  reserve: AmmoPool | null = null
 
   constructor(readonly spec: WeaponSpec) {
     this.ammo = spec.magazine
@@ -31,6 +36,7 @@ export class WeaponState {
 
   reload(): boolean {
     if (this.reloading || this.ammo >= this.spec.magazine || this.burstLeft > 0) return false
+    if (this.reserve && this.reserve.rounds <= 0) return false
     this.reloadLeft = this.spec.reload
     return true
   }
@@ -45,6 +51,13 @@ export class WeaponState {
     this.cancel()
   }
 
+  private topUp(): void {
+    const need = this.spec.magazine - this.ammo
+    const take = this.reserve ? Math.min(need, this.reserve.rounds) : need
+    this.ammo += take
+    if (this.reserve) this.reserve.rounds -= take
+  }
+
   update(dt: number, triggerDown: boolean): number {
     const pressed = triggerDown && !this.triggerWasDown
     this.triggerWasDown = triggerDown
@@ -53,7 +66,7 @@ export class WeaponState {
 
     if (this.reloading) {
       this.reloadLeft = Math.max(0, this.reloadLeft - dt)
-      if (!this.reloading) this.ammo = this.spec.magazine
+      if (!this.reloading) this.topUp()
       if (this.next < 0) this.next = 0
       return 0
     }
@@ -87,7 +100,10 @@ export class WeaponState {
       const lastOfBurst = this.spec.mode === 'burst' && this.burstLeft === 0
       this.next += lastOfBurst ? Math.max(this.spec.roundInterval, this.spec.burstDelay) : this.spec.roundInterval
     }
-    if (this.ammo <= 0) this.burstLeft = 0
+    if (this.ammo <= 0) {
+      this.burstLeft = 0
+      this.reload()
+    }
     if (this.next < 0) this.next = 0
     return rounds
   }

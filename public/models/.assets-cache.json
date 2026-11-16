@@ -1358,5 +1358,15 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"
+ },
+ "arena/raider.glb": {
+  "hash": "1e60c59cdd95d554abd0962ea576b8e798e43a1f",
+  "before": 630804,
+  "after": 400728,
+  "primsBefore": 15,
+  "primsAfter": 6,
+  "matsBefore": 7,
+  "matsAfter": 2,
+  "preset": "rig"
  }
 }

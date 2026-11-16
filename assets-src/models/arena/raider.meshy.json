@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "Full body rough-looking middle-aged man standing in a T-pose, arms straight out to the sides, stocky build, stubble beard, dark bandana on his head, stained white tank top, faded olive cargo shorts, white knee socks, worn sneakers, fingerless gloves, realistic proportions, grimy street-tough look, clean game character",
+    "texturePrompt": "tanned weathered skin, grey-brown stubble beard, dark navy bandana, dirty stained white tank top, faded olive green cargo shorts, white tube socks, scuffed grey sneakers, black fingerless gloves, realistic",
+    "aiModel": "meshy-t2.5",
+    "modelType": "smart-topology",
+    "polycount": 8000,
+    "pose": "t-pose",
+    "rig": true,
+    "height": 1.78
+  },
+  "tasks": {
+    "preview": { "id": "01a1e254-9150-74d3-bce4-e7107c49a86f", "status": "SUCCEEDED", "credits": 5 },
+    "refine": { "id": "01a1e25b-9ea4-7281-9195-4d1a893b94a3", "status": "SUCCEEDED", "credits": 10 },
+    "rig": { "id": "01a1e25d-9c3d-76cc-8373-b8519a1ec2dd", "status": "SUCCEEDED", "credits": 5 }
+  },
+  "credits": 20,
+  "files": [
+    "assets-src/arena/raider-rig.glb",
+    "assets-src/models/arena/raider.glb"
+  ],
+  "build": "blender -b --factory-startup -P modules-src/arena/tools/build-raider.py -- assets-src/arena/raider-rig.glb assets-src/models/arena/raider.glb, then pnpm assets"
+}
