@@ -2201,3 +2201,7 @@ body{background:var(--paper);color:var(--tone-0)}
 .we3d-hint{right:10px}
 @media(max-width:640px){.we3d-title{width:100%;margin-right:0}.we3d-hint{display:none}.we3d-stats{right:10px}}
 @media(prefers-reduced-motion:reduce){.we3d-btn{transition:none}.we3d-busy svg{animation:none}}
+.lsr{max-width:640px}
+.lsr-form{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.lsr-form .adm-search{flex:1 1 220px}
+.lsr-status{min-height:1.4em;margin:4px 0;color:var(--lib-strong)}
