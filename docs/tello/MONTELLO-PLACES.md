@@ -28,7 +28,8 @@ lot. Fuel stations whose canopy OpenStreetMap does not map get four pumps in fro
 | Yahooz is a working bar | Yahooz Sports Bar & Grill | node 12041313902 | 60 W Montello St | Building #126. |
 | Town Pump is a working bar | Weezie's Town Pump | node 12041325192 | W Montello St | Building #115. |
 | Lakeside is a working bar | Drew's Lakeside Bar & Grill | none (not mapped) | 219 W Water St, over Buffalo Lake | Footprint #3124 matched to the geocoded address (Nominatim way 6917735). |
-| The casino/bar goes inside Foxtails | Foxtails Gentlemen's Club ("The Foxtail") | none (not mapped) | N4305 16th Rd, east of town on State Highway 23 | The club's building is read off the aerial photo: footprint #2111 (184 m2) beside the highway about 80 m west of where 16th Road crosses it at (1744, 345), with a car lot south of it. The old casino moves inside this building. |
+| The casino/bar goes inside Foxtails | Foxtails Gentlemen's Club ("The Foxtail") | none (not mapped) | N4305 16th Rd, north of State Highway 23 | Footprint #2404 (465 m2, an L: a 10.6 m hall running north with a wider wing across its north end), the building just north of Napralla Tire; its front faces 16th Road. The first bake took #2111 on the highway, which is Napralla Tire (corrected 2026-11-15 by `tools/fix_foxtails.py`). The casino is built on this footprint. |
+| Napralla Tire stays a tire shop | Napralla Tire (`shop=tyres`) | none (not mapped) | W2922 State Road 23 | Footprint #2111 (184 m2) beside the highway about 80 m west of where 16th Road crosses it at (1744, 345), with a dirt drive from the highway to its door (`EXTRA_DRIVES`). |
 | Police station where the sheriff really is | Marquette County Sheriff Department | node 7140542678 | 67 W Park St (courthouse at 77 W Park St) | Building #183 (2,159 m2), the courthouse and jail block on West Park Street. |
 | Fire station and municipal building | Montello Fire Department, City Hall, Police | node 7886974850 | 20 Underwood Ave | One building, #159, with the fire bays; door on Underwood Avenue. |
 | The dealership downtown on Main Street (UTV and fishing boat) | H A Freitag & Son (`shop=car`) | node 7140534366 | 41 Main St | Building #177 (1,064 m2), door on Main Street. |
@@ -53,7 +54,9 @@ in the JSON `lots` with a name `n`, levelled like any lot and counted as pavemen
 | St John's Lutheran School lot | 795, -78 to 838, -48 | In front of the school. |
 | Freitag's Food Center lot | 228, -1370 to 272, -1285 | Customer lot between Main Street and the store. |
 | Freitag's Food Center service yard | 280, -1405 to 345, -1357 | Paved yard south of the store. |
-| Foxtails lot | 1647, 283 to 1690, 338 | Car lot south of the club. |
+
+Napralla Tire's yard in front of its bays is dirt (`Napralla Tire yard`, 11 m wide) with a dirt drive (`Napralla Tire driveway`, road kind 5, 8 m wide,
+from (1672, 339) at the door to State Highway 23 at (1702, 304)); the paved "Foxtails lot" the first bake put there is gone.
 
 Ball fields (JSON `pitches`; a diamond carries `home`, `mound`, `heading` (home to second base, radians clockwise from
 north), `infield` radius and `outfield` radius from home; the outline `p` is the infield dirt):
@@ -120,7 +123,8 @@ data, including `MONTELLO_SHERIFF`, `MONTELLO_DEALER` and `MONTELLO_DEPOT` (behi
 | Yahooz Sports Bar & Grill | bar | -5, -21 | door -6, -19 facing 344 deg on West Montello Street; building #126 store 233 m2 at -2, -32; back lot 5, -54 |
 | Weezie's Town Pump | bar | 16, 9 | door 16, 6 facing 162 deg on West Montello Street; building #115 store 231 m2 at 12, 22; back lot 5, 46 |
 | Drew's Lakeside Bar & Grill | bar | -260, -779 | door -263, -786 facing 184 deg on West Water Street; building #3124 store 108 m2 at -260, -779; back lot -254, -763 |
-| Foxtails Gentlemen's Club | nightclub | 1662, 346 | door 1671, 340 facing 139 deg on State Highway 23; building #2111 store 184 m2 at 1662, 346; back lot 1644, 357 |
+| Foxtails Gentlemen's Club | nightclub | 1691, 432 | door 1696, 426 facing 84 deg on 16th Road; building #2404 store 465 m2 at 1689, 438 |
+| Napralla Tire | tyres | 1662, 346 | door 1671, 340 facing 139 deg on State Highway 23; building #2111 store 184 m2 at 1662, 346; dirt drive to the highway |
 
 ### Civic
 

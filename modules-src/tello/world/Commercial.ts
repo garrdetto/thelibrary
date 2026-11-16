@@ -59,7 +59,7 @@ function steelDoor(layer: PlaceLayer, w: Wall, t: number, top: number, color: RG
   layer.lay('wall-pack', px, pz, place(px, f + h + 0.45, pz, 0.8, 0.8, 0.8, Math.atan2(w.e.nx, w.e.nz)), {})
 }
 
-function overheadDoor(layer: PlaceLayer, w: Wall, t: number, wide: number, top: number): number {
+export function overheadDoor(layer: PlaceLayer, w: Wall, t: number, wide: number, top: number): number {
   const f = w.floor
   const h = Math.min(3.4, top - f - 0.5)
   if (h < 2.3) return 0

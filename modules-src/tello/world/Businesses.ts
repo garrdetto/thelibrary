@@ -3,8 +3,9 @@
  * stations (Kwik Trip, BP and Mobil: glass store front with a sign band and entry canopy, pump islands with Blender
  * dispensers where the bake put the pumps, a lit fuel canopy lettered on both sides, canopy posts and bollards), the
  * grocery (Freitag's Food Center: glass front and vestibule canopy, sign, cart corrals, roof units), Drew's Lakeside
- * Bar & Grill (entry, sign, a deck on the lake side), Foxtails Gentlemen's Club on Highway 23 (blank dark front, lit
- * canopy, a sign pylon; exterior only), the Marquette County Sheriff's Office (portico, flagpoles, monument sign) and
+ * Bar & Grill (entry, sign, a deck on the lake side), Foxtails Gentlemen's Club on 16th Road (blank dark front, lit
+ * canopy, a sign pylon; exterior only), Napralla Tire on Highway 23 (two service bays, a customer door, tire stacks and a
+ * red two-post sign by its dirt yard), the Marquette County Sheriff's Office (portico, flagpoles, monument sign) and
  * the freight depot behind Freitag's (a metal warehouse with a row of dock doors). Plain lettering on dark boards, no
  * logos and no brand colours. Places come from the JSON `pois` (`i` building index, `d` front door, `pumps`).
  */
@@ -14,7 +15,7 @@ import type { BuildingData, Poi } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { edgesOf, facing, shellSkips, type Edge } from './Buildings'
 import { place } from './Kit'
-import { dressCommercial, dressMetalWall, type TakenWall } from './Commercial'
+import { dressCommercial, dressMetalWall, overheadDoor, steelDoor, type TakenWall } from './Commercial'
 import { ALUM, CANOPY_BAND, CANOPY_WHITE, at, entryCanopy, storeFront, toTown, wallBox, wallNear, wallPacks, wallQuad, type Wall } from './WallKit'
 import type { PlaceLayer } from './PlaceLayer'
 import type { StaticSink } from './Sink'
@@ -489,6 +490,45 @@ function depot(c: Ctx, freitag: PlacePoi): DepotSite | null {
   return { dock: { x: centre[0], z: northZ + 1 }, face: [0, 1], x: centre[0], z: centre[1], yaw, length, depth }
 }
 
+/** Napralla Tire, the tire shop on State Highway 23 (from the photo off the highway): two overhead service bays and a customer door on the highway wall, tire stacks beside the bays and a wide red board on two posts where its dirt yard meets the highway. */
+function napralla(c: Ctx, poi: PlacePoi): void {
+  const b = placeBuilding(c.land, poi)
+  if (!b || !poi.d) return
+  const wall = wallNear(b, poi.d)
+  if (!wall) return
+  take(c, b, wall)
+  const { e, floor } = wall
+  const top = floor + b.h
+  const bay = Math.min(3.2, (e.len - 2.4) / 2 - 0.3)
+  if (bay > 2.2) {
+    overheadDoor(c.layer, wall, 0.6 + bay / 2, bay, top)
+    overheadDoor(c.layer, wall, 0.9 + bay * 1.5, bay, top)
+  }
+  steelDoor(c.layer, wall, e.len - 0.9, top, hexRGB(0x6b2f2a))
+  const tires = c.layer.builder(...at(wall, 0.4), c.layer.M.paint)
+  const rubber = hexRGB(0x1b1c1e)
+  for (const [t, out, stack] of [[-0.9, 0.7, 4], [-0.9, 1.5, 3], [-1.7, 1.1, 5]] as const) {
+    const [x, z] = at(wall, t, out)
+    for (let k = 0; k < stack; k++) tires.cylinder(x, floor + k * 0.22, z, 0.34, 0.34, 0.2, 14, true, rubber)
+  }
+  const nMap: [number, number] = [Math.sin(poi.d[2]), Math.cos(poi.d[2])]
+  const spot = findFree(c.land, [poi.d[0], poi.d[1]], nMap, [40, 36, 44], [-6, 6], c.land.doc.buildings)
+  if (!spot) return
+  const [px, pz] = toTown(spot[0], spot[1])
+  const y = c.land.heightAt(spot[0], spot[1])
+  const n: [number, number] = [nMap[0], -nMap[1]]
+  const posts = c.layer.builder(px, pz, c.layer.M.paint)
+  const sx = -n[1] * 2.1
+  const sz = n[0] * 2.1
+  for (const k of [-1, 1]) {
+    posts.cylinder(px + sx * k, y - 0.2, pz + sz * k, 0.1, 0.1, 4.9, 8, true, ALUM)
+    c.sink.addStaticCylinder(px + sx * k, y + 2.4, pz + sz * k, 2.4, 0.14)
+  }
+  addSign(c, 'NAPRALLA TIRE', px, pz, y + 3.95, 5.0, 1.3, n, 0xc8231d, 0xffffff, 0.12)
+  addSign(c, 'NAPRALLA TIRE', px, pz, y + 3.95, 5.0, 1.3, [-n[0], -n[1]], 0xc8231d, 0xffffff, 0.12)
+  addSign(c, 'TIRES · SERVICE', px, pz, y + 2.75, 2.6, 0.55, n, 0xf2f0ea, 0xc8231d, 0.12)
+}
+
 /** Freitag's dealership: a plain-lettered pole sign at the lot's street end (its building front, from the photos, is Storefronts.ts). */
 function dealership(c: Ctx, poi: PlacePoi): void {
   if (!poi.d) return
@@ -524,6 +564,7 @@ export function buildBusinesses(layer: PlaceLayer, signs: Signs, sink: StaticSin
     } else if (poi.n === "Drew's Lakeside Bar & Grill") lakeside(c, poi)
     else if (poi.n === 'Yahooz Sports Bar & Grill') yahooz(c, poi)
     else if (poi.n === "Foxtails Gentlemen's Club") foxtails(c, poi)
+    else if (poi.n === 'Napralla Tire') napralla(c, poi)
     else if (poi.n === 'Marquette County Sheriff Department') sheriff(c, poi)
     else if (poi.n === 'H A Freitag & Son') dealership(c, poi)
     else if (poi.n === 'Montello Junior-Senior High School' && poi.d) {

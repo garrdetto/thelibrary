@@ -1592,11 +1592,13 @@ def fetch_osm(cache):
 EXTRA_PLACES = [
     {'name': "Freitag's Food Center", 'lonlat': (-89.325488, 43.780028), 'r': 70, 'k': 'shop', 't': 'shop:supermarket', 'tags': {'shop': 'supermarket'}, 'minArea': 250},
     {'name': "Drew's Lakeside Bar & Grill", 'lonlat': (-89.3314562, 43.7846085), 'r': 50, 'k': 'bar', 't': 'bar', 'tags': {'amenity': 'bar'}},
-    {'name': "Foxtails Gentlemen's Club", 'xz': (1650.0, 346.0), 'r': 45, 'k': 'bar', 't': 'nightclub', 'tags': {'amenity': 'nightclub'}},
+    # Foxtails (N4305 16th Road) is the long building north of the highway; the one on the highway is Napralla Tire.
+    {'name': "Foxtails Gentlemen's Club", 'xz': (1689.4, 437.6), 'r': 12, 'k': 'bar', 't': 'nightclub', 'tags': {'amenity': 'nightclub'}},
+    {'name': 'Napralla Tire', 'xz': (1661.5, 346.5), 'r': 12, 'k': 'shop', 't': 'shop:tyres', 'tags': {'shop': 'tyres'}},
 ]
 
 # Parking lots the open data lacks, outlined by eye on the NAIP aerial photo (map metres, accurate to a few metres):
-# the school complex, St John's Lutheran School, Freitag's Food Center and Foxtails.
+# the school complex, St John's Lutheran School, Freitag's Food Center and Foxtails (its lot between the club and 16th Road).
 EXTRA_LOTS = [
     ('Montello school west lot', [(374, 476), (450, 476), (450, 523), (374, 523)]),
     ('Montello school west paved court', [(427, 440), (451, 440), (451, 476), (427, 476)]),
@@ -1607,7 +1609,14 @@ EXTRA_LOTS = [
     ("St John's Lutheran School lot", [(795, -78), (838, -78), (838, -48), (795, -48)]),
     ("Freitag's Food Center lot", [(228, -1370), (272, -1370), (272, -1285), (228, -1285)]),
     ("Freitag's Food Center service yard", [(280, -1405), (345, -1405), (345, -1357), (280, -1357)]),
-    ('Foxtails lot', [(1647, 283), (1690, 283), (1690, 338), (1647, 338)]),
+    ('Foxtails parking lot', [(1702.9, 415.4), (1739, 419.3), (1739, 466.7), (1697.8, 462.2)]),
+]
+
+# Driveways the open data lacks, read off the aerial photo: Napralla Tire's dirt drive from State Highway 23 and the dirt
+# yard along the front of its bays.
+EXTRA_DRIVES = [
+    {'name': 'Napralla Tire driveway', 'kind': 5, 'width': 8.0, 'class': 'track', 'pts': [(1672.2, 338.8), (1686.6, 322.2), (1702.1, 304.4)]},
+    {'name': 'Napralla Tire yard', 'kind': 5, 'width': 11.0, 'class': 'track', 'pts': [(1663.4, 328.6), (1671.6, 335.1), (1681.5, 342.8)]},
 ]
 
 # Ball fields and courts read off the same photo. The baseball diamond's infield arc fits a 29.7 m circle (the standard
@@ -1796,6 +1805,7 @@ def main():
 
     # Roads, then yards and lots.
     roads = [r for r in collect_roads(osm) if LineString(r['pts']).intersects(seen)]
+    roads += [{'id': f'extra-{i}', 'kind': d['kind'], 'width': d['width'], 'name': d['name'], 'ref': '', 'pts': list(d['pts']), 'bridge': False, 'oneway': False, 'class': d['class']} for i, d in enumerate(EXTRA_DRIVES)]
     ms = ms_buildings(cache)
     extras = extra_places()
     buildings = collect_buildings(osm, ms, water, roads, dem, near_city, extras)
