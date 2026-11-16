@@ -170,6 +170,11 @@ function Studio() {
     if (!access.pages.includes('lyrics')) { setCorrections([]); setPresets([]) }
   }, [access, view])
   useEffect(() => {
+    if (!accountReady || access.isAdmin || !(moduleLayout.hidden as string[]).includes(view)) return
+    setView('home'); setPlayRoom(null)
+    window.history.replaceState(null, '', window.location.pathname)
+  }, [accountReady, access.isAdmin, moduleLayout, view])
+  useEffect(() => {
     if (!access.pages.includes('lyrics')) return
     requestApi('/api/learning').then(result => setCorrections(result.items)).catch(() => {})
     requestApi('/api/lyric-presets').then(result => setPresets(result.items)).catch(() => {})
