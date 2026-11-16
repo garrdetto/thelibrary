@@ -73,7 +73,7 @@ const n = { x: 0, y: 1, z: 0 } as Vec3
 /** Drafting and side-draft from the cars around `c`: drag factor (<1 in a draft) and a sideways pull (m/s², toward +lat). */
 function airflow(w: World, c: SimCar): { drag: number; side: number; draft: number } {
   let draft = 0, side = 0
-  const P = w.track.P, len = 5.5 * w.cfg.carScale
+  const P = w.track.P, len = 5.5 * w.cfg.carScale * (c.fl || 1)
   for (const o of w.cars.values()) {
     if (o === c || !o.vis) continue
     let ds = (o.tp.s - c.tp.s) % P

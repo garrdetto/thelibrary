@@ -8,6 +8,8 @@ import { issueTicket, redeemTicket } from './account'
 import { NOTICE_PLACES, saveWithKnockouts } from '../score-notices.js'
 import type { Scheme } from '../../lib/racing'
 import { displayScheme, presets } from '../../lib/racing'
+import { carCountsForRecords, carIdOf } from '../../../modules-src/shorttrack/shared/CustomCars'
+import { getCar } from '../shorttrack-cars'
 
 const minimumLapMilliseconds = {
   circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dellswide: 7000, prison: 7500, dirt: 8000,
@@ -28,7 +30,7 @@ const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ticket') }),
   z.object({ action: z.literal('reset-records'), password: z.string().min(1).max(128).optional(), mode: raceModes, track: trackIds }),
-  z.object({ action: z.literal('lap'), run: z.string().uuid(), lap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), milliseconds: z.number().int().min(4000).max(600000), mode: raceModes, track: trackIds }),
+  z.object({ action: z.literal('lap'), run: z.string().uuid(), lap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), milliseconds: z.number().int().min(4000).max(600000), mode: raceModes, track: trackIds, vehicle: z.string().max(64).optional() }),
   z.object({ action: z.literal('preset'), name: z.string().max(40), bodyStyle: bodyStyles.optional() }),
   z.object({ action: z.literal('body'), bodyStyle: bodyStyles }),
   z.object({ action: z.literal('paint'), vehicle: vehicleIds, body: hex, stripe: hex, pattern: z.enum(['plain', 'stripes', 'flames', 'chevrons', 'checker', 'lightning']) }),
@@ -79,6 +81,11 @@ export async function racing(request: Request, env: Env) {
   if (input.action === 'lap') {
     if (closedTracks.has(input.track)) return json({ error: 'The classic Short Track Showdown boards are closed. Reload the module to race on the current boards.' }, 400)
     if (input.milliseconds < minimumLapMilliseconds[input.track]) return json({ error: 'That lap time is faster than the track allows.' }, 400)
+    const customId = input.vehicle ? carIdOf(input.vehicle) : null
+    if (customId) {
+      const car = await getCar(env, customId)
+      if (car && !carCountsForRecords(car)) return json({ error: 'Laps in this vehicle don’t count toward records.' }, 400)
+    }
     await saveWithKnockouts(env, {
       game: input.track === 'circuit' ? 'racing' : input.track === 'oval' ? 'oval' : 'shorttrack',
       detail: `${trackNames[input.track]} · ${modeNames[input.mode]}`,

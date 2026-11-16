@@ -16,6 +16,8 @@ export type SimCar = {
   auto: boolean
   /** True for the Super Late Model and custom cars (`m.car` in the classic module), false for the truck. */
   stockCar: boolean
+  /** Racing footprint relative to the stock car's: length and width (1 for the truck, stock car and full-size bodies). */
+  fl: number; fw: number
   x: number; z: number; h: number; vx: number; vz: number; vf: number; av: number
   steer: number; steerV: number; thr: number; brk: number; slip: number
   dmg: Damage
@@ -37,9 +39,9 @@ export type SimCar = {
   dyn?: Dyn
 }
 
-export function createCar(id: string, o: { local?: boolean; ai?: boolean; pace?: boolean; player?: boolean; stockCar?: boolean } = {}): SimCar {
+export function createCar(id: string, o: { local?: boolean; ai?: boolean; pace?: boolean; player?: boolean; stockCar?: boolean; fl?: number; fw?: number } = {}): SimCar {
   return {
-    id, local: !!o.local, ai: !!o.ai, isPace: !!o.pace, isPlayer: !!o.player, auto: false, stockCar: !!o.stockCar,
+    id, local: !!o.local, ai: !!o.ai, isPace: !!o.pace, isPlayer: !!o.player, auto: false, stockCar: !!o.stockCar, fl: o.fl || 1, fw: o.fw || 1,
     x: 0, z: 0, h: 0, vx: 0, vz: 0, vf: 0, av: 0, steer: 0, steerV: 0, thr: 0, brk: 0, slip: 0,
     dmg: { f: 0, r: 0, l: 0, rt: 0 }, cross: 0, sp: 0, lapStart: null, lastLap: null, bestLap: null, lapDirty: false,
     fin: false, stopT: 0, stuckT: 0, cautioned: false, vis: true,

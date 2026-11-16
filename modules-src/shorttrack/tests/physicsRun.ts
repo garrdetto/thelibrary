@@ -4,6 +4,7 @@ import type { Difficulty, TrackId } from '../next/sim/config'
 import { rng } from '../next/sim/math'
 import { beginRace, buildGrid, createWorld, simCarFactory, tick } from '../next/sim/race'
 import type { VehicleModel } from '../next/sim/world'
+import { createCar } from '../next/sim/car'
 
 const FIELD = ICONIC_FIELD.map((f: { number: string }) => String(f.number ?? '').replace(/\D/g, '').slice(0, 3))
 
@@ -25,13 +26,13 @@ export type RunResult = {
 }
 
 /** An all-AI race like the Phase 0 recorder's: the host car driven by the AI at the level's mid settings. */
-export function runRace(track: TrackId, diff: Difficulty, laps: number, model: VehicleModel, seed = 20261105, maxSeconds = 0): RunResult {
+export function runRace(track: TrackId, diff: Difficulty, laps: number, model: VehicleModel, seed = 20261105, maxSeconds = 0, footprint?: { length: number; width: number }): RunResult {
   let clock = 1000
   const rand = rng(seed)
   const w = createWorld(TRACKS[track], rand, () => clock, model)
   const base = BASELINES[track]
   const grid = buildGrid(rand, [{ id: 'host', number: '7' }], FIELD, { ai: 19, diff }, base, w.cfg.maxCars)
-  beginRace(w, grid, { attack: false, laps, mode: 'race', myId: 'host', host: true, make: simCarFactory(() => false) })
+  beginRace(w, grid, { attack: false, laps, mode: 'race', myId: 'host', host: true, make: footprint ? (e, f) => createCar(e.id, { ...f, stockCar: true, fl: footprint.length, fw: footprint.width }) : simCarFactory(() => false) })
   const A = AI_LEVELS[diff], host = w.cars.get('host')!
   Object.assign(host, { isPlayer: false, ai: true, skill: A.sk[0] + A.sk[1] / 2, aiDecel: A.dc, passD: A.pass, gripB: A.gb, powB: A.pb, gripB0: A.gb, powB0: A.pb, laneCD: A.lc, aggr: A.ag, lapTgt: base * A.pace })
   const cross = new Map<string, number>(), lapList: number[] = [], stopped = new Map<string, number>(), stuck = new Set<string>()
