@@ -32,7 +32,7 @@ export type RadarHolderTraits = { top10: number | null; dev: number | null; snip
 
 export type RadarHolderRisk = { blocked: boolean; multiplier: number; reasons: string[] }
 
-export type RadarScorePart = { key: 'viewers' | 'holders' | 'momentum' | 'buyers' | 'together' | 'distribution' | 'hype' | 'chart' | 'penalty' | 'learned'; label: string; points: number; max: number; detail: string; available: boolean }
+export type RadarScorePart = { key: 'viewers' | 'holders' | 'momentum' | 'buyers' | 'together' | 'distribution' | 'hype' | 'chart' | 'penalty' | 'learned' | 'growth'; label: string; points: number; max: number; detail: string; available: boolean }
 
 /** Price change in percent over each DexScreener score window. */
 export type RadarDexMoves = { s5: number | null; s30: number | null; m1: number | null; m5: number | null }

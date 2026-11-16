@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceAlert, patternStats, thresholdFor, type AlertRow } from './runner-learning.js'
-import { movementSignal, scoreRunner, sellImpact, serialLauncherCap, softPenalties, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
+import { marketCapGrowthPoints, movementSignal, scoreRunner, sellImpact, serialLauncherCap, softPenalties, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
 import { resetSellWatch, watchSells, type ShareReading } from './sell-watch.js'
 import { recordScore, resetScoreTrails } from './score-trail.js'
 import { minuteClosesFrom, withChartHistory } from './chart-history.js'
@@ -129,10 +129,10 @@ test('a top 10 up to 35% costs nothing; over 35% makes it 0', () => {
   assert.equal(scoreRunner(middling({ top10: 35.5 })).score, 0)
 })
 
-test('market cap and distance to migration never cost points', () => {
+test('above $10K, market cap and distance to migration never cost points', () => {
   const early = scoreRunner(middling({ marketCap: 20_000, graduated: false })).score
   assert.equal(scoreRunner(middling({ marketCap: 66_000, graduated: false })).score, early)
-  assert.equal(scoreRunner(middling({ marketCap: 3_000, graduated: false })).score, early)
+  assert.equal(scoreRunner(middling({ marketCap: 10_000, graduated: false })).score, early)
 })
 
 test('a 30-50% pullback won back with higher lows earns the multi-wave points', () => {
@@ -332,4 +332,25 @@ test('movement over 5s, 30s, 1m and 5m counts, the 5-minute move most and the 5-
   assert.ok(falling.cuts.some(cut => cut.startsWith('Falling (')), JSON.stringify(falling.cuts))
   assert.equal(movementSignal({ m1: null, m5: null }), null)
   assert.ok((movementSignal({ s5: 8, s30: null, m1: null, m5: null })?.signal ?? 1) <= 0.1)
+})
+
+test('a coin under $10K market cap starts 50 points down, whatever else it shows', () => {
+  const faded = scoreRunner(strong({ marketCap: 4_000, priceChange: { m1: 0, m5: 0 } }))
+  const healthy = scoreRunner(strong({ marketCap: 30_000, priceChange: { m1: 0, m5: 0 } }))
+  assert.ok(healthy.score >= 70, String(healthy.score))
+  assert.ok(faded.score <= healthy.score - 45, `${healthy.score} ${faded.score}`)
+  assert.ok(faded.score <= 50, String(faded.score))
+  assert.ok(faded.cuts.some(cut => cut.includes('under $10.0K')), JSON.stringify(faded.cuts))
+})
+
+test('market cap growth: +5 for 50% in a minute, +10 for doubling in a minute or tripling in 5 minutes', () => {
+  assert.equal(marketCapGrowthPoints({ m1: 50, m5: 50 }).points, 5)
+  assert.equal(marketCapGrowthPoints({ m1: 100, m5: 100 }).points, 10)
+  assert.equal(marketCapGrowthPoints({ m1: 5, m5: 200 }).points, 10)
+  assert.equal(marketCapGrowthPoints({ m1: -20, m5: -40 }).points, 0)
+  assert.equal(marketCapGrowthPoints({ m1: 900, m5: null }).points, 20)
+  const quiet = scoreRunner(strong({ ticks: [], dexPaid: false, viewers: 40, viewersPerMin: 1, holdersPerMin: 2, priceChange: { m1: 0, m5: 0 } }))
+  const surging = scoreRunner(strong({ ticks: [], dexPaid: false, viewers: 40, viewersPerMin: 1, holdersPerMin: 2, priceChange: { m1: 100, m5: 100 } }))
+  assert.ok(surging.score >= quiet.score + 10, `${quiet.score} ${surging.score}`)
+  assert.ok(surging.tags.includes('mcap-growing'))
 })
