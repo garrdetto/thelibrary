@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import tailwindcss from '@tailwindcss/vite'
 import { build, type InlineConfig, type Plugin } from 'vite'
 import { bakeFoxLakeMap } from './modules-src/foxlake/tools/bake-map'
 
@@ -71,7 +72,7 @@ export function learningModulesConfig(watch = false): InlineConfig {
     base: '/modules/',
     publicDir: false,
     logLevel: 'warn',
-    plugins: [cleanPreviousOutput(ids), renameModulePages(), foxLakeMap()],
+    plugins: [cleanPreviousOutput(ids), renameModulePages(), foxLakeMap(), tailwindcss()],
     build: {
       outDir: modulesOut,
       emptyOutDir: false,

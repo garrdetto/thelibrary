@@ -4,7 +4,7 @@ import { json, readJson, requireSameOrigin } from '../http'
 import { currentUser, requireUser } from '../auth'
 import { canResetRecords } from '../records'
 import { NOTICE_PLACES, saveWithKnockouts } from '../score-notices.js'
-import { isScoredModule, scoreDetailLabel, scoredModules } from '../../lib/module-scores'
+import { isScoredModule, isServerOnlyBoard, scoreDetailLabel, scoredModules } from '../../lib/module-scores'
 import type { ScoredModuleId } from '../../lib/module-scores'
 
 const moduleIds = z.enum(Object.keys(scoredModules) as [ScoredModuleId, ...ScoredModuleId[]])
@@ -12,7 +12,8 @@ const moduleIds = z.enum(Object.keys(scoredModules) as [ScoredModuleId, ...Score
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('score'), module: moduleIds, value: z.number().int(), run: z.string().uuid(), detail: z.string().regex(/^[a-z]{1,16}$/).optional() })
     .refine(input => input.value >= scoredModules[input.module].min && input.value <= scoredModules[input.module].max)
-    .refine(input => !input.detail || scoreDetailLabel(input.module) !== null),
+    .refine(input => !input.detail || scoreDetailLabel(input.module) !== null)
+    .refine(input => !isServerOnlyBoard(input.module)),
   z.object({ action: z.literal('reset-records'), module: moduleIds, password: z.string().min(1).max(128).optional() }),
 ])
 

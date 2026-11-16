@@ -35,6 +35,7 @@ export const embeddedModules = [
   { id: 'arena', title: 'Vector Arena', src: '/modules/arena.html' },
   { id: 'songmaker', title: 'Song Maker', src: '/modules/songmaker.html' },
   { id: 'party', title: 'Skill Party', src: '/modules/party.html' },
+  { id: 'sunvault', title: 'Sun Vault', src: '/modules/sunvault.html' },
 ] as const
 
 export type EmbeddedModuleId = typeof embeddedModules[number]['id']
@@ -104,6 +105,7 @@ export const learningModules: LearningModule[] = [
   { id: 'keep', title: 'Hold the Keep', subject: 'Gravity & momentum', group: 'Physics', summary: 'Grab and fling raiders to defend your keep, wave after wave.', modes: ['Solo'], image: '/images/modules/keep.webp', accent: '#f4b63a' },
   { id: 'giant', title: "Giant's Hand", subject: 'Projectile motion', group: 'Physics', summary: 'Toss and juggle tiny villagers for ninety seconds.', modes: ['Solo'], image: '/images/modules/giant.webp', accent: '#7fd85a' },
   { id: 'cookies', title: 'Cookie Factory', subject: 'Exponential growth', group: 'Math', summary: 'Bake, reinvest and grow your output in five minutes.', modes: ['Solo'], image: '/images/modules/cookies.webp', accent: '#f2a541' },
+  { id: 'sunvault', title: 'Sun Vault', subject: 'Probability & expected value', group: 'Math', summary: 'Spin a five-reel temple vault and see how weighted reels set the long-run return.', modes: ['Solo', 'Play credits'], image: '/images/modules/sunvault.webp', accent: '#f8c64c' },
   { id: 'hotdog', title: 'Corner Cart', subject: 'Supply, demand & pricing', group: 'Strategy', summary: 'Run a hot-dog cart for thirty days and grow your cash.', modes: ['Solo'], image: '/images/modules/hotdog.webp', accent: '#ff7a3d' },
   { id: 'pingpong', title: 'Spin Rally', subject: 'Spin & the Magnus effect', group: 'Physics', summary: 'Table tennis where topspin, backspin and sidespin really curve the ball.', modes: ['Solo vs CPU', '2 on 1 screen', 'Online room'], image: '/images/modules/pingpong.webp', accent: '#ff5a36' },
   { id: 'arena', title: 'Vector Arena', subject: 'Gravity, collisions & level design', group: 'Physics', summary: 'A symmetrical sci-fi arena with 1v1 duels, 2v2 squads, a scored training range and Rolling Siege, where wheelchair raiders with bats never stop coming.', modes: ['Solo', 'Online', '3D'], image: '/images/modules/arena.webp', accent: '#38e1ff' },
