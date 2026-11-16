@@ -138,6 +138,65 @@ The shared world checks you are at the door for every purchase and service.
   on the map. Fires burn the nearest real
   house's roof (`places/FireFx.ts`); only the firefighter sees them for now.
 
+## People: tailored clothes, hairstyles and feet
+
+Life Sim starts Rack & Reel with `tailored: true`, so every person (you, neighbors, party members) is the scanned hunter
+refitted and dressed by `rackreel/game/Tailor.ts`:
+
+- **The body.** The scan was modelled in a padded jacket, so every shirt sat on thick, wrinkled sleeves. At load the
+  upper and lower garments are welded by position (face, hands and feet held still), their wrinkles relaxed with Taubin
+  smoothing (it keeps the volume), the sleeves slimmed toward the arm bones (`ARM_SLIM`), the trunk taken in a little
+  (`TRUNK_SLIM`), and the jacket's standing collar drawn in to the neck and painted as skin above a crew neckline.
+- **The clothes.** Every garment is a shade function of a point on the body (`rackreel/game/Garments.ts`: sleeve length,
+  armholes, necklines, collars, plackets, pockets, plaid, camo, denim, knit, mesh, shoes and socks), painted into the
+  body's texture atlas a few milliseconds at a time. Patterns come from the 3D position, so nothing smears across the
+  atlas's seams (the Meshy retextures smeared, which made outfits look glitchy). Top and trousers meet at one straight
+  waist line. The scanned hands and boots are copied from the scan's own texture. The player's clothes are painted at
+  2048 px (sharp up to a 1440-line frame), other people's at 1024 (High) or 512 (Standard); textures are shared per
+  garment and freed when the last wearer takes it off. Materials are matte (no specular, no metal) and people receive
+  no shadows.
+- **New clothes** (Life Sim only, `tailored` items in `rackreel/shared/Economy.ts`, hidden from standalone Rack & Reel):
+  red, white and blue basketball jerseys with numbers front and back, matching basketball shorts with high-tops and
+  crew socks, gym shorts, jean shorts, a baseball tee and an olive long-sleeve. They are in the character creator, the
+  catalog and the wardrobe.
+- **Hairstyles** (`HAIRSTYLES` in `rackreel/shared/Appearance.ts`, `rackreel/game/Hair.ts`): Natural (the scan's own
+  painted hair), short crop, quiff, spiky, curly top, afro, mohawk, man bun, ponytail and shoulder length, in the picked
+  hair colour. The shell grows over the scalp marked by the heads' hair mask, follows the face sliders and is hidden
+  under a hat. `APPEARANCE_VERSION` 3 offers everyone one free makeover to pick one.
+  Neighbors take a hairstyle from their name and wear one painted head whole (one shared head texture per head).
+- **The throat.** Every head texture is cleaned once at load (`cleanThroat`): the scan's painted jacket collar under
+  the beard becomes skin.
+- **Feet.** The clips' hips sit a few centimetres lower than the model's, which sank the soles into the ground.
+  `Avatar.plantFeet` lifts the hips each frame so the lower sole (toe or heel) meets the ground; for the player it
+  samples the ground under each foot, so the uphill foot no longer sinks on a slope.
+
+## Detail levels (`core/Detail.ts`)
+
+Everyone loads on **Standard**: the frame is drawn at up to 1080 lines (High: 1440), town cells and woods are switched
+off past 700 m (High: 860 m), grass reaches 70 % as far, trees swap to their low models at 80 m and are gone at 520 m
+(High: 115 m and 640 m), there is no bloom and other people's clothes are painted at half size. The Esc menu's
+**High detail** switch changes it at once and the choice is kept on the device (`tl-lifesim-detail`; `?detail=high`
+or `?detail=standard` for one visit). The player's own character looks the same at both levels.
+
+## Memory
+
+Checked with a read-through of the play-time paths and `scripts/foxlake-perf.mjs`; fixed in this pass:
+
+- Neighbors each made their own mixed 1024 px head texture (about 10 MB of GPU and canvas each); they now wear one
+  painted head whole, one shared texture per head.
+- Each neighbor wearing a hat copied the 10,783-vertex face to tuck its hair in; unshaped faces now share one tucked
+  face per hat.
+- Tree stands Montello plants after loading (one per 384 m of woods explored) were never culled, so the draw list
+  grew with exploration; they now join `RegionCuller` as they are planted (`Foliage.onStand`).
+- Real players were never despawned by distance; they now go past 140 m like simulated walkers (name tags too).
+- `RegionCuller` rebuilt its list of ungrouped meshes (filtering ~9,500 meshes) whenever any mesh was added or removed;
+  it now keeps that list one mesh at a time.
+- Montello's forest streaming ran its stand search (allocating and sorting) for every car on every physics step; it
+  now runs only when a car enters a new tree cell.
+- The corner map built its marker list every frame for a 10 Hz draw and read its size from the layout every draw;
+  both now happen only on drawing frames, and the size only after a resize.
+- A despawned helicopter kept its rotors' node graph referenced.
+
 ## Foxtails Lounge & Casino (`casino/`)
 
 A walk-in casino inside Foxtails Gentlemen's Club, east of Montello on State Highway 23. The layout in `CasinoLayout.ts` stays in the

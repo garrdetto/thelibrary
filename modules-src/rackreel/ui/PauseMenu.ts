@@ -50,6 +50,14 @@ export function saveGraphics(g: Graphics): void {
   }
 }
 
+/** A host world's picture detail: off is its lighter default, on is the full picture. */
+export interface DetailSwitch {
+  high(): boolean
+  setHigh(on: boolean): void
+  /** One line under the switch saying what it changes. */
+  note: string
+}
+
 export interface PauseHooks {
   resume(): void
   inventory(): void
@@ -61,6 +69,7 @@ export interface PauseHooks {
   /** True when the host world fixes the graphics settings (Fox Lake has no shadows): the section is left out. */
   graphicsLocked?(): boolean
   setGraphics(g: Graphics): void
+  detail?: DetailSwitch
   /** A host world's own keys, listed after Rack & Reel's (Fox Lake's map, garage and go-home). */
   controls?(): ControlRow[]
   party: PauseParty
@@ -219,7 +228,14 @@ export class PauseMenu {
     respawn.addEventListener('click', () => this.hooks.respawn())
     actions.append(inventory, records, respawn)
 
-    card.append(head, keys, look, ...(hooks.graphicsLocked?.() ? [] : [graphics]), this.party, this.note, actions)
+    const locked = hooks.graphicsLocked?.() ?? false
+    const detail = hooks.detail
+    if (detail) {
+      if (locked) graphics.replaceChildren(h('h3', undefined, 'Graphics'))
+      const row = this.toggle('High detail', detail.high(), (on) => detail.setHigh(on))
+      graphics.append(row.row, h('p', 'panel-note', detail.note))
+    }
+    card.append(head, keys, look, ...(locked && !detail ? [] : [graphics]), this.party, this.note, actions)
     this.root.append(card)
     document.body.append(this.root)
     this.root.addEventListener('keydown', (e) => {

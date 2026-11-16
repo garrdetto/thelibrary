@@ -24,6 +24,8 @@ export interface Resolution {
   readonly pinned: boolean
   /** Recomputes the size for the canvas as it is now (after a resize). */
   refit(): void
+  /** Caps the frame at this many lines from now on (a host's detail level); a `?res=` pin still wins. */
+  setCap(lines: number): void
   /** Feeds a frame-rate sample; `now` in milliseconds. Steps the size when the rate has stayed low or high long enough. */
   update(now: number, fps: number): void
 }
@@ -38,7 +40,7 @@ export function renderLines(cssLines: number, devicePixelRatio: number, cap: num
 export function attachResolution(engine: AbstractEngine, canvas: HTMLCanvasElement): Resolution {
   const param = new URLSearchParams(location.search).get('res')
   const pinnedLines = param === 'native' ? Infinity : param && Number.isFinite(Number(param)) && Number(param) >= 360 ? Number(param) : 0
-  const cap = pinnedLines || TARGET_LINES
+  let cap = pinnedLines || TARGET_LINES
   let slow = 1
   let lastSample = 0
   let lastChange = 0
@@ -65,6 +67,12 @@ export function attachResolution(engine: AbstractEngine, canvas: HTMLCanvasEleme
     },
     pinned: pinnedLines > 0,
     refit: apply,
+    setCap(lines) {
+      if (pinnedLines) return
+      cap = Math.max(MIN_LINES, lines)
+      slow = 1
+      apply()
+    },
     update(now, fps) {
       if (pinnedLines || now < WARMUP_MS || now - lastSample < SAMPLE_MS) return
       lastSample = now

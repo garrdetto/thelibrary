@@ -1,6 +1,6 @@
-import { BEARDS, BODY_SLIDERS, DEFAULT_APPEARANCE, FACES, HAIR, SHAPE_SLIDERS, SLIDER_LABEL } from '../shared/Appearance'
+import { BEARDS, BODY_SLIDERS, DEFAULT_APPEARANCE, FACES, HAIR, HAIRSTYLES, SHAPE_SLIDERS, SLIDER_LABEL } from '../shared/Appearance'
 import type { Appearance, BodySlider, HeadOption, ShapeSlider } from '../shared/Appearance'
-import { CHARACTER_CHOICES, ITEM_BY_ID, LOOK_SLOTS, outfitChoices } from '../shared/Economy'
+import { CHARACTER_CHOICES, ITEM_BY_ID, LOOK_SLOTS, offered, outfitChoices } from '../shared/Economy'
 import type { Look, LookSlot } from '../shared/Economy'
 
 const SLOT_LABEL: Record<LookSlot, string> = { jacket: 'Top', vest: 'Vest', cap: 'Hat', pants: 'Pants', pack: 'Pack' }
@@ -146,7 +146,8 @@ export class CharacterCreator {
     if (this.tab === 'face') {
       this.body.append(
         this.picker('Face', FACES, this.appearance.face, (id) => (this.appearance.face = id)),
-        this.picker('Hair', HAIR, this.appearance.hair, (id) => (this.appearance.hair = id)),
+        this.picker('Hairstyle', HAIRSTYLES, this.appearance.style, (id) => (this.appearance.style = id)),
+        this.picker('Hair colour', HAIR, this.appearance.hair, (id) => (this.appearance.hair = id)),
         this.picker('Facial hair', BEARDS, this.appearance.beard, (id) => (this.appearance.beard = id)),
         this.sliders('Face shape', SHAPE_SLIDERS),
       )
@@ -154,7 +155,7 @@ export class CharacterCreator {
       this.body.append(this.sliders('Body', BODY_SLIDERS))
     } else {
       for (const slot of LOOK_SLOTS) {
-        const choices = this.mode === 'create' ? CHARACTER_CHOICES[slot] : outfitChoices(slot)
+        const choices = (this.mode === 'create' ? CHARACTER_CHOICES[slot] : outfitChoices(slot)).filter(offered)
         if (choices.length < 2) continue
         const options = choices.map((id) => ({ id, name: ITEM_BY_ID[id]?.name ?? id }))
         this.body.append(this.picker(SLOT_LABEL[slot], options, this.look[slot], (id) => (this.look[slot] = id)))

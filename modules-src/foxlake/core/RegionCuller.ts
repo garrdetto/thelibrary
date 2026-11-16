@@ -36,20 +36,29 @@ export class RegionCuller {
   private readonly groupOf = new Map<AbstractMesh, Group>()
   private timer = 0
   private scene: Scene | null = null
-  private others: AbstractMesh[] = []
-  private othersDirty = true
+  /** Meshes in no group, kept up to date one mesh at a time (rebuilding it walked all ten thousand meshes). */
+  private readonly others: AbstractMesh[] = []
+  private readonly otherAt = new Map<AbstractMesh, number>()
   private readonly candidates: AbstractMesh[] = []
 
-  constructor(private readonly reach: number) {}
+  constructor(private reach: number) {}
+
+  /** Moves the distance groups are switched off at (the detail level); groups settle on the next update. */
+  setReach(reach: number): void {
+    this.reach = reach
+  }
 
   /** Starts choosing the scene's draw candidates (see the file note). */
   attach(scene: Scene): void {
     if (this.scene) return
     this.scene = scene
-    scene.onNewMeshAddedObservable.add(() => (this.othersDirty = true))
+    for (const m of scene.meshes) if (!this.groupOf.has(m)) this.addOther(m)
+    scene.onNewMeshAddedObservable.add((mesh) => {
+      if (!this.groupOf.has(mesh)) this.addOther(mesh)
+    })
     scene.onMeshRemovedObservable.add((mesh) => {
-      this.othersDirty = true
-      if (this.groupOf.has(mesh)) this.remove([mesh])
+      this.dropOther(mesh)
+      if (this.groupOf.has(mesh)) this.remove([mesh], true)
     })
     const list = { data: this.candidates, length: 0 }
     scene.getActiveMeshCandidates = () => {
@@ -75,12 +84,31 @@ export class RegionCuller {
     const flat = Math.max(radius, reach)
     const g: Group = { x, y: (y0 + y1) / 2, z, radius, sphere: Math.hypot(flat, (y1 - y0) / 2), meshes: live, on: true }
     this.groups.push(g)
-    for (const m of live) this.groupOf.set(m, g)
-    this.othersDirty = true
+    for (const m of live) {
+      this.groupOf.set(m, g)
+      this.dropOther(m)
+    }
+  }
+
+  private addOther(mesh: AbstractMesh): void {
+    if (this.otherAt.has(mesh)) return
+    this.otherAt.set(mesh, this.others.length)
+    this.others.push(mesh)
+  }
+
+  private dropOther(mesh: AbstractMesh): void {
+    const at = this.otherAt.get(mesh)
+    if (at === undefined) return
+    const last = this.others.pop()!
+    if (last !== mesh) {
+      this.others[at] = last
+      this.otherAt.set(last, at)
+    }
+    this.otherAt.delete(mesh)
   }
 
   /** Takes meshes out of every group (a mesh that is being disposed); groups left empty go. */
-  remove(meshes: readonly AbstractMesh[]): void {
+  remove(meshes: readonly AbstractMesh[], leaving = false): void {
     const touched = new Set<Group>()
     for (const m of meshes) {
       const g = this.groupOf.get(m)
@@ -94,7 +122,8 @@ export class RegionCuller {
       g.meshes = g.meshes.filter((m) => !gone.has(m))
       if (!g.meshes.length) this.groups.splice(this.groups.indexOf(g), 1)
     }
-    this.othersDirty = true
+    if (leaving || !this.scene) return
+    for (const m of meshes) if (!m.isDisposed()) this.addOther(m)
   }
 
   /** Buckets meshes by where their bounds sit into `cell`-sized groups. */
@@ -146,10 +175,6 @@ export class RegionCuller {
   /** This frame's draw candidates: the unmanaged meshes, then the meshes of every group that is on and in view. */
   private select(): AbstractMesh[] {
     const scene = this.scene!
-    if (this.othersDirty) {
-      this.othersDirty = false
-      this.others = scene.meshes.filter((m) => !this.groupOf.has(m))
-    }
     const out = this.candidates
     out.length = 0
     for (const m of this.others) out.push(m)

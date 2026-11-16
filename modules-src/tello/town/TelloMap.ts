@@ -197,15 +197,26 @@ export class TelloMap {
     return `Map: ${Math.round(RANGES[this.zoom] * 2)} m across`
   }
 
-  /** The corner map, ten times a second. `x`, `z` are map coordinates. */
-  drawMini(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: MapMarker[], toMap: (m: MapMarker) => { x: number; z: number } | null): void {
+  private miniWidth = -1
+
+  /**
+   * The corner map, ten times a second. `x`, `z` are map coordinates; `markers` is only asked for on the frames that
+   * draw. The map's size is read once and again on a resize, not every draw (reading it forced a style pass).
+   */
+  drawMini(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: () => MapMarker[], toMap: (m: MapMarker) => { x: number; z: number } | null): void {
     this.timer -= dt
     if (this.timer > 0) return
     this.timer = 0.1
-    const r = this.mini.getBoundingClientRect()
-    if (!r.width) return
+    if (this.miniWidth < 0) {
+      this.miniWidth = this.mini.getBoundingClientRect().width
+      addEventListener('resize', () => (this.miniWidth = -1), { once: true })
+    }
+    if (!this.miniWidth) {
+      this.miniWidth = -1
+      return
+    }
     const dpr = Math.min(2, devicePixelRatio || 1)
-    const W = Math.round(r.width * dpr)
+    const W = Math.round(this.miniWidth * dpr)
     if (this.mini.width !== W || this.mini.height !== W) {
       this.mini.width = W
       this.mini.height = W
@@ -214,7 +225,7 @@ export class TelloMap {
     const v: View = { cx: x, cz: z, s: W / 2 / RANGES[this.zoom], rot: -cameraYaw, W, H: W }
     this.draw(g, v, true, dpr, { x, z, heading: facing })
     g.setTransform(1, 0, 0, 1, 0, 0)
-    for (const m of markers) {
+    for (const m of markers()) {
       const p = toMap(m)
       if (!p) continue
       const dx = (p.x - x) * v.s, dy = -(p.z - z) * v.s

@@ -46,6 +46,9 @@ import { TownGfx } from './TownGfx'
 import { TownHud } from './TownHud'
 import { Wading } from './Wading'
 import { RegionCuller } from '../core/RegionCuller'
+import { DETAIL, loadDetail, saveDetail } from '../core/Detail'
+import type { DetailLevel } from '../core/Detail'
+import type { DetailSwitch } from '../../rackreel/ui/PauseMenu'
 import { CasinoHost } from '../casino/CasinoHost'
 import { SITE } from '../casino/CasinoLayout'
 import { registerMapPlaces } from '../places/MapPlaces'
@@ -139,6 +142,17 @@ export class FoxLakeTown implements GameExtension {
   private hudAcc = 0
   private buildSeq = 0
   private readonly culler = new RegionCuller(CULL_REACH)
+  private level: DetailLevel = loadDetail()
+  /** The Esc menu's High detail switch (Standard is everyone's default; see `core/Detail.ts`). */
+  readonly detail: DetailSwitch = {
+    high: () => this.level === 'high',
+    setHigh: (on) => {
+      this.level = on ? 'high' : 'standard'
+      saveDetail(this.level)
+      this.applyDetail()
+    },
+    note: 'Standard detail runs smoother on most computers. High draws a sharper picture (up to 1440p), farther, with more grass, trees and glow.',
+  }
   private readonly casino = new CasinoHost()
   private casinoMounted = false
   /** The developer panel and the spawned vehicles anyone can drive (dev/). */
@@ -203,6 +217,21 @@ export class FoxLakeTown implements GameExtension {
     this.hud = new TownHud()
   }
 
+  // ------------------------------------------------------------ detail
+
+  /** Puts the current detail level into effect: render size, how far town and woods are drawn, grass, trees and bloom. */
+  private applyDetail(): void {
+    const host = this.host
+    if (!host) return
+    const d = DETAIL[this.level]
+    host.ctx.resolution.setCap(d.lines)
+    this.culler.setReach(d.cullReach)
+    host.foliage.grass.setRange(d.grass)
+    host.foliage.setTreeDistances(d.treeLow, d.treeOut)
+    host.ctx.pipeline.bloomEnabled = d.bloom
+    this.culler.update(0, host.ctx.camera.globalPosition, true)
+  }
+
   // ------------------------------------------------------------ ready
 
   async ready(host: GameHost): Promise<void> {
@@ -222,6 +251,7 @@ export class FoxLakeTown implements GameExtension {
       townRoot: this.root,
       register: (mesh) => host.ctx.registerDynamic(mesh),
       unregister: (mesh) => host.ctx.unregisterDynamic(mesh),
+      clothSize: () => DETAIL[this.level].crowdCloth,
     }, () => this.selfId)
     this.dev = new FoxLakeDev({
       host,
@@ -260,6 +290,8 @@ export class FoxLakeTown implements GameExtension {
     })
     addEventListener('keydown', (e) => this.key(e))
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
+    host.foliage.onStand = (stand) => this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
+    this.applyDetail()
     const country = scene.meshes.filter((m) => {
       if (m.infiniteDistance || !m.isEnabled() || !LAKE_COUNTRY_MESHES.test(m.name)) return false
       const c = m.getBoundingInfo().boundingBox.centerWorld
@@ -726,7 +758,7 @@ export class FoxLakeTown implements GameExtension {
     if (!this.map) return false
     const land = this.land
     const here = this.host.driving?.position
-    this.map.drawMini(dt, land.toMapX(here?.x ?? x), land.toMapZ(here?.z ?? z), cameraYaw, facing, markers().filter((m) => m.kind === 'friend'), (m) => (land.holdsScene(m.x, m.z) ? { x: land.toMapX(m.x), z: land.toMapZ(m.z) } : null))
+    this.map.drawMini(dt, land.toMapX(here?.x ?? x), land.toMapZ(here?.z ?? z), cameraYaw, facing, () => markers().filter((m) => m.kind === 'friend'), (m) => (land.holdsScene(m.x, m.z) ? { x: land.toMapX(m.x), z: land.toMapZ(m.z) } : null))
     return true
   }
 

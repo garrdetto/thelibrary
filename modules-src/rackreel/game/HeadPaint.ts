@@ -10,7 +10,9 @@ import type { Scene } from '@babylonjs/core/scene'
 import { modelFileUrl } from '../core/ModelLibrary'
 import { paintedMaterial } from '../world/TexturedMaterial'
 
-const SIZE = 1024
+/** Size of every head texture (the head atlas's own). */
+export const HEAD_TEXTURE = 1024
+const SIZE = HEAD_TEXTURE
 
 interface Mix {
   material: Material
@@ -39,13 +41,17 @@ export class HeadPaint {
   private masks: Promise<{ hair: HTMLCanvasElement; beard: HTMLCanvasElement }> | null = null
   private readonly scratch = document.createElement('canvas')
 
-  constructor(private readonly scene: Scene, private readonly plain: (head: string) => Material) {
+  /**
+   * `prepare`, when given, touches up every head texture after it is drawn (Life Sim cleans the scanned collar off the
+   * throat), so every head, plain ones too, is drawn into a texture of its own and shared by everyone wearing it.
+   */
+  constructor(private readonly scene: Scene, private readonly plain: (head: string) => Material, private readonly prepare?: (ctx: CanvasRenderingContext2D, size: number) => void) {
     this.scratch.width = SIZE
     this.scratch.height = SIZE
   }
 
   async acquire(face: string, hair: string, beard: string): Promise<PaintedHead> {
-    if (hair === face && beard === face) return { key: '', material: this.plain(face) }
+    if (hair === face && beard === face && !this.prepare) return { key: '', material: this.plain(face) }
     const key = `${face}.${hair}.${beard}`
     this.users.set(key, (this.users.get(key) ?? 0) + 1)
     let pending = this.mixes.get(key)
@@ -128,6 +134,7 @@ export class HeadPaint {
     }
     if (hair !== face) lay(top, masks.hair)
     if (beard !== face) lay(chin, masks.beard)
+    this.prepare?.(ctx, SIZE)
     texture.update(true)
     texture.anisotropicFilteringLevel = 8
     const material = paintedMaterial(this.scene, `rr-head-${key}`, texture, 'hunter-head')

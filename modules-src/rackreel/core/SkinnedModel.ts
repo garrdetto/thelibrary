@@ -10,6 +10,7 @@ import { BoundingInfo } from '@babylonjs/core/Culling/boundingInfo'
 import type { Material } from '@babylonjs/core/Materials/material'
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
+import type { Geometry } from '@babylonjs/core/Meshes/geometry'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import { VertexBuffer } from '@babylonjs/core/Buffers/buffer'
@@ -87,6 +88,16 @@ export interface SkinnedTemplate {
   /** The face part's vertex positions as modelled, for the face-shape sliders to start from. */
   faceBase: Float32Array
   tucks: Map<string, HatTuck>
+  /** Clothes painted from the body's shape (`Tailor`), when the host wants them: rigs from this template dress through it. */
+  tailor?: OutfitTailor
+  /** Rigs never receive shadows (Life Sim's people). */
+  noShadows?: boolean
+}
+
+/** What `instantiateSkinned` needs from a tailor: materials for an outfit at a texture size, shared and refcounted. */
+export interface OutfitTailor {
+  dress(wear: string[], size: number): { keys: [string, string]; ready: Promise<[Material, Material]> }
+  release(key: string): void
 }
 
 /** The skinned side of a rig: its skeleton, clips and what it can wear. */
@@ -102,10 +113,20 @@ export interface SkinRig {
   faceBase: Float32Array
   /** Per hat id: the head vertices that tuck in under it. */
   tucks: Map<string, HatTuck>
-  /** Reshapes this rig's face (it gets a copy of the geometry the first time), or puts the modelled shape back with null. */
-  shapeFace(positions: Float32Array | null): void
+  /**
+   * Reshapes this rig's face (it gets a copy of the geometry the first time), or puts the modelled shape back with null.
+   * With `share`, the shape is one every rig asking with the same key wears (a hat's tuck on an unshaped face), so the
+   * geometry is made once for all of them.
+   */
+  shapeFace(positions: Float32Array | null, share?: string): void
   /** The head's material: a painted head for this rig, or null for the model's own. */
   paintHead(material: Material | null): void
+  /** Texture size this rig's tailored clothes are painted at (the player's own is sharper than a neighbor's). */
+  clothSize: number
+  /** Gives back the tailored clothes this rig wears. */
+  undress(): void
+  /** Registers a mesh made for this rig later (its hair) the way its own meshes were. */
+  register?: (mesh: AbstractMesh) => void
 }
 
 /** What `Avatar` poses: named joint nodes under a root, the meshes they carry, and the skinned side when there is one. */
@@ -120,6 +141,12 @@ export interface AvatarRig {
 const BOUNDS_MIN = new Vector3(-1.3, -0.4, -1.3)
 const BOUNDS_MAX = new Vector3(1.3, 2.4, 1.3)
 let rigCount = 0
+const faceShares = new WeakMap<SkinnedTemplate, Map<string, Geometry>>()
+const sharedFaces = (template: SkinnedTemplate): Map<string, Geometry> => {
+  let found = faceShares.get(template)
+  if (!found) faceShares.set(template, (found = new Map()))
+  return found
+}
 
 export async function loadSkinned(scene: Scene, name: string, material: (tag: string) => Material): Promise<SkinnedTemplate> {
   const response = await fetch(modelFileUrl(`${name}.rrs`))
@@ -222,7 +249,7 @@ export function instantiateSkinned(template: SkinnedTemplate, scene: Scene, regi
     mesh.numBoneInfluencers = 4
     mesh.material = template.material(part.material)
     mesh.isPickable = false
-    mesh.receiveShadows = true
+    mesh.receiveShadows = !template.noShadows
     mesh.setBoundingInfo(new BoundingInfo(BOUNDS_MIN, BOUNDS_MAX))
     mesh.setEnabled(!part.item)
     meshes.push(mesh)
@@ -234,8 +261,33 @@ export function instantiateSkinned(template: SkinnedTemplate, scene: Scene, regi
     for (const key in table) if (key.split('+').every((item) => items.includes(item))) return table[key]
     return null
   }
+  let held: string[] = []
+  let dressTurn = 0
+  const undress = () => {
+    dressTurn++
+    for (const key of held) template.tailor?.release(key)
+    held = []
+  }
   const wear = (items: string[]) => {
     for (const part of template.parts) if (part.item) partMeshes.get(part.name)!.setEnabled(items.includes(part.item))
+    const tailor = template.tailor
+    if (tailor) {
+      const turn = ++dressTurn
+      const dressed = tailor.dress(items, skin.clothSize)
+      dressed.ready.then(([top, bottom]) => {
+        if (turn !== dressTurn) {
+          for (const key of dressed.keys) tailor.release(key)
+          return
+        }
+        partMeshes.get('upper')!.material = top
+        partMeshes.get('lower')!.material = bottom
+        for (const key of held) tailor.release(key)
+        held = dressed.keys
+      }, () => {
+        for (const key of dressed.keys) tailor.release(key)
+      })
+      return
+    }
     const top = pick(upper, items)
     const bottom = pick(lower, items)
     if (top) partMeshes.get('upper')!.material = template.material(top)
@@ -243,26 +295,51 @@ export function instantiateSkinned(template: SkinnedTemplate, scene: Scene, regi
   }
   const face = partMeshes.get('face') as Mesh
   const faceTag = template.parts.find((part) => part.name === 'face')!.material
-  let reshaped = false
-  const shapeFace = (positions: Float32Array | null) => {
-    if (!positions && !reshaped) return
-    if (!reshaped) {
-      face.makeGeometryUnique()
-      face.setVerticesData(VertexBuffer.PositionKind, positions ?? template.faceBase, true)
-      reshaped = true
+  const base = face.geometry!
+  let own: Geometry | null = null
+  const wearGeometry = (g: Geometry) => {
+    if (face.geometry === g) return
+    g.applyToMesh(face)
+    if (own && own !== g) {
+      own.dispose()
+      own = null
+    }
+  }
+  const shapeFace = (positions: Float32Array | null, share?: string) => {
+    if (!positions) {
+      wearGeometry(base)
       return
     }
-    face.updateVerticesData(VertexBuffer.PositionKind, positions ?? template.faceBase)
+    if (share) {
+      let shared = sharedFaces(template).get(share)
+      if (!shared || shared.isDisposed()) {
+        shared = base.copy(`${template.name}-face-${share}`)
+        shared.setVerticesData(VertexBuffer.PositionKind, positions, false)
+        sharedFaces(template).set(share, shared)
+      }
+      wearGeometry(shared)
+      return
+    }
+    if (!own) {
+      own = base.copy(`${template.name}-face-${id}`)
+      own.setVerticesData(VertexBuffer.PositionKind, positions, true)
+      own.applyToMesh(face)
+      return
+    }
+    if (face.geometry !== own) own.applyToMesh(face)
+    face.updateVerticesData(VertexBuffer.PositionKind, positions)
   }
   const paintHead = (material: Material | null) => {
     face.material = material ?? template.material(faceTag)
   }
-  return { root, joints, meshes, partMeshes, skin: { skeleton, order, clips: template.clips, meta: template.meta, wear, faceBase: template.faceBase, tucks: template.tucks, shapeFace, paintHead } }
+  const skin: SkinRig = { skeleton, order, clips: template.clips, meta: template.meta, wear, faceBase: template.faceBase, tucks: template.tucks, shapeFace, paintHead, clothSize: 1024, undress, register }
+  return { root, joints, meshes, partMeshes, skin }
 }
 
 /** Frees a rig made by `instantiateSkinned`: its meshes, joints and skeleton. Unparent anything it carries first. */
 export function disposeSkinned(rig: AvatarRig, unregister?: (mesh: AbstractMesh) => void): void {
   for (const m of rig.meshes) unregister?.(m)
+  rig.skin?.undress()
   rig.skin?.skeleton.dispose()
   rig.root.dispose()
 }
