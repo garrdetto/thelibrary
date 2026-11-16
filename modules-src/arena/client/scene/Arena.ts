@@ -212,8 +212,9 @@ function buildCenter(build: ArenaBuilder, materials: ArenaMaterials): { pylon: M
   build.box(12, deck, 12, 0, deck / 2, 0, materials.hull)
   build.box(12.4, 0.2, 12.4, 0, deck - 0.05, 0, materials.trim, { shadow: false })
   for (const side of SIDES) {
-    build.rampZ(4.5, deck, 6, 0, 0, side * 6, side, materials.panel, materials.marking)
-    build.rampX(4.5, deck, 6, 0, 0, side * 6, side, materials.panel, materials.marking)
+    const outward = side === 1 ? -1 : 1
+    build.rampZ(4.5, deck + 0.05, 6, 0, 0, side * 6.2, outward, materials.panel, materials.marking)
+    build.rampX(4.5, deck + 0.05, 6, 0, 0, side * 6.2, outward, materials.panel, materials.marking)
   }
   for (const sx of SIDES) {
     for (const sz of SIDES) {
