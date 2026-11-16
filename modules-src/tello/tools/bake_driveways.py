@@ -113,6 +113,9 @@ def burn(polys, ox, oz, w, h):
     return np.array(img)[::-1] > 0
 
 
+def boxes_meet(a, b):
+    return a[0] <= b[2] + 2 and b[0] <= a[2] + 2 and a[1] <= b[3] + 2 and b[1] <= a[3] + 2
+
 def chaikin(pts, rounds=2):
     """Rounds a polyline's corners, keeping its ends."""
     for _ in range(rounds):
@@ -296,7 +299,7 @@ def find_driveways(cache, buildings, roads, ndsm, water_f, near_city, frame, sta
         if any(o.intersects(drive.buffer(width / 2 + 0.3)) for o in others):
             counts['rejected'] += 1
             continue
-        if any(m.intersects(drive) and drive.intersection(m.buffer(1.5)).length > SHARED_RUN for m in made_polys[-400:]):
+        if any(m.intersects(drive) and drive.intersection(m.buffer(1.5)).length > SHARED_RUN for m in made_polys if boxes_meet(m.bounds, drive.bounds)):
             counts['shared'] += 1
             continue
         made.append({'id': f'drive-{len(made)}', 'kind': 3 if kind_name == 'gravel' else 2, 'width': round(width, 1), 'name': '', 'ref': '',

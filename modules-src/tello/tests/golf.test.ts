@@ -81,7 +81,7 @@ test('driveways run from a building to the edge of a road, never over it', () =>
       const p = s.p
       for (let k = 0; k + 3 < p.length; k += 2) {
         const ax = p[k], az = p[k + 1], dx = p[k + 2] - ax, dz = p[k + 3] - az
-        if (Math.abs(x - ax) > 400 || Math.abs(z - az) > 400) continue
+        if (x < Math.min(ax, ax + dx) - 40 || x > Math.max(ax, ax + dx) + 40 || z < Math.min(az, az + dz) - 40 || z > Math.max(az, az + dz) + 40) continue
         const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)))
         best = Math.max(best, s.w / 2 - Math.hypot(x - ax - dx * t, z - az - dz * t))
       }
