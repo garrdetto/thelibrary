@@ -20,6 +20,7 @@ import type { Ground, OutsideLand, TerrainShape } from '../rackreel/world/Terrai
 import { COVER } from './data/MapData'
 import type { BridgeData, Frame, MapDoc, MapGrids } from './data/MapData'
 import { fixStreets } from './data/Streets'
+import { riverWallDecks } from './data/RiverWall'
 import { applyWorldEdits, type EditReport } from './edits/Apply'
 import type { WorldEdits } from './edits/WorldEdits'
 
@@ -66,12 +67,14 @@ export class TelloLand {
     const centre = at ?? { x: 0, z: f.size }
     this.offset = { x: centre.x - (f.x0 + f.size / 2), z: centre.z - (f.z0 + f.size / 2) }
     for (const b of doc.bridges) this.decks.push(deckOf(b))
+    for (const w of riverWallDecks(doc)) this.decks.push(stripDeck(w))
   }
 
   /** Reads the bridge decks again (after edits moved them). */
   refreshDecks(): void {
     this.decks.length = 0
     for (const b of this.doc.bridges) this.decks.push(deckOf(b))
+    for (const w of riverWallDecks(this.doc)) this.decks.push(stripDeck(w))
   }
 
   /** True inside the map, `margin` metres in from its edge. */
@@ -278,6 +281,13 @@ const DECK_CELL = 32
 
 function deckKey(i: number, j: number): number {
   return (i + 32768) * 65536 + (j + 32768)
+}
+
+function stripDeck(w: { y: number; half: number; pts: number[] }): Deck {
+  const p = w.pts
+  const x0 = Math.min(p[0], p[2]) - w.half, x1 = Math.max(p[0], p[2]) + w.half
+  const z0 = Math.min(p[1], p[3]) - w.half, z1 = Math.max(p[1], p[3]) + w.half
+  return { y: w.y, half: w.half, pts: p, x0, z0, x1, z1 }
 }
 
 function deckOf(b: BridgeData): Deck {
