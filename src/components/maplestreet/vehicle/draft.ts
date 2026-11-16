@@ -241,8 +241,9 @@ export function draftSpec(d: Draft, raw: Size3, center: { x: number; z: number; 
     paint: d.paint,
     targets: { topSpeedMph: d.topSpeedMph, zeroToMph: engine.zeroToMph, zeroToSeconds: d.zeroToSeconds },
     dealer: d.dealer,
-    traffic: { ...d.traffic, driver: d.traffic.driver.trim() || d.name.trim() },
+    traffic: { ...d.traffic, enabled: false, driver: d.traffic.driver.trim() || d.name.trim() },
     wheelsRemoved: d.removeWheels,
+    game: 'lifesim',
     ...(d.parts.doors.length || d.parts.hood || d.parts.trunk ? { parts: d.parts } : {}),
     ...(lampShapesOf(d) ? { lampShapes: lampShapesOf(d) } : {}),
   }

@@ -15,7 +15,7 @@ import { BUNDLED_VEHICLES } from './BundledVehicles';
 import { refreshDealer, VEHICLES, type VehicleSpec } from './Economy';
 import { isValidLampShapes, isValidShape, type LampShapes, type Shape } from './Shapes';
 import type { VehicleGlass } from './VehicleGlass';
-import { CUSTOM_VEHICLE_PREFIX, TUNING, type AxleTuning, type CustomVehicleKind, type VehicleTuning } from './Vehicles';
+import { CUSTOM_VEHICLE_PREFIX, TUNING, type AxleTuning, type CustomVehicleKind, type FlightTuning, type VehicleTuning } from './Vehicles';
 
 export const DRIVE_TEMPLATES = ['sedan', 'truck', 'coupe', 'hdtruck', 'golfcart', 'atv'] as const;
 export type DriveTemplate = (typeof DRIVE_TEMPLATES)[number];
@@ -70,6 +70,8 @@ export interface CustomVehiclePhysics {
   topSpeed: number;
   brake: number;
   maxSteer: number;
+  /** A helicopter (Life Sim): see FlightTuning. */
+  flight?: FlightTuning;
   seat: { x: number; y: number; z: number; straddle?: boolean };
   hitch: { x: number; y: number } | null;
   cam: { dist: number; height: number };
@@ -133,6 +135,11 @@ export interface CustomVehicleSpec {
    * scanned body are glass, used instead of the automatic detection. Dropped when a new model is saved.
    */
   glass?: VehicleGlass;
+  /**
+   * `lifesim`: made in the vehicle creator for Life Sim (or shipped with it). Fox Plains still registers it, so an owner
+   * there keeps it, but never sells it or puts it in traffic, and keeps its own bundled vehicle over a Life Sim override.
+   */
+  game?: 'lifesim';
 }
 
 /** The public shape returned by GET /api/maplestreet-vehicles. */
@@ -196,6 +203,7 @@ export function tuningFromRecord(r: CustomVehicleRecord): VehicleTuning {
     seat: { ...p.seat },
     ...(p.hitch ? { hitch: { ...p.hitch } } : {}),
     cam: { ...p.cam },
+    ...(p.flight ? { flight: { ...p.flight, rotors: { main: { ...p.flight.rotors.main }, tail: { ...p.flight.rotors.tail } } } } : {}),
     paint: parseInt(r.paint.color.slice(1), 16) || 0x888888,
     ...(r.template === 'truck' || r.template === 'hdtruck' ? { role: 'hauler' as const } : {}),
   };
@@ -211,7 +219,19 @@ function specFromRecord(r: CustomVehicleRecord): VehicleSpec {
     fuel: r.dealer.fuel,
     forSale: r.active && r.dealer.forSale && r.dealer.price > 0,
     paintable: r.paint.mode !== 'none',
+    ...(isLifeSim(r) ? { lifeSim: true } : {}),
   };
+}
+
+/** Made for Life Sim only (the vehicle creator's records and Life Sim's own vehicles). */
+export const isLifeSim = (r: CustomVehicleRecord) => r.game === 'lifesim';
+
+/**
+ * Fox Plains' list from the published records: a Life Sim override of a bundled vehicle is dropped, so the game keeps
+ * its own bundled one; other Life Sim vehicles stay registered for owners but are never sold or driven by traffic.
+ */
+export function forFoxPlains(records: readonly CustomVehicleRecord[]): CustomVehicleRecord[] {
+  return records.filter(r => !(isLifeSim(r) && r.id.startsWith('bundled-')));
 }
 
 /**
@@ -236,7 +256,7 @@ export function registerCustomVehicles(records: readonly CustomVehicleRecord[]):
   for (const [kind, r] of RECORDS) if (!seen.has(kind)) VEHICLES[kind] = { ...specFromRecord(r), forSale: false };
   CUSTOM_TRAFFIC.length = 0;
   for (const r of [...added].sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    if (!r.active || !r.traffic.enabled) continue;
+    if (!r.active || !r.traffic.enabled || isLifeSim(r)) continue;
     const t = r.traffic;
     const count = Math.max(1, Math.min(TRAFFIC_COUNT_MAX, Math.floor(Number(t.count) || 1)));
     for (let n = 0; n < count; n++) {
@@ -280,5 +300,10 @@ export function isValidVehicleRecord(r: unknown): r is CustomVehicleRecord {
     && !!o.dealer && typeof o.dealer.forSale === 'boolean' && finite(o.dealer.price, 0, VEHICLE_LIMITS.priceMax) && ['gas', 'electric'].includes(o.dealer.fuel) && finite(o.dealer.tank, 0.5, 200) && finite(o.dealer.mpg, 1, 500)
     && !!o.traffic && typeof o.traffic.enabled === 'boolean' && (TRAFFIC_ROUTES as readonly string[]).includes(o.traffic.route) && finite(o.traffic.mph, 3, 60)
     && (o.parts === undefined || isValidParts(o.parts))
-    && (o.lampShapes === undefined || isValidLampShapes(o.lampShapes));
+    && (o.lampShapes === undefined || isValidLampShapes(o.lampShapes))
+    && (o.game === undefined || o.game === 'lifesim')
+    && (p.flight === undefined || isValidFlight(p.flight));
 }
+
+const isValidFlight = (f: FlightTuning) => !!f && finite(f.climb, 0.5, 30) && finite(f.yawRate, 0.1, 4) && finite(f.accel, 0.5, 30) && finite(f.tilt, 0, 0.8)
+  && !!f.rotors && point(f.rotors.main, 20) && point(f.rotors.tail, 20);

@@ -22,12 +22,16 @@ export interface ExternalDriver {
   step(dt: number, input: DriveInput, vehicle: Vehicle): void
   /** Stops it where it is (the driver got out). */
   park?(vehicle: Vehicle): void
+  /** The controls toast shown when the player takes the seat, if this vehicle has its own (a helicopter). */
+  controlsHint?(vehicle: Vehicle): string | null
 }
 
 export interface DriveInput {
   throttle: number
   steer: number
   brake: boolean
+  /** Shift: a host world's helicopter descends (Life Sim). */
+  down?: boolean
 }
 
 export const ATV_TUNING = {

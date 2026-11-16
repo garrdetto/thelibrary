@@ -15,6 +15,7 @@ import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import type { Camera } from '@babylonjs/core/Cameras/camera'
 import { MASK, type Physics } from '../fp/physics/Physics'
+import { Rotors } from '../fp/physics/Rotors'
 import type { VehicleModels, VehicleView } from '../fp/physics/VehicleModels'
 import { TUNING } from '../../maplestreet/shared/Vehicles'
 import type { PlayerSnap, VehicleSnap } from '../../maplestreet/shared/Protocol'
@@ -66,7 +67,11 @@ class SnapBuffer<T> {
   }
 }
 
-interface RemoteVehicle { kind: string; owner: string; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; body: RAPIER.RigidBody | null; fresh: boolean; spin: number[]; style: VehicleSnap['style'] }
+interface RemoteVehicle {
+  kind: string; owner: string; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; body: RAPIER.RigidBody | null; fresh: boolean; spin: number[]; style: VehicleSnap['style']
+  /** A helicopter's rotors, spun while it has moved in the last few seconds. */
+  rotors?: Rotors | null; spool?: number; busy?: number; lastY?: number
+}
 interface RemotePlayer { name: string; color: string; npc: boolean; avatar: Avatar | null; buf: SnapBuffer<PlayerSnap>; seen: number; tag: HTMLDivElement | null; tagShown: boolean; outfit: string[]; shown: Vector3; facing: number }
 
 const _p = new Vector3()
@@ -204,6 +209,10 @@ export class Neighbors {
     rv.body = body
     rv.fresh = true
     rv.spin = rv.view.wheels.map(() => 0)
+    rv.rotors = P.flight ? new Rotors(rv.view.root, P.flight) : null
+    rv.spool = 0
+    rv.busy = 0
+    rv.lastY = undefined
   }
 
   private release(rv: RemoteVehicle): void {
@@ -249,6 +258,13 @@ export class Neighbors {
         w.spin.rotation.z = rv.spin[i]
       }
       rv.view.setLamps(night, false)
+      if (rv.rotors) {
+        const climb = rv.lastY === undefined ? 0 : Math.abs(root.position.y - rv.lastY) / Math.max(1e-3, dt)
+        rv.lastY = root.position.y
+        rv.busy = Math.abs(speed) > 0.4 || climb > 0.15 ? 4 : Math.max(0, (rv.busy ?? 0) - dt)
+        rv.spool = Math.min(1, Math.max(0, (rv.spool ?? 0) + (rv.busy > 0 ? dt / 2.5 : -dt / 6)))
+        rv.rotors.update(dt, rv.spool)
+      }
       _pos.x = root.position.x
       _pos.y = root.position.y
       _pos.z = root.position.z

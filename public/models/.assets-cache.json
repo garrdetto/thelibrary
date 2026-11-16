@@ -1338,5 +1338,25 @@
   "matsBefore": 9,
   "matsAfter": 9,
   "preset": "kit"
+ },
+ "foxlake/helicopter.glb": {
+  "hash": "e9e7cf3d7dd416c35616ef497c2b4d95ec8e444a",
+  "before": 572880,
+  "after": 313936,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "foxlake/bubble-helicopter.glb": {
+  "hash": "dd6d94c59169e31e6ad5b861a3de343f65b56539",
+  "before": 849224,
+  "after": 438228,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
  }
 }

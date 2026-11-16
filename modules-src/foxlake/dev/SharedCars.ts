@@ -198,7 +198,8 @@ export class SharedCars implements ExternalDriver {
   step(_dt: number, input: DriveInput, v: RrVehicle): void {
     const l = this.local
     if (!l || l.rr !== v || !v.occupied) return
-    l.fp.input = { throttle: input.throttle, steer: -input.steer, brake: 0, handbrake: input.brake }
+    const lift = l.fp.flight ? (input.brake ? 1 : 0) - (input.down ? 1 : 0) : undefined
+    l.fp.input = { throttle: input.throttle, steer: -input.steer, brake: 0, handbrake: l.fp.flight ? false : input.brake, ...(lift !== undefined ? { lift } : {}) }
     if (l.phase !== 'driving') {
       l.phase = 'driving'
       l.flushed = false
@@ -295,6 +296,17 @@ export class SharedCars implements ExternalDriver {
     v.pitch = pitch
     v.roll = 0
     v.speed = l.fp.speed
+  }
+
+  /** The spawned vehicle this player has (driving or settling), for live tuning. */
+  liveVehicle(): Vehicle | null {
+    return this.local?.fp ?? null
+  }
+
+  /** The kind of the spawned vehicle this player is driving, if any. */
+  drivingKind(): string | null {
+    const l = this.local
+    return l && l.rr?.occupied ? l.fp.kind : null
   }
 
   debug(): Record<string, unknown> {

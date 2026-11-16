@@ -32,7 +32,7 @@ function check<T>(schema: z.ZodType<T>, value: unknown): T {
   throw new HttpError(400, `${where}${issue?.message ?? 'Please check your input and try again.'}`)
 }
 
-const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Fox Plains vehicles.')
+const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Life Sim vehicles.')
 const isAdmin = async (request: Request, env: Env) => (await currentUser(request, env))?.isAdmin === true
 const publishStatus = z.enum(['draft', 'published']).catch('published')
 
@@ -84,6 +84,7 @@ async function publish(request: Request, env: Env) {
   const name = check(vehicleNameSchema, form.get('name'))
   const spec = check(vehicleSpecSchema, parseJsonField(form, 'spec')) as CustomVehicleSpec
   delete spec.glass
+  spec.game = 'lifesim'
   const model = await readModel(form.get('model'), VEHICLE_LIMITS.modelBytes, 'Vehicle models')
   if (!model) throw new HttpError(400, 'Choose a .glb or .gltf model to publish.')
   const wheel = await readModel(form.get('wheel'), VEHICLE_LIMITS.wheelBytes, 'Wheel models')
@@ -137,6 +138,7 @@ async function update(request: Request, env: Env) {
     await ensureBundledOverride(env, input.id, user.id)
   }
   const spec = input.spec as CustomVehicleSpec | undefined
+  if (spec) spec.game = 'lifesim'
   if (spec && !spec.glass) {
     const kept = await storedVehicleGlass(env, input.id)
     if (kept) spec.glass = kept

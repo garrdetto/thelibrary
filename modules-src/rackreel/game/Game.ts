@@ -200,6 +200,8 @@ export interface GameOptions {
    * depth itself the ordinary way round.
    */
   reverseDepth?: boolean
+  /** Space jumps while on foot (Life Sim). */
+  jump?: boolean
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -211,6 +213,9 @@ const WALK_SPEED = 2.5
 const SPRINT_SPEED = 5.2
 const CROUCH_SPEED = 1.2
 const AIM_SPEED = 0.9
+/** Take-off speed of a jump on foot (m/s): about 0.6 m of rise. */
+const JUMP_SPEED = 4.4
+const JUMP_GRAVITY = 16
 const CAMERA_DISTANCE = 3.3
 const SHOULDER_OFFSET = 0.45
 const DOUBLE_CLICK_MS = 380
@@ -304,6 +309,8 @@ export class Game {
   private mode: PlayerMode = 'foot'
   private readonly foot = new Vector3()
   private readonly velocity = new Vector3()
+  /** Upward speed while a jump is in the air (Life Sim); null on the ground. */
+  private jumpVy: number | null = null
   private facing = 0
   private moveSpeed = 0
   private climbT = 0
@@ -330,7 +337,7 @@ export class Game {
   private readonly casterScratch: AbstractMesh[] = []
   private readonly listenerScratch: { p: Vector3; noise: number }[] = []
   private readonly rangeScratch: Vector3[] = []
-  private readonly driveInput = { throttle: 0, steer: 0, brake: false }
+  private readonly driveInput = { throttle: 0, steer: 0, brake: false, down: false }
   private readonly bowInput = { aim: false, shoot: false, reel: false, locked: false, forward: 0, right: 0 }
   private readonly walkDir = new Vector3()
   private readonly camFwd = new Vector3()
@@ -1008,6 +1015,7 @@ export class Game {
       if (e.code === 'Digit1') this.pickTool('rod')
       else if (e.code === 'Digit2') this.pickTool('rifle')
       else if (e.code === 'KeyE') this.interact()
+      else if (e.code === 'Space' && this.options.jump) this.jump()
       else if (e.code === 'KeyC') this.crouch = !this.crouch
       else if (e.code === 'KeyR' && this.fishing.state === 'bite') this.fishing.setHook()
       else if (e.code === 'KeyM') this.audio.setMuted(!this.audio.muted)
@@ -1298,7 +1306,7 @@ export class Game {
     this.avatar.root.rotationQuaternion = null
     this.avatar.root.rotation.set(0, 0, 0)
     this.avatar.root.position.copyFrom(v.seat).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
-    this.hud.toast(v.kind === 'BOAT' ? 'W/S throttle · A/D tiller · Q to drop anchor · E to step out near shore' : 'W/S throttle · A/D steer · Space brake · E to step out')
+    this.hud.toast(v.external?.controlsHint?.(v) ?? (v.kind === 'BOAT' ? 'W/S throttle · A/D tiller · Q to drop anchor · E to step out near shore' : 'W/S throttle · A/D steer · Space brake · E to step out'))
   }
 
   private toggleAnchor(): void {
@@ -1832,6 +1840,7 @@ export class Game {
     input.throttle = active && !reeling && v ? this.key('KeyW') - this.key('KeyS') : 0
     input.steer = active && !reeling && v ? this.key('KeyD') - this.key('KeyA') : 0
     input.brake = this.keys.has('Space')
+    input.down = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
     this.vehicles.update(dt, input)
     const driven = this.mode === 'vehicle' && !this.onDeck ? this.vehicles.active : null
     if (driven && !driven.anchored) cam.rotation.y = this.driveCam.follow(cam.rotation.y, driven.heading, dt)
@@ -1990,7 +1999,14 @@ export class Game {
       this.velocity.setAll(0)
     }
     const floor = Math.max(this.terrain.heightAt(p.x, p.z), this.onDock(p) ? 0.58 : -10, this.cabin.floorAt(p) ?? -10, this.ext?.floorAt?.(p.x, p.z) ?? -10)
-    p.y += (floor - p.y) * Math.min(1, dt * 18)
+    if (this.jumpVy !== null) {
+      this.jumpVy -= JUMP_GRAVITY * dt
+      p.y += this.jumpVy * dt
+      if (p.y <= floor && this.jumpVy < 0) {
+        p.y = floor
+        this.jumpVy = null
+      }
+    } else p.y += (floor - p.y) * Math.min(1, dt * 18)
     const moved = Math.hypot(p.x - prevX, p.z - prevZ) / Math.max(1e-3, dt)
     this.moveSpeed += (moved - this.moveSpeed) * Math.min(1, dt * 8)
     const faceCamera = this.fishing.busy || (this.tool === 'rifle' && (this.aimHeld || this.rifleCooldown > 0.6))
@@ -2000,6 +2016,13 @@ export class Game {
     let delta = target - this.facing
     delta = Math.atan2(Math.sin(delta), Math.cos(delta))
     this.facing += delta * Math.min(1, dt * (faceCamera ? 16 : 10))
+  }
+
+  /** Space on foot (Life Sim): a hop off the ground, not while perched, fishing, aiming or already in the air. */
+  private jump(): void {
+    if (this.mode !== 'foot' || this.perch || this.jumpVy !== null || this.crouch) return
+    if (this.fishing.state === 'charging' || this.fishing.fighting || this.ads > 0.3) return
+    this.jumpVy = JUMP_SPEED
   }
 
   private climb(dt: number): void {

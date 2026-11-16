@@ -232,6 +232,8 @@ export class FoxLakeTown implements GameExtension {
       dropRemote: (id) => this.neighbors.dropVehicle(id),
       home: () => this.spawn(),
       places: () => [...montelloPlaces(this.land), ...lakePlaces(this.opts.site)],
+      ownVehicles: () => [...this.cars.list.values()].map((c) => c.fp),
+      drivingKind: () => this.cars.driving()?.kind ?? null,
     })
     await Promise.all([STARTER_TRUCK, 'trailer', 'mower'].map((k) => this.models.preload(k).catch(() => null)))
     this.placeStarterCars()
@@ -734,6 +736,7 @@ export class FoxLakeTown implements GameExtension {
 
   controls(): ControlRow[] {
     return [
+      { keys: ['Space'], text: 'Jump (on foot)' },
       { keys: ['Ctrl'], text: 'Map of Montello: click a place or a spot for turn-by-turn directions' },
       { keys: ['N'], text: 'Zoom the corner map' },
       { keys: ['V'], text: 'Bring out your next vehicle' },

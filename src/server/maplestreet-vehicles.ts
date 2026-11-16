@@ -73,6 +73,10 @@ export const vehicleSpecSchema = z.object({
     seat: z.object({ x: n(-10, 10), y: n(-10, 10), z: n(-10, 10), straddle: z.boolean().optional() }).strict(),
     hitch: z.object({ x: n(-6, 0), y: n(-2, 2) }).strict().nullable(),
     cam: z.object({ dist: n(3, 20), height: n(1, 8) }).strict(),
+    flight: z.object({
+      climb: n(0.5, 30), yawRate: n(0.1, 4), accel: n(0.5, 30), tilt: n(0, 0.8),
+      rotors: z.object({ main: point(20), tail: point(20) }).strict(),
+    }).strict().optional(),
   }).strict(),
   lights: z.object({ head: z.array(point()).max(VEHICLE_LIMITS.lightsMax), tail: z.array(point()).max(VEHICLE_LIMITS.lightsMax) }).strict(),
   paint: z.object({ mode: z.enum(['none', 'material', 'color']), material: z.string().max(120), key: hex, tolerance: n(0.01, 1), color: hex }).strict(),
@@ -95,6 +99,7 @@ export const vehicleSpecSchema = z.object({
   }).strict().optional(),
   lampShapes: z.object({ head: shapeSchema.optional(), tail: shapeSchema.optional(), headSize: lampSize.optional(), tailSize: lampSize.optional(), headDepth: lampDepth.optional(), tailDepth: lampDepth.optional(), headStyle: lampStyle.optional(), tailStyle: lampStyle.optional() }).strict().optional(),
   glass: vehicleGlassSchema.optional(),
+  game: z.literal('lifesim').optional(),
 }).strict()
 
 export const bundledVehicle = (id: string) => BUNDLED_VEHICLES.find(vehicle => vehicle.id === id) ?? null
@@ -143,7 +148,7 @@ export async function insertStoreVehicle(env: Env, id: string, name: string, spe
 export async function ensureBundledOverride(env: Env, id: string, createdBy: string) {
   const bundled = bundledVehicle(id)
   if (!bundled || await getAsset(env, 'vehicle', id)) return
-  await insertAsset(env, { id, kind: 'vehicle', name: bundled.name, status: 'published', spec: bundledSpec(bundled), files: {}, createdBy })
+  await insertAsset(env, { id, kind: 'vehicle', name: bundled.name, status: 'published', spec: { ...bundledSpec(bundled), game: 'lifesim' }, files: {}, createdBy })
 }
 
 export async function updateStoreVehicle(env: Env, id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; spec?: CustomVehicleSpec }) {

@@ -13,7 +13,8 @@ import { guestName } from '../maplestreet/src/net/WorldTransport'
 import { store } from '../maplestreet/src/core/Storage'
 import { isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../maplestreet/shared/CustomVehicles'
 import { isValidRecord, registerCustomItems, type CustomItemRecord } from '../maplestreet/shared/CustomItems'
-import { BUNDLED_VEHICLES } from '../maplestreet/shared/BundledVehicles'
+import { forLifeSim } from './vehicles/LifeSimVehicles'
+import { applyPublishedTuning, fetchTuning } from './vehicles/TuningClient'
 import { FOX_LAKE_LOOK, FOX_LAKE_SHADOWS, FOX_LAKE_SHADOW_MAP } from './look'
 import { setShadowProxies } from './fp/core/Geo'
 import { loadMap } from '../tello/data/MapData'
@@ -74,16 +75,6 @@ async function fetchList<T>(url: string, field: string, valid: (r: unknown) => r
   }
 }
 
-/**
- * Fox Lake always draws the game's own bundled vehicles (the Maple Hauler and the rest, ids `bundled-*`): a record
- * re-published from the vehicle editor with a bundled id replaces it in Fox Plains, but not here.
- */
-const BUNDLED_IDS = new Set(BUNDLED_VEHICLES.map((r) => r.id))
-
-function keepBundled(list: CustomVehicleRecord[]): CustomVehicleRecord[] {
-  return list.filter((r) => !BUNDLED_IDS.has(r.id))
-}
-
 /** Published vehicles and items, with the same offline caches as Fox Plains. */
 async function registerPublished(): Promise<void> {
   const VK = 'maplestreet/custom-vehicles/v1'
@@ -91,10 +82,12 @@ async function registerPublished(): Promise<void> {
   const [vehicles, items] = await Promise.all([
     fetchList<CustomVehicleRecord>('/api/maplestreet-vehicles', 'vehicles', isValidVehicleRecord),
     fetchList<CustomItemRecord>('/api/maplestreet-items', 'items', isValidRecord),
+    fetchTuning(),
   ])
   if (vehicles) store.set(VK, JSON.stringify(vehicles))
   if (items) store.set(IK, JSON.stringify(items))
-  registerCustomVehicles(keepBundled(vehicles ?? (store.json<unknown[]>(VK) ?? []).filter(isValidVehicleRecord)))
+  registerCustomVehicles(forLifeSim(vehicles ?? (store.json<unknown[]>(VK) ?? []).filter(isValidVehicleRecord)))
+  applyPublishedTuning()
   registerCustomItems(items ?? (store.json<unknown[]>(IK) ?? []).filter(isValidRecord))
 }
 
@@ -216,7 +209,7 @@ async function boot(): Promise<void> {
     else inviteRequested = true
   })
   setShadowProxies(FOX_LAKE_SHADOWS)
-  const game = new Game(canvas, { terrain: new TelloTerrain(montello.land), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site: montello.site, ridesBought: true, homeName: 'the outfitter', look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS, reverseDepth: true })
+  const game = new Game(canvas, { terrain: new TelloTerrain(montello.land), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site: montello.site, ridesBought: true, jump: true, homeName: 'the outfitter', look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS, reverseDepth: true })
   window.__foxlake = { game, town }
   await game.start()
 }

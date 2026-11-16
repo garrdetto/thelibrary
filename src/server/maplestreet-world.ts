@@ -3,7 +3,8 @@ import type { Identity } from '../../modules-src/maplestreet/shared/RoomLogic'
 import { registerCustomItems } from '../../modules-src/maplestreet/shared/CustomItems'
 import type { Env } from './env'
 import { listStoreItems } from './maplestreet-items'
-import { registerCustomVehicles } from '../../modules-src/maplestreet/shared/CustomVehicles'
+import { forFoxPlains, registerCustomVehicles, type CustomVehicleRecord } from '../../modules-src/maplestreet/shared/CustomVehicles'
+import { forLifeSim } from '../../modules-src/foxlake/vehicles/LifeSimVehicles'
 import { listStoreVehicles } from './maplestreet-vehicles'
 
 type DurableState = { blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T> }
@@ -55,13 +56,16 @@ function parseIdentity(header: string | null): Identity | null {
 
 export class MapleStreetWorld {
   private readonly world: WorldServer
+  /** Life Sim's world adds its own vehicles (the helicopter); Fox Plains' keeps its bundled ones over Life Sim overrides. */
+  private readonly vehicles: (list: CustomVehicleRecord[]) => CustomVehicleRecord[]
 
   constructor(state: DurableState, private readonly env: Env, table = 'maplestreet_world', foxLake = false) {
+    this.vehicles = foxLake ? forLifeSim : forFoxPlains
     const storage = d1Storage(env, table)
     this.world = new WorldServer(storage, { devTools: foxLake, foxLake })
     void state.blockConcurrencyWhile(async () => {
       registerCustomItems(await listStoreItems(env))
-      registerCustomVehicles(await listStoreVehicles(env))
+      registerCustomVehicles(this.vehicles(await listStoreVehicles(env)))
       await this.world.ready()
     })
   }
@@ -70,7 +74,7 @@ export class MapleStreetWorld {
     const path = new URL(request.url).pathname
     if (path === '/catalog' && request.method === 'POST') {
       registerCustomItems(await listStoreItems(this.env))
-      registerCustomVehicles(await listStoreVehicles(this.env))
+      registerCustomVehicles(this.vehicles(await listStoreVehicles(this.env)))
       return Response.json({ ok: true })
     }
     if (path === '/save' && request.method === 'POST') {

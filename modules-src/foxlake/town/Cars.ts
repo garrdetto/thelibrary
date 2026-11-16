@@ -87,7 +87,13 @@ export class Cars implements ExternalDriver {
   step(_dt: number, input: DriveInput, v: RrVehicle): void {
     if (!v.occupied) return
     const car = this.byRr.get(v)
-    if (car) car.fp.input = { throttle: this.flooded(car) ? 0 : input.throttle, steer: -input.steer, brake: 0, handbrake: input.brake }
+    if (!car) return
+    const lift = car.fp.flight ? (input.brake ? 1 : 0) - (input.down ? 1 : 0) : undefined
+    car.fp.input = { throttle: this.flooded(car) ? 0 : input.throttle, steer: -input.steer, brake: 0, handbrake: car.fp.flight ? false : input.brake, ...(lift !== undefined ? { lift } : {}) }
+  }
+
+  controlsHint(v: RrVehicle): string | null {
+    return this.byRr.get(v)?.fp.flight ? 'Space climb · Shift descend · W/S forward and back · A/D turn · land, then E to step out' : null
   }
 
   park(v: RrVehicle): void {
