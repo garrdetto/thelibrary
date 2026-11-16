@@ -30,7 +30,11 @@ export class Wading {
   depthUnder(car: Car): number {
     const p = car.fp.position
     const s = townToScene(p.x, p.y, p.z, this._t)
-    return Math.max(0, this.terrain.depthAt(s.x, s.z))
+    const depth = Math.max(0, this.terrain.depthAt(s.x, s.z))
+    const P = car.fp.preset
+    if (!P.flight || depth <= 0) return depth
+    const skids = P.suspension.rest + (P.axles[0]?.radius ?? 0) - P.wheelY
+    return Math.max(0, depth - Math.max(0, s.y - skids - this.terrain.heightAt(s.x, s.z)))
   }
 
   /** True when the car's engine is flooded (no throttle until it is towed out). */

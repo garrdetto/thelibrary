@@ -5,7 +5,7 @@
  * (`?dev=1`) the admin's drafts are loaded too; the server only returns them
  * to the admin.
  */
-import { customVehicleRecord, isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../../../maplestreet/shared/CustomVehicles';
+import { customVehicleRecord, forFoxPlains, isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../../../maplestreet/shared/CustomVehicles';
 import { BUILTIN_VEHICLE_KINDS, TUNING } from '../../../maplestreet/shared/Vehicles';
 import { store } from '../../../maplestreet/src/core/Storage';
 
@@ -35,7 +35,7 @@ export async function registerVehicles() {
     } catch { /* offline: use the cache */ } finally { clearTimeout(timer); }
   }
   if (list) store.set(CACHE, JSON.stringify(list.filter(r => r.status !== 'draft')));
-  registerCustomVehicles(list ?? (store.json<unknown[]>(CACHE) ?? []).filter(isValidVehicleRecord));
+  registerCustomVehicles(forFoxPlains(list ?? (store.json<unknown[]>(CACHE) ?? []).filter(isValidVehicleRecord)));
 }
 
 export function vehicleEntries(): VehicleEntry[] {

@@ -66,7 +66,7 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
       <Stat icon={<Users size={18}/>} label="Accounts" value={accounts === 'error' ? failed : people ? people.total : pending}
         detail={people ? `${people.studio} with studio access${people.resets ? ` · ${people.resets} password reset${people.resets === 1 ? '' : 's'} pending` : ''}` : ' '} onOpen={() => onOpen('people')} cta="Manage people"/>
       <Stat icon={<Package size={18}/>} label="Fox Plains items" value={assetValue(items)} detail={assetDetail(items, 'items')} onOpen={() => onOpen('maplestreet')} cta="Open item editor"/>
-      <Stat icon={<Car size={18}/>} label="Fox Plains vehicles" value={assetValue(vehicles)} detail={assetDetail(vehicles, 'vehicles')} onOpen={() => onOpen('vehicles')} cta="Open vehicle editor"/>
+      <Stat icon={<Car size={18}/>} label="Life Sim vehicles" value={assetValue(vehicles)} detail={assetDetail(vehicles, 'vehicles')} onOpen={() => onOpen('vehicles')} cta="Open vehicle editor"/>
       <Stat icon={<FerrisWheel size={18}/>} label="Thrill Park rides" value={assetValue(rides)} detail={rides && rides !== 'error' ? `${rides.drafts} draft${rides.drafts === 1 ? '' : 's'} waiting · published rides appear in every park’s build menu` : ' '} onOpen={() => onOpen('park-rides')} cta="Open ride creator"/>
       <Stat icon={<Flag size={18}/>} label="Short Track race cars" value={assetValue(raceCars)} detail={raceCars && raceCars !== 'error' ? `${raceCars.drafts} draft${raceCars.drafts === 1 ? '' : 's'} waiting · published cars join the Short Track vehicle list` : ' '} onOpen={() => onOpen('shorttrack-cars')} cta="Open car editor"/>
     </div>
