@@ -1,0 +1,141 @@
+{
+ "note": "Meshy tasks for the draft characters: nano-banana-2 A-pose reference from public/modules/sprites/<id>.webp, then image-to-3d meshy-t2.5 smart topology 12k + meshy-n1 texture, pose_mode a-pose.",
+ "tasks": {
+  "p01": {
+   "reference": "01a1e27c-e2e3-727c-94b2-470d4fda9568",
+   "model": "01a1e27e-626c-7287-8a31-8ad9f51d3e0b"
+  },
+  "p25": {
+   "reference": "01a1e27c-e593-7378-babc-c1f5dcfe4ba2",
+   "model": "01a1e27e-beec-77e9-aa1b-a69c1e726e7c"
+  },
+  "p00": {
+   "reference": "01a1e27d-6c72-72da-9e11-2e053706173d",
+   "model": "01a1e27e-5d55-74c1-b3d6-31628791277f"
+  },
+  "p02": {
+   "reference": "01a1e27d-6ec6-745e-82b2-04f922d9f2b8",
+   "model": "01a1e27e-653c-7227-adc8-4b3ae3e35031"
+  },
+  "p03": {
+   "reference": "01a1e27d-70b3-7461-b585-06073987ab67",
+   "model": "01a1e27e-6819-7586-af00-de7822c67aab"
+  },
+  "p04": {
+   "reference": "01a1e27d-72bd-7744-9764-a7415c66da23",
+   "model": "01a1e27e-6b49-7491-b079-e5f5ae974fc8"
+  },
+  "p05": {
+   "reference": "01a1e27d-7459-7315-bc89-c97294b841ea",
+   "model": "01a1e27e-6eb7-7731-9e82-41c28feafe26"
+  },
+  "p06": {
+   "reference": "01a1e27d-75e6-7127-97a0-13f5712943ac",
+   "model": "01a1e27e-72ec-727a-8270-d2512a293dd2"
+  },
+  "p07": {
+   "reference": "01a1e27d-7785-7183-93be-9c91c62b0536",
+   "model": "01a1e27e-76e6-73f1-9a61-261afeb65407"
+  },
+  "p08": {
+   "reference": "01a1e27d-7937-7699-9212-996e3243de5d",
+   "model": "01a1e27e-79cb-7093-a0e6-c37190e43533"
+  },
+  "p09": {
+   "reference": "01a1e27d-7abe-7300-a792-0fef66db6eec",
+   "model": "01a1e27e-7df4-768a-8b0e-4d2edb93a239"
+  },
+  "p10": {
+   "reference": "01a1e27d-7c61-744f-8e88-74c1650d1676",
+   "model": "01a1e27e-80e8-7136-a491-ad6854e36ab7"
+  },
+  "p11": {
+   "reference": "01a1e27d-7e00-74d2-8ba4-78e4e70a4f6f",
+   "model": "01a1e27e-84e1-750d-90fd-c65ed95e9c85"
+  },
+  "p12": {
+   "reference": "01a1e27d-7f50-7239-abba-f2a954f0ac16",
+   "model": "01a1e27e-88c8-74c6-aade-e0c020cf5fd3"
+  },
+  "p13": {
+   "reference": "01a1e27d-80e9-77c5-9c64-02a9dd677ddc",
+   "model": "01a1e27e-8d14-7249-b7a0-c16b3248f8fb"
+  },
+  "p14": {
+   "reference": "01a1e27d-8290-76fd-9c58-bd1ed18cadbd",
+   "model": "01a1e27e-9130-72b6-8c93-631d1227495e"
+  },
+  "p15": {
+   "reference": "01a1e27d-8439-75d9-906e-45202a734ad2",
+   "model": "01a1e27e-9540-7598-8ec6-b4824e062ac7"
+  },
+  "p16": {
+   "reference": "01a1e27d-8706-754c-b396-6eb971481209",
+   "model": "01a1e27e-9928-70e4-9f66-0c6543adf0ee"
+  },
+  "p17": {
+   "reference": "01a1e27d-8a8a-7504-8297-3035c614b853",
+   "model": "01a1e27e-9d19-731a-84f5-0323f63ab0ae"
+  },
+  "p18": {
+   "reference": "01a1e27d-8cb2-724d-a42c-51846c182584",
+   "model": "01a1e27e-a152-77b2-be23-d2c6cb6934c7"
+  },
+  "p19": {
+   "reference": "01a1e27d-8ed7-7218-9087-5300fc80efa9",
+   "model": "01a1e27e-a5e2-7751-9e35-33e61f71f0f0"
+  },
+  "p20": {
+   "reference": "01a1e27d-90e4-7718-ba91-1a61769a9abb",
+   "model": "01a1e27e-a9f3-7403-8932-353644b4b9b2"
+  },
+  "p21": {
+   "reference": "01a1e27d-92f7-7660-8b04-445cdc0c799e",
+   "model": "01a1e27e-ae6c-72f5-9ef1-27d1a04f7c2f"
+  },
+  "p22": {
+   "reference": "01a1e27d-94ae-7660-b44f-ccf19697d4b4",
+   "model": "01a1e27e-b280-7395-985d-ccc1ac32c0bf"
+  },
+  "p23": {
+   "reference": "01a1e27d-9627-741a-81da-0c7286a613fe",
+   "model": "01a1e27e-b6cf-7262-a3e7-f1cbb8e620cd"
+  },
+  "p24": {
+   "reference": "01a1e27d-9790-72c3-b530-49720c854361",
+   "model": "01a1e27e-ba7b-7369-8531-e1b541782307"
+  },
+  "p26": {
+   "reference": "01a1e27d-9934-7784-a069-b83411011676",
+   "model": "01a1e27e-c1f9-759d-aaa2-a7e660e1a4e3"
+  },
+  "p27": {
+   "reference": "01a1e27d-9ab3-7513-9196-5f0ab08ecebd",
+   "model": "01a1e27e-c4f6-77a7-9535-37868df0e5e7"
+  },
+  "p28": {
+   "reference": "01a1e27d-9c1d-722c-8e2a-bafc40051aaa",
+   "model": "01a1e27e-c8e1-7035-afe0-bc6dd48ed747"
+  },
+  "p29": {
+   "reference": "01a1e27d-9da2-73a7-b720-0fc7c7b26966",
+   "model": "01a1e27e-cb99-74c5-a5b2-7d6d55767eff"
+  },
+  "p30": {
+   "reference": "01a1e27d-9ee7-769d-8e7c-71baea53a348",
+   "model": "01a1e27f-f764-766e-bf12-7497d7547a7c"
+  },
+  "p31": {
+   "reference": "01a1e27d-a05f-7286-8f33-6cf5adb2c80c",
+   "model": "01a1e27f-fb84-75f8-82a3-646cf07e200e"
+  },
+  "p32": {
+   "reference": "01a1e27d-a237-75b5-bc0d-25e2768599e3",
+   "model": "01a1e27f-ff6c-76ef-ab65-1086d11d82ee"
+  },
+  "p33": {
+   "reference": "01a1e27d-a407-7110-9f08-51d360e074c5",
+   "model": "01a1e280-037d-7160-b124-f824388e7ffe"
+  }
+ }
+}

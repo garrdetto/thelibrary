@@ -45,7 +45,7 @@ const PRESETS = [
   { match: /^shorttrack\/(crowd|trees)_/, name: 'instanced', join: false, simplify: 0, textureQuality: 92, compress: false },
   { match: /^hood\/furniture\.glb$/, name: 'props', join: true, flatten: false, palette: false, simplify: 0, textureQuality: 92 },
   { match: /^(sandlot3d\/(athlete|field_detail)|hood\/(sim|vehicles)|proskater\/board)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
-  { match: /^proskater\/skater\.glb$/, name: 'character', join: false, flatten: false, simplify: 0, textureQuality: 92 },
+  { match: /^(proskater\/skater|sandlot3d\/toons\/p\d+)\.glb$/, name: 'character', join: false, flatten: false, simplify: 0, textureQuality: 92 },
   { match: /^sandlot3d\//, name: 'figure', join: true, simplify: 0, textureQuality: 92 },
   { match: /^tello\//, name: 'kit', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /./, name: 'rig', join: true, flatten: false, simplify: 0, textureQuality: 92 },
