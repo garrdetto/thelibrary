@@ -1,4 +1,4 @@
-import { CAR_BRAND_PATTERN, CAR_LIMITS, STOCK_CAR, STOCK_LENGTH, carGarage } from '../../../../modules-src/shorttrack/shared/CustomCars'
+import { CAR_BRAND_PATTERN, CAR_LIMITS, STOCK_CAR, STOCK_LENGTH, carCountsForRecords, carGarage, carSize } from '../../../../modules-src/shorttrack/shared/CustomCars'
 import type { CarAxle, CarGarage, CarNumbers, CarPaint, CustomCarRecord, CustomCarSpec, Point3 } from '../../../../modules-src/shorttrack/shared/CustomCars'
 import { turnedCenter, turnedSize } from '../../maplestreet/vehicle/draft'
 import type { Size3 } from '../../maplestreet/vehicle/draft'
@@ -21,6 +21,10 @@ export type CarDraft = {
   paint: CarPaint
   /** What drivers may change on this car in the Garage (the main colour always). */
   garage: CarGarage
+  /** Scales the whole car in the race, footprint included (1 = as placed). */
+  raceSize: number
+  /** Whether laps in this car go on the record boards. */
+  records: boolean
   numbers: CarNumbers
   tail: Point3 | null
   maxTriangles: number
@@ -51,6 +55,8 @@ export function newCarDraft(raw: Size3 | null, previous?: Partial<CarDraft>): Ca
     removeWheels: previous?.removeWheels ?? true,
     paint: previous?.paint ?? { mode: 'body', material: '', key: '#ffffff', tolerance: 0.18, color: '#d7263d' },
     garage: carGarage({ garage: previous?.garage }),
+    raceSize: previous?.raceSize ?? 1,
+    records: previous?.records ?? true,
     numbers: {
       door: { x: r3(n.door!.x * k), y: r3(n.door!.y * kh), h: n.door!.h },
       roof: { x: r3(n.roof!.x * k), h: n.roof!.h },
@@ -78,6 +84,8 @@ export function carSpec(d: CarDraft, center: Center): CustomCarSpec {
     garage: { ...d.garage },
     numbers: d.numbers,
     lights: { tail: d.tail },
+    size: d.raceSize,
+    records: d.records,
   }
 }
 
@@ -96,6 +104,8 @@ export function draftFromCar(v: CustomCarRecord, center: Center): CarDraft {
     removeWheels: v.wheelsRemoved,
     paint: { ...v.paint, mode: v.paint.mode === 'none' ? 'body' : v.paint.mode },
     garage: carGarage(v),
+    raceSize: carSize(v),
+    records: carCountsForRecords(v),
     numbers: { door: v.numbers.door && { ...v.numbers.door }, roof: v.numbers.roof && { ...v.numbers.roof }, tail: v.numbers.tail && { ...v.numbers.tail } },
     tail: v.lights.tail && { ...v.lights.tail },
     maxTriangles: 60000,
@@ -109,7 +119,7 @@ export function carProblems(d: CarDraft, length: number, width: number) {
   if (length < CAR_LIMITS.lengthMin || length > CAR_LIMITS.lengthMax) blocking.push(`At ${length.toFixed(2)} m long the car can’t race; keep it between ${CAR_LIMITS.lengthMin} and ${CAR_LIMITS.lengthMax} m.`)
   if (d.axles[0].x <= d.axles[1].x + 1) blocking.push('The front axle must sit at least a metre ahead of the rear axle.')
   if (CAR_BRAND_PATTERN.test(d.name) || CAR_BRAND_PATTERN.test(d.blurb)) blocking.push('Leave real makes, models and racing series out of the name and description.')
-  if (Math.abs(length / STOCK_LENGTH - 1) > 0.15) notes.push(`It races with the stock car’s ${STOCK_LENGTH.toFixed(2)} m footprint, so at ${length.toFixed(2)} m it will ${length > STOCK_LENGTH ? 'overlap other cars before touching' : 'touch other cars before the bodies meet'}.`)
+  if (d.raceSize !== 1) notes.push(`In the race it is ${Math.round(d.raceSize * 100)}% of this size: ${(length * d.raceSize).toFixed(2)} m long, and it collides where its body is.`)
   if (width > STOCK_CAR.width * 1.15) notes.push(`At ${width.toFixed(2)} m wide it is much wider than the stock car (${STOCK_CAR.width} m).`)
   return { blocking, notes }
 }

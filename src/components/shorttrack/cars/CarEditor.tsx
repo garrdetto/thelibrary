@@ -126,13 +126,13 @@ export default function CarEditor() {
     if (!fitted.current) {
       fitted.current = true
       const yaw = next.raw.z > next.raw.x * 1.15 ? 1 : 0
-      setDraft(current => newCarDraft(next.raw, { name: current.name, blurb: current.blurb, yaw, paint: current.paint, garage: current.garage, removeWheels: current.removeWheels }))
+      setDraft(current => newCarDraft(next.raw, { name: current.name, blurb: current.blurb, yaw, paint: current.paint, garage: current.garage, raceSize: current.raceSize, records: current.records, removeWheels: current.removeWheels }))
     }
   }, [])
 
   function refit(scale?: number, yaw = draft.yaw) {
     if (!info) return
-    setDraft(current => newCarDraft(info.raw, { name: current.name, blurb: current.blurb, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, garage: current.garage, removeWheels: current.removeWheels, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture }))
+    setDraft(current => newCarDraft(info.raw, { name: current.name, blurb: current.blurb, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, garage: current.garage, raceSize: current.raceSize, records: current.records, removeWheels: current.removeWheels, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture }))
   }
 
   function matchStock() {
@@ -439,6 +439,13 @@ export default function CarEditor() {
           <label className="ms-veh-inline"><input type="checkbox" checked={draft.garage.logos} onChange={event => patch({ garage: { ...draft.garage, logos: event.target.checked } })}/> Sponsor logos</label>
           <label className="ms-veh-inline"><input type="checkbox" checked={draft.garage.numbers} onChange={event => patch({ garage: { ...draft.garage, numbers: event.target.checked } })}/> Race numbers</label>
           {draft.garage.numbers && <p className="ms-veh-note">Numbers go on as decals where you placed a spot in Numbers &amp; lights, and are painted on at the stock car’s spots everywhere else.</p>}
+        </fieldset>
+        <fieldset>
+          <legend>In the race</legend>
+          <Slider label="Race size" min={CAR_LIMITS.sizeMin} max={CAR_LIMITS.sizeMax} step={0.05} value={draft.raceSize} onChange={raceSize => patch({ raceSize })} display={`${Math.round(draft.raceSize * 100)}%`}/>
+          <p className="ms-veh-note">Scales the whole car on the track, wheels, numbers and lights included. Every custom car collides where its body really is, so small cars can run nose to tail and door to door.</p>
+          <label className="ms-veh-inline"><input type="checkbox" checked={draft.records} onChange={event => patch({ records: event.target.checked })}/> Laps count toward records</label>
+          {!draft.records && <p className="ms-veh-note">Drivers can race it, but none of its laps go on the lap record boards.</p>}
         </fieldset></>}
 
         {step === 'size' && <fieldset>

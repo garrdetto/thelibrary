@@ -1,5 +1,5 @@
 import { AI_LEVELS, STEP, makeConfig } from './config'
-import type { Difficulty, TrackDef } from './config'
+import type { AiLevel, Difficulty, TrackDef } from './config'
 import { createCar, speedOf } from './car'
 import type { Controls, SimCar } from './car'
 import { clamp, mod, rng } from './math'
@@ -16,8 +16,10 @@ export function createWorld(def: TrackDef, rand: () => number, now: () => number
 
 /** Rolling-start grid geometry: rows two wide, a car length apart, starting half a lap back. */
 export function gridGeometry(w: World): { GRID_S: number; GRID_ROW: number; PACE_LEAD: number } {
-  const GRID_ROW = 2 * 4.7 * w.cfg.carScale
-  return { GRID_S: w.track.S_LINE - w.track.P / 2, GRID_ROW, PACE_LEAD: GRID_ROW * 1.6 }
+  let fl = 0
+  for (const c of w.cars.values()) if (!c.isPace) fl = Math.max(fl, c.fl || 1)
+  const GRID_ROW = 2 * 4.7 * w.cfg.carScale * (fl || 1)
+  return { GRID_S: w.track.S_LINE - w.track.P / 2, GRID_ROW, PACE_LEAD: Math.max(GRID_ROW, 2 * 4.7 * w.cfg.carScale) * 1.6 }
 }
 
 const formCache = new WeakMap<World, number>()
@@ -233,7 +235,7 @@ export type GridEntry = { id: string; number: string; ai: boolean; sk?: number; 
  * The host's grid, drawn exactly as the classic `hostStart` drew it: the fixed AI field shuffled, numbers a human
  * runs sitting out, per-car skill from a seeded stream, and the whole grid shuffled.
  */
-export function buildGrid(rand: () => number, humans: { id: string; number: string }[], field: string[], settings: { ai: number; diff: Difficulty }, baseline: number | null, maxCars: number): GridEntry[] {
+export function buildGrid(rand: () => number, humans: { id: string; number: string }[], field: string[], settings: { ai: number; diff: Difficulty; levels?: Record<Difficulty, AiLevel> }, baseline: number | null, maxCars: number): GridEntry[] {
   const ents: GridEntry[] = humans.map((p) => ({ id: p.id, number: p.number, ai: false }))
   const r = rng((rand() * 1e9) | 0), used = new Set(ents.map((e) => e.number)), humanNums = new Set(used), nAI = Math.min(settings.ai, maxCars - ents.length)
   const ro = field.slice()
@@ -245,7 +247,7 @@ export function buildGrid(rand: () => number, humans: { id: string; number: stri
   for (let i = 0; i < Math.min(nAI, roster.length); i++) {
     const number = roster[i]
     used.add(number)
-    const A = AI_LEVELS[settings.diff || 'medium']
+    const A = (settings.levels ?? AI_LEVELS)[settings.diff || 'medium']
     ents.push({ id: 'ai' + i, number, ai: true, sk: +(A.sk[0] + r() * A.sk[1]).toFixed(3), dc: A.dc, pa: A.pass, gb: A.gb, pb: A.pb, lc: A.lc, ag: A.ag, tl: baseline ? +(baseline * A.pace * (1 + (r() * 2 - 1) * A.vary)).toFixed(3) : 0 })
   }
   for (let i = ents.length - 1; i > 0; i--) {
@@ -265,7 +267,7 @@ export type CarFlags = { local: boolean; ai: boolean; player: boolean }
 export function beginRace<C extends SimCar>(w: World, grid: GridEntry[], o: { attack: boolean; laps: number; mode: 'time-attack' | 'race' | 'multiplayer'; myId: string; host: boolean; make: (e: GridEntry, flags: CarFlags) => C }): C[] {
   w.cars.clear()
   w.events.length = 0
-  const { GRID_S, GRID_ROW } = gridGeometry(w), T = w.track, made: C[] = []
+  const T = w.track, made: C[] = []
   Object.assign(w.race, { ph: o.attack ? 'attack' : 'pace', mode: o.mode, laps: o.attack ? 9999 : o.laps, fo: [], gn: false, gnCross: 0, cT: 0, greenT: 0, ckT: 0, white: false, formP: -T.P / 2 })
   grid.forEach((e, i) => {
     const isMe = e.id === o.myId, local = isMe || (o.host && e.ai)
@@ -291,6 +293,11 @@ export function beginRace<C extends SimCar>(w: World, grid: GridEntry[], o: { at
     c.fileLane = i % 2 ? 0.6 : -3.6
     c.lane = -3.6
     c.lapDirty = true
+  })
+  for (const c of made) w.cars.set(c.id, c)
+  const { GRID_S, GRID_ROW } = gridGeometry(w)
+  made.forEach((c) => {
+    const row = c.gridRow || 0
     if (o.attack) {
       place(w, c, T.S_LINE - 70, -2)
       c.cross = 1
@@ -299,7 +306,6 @@ export function beginRace<C extends SimCar>(w: World, grid: GridEntry[], o: { at
       c.cross = 1
       rollAt(w, c, formV(w))
     }
-    w.cars.set(e.id, c)
   })
   return made
 }

@@ -124,9 +124,9 @@ export type AiLevel = { sk: [number, number]; dc: number; pass: number; gb: numb
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
 export const AI_LEVELS: Record<Difficulty, AiLevel> = {
-  easy: { sk: [1.17, 0.03], dc: 10.7, pass: 33, gb: 1.065, pb: 1.03, lc: 1.9, ag: 0.4, pace: 1.05, vary: 0.010 },
-  medium: { sk: [1.2, 0.025], dc: 11.2, pass: 37, gb: 1.085, pb: 1.05, lc: 1.6, ag: 0.65, pace: 1.025, vary: 0.008 },
-  hard: { sk: [1.23, 0.02], dc: 11.7, pass: 41, gb: 1.105, pb: 1.065, lc: 1.3, ag: 0.85, pace: 1.0, vary: 0.006 },
+  easy: { sk: [1.17, 0.03], dc: 10.7, pass: 41, gb: 1.081, pb: 1.0375, lc: 1.52, ag: 0.5, pace: 1.0375, vary: 0.010 },
+  medium: { sk: [1.2, 0.025], dc: 11.2, pass: 46, gb: 1.106, pb: 1.0625, lc: 1.28, ag: 0.81, pace: 1.01875, vary: 0.008 },
+  hard: { sk: [1.23, 0.02], dc: 11.7, pass: 51, gb: 1.131, pb: 1.081, lc: 1.04, ag: 0.95, pace: 0.99375, vary: 0.006 },
 }
 
 export const STEP = 1 / 120
