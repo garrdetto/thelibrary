@@ -24,7 +24,23 @@ export const patternLabels: Record<string, string> = {
   'smart-money': 'Smart wallets in',
   staircase: 'Staircase chart',
   'deep-liquidity': 'Deep liquidity',
+  'early-start': 'Early-start pattern',
+  'moving-up': 'Moving up',
+  'viewers-surging': 'Viewers surging',
+  'holders-growing': 'Holders growing',
+  'mcap-growing': 'Market cap growing',
 }
+
+/**
+ * Tags that only say the coin is in motion right now. Nearly every alert carries them, so they say nothing about which
+ * alerts fail: when alerts were being raised late they all picked up the full penalty and held running coins under the
+ * alert line. They are counted but never earn or cost points.
+ */
+export const motionTags = new Set(['moving-up', 'mcap-growing', 'viewers-surging', 'holders-growing'])
+/** Alerts raised with the price more than this far above its 3-minute low were late; the lessons come from the others. */
+export const onTimeStretch = 35
+/** A pattern only costs points when it fails this much more often than alerts do overall. */
+export const penaltyMargin = 0.1
 
 /** What the alert history has taught, shared by the score (read every second) and the learning loop (which writes it). */
 export const runnerState: { threshold: number; patterns: Map<string, PatternStat>; summary: RadarRunnerSummary | null } = {

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceAlert, patternStats, thresholdFor, type AlertRow } from './runner-learning.js'
-import { marketCapGrowthPoints, movementSignal, scoreRunner, sellImpact, serialLauncherCap, softPenalties, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
+import { earlyBonusPoints, fadingPenalty, movementPoints, movementSignal, scoreRunner, sellImpact, serialLauncherCap, softPenalties, staircase, stretchCostFor, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
+import { earlyStart, type EarlyInput } from './early-start.js'
 import { resetSellWatch, watchSells, type ShareReading } from './sell-watch.js'
 import { recordScore, resetScoreTrails } from './score-trail.js'
 import { minuteClosesFrom, withChartHistory } from './chart-history.js'
@@ -226,18 +227,33 @@ test('the alert threshold rises to 80 when fewer than 40% of the last 20 decided
 
 test('a pattern behind repeated false positives costs 10 points and one behind runners earns 10', () => {
   const rows = [
-    ...Array.from({ length: 4 }, () => ({ tags_json: '["x-tweet"]', outcome: 'false-positive' as const })),
-    { tags_json: '["x-tweet"]', outcome: 'neither' as const },
-    ...Array.from({ length: 3 }, () => ({ tags_json: '["dex-paid"]', outcome: 'runner' as const })),
-    ...Array.from({ length: 2 }, () => ({ tags_json: '["dex-paid"]', outcome: 'neither' as const })),
+    ...Array.from({ length: 4 }, () => ({ tags_json: '["x-tweet"]', outcome: 'false-positive' as const, stretch: 10 })),
+    { tags_json: '["x-tweet"]', outcome: 'neither' as const, stretch: 10 },
+    ...Array.from({ length: 3 }, () => ({ tags_json: '["dex-paid"]', outcome: 'runner' as const, stretch: 10 })),
+    ...Array.from({ length: 2 }, () => ({ tags_json: '["dex-paid"]', outcome: 'neither' as const, stretch: 10 })),
   ]
   const stats = patternStats(rows)
   assert.equal(stats.get('x-tweet')?.points, -10)
   assert.equal(stats.get('dex-paid')?.points, 10)
 })
 
+test('late alerts teach nothing, motion tags never cost points, and a pattern must fail more than alerts do overall', () => {
+  const failed = (tags: string, stretch: number | null) => ({ tags_json: tags, outcome: 'false-positive' as const, stretch })
+  const late = patternStats([...Array.from({ length: 6 }, () => failed('["x-tweet","dev-zero"]', 120)), ...Array.from({ length: 6 }, () => failed('["x-tweet","dev-zero"]', null))])
+  assert.equal(late.size, 0)
+  const motion = patternStats([
+    ...Array.from({ length: 6 }, () => failed('["moving-up","viewers-surging","holders-growing","mcap-growing","website"]', 12)),
+    ...Array.from({ length: 6 }, () => ({ tags_json: '["telegram"]', outcome: 'neither' as const, stretch: 12 })),
+  ])
+  for (const tag of ['moving-up', 'viewers-surging', 'holders-growing', 'mcap-growing']) assert.equal(motion.get(tag)?.points, 0, tag)
+  assert.equal(motion.get('moving-up')?.count, 6)
+  assert.equal(motion.get('website')?.points, -10)
+  const everyAlertFails = patternStats(Array.from({ length: 8 }, () => failed('["dev-zero","deep-liquidity","x-tweet"]', 5)))
+  for (const tag of ['dev-zero', 'deep-liquidity', 'x-tweet']) assert.equal(everyAlertFails.get(tag)?.points, 0, tag)
+})
+
 test('the ledger lists every gate and rule, and its points add up to the score', () => {
-  for (const input of [strong(), strong({ top10: 19, dexPaid: false, smartHolders: 0 }), strong({ bundlers: 40 }), strong({ top10: null, dev: null }), strong({ priceChange: { m1: -20, m5: -30 } })]) {
+  for (const input of [strong(), strong({ top10: 19, dexPaid: false, smartHolders: 0 }), strong({ bundlers: 40 }), strong({ top10: null, dev: null }), strong({ priceChange: { m1: -20, m5: -30 } }), middling({ early: earlyStart(jojoSigns()) }), middling({ dexPaid: false, viewers: 20, early: earlyStart(jojoSigns({ stretchPct: 140, trades5m: 900 })) })]) {
     const result = scoreRunner(input)
     const ledger = result.ledger
     assert.equal(ledger.score, result.score)
@@ -330,14 +346,64 @@ test('a coin under $10K market cap starts 50 points down, whatever else it shows
   assert.ok(faded.cuts.some(cut => cut.includes('under $10.0K')), JSON.stringify(faded.cuts))
 })
 
-test('market cap growth: +5 for 50% in a minute, +10 for doubling in a minute or tripling in 5 minutes', () => {
-  assert.equal(marketCapGrowthPoints({ m1: 50, m5: 50 }).points, 5)
-  assert.equal(marketCapGrowthPoints({ m1: 100, m5: 100 }).points, 10)
-  assert.equal(marketCapGrowthPoints({ m1: 5, m5: 200 }).points, 10)
-  assert.equal(marketCapGrowthPoints({ m1: -20, m5: -40 }).points, 0)
-  assert.equal(marketCapGrowthPoints({ m1: 900, m5: null }).points, 20)
-  const quiet = scoreRunner(strong({ ticks: [], dexPaid: false, viewers: 40, viewersPerMin: 1, holdersPerMin: 2, priceChange: { m1: 0, m5: 0 } }))
-  const surging = scoreRunner(strong({ ticks: [], dexPaid: false, viewers: 40, viewersPerMin: 1, holdersPerMin: 2, priceChange: { m1: 100, m5: 100 } }))
-  assert.ok(surging.score >= quiet.score + 10, `${quiet.score} ${surging.score}`)
-  assert.ok(surging.tags.includes('mcap-growing'))
+/** The early-start readings of a coin about to move: crowd and trading building, price still near its low. */
+function jojoSigns(overrides: Partial<EarlyInput> = {}): EarlyInput {
+  return { ageMinutes: 5.9, marketCap: 25_309, viewers: 584, viewersBefore: 534, volume5m: 59_443, volumeBefore: 45_323, trades5m: 1_998, tradesBefore: 1_380, stretchPct: 26, minuteChange: 15.7, ...overrides }
+}
+
+/** A clean coin with little attention yet, so added and lost points show without hitting 100. */
+function plain(overrides: Partial<RunnerInput> = {}): RunnerInput {
+  return strong({ ticks: [], dexPaid: false, smartHolders: 0, viewers: 40, viewersPerMin: 1, holdersPerMin: 2, priceChange: { m1: 0, m5: 0 }, ...overrides })
+}
+
+test('points go to the signs before a move: the early-start reading adds up to 20 and a price that already ran earns little', () => {
+  assert.equal(earlyBonusPoints(null), 0)
+  assert.equal(earlyBonusPoints({ score: 90 }), 18)
+  assert.equal(earlyBonusPoints({ score: 100 }), 20)
+  const quiet = scoreRunner(plain())
+  const building = scoreRunner(plain({ early: earlyStart(jojoSigns()) }))
+  assert.ok(building.score >= quiet.score + 18, `${quiet.score} ${building.score}`)
+  assert.ok(building.tags.includes('early-start'))
+  assert.ok(building.thesis.some(line => line.startsWith('early-start pattern on')))
+  assert.ok(!quiet.tags.includes('early-start'))
+  const pumped = scoreRunner(plain({ priceChange: { s5: 4, s30: 20, m1: 100, m5: 200 } }))
+  assert.ok(pumped.score <= quiet.score + Math.ceil(movementPoints * 1.25), `${quiet.score} ${pumped.score}`)
+  assert.ok(!pumped.tags.includes('mcap-growing'))
+  assert.ok(building.score > pumped.score, `${building.score} ${pumped.score}`)
+})
+
+test('a price stretched above its 3-minute low costs points, and one still near it earns chart points', () => {
+  assert.equal(stretchCostFor(null), 0)
+  assert.equal(stretchCostFor(35), 0)
+  assert.equal(stretchCostFor(36), 1)
+  assert.equal(stretchCostFor(80), 5)
+  assert.equal(stretchCostFor(400), 10)
+  const lowCheck = (stretchPct: number) => scoreRunner(plain({ early: earlyStart(jojoSigns({ stretchPct })) })).ledger.pillars.find(pillar => pillar.key === 'chart')?.checks.at(-1)
+  assert.equal(lowCheck(10)?.points, 6)
+  assert.equal(lowCheck(30)?.points, 3)
+  assert.equal(lowCheck(90)?.points, 0)
+  assert.equal(scoreRunner(plain()).ledger.pillars.find(pillar => pillar.key === 'chart')?.checks.at(-1)?.status, 'unknown')
+  const near = scoreRunner(plain({ early: earlyStart(jojoSigns({ stretchPct: 30 })) }))
+  const stretched = scoreRunner(plain({ early: earlyStart(jojoSigns({ stretchPct: 130 })) }))
+  assert.ok(stretched.score <= near.score - 10, `${near.score} ${stretched.score}`)
+  assert.ok(stretched.cuts.some(cut => cut.startsWith('Already 130% above its 3-minute low')), JSON.stringify(stretched.cuts))
+})
+
+test('fading trading costs points', () => {
+  const steady = scoreRunner(plain({ early: earlyStart(jojoSigns({ tradesBefore: 1_950, viewersBefore: 584 })) }))
+  const fading = scoreRunner(plain({ early: earlyStart(jojoSigns({ tradesBefore: 2_400, viewersBefore: 584 })) }))
+  assert.ok(fading.score <= steady.score - fadingPenalty, `${steady.score} ${fading.score}`)
+  assert.ok(fading.cuts.some(cut => cut.includes('trades down')), JSON.stringify(fading.cuts))
+})
+
+test('the buy share comes from trade counts when the buy and sell volumes cover little of the 5-minute volume', () => {
+  const buyCheck = (overrides: Partial<RunnerInput>) => scoreRunner(strong(overrides)).ledger.pillars.find(pillar => pillar.key === 'momentum')?.checks.find(item => item.label.startsWith('Buys outpace sells'))
+  assert.equal(buyCheck({})?.points, 5)
+  assert.ok(buyCheck({})?.reading.includes('was buying'))
+  const thin = buyCheck({ volume5m: 132_000, buyVolume5m: 900, sellVolume5m: 400, buys5m: 1_835, sells5m: 1_830 })
+  assert.equal(thin?.points, 3)
+  assert.ok(thin?.reading.startsWith('50% of 3,665 trades were buys'), thin?.reading)
+  assert.equal(buyCheck({ volume5m: 132_000, buyVolume5m: 900, sellVolume5m: 400, buys5m: 1_200, sells5m: 2_400 })?.points, 0)
+  assert.equal(buyCheck({ volume5m: 132_000, buyVolume5m: 900, sellVolume5m: 400 })?.status, 'unknown')
+  assert.equal(buyCheck({ buyVolume5m: null, sellVolume5m: null, buys5m: 700, sells5m: 300 })?.points, 5)
 })

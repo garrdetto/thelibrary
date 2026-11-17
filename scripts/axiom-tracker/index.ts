@@ -5,6 +5,7 @@ import { startChartHistory } from './chart-history.js'
 import { startDexPaid } from './dex-paid.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
+import { startEarlyLog } from './early-log.js'
 import { startExtensionIntake } from './extension-intake.js'
 import { startFollowUp } from './follow-up.js'
 import { startFreshWallets } from './fresh-wallets.js'
@@ -63,6 +64,7 @@ const tasks = [
   startDexPaid(database, controller.signal),
   startChartHistory(database, controller.signal),
   startRunnerAlerts(database, controller.signal),
+  startEarlyLog(database, controller.signal),
   startAdvice(database, controller.signal),
   startSelfCheck(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {

@@ -65,6 +65,19 @@ export type RadarScoreChange = { t: number; from: number; to: number; reasons: s
 /** The score over the last minutes ([time, score] pairs) and the recent changes. */
 export type RadarScoreTrail = { points: Array<[number, number]>; changes: RadarScoreChange[] }
 
+/**
+ * The early-start reading: signs that show before the price moves (a big crowd for the coin's size, heavy trading for its
+ * size, trades and viewers picking up, a young coin, a price still near its 3-minute low), out of 100. `firing` means every
+ * sign of the pattern is on and no gate failed; the paper bot does not buy on it.
+ */
+export type RadarEarlyStart = { score: number; firing: boolean; signs: RadarScoreCheck[]; stretchPct: number | null; fading: string | null; blockedBy: string | null; missing: string[] }
+
+/** One time the early-start pattern was complete, followed for 15 minutes: +50% before -35% wins, -35% first loses. `blockedBy` names the gate that was failing, if one was. */
+export type RadarEarlyRecord = { id: number; mint: string; symbol: string; pairAddress: string | null; firedAt: number; price: number; marketCap: number | null; score: number; runnerScore: number | null; peak15m: number | null; low15m: number | null; end15m: number | null; result: 'win' | 'loss' | 'flat' | null; blockedBy: string | null }
+
+/** `fired` to `medianPeak` cover the times no gate was failing; `blocked` counts the times the pattern was complete while a gate held the coin at 0. */
+export type RadarEarlySummary = { fired: number; decided: number; wins: number; losses: number; flat: number; medianPeak: number | null; blocked: { fired: number; decided: number; wins: number }; recent: RadarEarlyRecord[]; updatedAt: number }
+
 /** What the coin's risky holders could do to its price, and the instant-exit triggers being watched every second. */
 export type RadarSafetyPlan = { level: 'ok' | 'watch' | 'exit'; selling: string[]; bundleDumpPct: number | null; topDumpPct: number | null; triggers: string[]; summary: string }
 
@@ -197,6 +210,7 @@ export type RadarToken = {
   scoreTrail?: RadarScoreTrail | null
   dex?: RadarDexScore | null
   wallets?: RadarWalletScore | null
+  early?: RadarEarlyStart | null
 }
 
 export type RadarPaperTrade = {
@@ -288,6 +302,7 @@ export type RadarPayload = {
   winners?: RadarWinnersSummary | null
   adviceStudy?: RadarAdviceStudy | null
   runner?: RadarRunnerSummary | null
+  early?: RadarEarlySummary | null
 }
 
 export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'priceChangeSources' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'rawScore' | 'scoreCuts' | 'scoreParts' | 'botClimb' | 'alerts' | 'safetyPlan' | 'runnerThesis' | 'learnedEdge' | 'scoreLedger' | 'scoreTrail' | 'dex'>

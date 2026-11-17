@@ -41,7 +41,7 @@ export function fitBody(candidates: Array<() => unknown>, limit = maxBodyBytes) 
 /** The payload with shorter histories and without the per-coin score trail, for when every Pulse coin will not fit otherwise. */
 export function slimPayload(payload: RadarPayload, ledgersFor = Infinity): RadarPayload {
   const keep = new Set([...payload.tokens].sort((first, second) => second.score - first.score).slice(0, ledgersFor).map(token => token.mint))
-  return { ...payload, tokens: payload.tokens.map(token => ({ ...token, ...(keep.has(token.mint) ? {} : { scoreLedger: undefined, spark: { fast: [], slow: [] }, wallets: token.wallets ? { ...token.wallets, top: [] } : token.wallets }), history: thin<RadarHistoryPoint>(token.history, 15), scoreTrail: token.scoreTrail ? { points: token.scoreTrail.points.slice(-30), changes: token.scoreTrail.changes.slice(-3) } : token.scoreTrail })) }
+  return { ...payload, tokens: payload.tokens.map(token => ({ ...token, ...(keep.has(token.mint) ? {} : { scoreLedger: undefined, spark: { fast: [], slow: [] }, wallets: token.wallets ? { ...token.wallets, top: [] } : token.wallets, early: token.early ? { ...token.early, signs: [], missing: [] } : token.early }), history: thin<RadarHistoryPoint>(token.history, 15), scoreTrail: token.scoreTrail ? { points: token.scoreTrail.points.slice(-30), changes: token.scoreTrail.changes.slice(-3) } : token.scoreTrail })) }
 }
 
 /** One coin with its numbers kept and its long explanations dropped: score breakdowns, check details, factors and the score trail. */
@@ -61,6 +61,7 @@ export function leanToken(token: RadarToken): RadarToken {
     dex: token.dex ? { ...token.dex, checks: [] } : token.dex,
     safetyPlan: token.safetyPlan ? { ...token.safetyPlan, triggers: [], summary: '' } : token.safetyPlan,
     wallets: token.wallets ? { ...token.wallets, top: [] } : token.wallets,
+    early: token.early ? { ...token.early, signs: [], missing: [] } : token.early,
   }
 }
 

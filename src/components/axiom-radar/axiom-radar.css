@@ -283,6 +283,11 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-signal.buy { background: var(--radar-up); color: var(--radar-on-up, #fff); }
 .radar-signal.watch { color: var(--radar-warn); border: 1px solid color-mix(in oklab, var(--radar-warn) 50%, transparent); background: color-mix(in oklab, var(--radar-warn) 10%, transparent); }
 .radar-tag { font-size: 11px; border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; color: var(--muted); white-space: nowrap; }
+.radar-early-tag { cursor: help; }
+.radar-early-tag.on { color: var(--radar-up); border-color: color-mix(in oklab, var(--radar-up) 55%, transparent); background: color-mix(in oklab, var(--radar-up) 12%, transparent); font-weight: 700; }
+.radar-early { display: grid; gap: 8px; }
+.radar-early-state { margin: 0; font-size: 13px; color: var(--muted); }
+.radar-early-state.on { color: var(--radar-up); font-weight: 600; }
 .radar-rank-chip { font-size: 12px; color: var(--muted); min-width: 24px; }
 .radar-pin { color: var(--muted); opacity: .55; }
 .radar-pin:hover, .radar-pin.on { opacity: 1; color: var(--radar-warn); }
