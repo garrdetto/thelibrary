@@ -197,6 +197,8 @@ export type RadarToken = {
   alerts: string[]
   pinned: boolean
   onPulse: boolean
+  /** The Axiom Discover lists the coin is on in the owner's open tabs. */
+  axiomLists?: Array<'trending' | 'surge'>
   outlook?: RadarOutlook | null
   explode?: RadarExplode | null
   maker?: RadarMaker | null

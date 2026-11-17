@@ -329,6 +329,7 @@ function AxiomRadarBody() {
       <p className="radar-stats" aria-label="Radar summary">
         <span><strong className="tabular">{tokens.length}</strong> coins</span>
         <span><strong className="tabular">{tokens.filter(token => token.onPulse).length}</strong> on Pulse</span>
+        {tokens.some(token => token.axiomLists?.length) && <span><strong className="tabular">{tokens.filter(token => token.axiomLists?.includes('trending')).length}</strong> trending · <strong className="tabular">{tokens.filter(token => token.axiomLists?.includes('surge')).length}</strong> surge</span>}
         <span><strong className="tabular">{buyCount}</strong> buy · <strong className="tabular">{watchCount}</strong> watch</span>
         <span>Paper win rate <strong className="tabular">{formatPercent(payload.kpis.winRate, 0)}</strong> of {payload.kpis.completedTrades}</span>
       </p>
