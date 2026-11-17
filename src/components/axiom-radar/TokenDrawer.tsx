@@ -20,6 +20,8 @@ const clockWithSeconds = (value: number) => new Date(value).toLocaleTimeString([
 
 type TokenDrawerProps = { token: RadarToken; chartWindow: ChartWindow; fast: boolean; onClose: () => void; onTogglePin: (mint: string) => void }
 
+const formatSol = (value: number) => `${value.toFixed(Math.abs(value) >= 10 ? 1 : 2)} SOL`
+
 const walletVerdict = { good: 'Winning', bad: 'Coins died', mixed: 'Mixed', new: 'No record' } as const
 
 export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: TokenDrawerProps) {
@@ -247,15 +249,16 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       </section>
 
       {live.wallets && <section className="radar-drawer-section" aria-labelledby="radar-wallets-title">
-        <h3 id="radar-wallets-title">Wallet Score {live.wallets.score} <small>who holds it, how much, and how their earlier coins ended</small></h3>
+        <h3 id="radar-wallets-title">Wallet Score {live.wallets.score} <small>who holds it, how much, how their earlier coins ended and what they made trading them</small></h3>
         <p className="radar-note">{live.wallets.summary}. 50 means no holder with a real stake has a record yet; holders under $100 or 0.3% of supply are left out.</p>
         {live.wallets.top.length > 0 && <div className="radar-table-wrap">
           <table className="radar-mini-table">
-            <thead><tr><th scope="col">Wallet</th><th scope="col">Holds</th><th scope="col">Earlier coins</th><th scope="col">Record</th></tr></thead>
+            <thead><tr><th scope="col">Wallet</th><th scope="col">Holds</th><th scope="col">Earlier coins</th><th scope="col">Their trades</th><th scope="col">Record</th></tr></thead>
             <tbody>{live.wallets.top.map(holder => <tr key={holder.wallet}>
               <td><a href={solscanAccountUrl(holder.wallet)} target="_blank" rel="noopener noreferrer" className="mono">{shortAddress(holder.wallet)}</a>{holder.whale && <span className="radar-tag" title="$1,000 or more in this coin">whale</span>}</td>
               <td className="tabular">{holder.pct.toFixed(1)}%{holder.usd !== null ? ` · ${formatUsd(holder.usd)}` : ''}</td>
               <td className="tabular">{holder.wins} grew 3x · {holder.losses} died</td>
+              <td className="tabular">{holder.pricedCoins && holder.buyInSol != null && holder.profitSol != null ? <>{formatSol(holder.buyInSol)} in · <span className={holder.profitSol > 0 ? 'radar-delta up' : holder.profitSol < 0 ? 'radar-delta down' : ''}>{holder.profitSol > 0 ? '+' : ''}{formatSol(holder.profitSol)}</span>{live.wallets?.solUsd ? <small className="radar-muted"> ({formatUsd(holder.profitSol * live.wallets.solUsd)})</small> : null}<small className="radar-muted"> on {holder.pricedCoins}</small></> : '—'}</td>
               <td className={holder.verdict === 'good' ? 'radar-delta up' : holder.verdict === 'bad' ? 'radar-delta down' : 'radar-muted'}>{walletVerdict[holder.verdict]}</td>
             </tr>)}</tbody>
           </table>

@@ -18,7 +18,8 @@ import { startScoring } from './scoring.js'
 import { startSelfCheck } from './self-check.js'
 import { startSitePublisher } from './site-publisher.js'
 import { startWalletTracker } from './wallet-tracker.js'
-import { startWalletScores } from './wallet-score.js'
+import { startWalletScores, walletBook } from './wallet-score.js'
+import { startWalletPnl } from './wallet-pnl.js'
 
 const logger = createLogger('orchestrator')
 const controller = new AbortController()
@@ -47,6 +48,7 @@ const tasks = [
   startAxiomCollector(database, controller.signal),
   startWalletTracker(database, controller.signal),
   startWalletScores(database, controller.signal),
+  startWalletPnl(database, controller.signal, walletBook),
   startScoring(database, controller.signal),
   startSitePublisher(database, controller.signal),
   startExtensionIntake(database, controller.signal),

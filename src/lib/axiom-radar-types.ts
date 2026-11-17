@@ -97,7 +97,8 @@ export type RadarRunnerPattern = { tag: string; label: string; count: number; fa
 export type RadarRunnerSummary = { threshold: number; normalThreshold: number; rollingWinRate: number | null; rollingDecided: number; alerts: RadarRunnerAlert[]; patterns: RadarRunnerPattern[]; updatedAt: number }
 
 /** One of a coin's top holders as the Wallet Score sees it: its stake now and how the coins it held before ended. */
-export type RadarWalletHolder = { wallet: string; pct: number; usd: number | null; wins: number; losses: number; verdict: 'good' | 'bad' | 'mixed' | 'new'; whale: boolean }
+/** `buyInSol` and `profitSol` total the holder's own trades in its earlier coins (`pricedCoins` of them), read from the chain. */
+export type RadarWalletHolder = { wallet: string; pct: number; usd: number | null; wins: number; losses: number; verdict: 'good' | 'bad' | 'mixed' | 'new'; whale: boolean; pricedCoins?: number; buyInSol?: number | null; profitSol?: number | null }
 
 /** Who holds the coin and how much: 0–100, 50 when no holder with a real stake has a record yet (scripts/axiom-tracker/wallet-score.ts). */
 export type RadarWalletScore = {
@@ -109,6 +110,8 @@ export type RadarWalletScore = {
   badWhales: number
   smartUsd: number | null
   smartPct: number
+  bestProfitSol?: number | null
+  solUsd?: number | null
   ignored: number
   top: RadarWalletHolder[]
   summary: string
