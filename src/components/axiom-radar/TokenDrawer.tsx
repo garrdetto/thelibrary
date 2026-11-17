@@ -261,6 +261,20 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
             </tr>)}</tbody>
           </table>
         </div>}
+        {(live.wallets.flippers?.length ?? 0) > 0 && <>
+          <h4>Proven flippers buying now <small className="radar-muted">bought in the last 10 minutes; their earlier round trips made money</small></h4>
+          <div className="radar-table-wrap">
+            <table className="radar-mini-table">
+              <thead><tr><th scope="col">Wallet</th><th scope="col">Bought now</th><th scope="col">Earlier flips</th><th scope="col">Put in → made</th></tr></thead>
+              <tbody>{live.wallets.flippers?.map(flipper => <tr key={flipper.wallet}>
+                <td><a href={solscanAccountUrl(flipper.wallet)} target="_blank" rel="noopener noreferrer" className="mono">{shortAddress(flipper.wallet)}</a></td>
+                <td className="tabular">{formatUsd(flipper.buyUsd)} <small className="radar-muted">{relativeSeconds(flipper.at, Date.now())}</small></td>
+                <td className="tabular">{flipper.wins} of {flipper.flips} won{flipper.quick ? ` · ${flipper.quick} quick` : ''}</td>
+                <td className="tabular">{formatUsd(flipper.putInUsd)} → <span className={flipper.profitUsd > 0 ? 'radar-delta up' : 'radar-delta down'}>{flipper.profitUsd > 0 ? '+' : ''}{formatUsd(flipper.profitUsd)}</span></td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </>}
       </section>}
 
       <section className="radar-drawer-section">

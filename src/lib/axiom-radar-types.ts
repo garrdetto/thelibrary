@@ -98,7 +98,10 @@ export type RadarRunnerSummary = { threshold: number; normalThreshold: number; r
 
 /** One of a coin's top holders as the Wallet Score sees it: its stake now and how the coins it held before ended. */
 /** `buyInSol` and `profitSol` total the holder's own trades in its earlier coins (`pricedCoins` of them), read from the chain. */
-export type RadarWalletHolder = { wallet: string; pct: number; usd: number | null; wins: number; losses: number; verdict: 'good' | 'bad' | 'mixed' | 'new'; whale: boolean; pricedCoins?: number; buyInSol?: number | null; profitSol?: number | null }
+export type RadarWalletHolder = { wallet: string; pct: number; usd: number | null; wins: number; losses: number; verdict: 'good' | 'bad' | 'mixed' | 'new'; whale: boolean; pricedCoins?: number; buyInSol?: number | null; profitSol?: number | null; flips?: number; flipProfitUsd?: number | null }
+
+/** A wallet buying the coin now whose earlier round trips (bought, then sold at least half) made money (scripts/axiom-tracker/flip-traders.ts). */
+export type RadarFlipper = { wallet: string; buyUsd: number; flips: number; wins: number; quick: number; putInUsd: number; profitUsd: number; at: number }
 
 /** Who holds the coin and how much: 0–100, 50 when no holder with a real stake has a record yet (scripts/axiom-tracker/wallet-score.ts). */
 export type RadarWalletScore = {
@@ -113,6 +116,10 @@ export type RadarWalletScore = {
   bestProfitSol?: number | null
   solUsd?: number | null
   ignored: number
+  flippersBuying?: number
+  flipperBuyUsd?: number
+  flippers?: RadarFlipper[]
+  buyersSeen?: number
   top: RadarWalletHolder[]
   summary: string
   checkedAt: number | null

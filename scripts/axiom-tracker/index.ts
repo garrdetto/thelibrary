@@ -20,6 +20,7 @@ import { startSitePublisher } from './site-publisher.js'
 import { startWalletTracker } from './wallet-tracker.js'
 import { startWalletScores, walletBook } from './wallet-score.js'
 import { startWalletPnl } from './wallet-pnl.js'
+import { startFlipTraders } from './flip-traders.js'
 
 const logger = createLogger('orchestrator')
 const controller = new AbortController()
@@ -49,6 +50,7 @@ const tasks = [
   startWalletTracker(database, controller.signal),
   startWalletScores(database, controller.signal),
   startWalletPnl(database, controller.signal, walletBook),
+  startFlipTraders(database, controller.signal),
   startScoring(database, controller.signal),
   startSitePublisher(database, controller.signal),
   startExtensionIntake(database, controller.signal),
