@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { CirclePlus, Radio } from 'lucide-react'
+import { CirclePlus, Play, Radio } from 'lucide-react'
 import type { BridgeStatus, GsproSession, GsproShot } from '@/lib/gspro/types'
 import { clubLabel } from '@/lib/gspro/clubs'
 import { enrichShot, fmt, signed, summarizeByClub, type EnrichedShot } from '@/lib/gspro/stats'
 import { ShotTable } from './ShotTable'
+import { useReplay } from './ReplayContext'
 
 type Tile = { label: string; value: string; unit?: string; note?: string }
 
@@ -39,6 +40,7 @@ export function LiveView({ shots, openSession, bridge, online, onShot, onNewSess
   onSetup: () => void
 }) {
   const [starting, setStarting] = useState(false)
+  const openReplay = useReplay()
   const enriched = useMemo(() => shots.map(enrichShot), [shots])
   const sessionShots = useMemo(() => openSession ? enriched.filter(shot => shot.sessionId === openSession.id) : [], [enriched, openSession])
   const latest = enriched[enriched.length - 1] ?? null
@@ -60,6 +62,7 @@ export function LiveView({ shots, openSession, bridge, online, onShot, onNewSess
         </div>
         <div className="gs-hero-carry">
           <strong>{fmt(latest.carryYards, 0)}</strong><span>yd carry{latest.carryEstimated ? ' (est.)' : ''}</span>
+          <button type="button" className="gs-button" onClick={() => openReplay(enriched, enriched.length - 1)}><Play size={15} aria-hidden/>Replay</button>
         </div>
       </div>
       <dl className="gs-tiles">

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { clubLabel } from '@/lib/gspro/clubs'
 import { fmt, type ClubSummary, type EnrichedShot } from '@/lib/gspro/stats'
+import { useReplay } from './ReplayContext'
 
 type Tip = { x: number; y: number; content: ReactNode }
 
@@ -42,6 +43,7 @@ function Tooltip({ tip, width, height }: { tip: Tip | null; width: number; heigh
 export function DispersionChart({ shots, club }: { shots: EnrichedShot[]; club: string | null }) {
   const [tip, setTip] = useState<Tip | null>(null)
   const [box, W] = useChartWidth(640)
+  const openReplay = useReplay()
   const points = shots.filter(shot => !shot.excluded && shot.carryYards !== null && shot.offline !== null).map(shot => ({ shot, x: shot.offline! * (shot.handed === 'LH' ? -1 : 1), y: shot.carryYards! }))
   if (points.length < 2) return <p className="gs-muted">Hit at least two shots with this club to see the dispersion.</p>
   const H = Math.round(Math.min(380, Math.max(260, W * 0.7)))
@@ -63,7 +65,7 @@ export function DispersionChart({ shots, club }: { shots: EnrichedShot[]; club: 
   const rx = Math.abs(sx(mx + sd(xs)) - sx(mx))
   const ry = Math.abs(sy(my + sd(ys)) - sy(my))
   return <figure className="gs-chart">
-    <figcaption>{clubLabel(club)}: where shots land · ellipse covers about two thirds of them</figcaption>
+    <figcaption>{clubLabel(club)}: where shots land · ellipse covers about two thirds of them · click a shot to replay it</figcaption>
     <div className="gs-chart-box" ref={box} onMouseLeave={() => setTip(null)}>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${clubLabel(club)} dispersion: ${points.length} shots, average carry ${fmt(my, 0)} yards, ${fmt(Math.abs(mx), 0)} yards ${mx >= 0 ? 'right' : 'left'}`}>
         {niceTicks(y0, y1).map(t => <g key={`y${t}`}><line className="gs-grid" x1={pad.l} x2={W - pad.r} y1={sy(t)} y2={sy(t)}/><text className="gs-axis" x={pad.l - 8} y={sy(t) + 4} textAnchor="end">{t}</text></g>)}
@@ -72,12 +74,14 @@ export function DispersionChart({ shots, club }: { shots: EnrichedShot[]; club: 
         <text className="gs-axis" x={(pad.l + W - pad.r) / 2} y={H - 4} textAnchor="middle">Offline (yd, right-handed view)</text>
         <text className="gs-axis" x={14} y={(pad.t + H - pad.b) / 2} textAnchor="middle" transform={`rotate(-90 14 ${(pad.t + H - pad.b) / 2})`}>Carry (yd)</text>
         <ellipse className="gs-ellipse" cx={sx(mx)} cy={sy(my)} rx={rx} ry={ry}/>
-        {points.map(({ shot, x, y }) => <g key={shot.id}>
+        {points.map(({ shot, x, y }, index) => <g key={shot.id}>
           <circle className="gs-dot-mark" cx={sx(x)} cy={sy(y)} r={5}/>
           <circle className="gs-hit" cx={sx(x)} cy={sy(y)} r={12} tabIndex={0} aria-label={`${fmt(y, 0)} yards carry, ${fmt(Math.abs(x), 0)} ${x >= 0 ? 'right' : 'left'}`}
             onMouseEnter={() => setTip({ x: sx(x), y: sy(y), content: <><b>{fmt(y, 0)} yd</b> carry · {fmt(Math.abs(x), 0)} {x >= 0 ? 'R' : 'L'}<br/>{shot.shape} · {fmt(shot.ballSpeed)} mph · {fmt(shot.totalSpin, 0)} rpm</> })}
             onFocus={() => setTip({ x: sx(x), y: sy(y), content: <><b>{fmt(y, 0)} yd</b> · {fmt(Math.abs(x), 0)} {x >= 0 ? 'R' : 'L'}</> })}
-            onBlur={() => setTip(null)}/>
+            onBlur={() => setTip(null)}
+            onClick={() => openReplay(points.map(point => point.shot), index)}
+            onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openReplay(points.map(point => point.shot), index) } }}/>
         </g>)}
         <g className="gs-mean"><line x1={sx(mx) - 7} x2={sx(mx) + 7} y1={sy(my)} y2={sy(my)}/><line x1={sx(mx)} x2={sx(mx)} y1={sy(my) - 7} y2={sy(my) + 7}/></g>
       </svg>

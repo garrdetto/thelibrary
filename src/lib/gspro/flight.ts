@@ -27,7 +27,51 @@ const K = (AIR * Math.PI * RADIUS * RADIUS) / (2 * MASS)
 
 export const flightTuning = { cd0: 0.218, cdSpin: 0.164, cdSpeed: 0.089, clSlope: 1.0, clPow: 0.794, clMax: 0.308, spinDecay: 0.0101 }
 
+/** One sample of the ball's position: seconds after impact, then yards downrange, feet high and yards right. */
+export type TracePoint = { t: number; x: number; y: number; z: number }
+
+export type FlightTrace = FlightEstimate & { air: TracePoint[]; ground: TracePoint[] }
+
+const SAMPLE_SECONDS = 0.02
+
 export function estimateFlight(input: FlightInput): FlightEstimate | null {
+  return integrate(input, null)
+}
+
+/**
+ * The whole path for a replay: airborne samples every 20 ms, then one hop and an easing roll out to the estimated total
+ * along the landing heading. The hop rises with a third of the landing's vertical speed and covers a quarter of the roll.
+ */
+export function traceFlight(input: FlightInput): FlightTrace | null {
+  const air: TracePoint[] = [{ t: 0, x: 0, y: 0, z: 0 }]
+  const estimate = integrate(input, air)
+  if (!estimate) return null
+  const landing = air[air.length - 1]
+  const previous = air[Math.max(0, air.length - 2)]
+  const heading = Math.atan2(landing.z - previous.z, Math.max(1e-6, landing.x - previous.x))
+  const roll = Math.max(0, estimate.total - estimate.carry)
+  const ground: TracePoint[] = []
+  if (roll > 0.5) {
+    const hop = roll * 0.25
+    const speedDown = Math.tan((estimate.descent * Math.PI) / 180) * Math.max(1, (landing.x - previous.x) / Math.max(1e-6, landing.t - previous.t)) * YARD
+    const lift = Math.min(speedDown / 3, 6)
+    const hopTime = (2 * lift) / GRAVITY
+    const rollTime = Math.min(5, Math.max(0.6, roll / 6))
+    const steps = 40
+    for (let index = 1; index <= steps; index++) {
+      const share = index / steps
+      const inHop = share <= 0.35
+      const along = inHop ? hop * (share / 0.35) : hop + (roll - hop) * (1 - (1 - (share - 0.35) / 0.65) ** 2)
+      const t = landing.t + (inHop ? hopTime * (share / 0.35) : hopTime + rollTime * ((share - 0.35) / 0.65))
+      const hopShare = share / 0.35
+      const height = inHop ? (lift * hopTime * hopShare - 0.5 * GRAVITY * (hopTime * hopShare) ** 2) / FOOT : 0
+      ground.push({ t, x: landing.x + along * Math.cos(heading), y: Math.max(0, height), z: landing.z + along * Math.sin(heading) })
+    }
+  }
+  return { ...estimate, air, ground }
+}
+
+function integrate(input: FlightInput, path: TracePoint[] | null): FlightEstimate | null {
   const speed = input.ballSpeed * MPH
   if (!(speed > 2) || !Number.isFinite(input.launch)) return null
   const launch = (input.launch * Math.PI) / 180
@@ -69,6 +113,7 @@ export function estimateFlight(input: FlightInput): FlightEstimate | null {
     omega *= decay
     t += dt
     if (y > apex) apex = y
+    if (path && y >= 0 && t - path[path.length - 1].t >= SAMPLE_SECONDS - 1e-9) path.push({ t, x: x / YARD, y: y / FOOT, z: z / YARD })
     if (y < 0 && t > 0.05) {
       const f = py / (py - y)
       const lx = px + (x - px) * f
@@ -77,6 +122,7 @@ export function estimateFlight(input: FlightInput): FlightEstimate | null {
       const descent = (Math.atan2(-vy, horizontal) * 180) / Math.PI
       const roll = rollYards(horizontal, descent, omega)
       const carry = lx / YARD
+      path?.push({ t: t - dt * (1 - f), x: carry, y: 0, z: lz / YARD })
       return {
         carry,
         offline: lz / YARD,

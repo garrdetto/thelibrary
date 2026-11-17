@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, BarChart3, Cable, Lightbulb } from 'lucide-react'
 import type { BridgeStatus, GsproSession, GsproShot } from '@/lib/gspro/types'
-import { enrichShot } from '@/lib/gspro/stats'
+import { enrichShot, type EnrichedShot } from '@/lib/gspro/stats'
 import { gsproApi } from './api'
 import { LiveView } from './LiveView'
 import { AnalyzeView } from './AnalyzeView'
 import { TipsView } from './TipsView'
 import { BridgeView } from './BridgeView'
+import { ReplayContext } from './ReplayContext'
+import { ShotReplay } from './ShotReplay'
 
 export type Scope = { kind: 'session'; id: string } | { kind: 'days'; days: number }
 
@@ -47,6 +49,8 @@ export default function GsproApp() {
   const [scope, setScope] = useState<Scope>({ kind: 'days', days: 90 })
   const [scoped, setScoped] = useState<GsproShot[] | null>(null)
   const [scopeError, setScopeError] = useState<string | null>(null)
+  const [replay, setReplay] = useState<{ shots: EnrichedShot[]; index: number; key: number } | null>(null)
+  const openReplay = useCallback((shots: EnrichedShot[], index: number) => setReplay({ shots, index, key: Date.now() }), [])
   const lastId = useRef(0)
   const scopeRef = useRef(scope)
   scopeRef.current = scope
@@ -121,7 +125,7 @@ export default function GsproApp() {
     window.history.replaceState(null, '', `#${next}`)
   }
 
-  return <div className="gs-app">
+  return <ReplayContext.Provider value={openReplay}><div className="gs-app">
     <nav className="gs-tabs" aria-label="Analyzer sections">
       {tabs.map(item => <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} aria-current={tab === item.id ? 'page' : undefined} onClick={() => choose(item.id)}>
         <item.icon size={15} aria-hidden/>{item.label}
@@ -136,5 +140,6 @@ export default function GsproApp() {
     {tab === 'analyze' && <AnalyzeView scope={scope} sessions={sessions} shots={enrichedScope} error={scopeError} onScope={setScope} onShot={replaceShot}/>}
     {tab === 'tips' && <TipsView scope={scope} sessions={sessions} shots={enrichedScope} error={scopeError} onScope={setScope}/>}
     {tab === 'bridge' && <BridgeView bridge={bridge} online={online} sessions={sessions} onBridge={setBridge} onSessions={loadSessions} onImported={id => { loadSessions(); setScope({ kind: 'session', id }); choose('analyze') }} onDeleted={id => { loadSessions(); setLive(list => list.filter(shot => shot.sessionId !== id)); if (scope.kind === 'session' && scope.id === id) setScope({ kind: 'days', days: 90 }) }}/>}
-  </div>
+    {replay && <ShotReplay key={replay.key} shots={replay.shots} index={replay.index} onClose={() => setReplay(null)}/>}
+  </div></ReplayContext.Provider>
 }

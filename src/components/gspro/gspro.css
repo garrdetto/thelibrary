@@ -100,11 +100,11 @@
 .gs-table-wrap { overflow-x: auto; border: 1px solid var(--lib-line); border-radius: 12px; max-height: 560px; }
 .gs-table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
 .gs-table th, .gs-table td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--lib-line); }
-.gs-table th:first-child, .gs-table td:first-child, .gs-table th:nth-child(2), .gs-table td:nth-child(2) { text-align: left; }
+.gs-table th:first-child, .gs-table td:first-child, .gs-table th:nth-child(2), .gs-table td:nth-child(2), .gs-table:not(.gs-club-table) th:nth-child(3), .gs-table:not(.gs-club-table) td:nth-child(3) { text-align: left; }
 .gs-table thead th { position: sticky; top: 0; background: var(--gs-soft); color: var(--lib-muted); font-weight: 500; font-size: 12px; z-index: 1; }
 .gs-table tbody tr:hover { background: var(--lib-chip); }
 .gs-table tr.is-excluded td { color: var(--lib-dim); text-decoration: line-through; }
-.gs-table tr.is-excluded td:last-child, .gs-table tr.is-excluded td:nth-child(2) { text-decoration: none; }
+.gs-table tr.is-excluded td:last-child, .gs-table tr.is-excluded td:nth-child(3) { text-decoration: none; }
 .gs-table tr.is-selected { background: color-mix(in srgb, var(--lib-accent) 10%, transparent); }
 .gs-table small { margin-left: 4px; color: var(--lib-dim); font-size: 11px; }
 .gs-table sup { color: var(--lib-dim); margin-left: 1px; }
@@ -192,7 +192,31 @@
 .gs-page button:focus-visible, .gs-page a:focus-visible, .gs-page select:focus-visible, .gs-page input:focus-visible, .gs-table-wrap:focus-visible { outline: 2px solid var(--lib-accent); outline-offset: 2px; }
 .gs-page .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+.gs-row { cursor: pointer; }
+.gs-play { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--lib-line); background: var(--lib-chip); color: var(--lib-accent); cursor: pointer; }
+.gs-play:hover { background: var(--lib-accent); color: var(--lib-on-accent); border-color: var(--lib-accent); }
+.gs-hero-carry .gs-button { align-self: center; margin-left: 8px; }
+.gs-ghost { fill: none; stroke: var(--lib-dim); stroke-width: 1; opacity: .45; }
+.gs-chart .gs-hit { cursor: pointer; }
+
+.gs-replay { width: min(1080px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--lib-line); border-radius: 18px; background: var(--gs-card); color: var(--lib-text); box-shadow: 0 30px 80px -30px var(--lib-shadow); }
+.gs-replay::backdrop { background: rgba(5, 10, 20, .6); backdrop-filter: blur(3px); }
+.gs-replay-inner { display: grid; gap: 14px; padding: 18px 20px 20px; }
+.gs-replay-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.gs-replay-head h2 { margin: 0; font-family: 'Manrope', sans-serif; font-size: 24px; font-weight: 600; color: var(--lib-strong); }
+.gs-replay-head h2 span { font-size: .65em; font-weight: 500; color: var(--lib-muted); margin-left: 6px; }
+.gs-dtl { border-radius: 14px; overflow: hidden; line-height: 0; }
+.gs-dtl canvas { display: block; }
+.gs-replay-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-replay-controls .gs-muted { margin-left: auto; }
+.gs-replay-plots { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.gs-replay-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; margin: 0; }
+.gs-replay-stats > div { background: var(--gs-soft); border-radius: 10px; padding: 7px 10px; }
+.gs-replay-stats dt { font-size: 11px; color: var(--lib-muted); }
+.gs-replay-stats dd { margin: 1px 0 0; font-size: 15px; font-weight: 600; color: var(--lib-strong); }
+
 @media (max-width: 900px) {
+  .gs-replay-plots { grid-template-columns: minmax(0, 1fr); }
   .gs-chart-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
@@ -204,6 +228,9 @@
   .gs-scope select, .gs-search input { min-width: 0; width: 100%; }
   .gs-search { margin-left: 0; width: 100%; }
   .gs-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gs-replay { width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+  .gs-replay-inner { padding: 14px; }
+  .gs-replay-controls .gs-muted { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .gs-status.up .gs-dot { animation: none; }

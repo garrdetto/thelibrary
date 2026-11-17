@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFlight } from '../../src/lib/gspro/flight'
+import { estimateFlight, traceFlight } from '../../src/lib/gspro/flight'
 import { normalizeClub } from '../../src/lib/gspro/clubs'
 import { importCsv } from '../../src/lib/gspro/csv'
 import { enrichShot, summarizeByClub } from '../../src/lib/gspro/stats'
@@ -88,4 +88,17 @@ test('summaries and tips flag a slicing, high-spin driver', () => {
   assert.ok(ids.includes('DR:aoa'))
   assert.ok(ids.includes('DR:f2p'))
   assert.ok(ids.includes('DR:smash'))
+})
+
+test('the replay trace matches the estimate and ends at the total', () => {
+  const input = { ballSpeed: 150, launch: 12, direction: 1, totalSpin: 2700, spinAxis: 6 }
+  const estimate = estimateFlight(input)!
+  const trace = traceFlight(input)!
+  const landing = trace.air[trace.air.length - 1]
+  near(landing.x, estimate.carry, 0.01, 'landing x')
+  near(landing.z, estimate.offline, 0.01, 'landing z')
+  near(Math.max(...trace.air.map(point => point.y)), estimate.apex, 0.5, 'apex')
+  const rest = trace.ground[trace.ground.length - 1]
+  near(Math.hypot(rest.x - landing.x, rest.z - landing.z), estimate.total - estimate.carry, 0.01, 'roll length')
+  assert.ok([...trace.air, ...trace.ground].every((point, index, all) => index === 0 || point.t >= all[index - 1].t))
 })
