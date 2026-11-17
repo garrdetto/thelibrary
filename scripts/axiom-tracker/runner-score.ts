@@ -245,8 +245,6 @@ export function safetyPlanFor(input: Pick<RunnerInput, 'top10' | 'bundlers' | 'i
   const bundleDrop = input.bundlers !== null ? meaningful(sellImpact(input.bundlers, input.marketCap, input.liquidity)) : null
   const topDrop = input.top10 !== null ? meaningful(sellImpact(input.top10 / 2, input.marketCap, input.liquidity)) : null
   const triggers: string[] = []
-  if (input.bundlers !== null && input.bundlers >= 1) triggers.push(`Get out if the bundler share drops 2 points or more within a minute (now ${pct(input.bundlers)})`)
-  if (input.top10 !== null) triggers.push(`Get out if the top 10 share falls to half of what it was within a few minutes while the price falls (now ${pct(input.top10)})`)
   if (input.insiders !== null && input.insiders >= 3) triggers.push(`Get out if insiders drop 3 points or more within a minute (now ${pct(input.insiders)})`)
   triggers.push('Get out if the dev sells any of their supply')
   const atRisk = (input.bundlers ?? 0) >= 5 || (input.top10 ?? 0) >= 20
