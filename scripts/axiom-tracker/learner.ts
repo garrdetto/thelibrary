@@ -4,6 +4,8 @@ import { recordHeartbeat, type TrackerDatabase } from './db.js'
 import { learnerState } from './learner-state.js'
 import { trackerState } from './state.js'
 import { chanceOf, holdoutAccuracy, median, nearestRows, splitInsights, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues } from './logistic.js'
+import { archiveState } from './coin-archive.js'
+import { matchTier } from './coin-tiers.js'
 import { buildRadarTokens, loadModelState } from './radar-query.js'
 import { researchResetAt } from './research-meta.js'
 import { parseTraits, stepRise, worstOf, type TraitReading } from './rise-traits.js'
@@ -119,6 +121,17 @@ export function readFeatures(token: RadarToken): FeatureValues {
     bundlers: token.holderTraits?.bundlers ?? null,
     smartWallets: token.runnerWallets,
     quality: token.quality.score,
+  }
+}
+
+/** The early picture a live coin is matched on against the archive's 20 tiers: the learner's features plus the tracker's own readings. */
+export function tierFeaturesOf(token: RadarToken): FeatureValues {
+  return {
+    ...readFeatures(token),
+    score: token.score,
+    walletScore: token.wallets?.score ?? null,
+    proTraders: token.holderTraits?.proTraders ?? token.pulse?.proTradersPct ?? null,
+    holdersPerMin: token.holdersPerMin ?? null,
   }
 }
 
@@ -347,6 +360,10 @@ export function runLearnerCycle(database: TrackerDatabase, model: Model, now = D
   const lives = model.samples.map(sample => sample.lifeMinutes).filter((value): value is number => value !== null)
   const fallbackLife = median(lives)
   learnerState.predictions = new Map(tokens.map(token => [token.mint, outlookFor(model, token, fallbackLife)]))
+  learnerState.tierMatches = new Map(tokens.flatMap(token => {
+    const match = matchTier(tierFeaturesOf(token), archiveState.ladder)
+    return match ? [[token.mint, match] as const] : []
+  }))
   const runners = model.samples.filter(sample => sample.runner)
   const watching = (database.prepare("SELECT COUNT(*) AS count FROM coin_lifecycles WHERE outcome = 'open'").get() as { count: number }).count
   const summary: RadarLearnerSummary = {

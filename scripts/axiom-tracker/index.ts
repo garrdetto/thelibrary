@@ -2,6 +2,7 @@ import { startAdvice } from './advice.js'
 import { startAxiomCollector } from './axiom-collector.js'
 import { startExplosions } from './bursts.js'
 import { startChartHistory } from './chart-history.js'
+import { startCoinArchive } from './coin-archive.js'
 import { startDexPaid } from './dex-paid.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
@@ -56,6 +57,7 @@ const tasks = [
   startSitePublisher(database, controller.signal),
   startExtensionIntake(database, controller.signal),
   startLearner(database, controller.signal),
+  startCoinArchive(database, controller.signal),
   startExplosions(database, controller.signal),
   startFollowUp(database, controller.signal),
   startHolderRefresh(database, controller.signal),
