@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
-import { applyAxiomLists, applyDiscoverPage, axiomListsOf, axiomListsSchema, discoverNote, discoverPageSchema, discoverProbeSchema, noteDiscoverProbe, resetAxiomLists, selectedDiscoverTab } from './axiom-lists.js'
+import { applyAxiomLists, applyDiscoverPage, axiomListsOf, axiomListsSchema, discoverNote, discoverPageSchema, discoverProbeSchema, discoverSubTabs, noteDiscoverProbe, resetAxiomLists, selectedDiscoverTab } from './axiom-lists.js'
 import { keepDiscoverDigest } from './extension-intake.js'
 
 const bridgeFile = (name: string) => readFileSync(new URL(`../../extensions/axiom-radar-bridge/${name}`, import.meta.url), 'utf8')
@@ -301,6 +301,44 @@ test('the selected sub-tab is the one drawn unlike the rest; when none stands ou
   assert.equal(selectedDiscoverTab([]), null)
 })
 
+test("the labels Axiom's live Discover page reported: Surge is selected, and labels from outside the tab row are ignored", () => {
+  const grey = 'rgb(130, 133, 152)'
+  const white = 'rgb(252, 252, 252)'
+  const rest = '1|none|rgba(0, 0, 0, 0)|rgb(229, 231, 235)|0px|rgb(252, 252, 252)'
+  const row = 'flex flex-row h-[32px] gap-[24px] justify-start items-center'
+  const label = (text: string, top: number, left: number, height: number, look: string, classes = row) => ({ text, top, left, height, marked: false, look, classes })
+  const reported = (selected: 'Top' | 'Surge' | 'Callouts') => [
+    label('All', 140, 202, 32, `500|12px|${grey}|${rest}`, 'relative flex items-center justify-center rounded-full'),
+    label('Top', 89, 250, 30, `500|20px|${selected === 'Top' ? white : grey}|${rest}`),
+    label('Early', 144, 263, 24, `500|16px|${white}|${rest}`, 'text-[16px] font-medium'),
+    label('Surge', 91, 306, 27, `500|18px|${selected === 'Surge' ? white : grey}|${rest}`, 'flex flex-row h-[36px] justify-center items-center cursor-pointer group'),
+    label('Callouts', 89, 402, 30, `500|20px|${selected === 'Callouts' ? white : grey}|${rest}`),
+    label('StreamersNew', 89, 502, 30, `400|16px|${white}|${rest}`),
+    label('Streamers', 89, 502, 30, `500|20px|${grey}|${rest}`),
+    label('New', 82, 586, 7, `700|8px|rgb(226, 192, 75)|0|none|rgba(0, 0, 0, 0)|rgb(229, 231, 235)|0px|${white}`),
+    label('Surging', 300, 420, 18, `500|12px|${white}|${rest}`, 'badge'),
+    label('bought more', 302, 520, 18, `400|12px|${grey}|${rest}`, 'feed'),
+    label('Quick Buy', 298, 700, 24, `500|12px|${white}|${rest}`, 'button'),
+  ]
+  assert.deepEqual(discoverSubTabs(reported('Surge')).map(tab => tab.text), ['Top', 'Surge', 'Callouts', 'Streamers'])
+  const surge = selectedDiscoverTab(reported('Surge'))
+  assert.equal(surge?.tab.text, 'Surge')
+  assert.equal(surge?.list, 'surge')
+  assert.equal(surge?.how, 'its text is a different colour from the other tabs')
+  assert.equal(selectedDiscoverTab(reported('Top'))?.list, 'trending')
+  assert.equal(selectedDiscoverTab(reported('Callouts'))?.tab.text, 'Callouts')
+  assert.equal(selectedDiscoverTab(reported('Callouts'))?.list, null)
+  resetAxiomLists()
+  const now = 1_800_000_000_000
+  const coins = [50, 51, 52, 53].map(index => ({ tokenAddress: mint(index), userCount: 100 + index }))
+  const first = applyDiscoverPage({ tabs: reported('Surge'), coins }, [], now)
+  assert.equal(first.status.list, 'surge')
+  assert.equal(first.changed, true)
+  const withOtherCardLabels = reported('Surge').map(tab => tab.text === 'bought more' ? { ...tab, text: 'added liquidity' } : tab)
+  assert.equal(applyDiscoverPage({ tabs: withOtherCardLabels, coins }, [], now + 1_000).changed, false, 'card labels changing every second do not make a new status')
+  assert.deepEqual(axiomListsOf(mint(52), now + 1_000), ['surge'])
+})
+
 test('drawn coins come from the largest group of cards, with viewer counts, ignoring the ticker above the tabs', () => {
   const content = loadContent(discoverPage('Surge', [10, 11, 12, 13, 14, 15], [1, 2, 3, 4, 5, 6, 7, 8]))
   const all = plain(content.discoverRows())
@@ -353,7 +391,7 @@ test('the tracker takes a Discover tab: the coins on Top or Surge join that list
   const top = applyDiscoverPage(page('Top', [10, 30, 31]), [], now + 2_000)
   assert.equal(top.status.list, 'trending')
   assert.deepEqual(axiomListsOf(mint(10), now + 2_000), ['trending', 'surge'])
-  assert.equal(discoverNote(now + 3_000), "Surge (Axiom's Surge tab, drawn unlike the other tabs): 4 coins read | Trending (Axiom's Top tab, drawn unlike the other tabs): 3 coins read")
+  assert.equal(discoverNote(now + 3_000), "Surge (Axiom's Surge tab is selected: its text is a different colour from the other tabs): 4 coins read | Trending (Axiom's Top tab is selected: its text is a different colour from the other tabs): 3 coins read")
   const callouts = applyDiscoverPage(page('Callouts', [40, 41, 42]), [], now + 4_000)
   assert.equal(callouts.status.list, null)
   assert.deepEqual(axiomListsOf(mint(40), now + 4_000), [])

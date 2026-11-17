@@ -67,23 +67,34 @@ function oddOneOut<T>(items: T[], key: (item: T) => string) {
   return groups.size === 2 && alone.length === 1 && items.length >= 3 ? alone[0][0] : null
 }
 
+/** The names of Discover's sub-tabs. Anything else the bridge reports from around that row (filters, badges, labels inside the cards) is not a tab. */
+const subTabNames = /^(top|trending|surge|callouts|streamers)$/i
+
+/** The real sub-tabs among the labels the bridge reports: the named ones sitting in the same row as Top. */
+export function discoverSubTabs(tabs: DiscoverTab[]) {
+  const named = tabs.filter(tab => subTabNames.test(tab.text.trim()) && tab.height >= 14)
+  const anchor = named.find(tab => /^(top|trending)$/i.test(tab.text.trim())) ?? named[0]
+  return anchor ? named.filter(tab => Math.abs(tab.top - anchor.top) <= 14) : []
+}
+
 /**
- * Which sub-tab is selected. Axiom does not mark it, so it is the one tab drawn unlike the rest, which all look alike:
- * by its text and box styling first, then its class names, then where it sits. Badges ("New") and a label that is
- * another tab's text with a badge attached are left out of the comparison.
+ * Which sub-tab is selected. Axiom does not mark it; it draws the selected tab's text white and the others grey. So it
+ * is the one tab drawn unlike the rest, which all look alike: by its text colour first, then its whole look, its class
+ * names, and where it sits. When no tab stands out there is no answer.
  */
-export function selectedDiscoverTab(tabs: DiscoverTab[]): { tab: DiscoverTab; list: AxiomList | null; how: string } | null {
+export function selectedDiscoverTab(reported: DiscoverTab[]): { tab: DiscoverTab; list: AxiomList | null; how: string } | null {
+  const tabs = discoverSubTabs(reported)
   const pick = (tab: DiscoverTab, how: string) => ({ tab, list: listOfTab(tab.text), how })
   const marked = tabs.filter(tab => tab.marked)
   if (marked.length === 1) return pick(marked[0], 'marked selected')
-  const plain = tabs.filter(tab => !/^(new|beta|hot|live)$/i.test(tab.text.trim()) && !tabs.some(other => other !== tab && other.text.length >= 3 && tab.text.length > other.text.length && tab.text.startsWith(other.text)))
   const ways: Array<[(tab: DiscoverTab) => string, string]> = [
+    [tab => tab.look.split('|')[2] ?? '', 'its text is a different colour from the other tabs'],
     [tab => tab.look, 'drawn unlike the other tabs'],
     [tab => tab.classes, 'styled unlike the other tabs'],
     [tab => `${tab.top}|${tab.height}`, 'sits unlike the other tabs'],
   ]
   for (const [key, how] of ways) {
-    const odd = oddOneOut(plain, key)
+    const odd = oddOneOut(tabs, key)
     if (odd) return pick(odd, how)
   }
   return null
@@ -108,9 +119,9 @@ export function applyDiscoverPage(page: DiscoverPage, cards: Array<{ mint: strin
   }
   for (const card of cards) if (card.mint) rows.set(card.mint, { tokenAddress: card.mint, userCount: card.viewers })
   const list = selected?.list ?? null
-  const key = selected ? `tab ${selected.tab.text}` : `unknown ${page.tabs.map(tab => tab.text).join(',')}`.slice(0, 200)
+  const key = selected ? `tab ${selected.tab.text}` : 'unknown'
   const before = pages.get(key)
-  const status: DiscoverStatus = { at: now, text: selected?.tab.text ?? null, list, how: selected?.how ?? 'no tab stands out', coins: rows.size, tabs: page.tabs }
+  const status: DiscoverStatus = { at: now, text: selected?.tab.text ?? null, list, how: selected?.how ?? 'no tab stands out', coins: rows.size, tabs: discoverSubTabs(page.tabs) }
   pages.set(key, status)
   if (pages.size > 8) for (const [other, entry] of pages) if (now - entry.at > 60_000) pages.delete(other)
   if (list && rows.size >= 3) applyAxiomLists([{ list, rows: [...rows.values()] }], now)
@@ -124,9 +135,9 @@ export function discoverNote(now: number) {
   const seen = [...pages.values()].filter(status => now - status.at < 30_000)
   if (seen.length) {
     return seen.map(status => {
-      if (status.list) return `${axiomListLabels[status.list]} (Axiom's ${status.text} tab, ${status.how}): ${status.coins} coins read`
+      if (status.list) return `${axiomListLabels[status.list]} (Axiom's ${status.text} tab is selected: ${status.how}): ${status.coins} coins read`
       if (status.text) return `A Discover tab is on ${status.text}, which is not a coin list the tracker follows`
-      return `A Discover tab is open but no sub-tab stands out as selected: ${status.tabs.map(tab => `${tab.text} [${tab.look}] {${tab.classes.slice(0, 50)}} @${tab.top}/${tab.height}`).join('; ')}`
+      return `A Discover tab is open but no sub-tab stands out as selected${status.tabs.length ? `: ${status.tabs.map(tab => `${tab.text} [${tab.look}] {${tab.classes.slice(0, 50)}} @${tab.top}/${tab.height}`).join('; ')}` : ' (its tab row has not been read yet)'}`
     }).join(' | ').slice(0, 900)
   }
   const fresh = [...probes.entries()].filter(([, entry]) => now - entry.at < 30_000)
