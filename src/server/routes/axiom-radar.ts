@@ -20,7 +20,7 @@ const ingestInput = z.object({
   payload: z.object({
     status: z.enum(['live', 'stale', 'offline']),
     generatedAt: z.number(),
-    tokens: z.array(z.object({ mint: z.string().regex(mintPattern) }).passthrough()).max(160),
+    tokens: z.array(z.object({ mint: z.string().regex(mintPattern) }).passthrough()).max(300),
     kpis: z.object({}).passthrough(),
     model: z.object({}).passthrough(),
     paper: z.object({}).passthrough(),

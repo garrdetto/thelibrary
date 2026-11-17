@@ -13,8 +13,8 @@ const logger = createLogger('discovery')
 const watchlistLimit = 400
 const watchlistTtlMs = 6 * 60 * 60_000
 const pulseWindowMs = 3 * 60_000
-/** The site takes at most 160 coins per update; Pulse coins come first, then the best of the rest. */
-export const trackedLimit = 150
+/** The site takes at most 300 coins per update; Pulse coins come first, then the best of the rest. */
+export const trackedLimit = 300
 
 export function passesMarketRequirements(pair: DexPair, settings: RadarSettings) {
   const buys = pair.txns?.m5?.buys ?? 0
