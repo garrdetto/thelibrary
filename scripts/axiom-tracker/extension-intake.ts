@@ -13,9 +13,10 @@ import { notePulseFlow, pulseIdentity } from './pulse-market.js'
 import { applyPulseFeed, pulseFeedSchema, pulseFeedSeen } from './pulse-feed.js'
 import { watchlistResult, watchlistStatus } from './watchlist.js'
 import { needsPageRead, pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
+import { capturedApiSchema, capturedStreamSchema, captureNote, storeCapture } from './axiom-capture.js'
 
 const logger = createLogger('extension-intake')
-const bodyLimit = 2_000_000
+const bodyLimit = 8_000_000
 
 const watchlistReport = z.object({
   mint: z.string().regex(solanaAddressPattern),
@@ -41,6 +42,8 @@ const report = z.object({
   }).strict()).max(300).default([]),
   stats: z.record(z.string().max(40), z.number().min(0).max(100)).refine(value => Object.keys(value).length <= 60).optional(),
   pulse: pulseFeedSchema.optional(),
+  api: z.array(capturedApiSchema).max(30).optional(),
+  streams: z.array(capturedStreamSchema).max(400).optional(),
 }).strict()
 
 export type ExtensionReport = z.input<typeof report>
@@ -212,6 +215,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       const parsed = report.safeParse(JSON.parse(await readBody(request)))
       if (!parsed.success) return send(response, 400, { error: 'Report could not be read.' })
       const matched = applyExtensionReport(database, parsed.data)
+      try { storeCapture(database, parsed.data) } catch (error) { logger.warn('Storing captured Axiom data failed', { error: errorMessage(error) }) }
       if (process.env.AXIOM_DEBUG_CARDS === '1') {
         mkdirSync(resolve('data'), { recursive: true })
         writeFileSync(resolve('data/axiom-last-cards.json'), JSON.stringify({ at: Date.now(), url: parsed.data.url, matched, cards: parsed.data.cards }, null, 1))
@@ -227,6 +231,8 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
   })
   const heartbeat = setInterval(() => {
     recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - pulseFeedSeen.at < 15_000 ? `Reading all ${pulseFeedSeen.count} coins in the Pulse columns${pulseFeedSeen.skipped ? ` (${pulseFeedSeen.skipped} unreadable)` : ''}${pageStatsNote()}` : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards (update the bridge to 1.7 for every coin in the columns)${pageStatsNote()}` : `No Pulse cards in the last 15s: keep the Axiom Pulse tab visible${pageStatsNote()}`)
+    const captured = captureNote()
+    recordHeartbeat(database, 'axiom-capture', captured ? 'ok' : 'waiting', captured ? captured.replace(/^; c/, 'C') : 'Nothing captured from Axiom pages in the last 15s (bridge 1.9+ captures API answers and socket messages on coin pages)')
   }, 15_000)
   return new Promise<void>(resolve => {
     server.on('error', error => {
