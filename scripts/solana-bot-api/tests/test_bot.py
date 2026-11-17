@@ -30,6 +30,7 @@ from solders.system_program import TransferParams, transfer  # noqa: E402
 from solders.transaction import VersionedTransaction  # noqa: E402
 
 import config  # noqa: E402
+import pumpcurve  # noqa: E402
 import executor as executor_mod  # noqa: E402
 import listener  # noqa: E402
 import rpc_client  # noqa: E402
@@ -46,6 +47,12 @@ SIG = "5" * 88
 def unsigned_swap(payer=KP.pubkey()) -> bytes:
     ix = transfer(TransferParams(from_pubkey=payer, to_pubkey=Pubkey.default(), lamports=1))
     return bytes(VersionedTransaction(MessageV0.try_compile(payer, [ix], [], Hash.default()), [NullSigner(payer)]))
+
+
+def curve_bytes(variant=0, real_sol=2_000_000_000):
+    import struct
+    head = bytes(8) + struct.pack("<5Q", 1_000_000_000_000_000, 30_000_000_000 + real_sol, 700_000_000_000_000, real_sol, 10**15)
+    return head + b"\x00" + bytes(32) + bytes([variant]) + bytes(166 - 82)
 
 
 def create_tx(mint=MINT):
@@ -65,7 +72,8 @@ def copy_tx(wallet=TARGET, mint=MINT, gained=5000, sol_delta=-100_000_000):
 class FakeChain:
     """Answers Solana JSON-RPC and Jupiter HTTP calls."""
 
-    def __init__(self, *, balance=5_000_000_000, sim_err=None, impact="0.01", no_route_times=0, swap_payer=KP.pubkey(), tx=None):
+    def __init__(self, *, balance=5_000_000_000, sim_err=None, impact="0.01", no_route_times=0, swap_payer=KP.pubkey(), tx=None, curve=None):
+        self.curve = curve if curve is not None else curve_bytes()
         self.calls = []
         self.balance, self.sim_err, self.impact = balance, sim_err, impact
         self.no_route_times, self.swap_payer = no_route_times, swap_payer
@@ -81,6 +89,7 @@ class FakeChain:
             "getTransaction": self.tx,
             "simulateTransaction": {"value": {"err": self.sim_err, "logs": ["Program log: Error: boom"] if self.sim_err else [], "unitsConsumed": 87000}},
             "getSignatureStatuses": {"value": [{"confirmationStatus": "confirmed", "err": None}]},
+            "getAccountInfo": {"value": {"data": [base64.b64encode(self.curve).decode(), "base64"]}},
         }.get(method)
         if method == "sendTransaction":
             raw = base64.b64decode(body["params"][0])
@@ -171,6 +180,14 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(listener.wallet_buys(copy_tx(mint=config.WSOL_MINT), TARGET), [])
 
 
+class CurveTests(unittest.TestCase):
+    def test_classic_and_variant(self):
+        self.assertTrue(pumpcurve.decode(curve_bytes()).classic)
+        self.assertFalse(pumpcurve.decode(curve_bytes(variant=1)).classic)
+        self.assertEqual(pumpcurve.decode(curve_bytes(real_sol=3_000_000_000)).raised_sol, 3.0)
+        self.assertIsNone(pumpcurve.decode(b"short"))
+
+
 class ExecutorTests(unittest.TestCase):
     def go(self, chain, s, items, keypair=KP):
         async def scenario():
@@ -237,6 +254,15 @@ class ExecutorTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "fee payer"):
             self.go(chain, settings(dry_run=False), [{"mint": MINT}])
         self.assertEqual(chain.sent, [])
+
+    def test_sniper_skips_curve_variants(self):
+        chain = FakeChain(curve=curve_bytes(variant=1))
+        rec, _ = self.go(chain, settings(), [{"mint": MINT, "source": "pumpfun"}])
+        self.assertIn("variant", rec.events[-1]["message"])
+        self.assertNotIn("/swap/v1/quote", chain.calls)
+        chain = FakeChain()
+        rec, _ = self.go(chain, settings(), [{"mint": MINT, "source": "pumpfun"}])
+        self.assertEqual(rec.types(), ["quote", "simulation", "trade"])
 
     def test_stale_signal_skipped(self):
         chain = FakeChain()

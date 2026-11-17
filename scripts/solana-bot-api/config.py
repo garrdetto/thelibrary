@@ -76,6 +76,8 @@ MAX_TRADES_PER_RUN = _int("MAX_TRADES_PER_RUN", 5)
 MIN_SOL_RESERVE = _float("MIN_SOL_RESERVE", 0.02)
 MAX_PRICE_IMPACT_PCT = _float("MAX_PRICE_IMPACT_PCT", 25.0)
 MAX_SIGNAL_AGE_S = _float("MAX_SIGNAL_AGE_S", 20.0)
+# Skip pump.fun curve variants (most coins that later couldn't be sold were variants)
+SKIP_CURVE_VARIANTS = os.getenv("SKIP_CURVE_VARIANTS", "1").strip().lower() not in ("0", "false", "no")
 
 # --- Execution --------------------------------------------------------------
 QUOTE_RETRIES = _int("QUOTE_RETRIES", 4)

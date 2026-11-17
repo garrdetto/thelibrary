@@ -20,6 +20,7 @@ It only buys. Selling is up to you (Axiom, Jupiter, Phantom) until a sell side i
 | SOL always left for fees | `MIN_SOL_RESERVE` | 0.02 SOL |
 | Skip if the quote's price impact is higher | `MAX_PRICE_IMPACT_PCT` | 25 % |
 | Skip signals older than | `MAX_SIGNAL_AGE_S` | 20 s |
+| Skip pump.fun curve variants (rugged most often in testing) | `SKIP_CURVE_VARIANTS` | on |
 | Priority fee cap per trade | `PRIORITY_FEE_MAX_LAMPORTS` | 0.001 SOL |
 
 Plus: one buy per coin per run, a failed simulation is never sent, it refuses to sign a transaction whose fee
@@ -32,6 +33,7 @@ Use a **dedicated hot wallet** holding only what the bot may spend.
 | --- | --- |
 | `config.py` | Every setting, from `.env` |
 | `rpc_client.py` | Shared Solana JSON-RPC client and the wallet (signing, balance) |
+| `pumpcurve.py` | Reads a pump.fun bonding curve (reserves, SOL raised) and tells classic curves from variants |
 | `jupiter.py` | Jupiter Swap API v1 `/quote` + `/swap` (needs a free `JUPITER_API_KEY`) |
 | `listener.py` | `run_listener`: RPC WebSocket `logsSubscribe` with reconnect, pump.fun create and copy-trade parsing |
 | `executor.py` | `run_executor`: the buy pipeline and the rails above |

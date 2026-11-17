@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Set
 
 import config
 from jupiter import Jupiter, JupiterError
+import pumpcurve
 from listener import short
 from rpc_client import RpcClient, Wallet, get_client, get_wallet
 
@@ -85,6 +86,12 @@ class Executor:
         if age > config.MAX_SIGNAL_AGE_S:
             emit("info", f"Skipped: signal is {age:.0f}s old", level="warning", mint=mint)
             return None
+
+        if item.get("source") == "pumpfun" and config.SKIP_CURVE_VARIANTS:
+            curve = await pumpcurve.fetch(self.rpc, mint)
+            if curve is None or not curve.classic:
+                emit("info", "Skipped: pump.fun curve variant (these rugged most often in testing)", level="info", mint=mint)
+                return None
 
         lamports = int(round(settings.buy_amount_sol * config.LAMPORTS_PER_SOL))
 
