@@ -4,8 +4,8 @@ export const apps = [
   {
     name: 'axiom-worker',
     cwd,
-    script: 'node_modules/tsx/dist/cli.mjs',
-    args: 'scripts/axiom-tracker/index.ts',
+    script: 'scripts/axiom-tracker/index.ts',
+    node_args: '--import tsx',
     interpreter: 'node',
     autorestart: true,
     exp_backoff_restart_delay: 2000,
