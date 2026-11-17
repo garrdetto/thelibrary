@@ -7,6 +7,8 @@ let digestFeed = null
 let pageDigestAt = 0
 const reportIntervalMs = 1000
 let sampleResolver = null
+const pathsSeen = new Map()
+let tabsFound = null
 
 window.addEventListener('message', event => {
   if (event.source !== window) return
@@ -21,6 +23,10 @@ window.addEventListener('message', event => {
   if (event.data?.source === 'axiom-radar-bridge-stream' && typeof event.data.text === 'string') {
     streamFrames.push({ url: String(event.data.url).slice(0, 200), text: event.data.text })
     if (streamFrames.length > 2000) streamFrames.splice(0, streamFrames.length - 2000)
+  }
+  if (event.data?.source === 'axiom-radar-bridge-path' && typeof event.data.path === 'string') {
+    pathsSeen.set(event.data.path.slice(0, 100), Date.now())
+    if (pathsSeen.size > 200) pathsSeen.delete(pathsSeen.keys().next().value)
   }
   if (event.data?.source === 'axiom-radar-bridge-pulse' && Array.isArray(event.data.rows)) pulseFeed = { usdPerSol: event.data.usdPerSol, rows: event.data.rows, at: event.data.at }
   if (event.data?.source === 'axiom-radar-bridge-lists' && Array.isArray(event.data.sources)) listFeed = { sources: event.data.sources, at: event.data.at }
@@ -390,6 +396,80 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true
 })
 
+const tabPattern = { holders: /^holders?\s*(\(?\s*[\d.,]+\s*[kKmM]?\s*\)?)?$/i, traders: /^top\s*traders?$/i, trades: /^trades$/i }
+
+/** The tab in the coin page's lower panel whose label matches: the smallest visible clickable element with that text. */
+function panelTab(name) {
+  let best = null
+  for (const element of document.querySelectorAll('button, [role="tab"], a, div, span, p')) {
+    if (element.childElementCount > 3) continue
+    const text = (element.textContent ?? '').trim().replace(/\s+/g, ' ')
+    if (!text || text.length > 24 || !tabPattern[name].test(text)) continue
+    const rect = element.getBoundingClientRect()
+    if (!rect.width || !rect.height) continue
+    const target = element.closest('button, [role="tab"], a') ?? element
+    const area = rect.width * rect.height
+    if (!best || area < best.area) best = { target, area }
+  }
+  return best?.target ?? null
+}
+
+/** Wallets in the holders table drawn on the page: each row with one full wallet address in a link or attribute and a percentage. */
+function holderRowsOnPage(pairAddress) {
+  const rows = new Map()
+  const address = /[1-9A-HJ-NP-Za-km-z]{32,44}/
+  for (const node of document.querySelectorAll('a[href], [data-address], [data-wallet], [title]')) {
+    const value = node.getAttribute('data-wallet') || node.getAttribute('data-address') || node.getAttribute('href') || node.getAttribute('title') || ''
+    if (/\/(meme|token)\//.test(value)) continue
+    const wallet = value.match(address)?.[0]
+    if (!wallet || wallet === pairAddress || location.pathname.includes(wallet) || rows.has(wallet)) continue
+    let row = node.closest('tr, [role="row"]')
+    if (!row) {
+      row = node
+      for (let depth = 0; depth < 6 && row.parentElement && !/%/.test(row.innerText ?? ''); depth++) row = row.parentElement
+    }
+    const percent = (row.innerText ?? '').match(/(\d+(?:\.\d+)?)\s*%/)
+    if (!percent) continue
+    rows.set(wallet, { wallet, pct: Math.min(100, Number(percent[1])) })
+    if (rows.size >= 150) break
+  }
+  return [...rows.values()]
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+/** Opens the coin page's Holders and Top Traders tabs so Axiom loads those lists, notes which addresses each one loaded, then returns to Trades. */
+async function openListTabs() {
+  const pairAddress = pairFromUrl()
+  if (!pairAddress) return { done: false, reason: 'not on a coin page' }
+  const holders = panelTab('holders')
+  const traders = panelTab('traders')
+  if (!holders && !traders) return { done: false, reason: 'the Holders and Top Traders tabs have not loaded yet' }
+  const found = { pairAddress }
+  if (holders) {
+    const clickedAt = Date.now()
+    holders.click()
+    await wait(3000)
+    found.holders = { paths: [...pathsSeen].filter(([, at]) => at >= clickedAt).map(([path]) => path).slice(0, 40), rows: holderRowsOnPage(pairAddress) }
+  }
+  const tradersTab = panelTab('traders')
+  if (tradersTab) {
+    const clickedAt = Date.now()
+    tradersTab.click()
+    await wait(3000)
+    found.traders = { paths: [...pathsSeen].filter(([, at]) => at >= clickedAt).map(([path]) => path).slice(0, 40) }
+  }
+  panelTab('trades')?.click()
+  tabsFound = found
+  return { done: true, ok: true, holders: Boolean(found.holders), traders: Boolean(found.traders) }
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'axiom-radar-open-tabs') return
+  openListTabs().then(sendResponse, error => sendResponse({ done: false, reason: String(error) }))
+  return true
+})
+
 /** The star beside the coin's name at the top of a coin page, which adds it to or takes it off the Axiom watchlist. */
 function headerStar() {
   const buttons = Array.from(document.querySelectorAll('button')).filter(button => button.querySelector(':scope > div > i.ri-star-line, :scope > div > i.ri-star-fill'))
@@ -460,11 +540,13 @@ function report() {
     pageDigestAt = Date.now()
     try { digest = JSON.stringify(pageDigest()).slice(0, 78000) } catch { }
   }
+  const tabs = tabsFound && tabsFound.pairAddress === pairAddress ? { ...(tabsFound.holders ? { holders: tabsFound.holders } : {}), ...(tabsFound.traders ? { traders: tabsFound.traders } : {}) } : null
+  tabsFound = null
   if (!pairAddress && !batch.length && !cards.length && !pulse && !api.length && !streams.length && !lists.length && !probe) return
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
   const stats = pairAddress ? pageStats() : null
   try {
-    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}), ...(discover ? { discover } : {}), ...(digest ? { digest } : {}) } }).catch(() => undefined)
+    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}), ...(discover ? { discover } : {}), ...(digest ? { digest } : {}), ...(tabs ? { tabs } : {}) } }).catch(() => undefined)
   } catch {
     stopReporting()
   }
