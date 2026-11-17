@@ -1,6 +1,6 @@
 import { chunk } from './runtime.js'
 import { sharedAccounts } from './research-verdict.js'
-import { isWalletAddress, solanaRpc } from './solana-rpc.js'
+import { isSolanaAddress, isWalletAddress, solanaRpc } from './solana-rpc.js'
 
 /** Larger single holdings are pools or curves even when the address check cannot tell. */
 const largestWalletPct = 25
@@ -22,10 +22,10 @@ function readMint(account: ParsedAccount, at: number): MintFacts | null {
   return { mintAuthority: Boolean(info.mintAuthority), freezeAuthority: Boolean(info.freezeAuthority), supply: Number.isFinite(supply) ? supply : 0, at }
 }
 
-/** Reads mint and freeze authority and supply for many coins at once from the Solana node (one request per 100 coins). */
+/** Reads mint and freeze authority and supply for many coins at once from the Solana node (one request per 100 coins). Ids that are not Solana addresses are skipped, since one would fail the whole batch. */
 export async function refreshMintFacts(mints: string[]) {
   const found = new Map<string, MintFacts>()
-  for (const group of chunk([...new Set(mints)], 100)) {
+  for (const group of chunk([...new Set(mints)].filter(isSolanaAddress), 100)) {
     const result = await solanaRpc<{ value: ParsedAccount[] }>('getMultipleAccounts', [group, { encoding: 'jsonParsed' }])
     const at = Date.now()
     group.forEach((mint, index) => {

@@ -96,6 +96,11 @@ function base58Bytes(address: string) {
   return bytes.length === 32 ? bytes : null
 }
 
+/** True when the text decodes to a 32-byte Solana address. The node rejects a whole batch request if any address in it is not one. */
+export function isSolanaAddress(address: string) {
+  return base58Bytes(address) !== null
+}
+
 /**
  * True when the address is a point on the ed25519 curve, so a person's keypair can sign for it. Pools, bonding curves and
  * other program accounts are derived off the curve, which is how they are told apart from wallets.
