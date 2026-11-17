@@ -282,7 +282,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
     const discover = discoverNote(Date.now())
     recordHeartbeat(database, 'axiom-lists', discover ? 'ok' : 'waiting', discover ?? 'No Discover tab seen in the last 30s (bridge 1.12+ reads the Top and Surge tabs of open Discover pages)')
     const captured = captureNote()
-    recordHeartbeat(database, 'axiom-capture', captured ? 'ok' : 'waiting', captured ? captured.replace(/^; c/, 'C') : 'Nothing captured from Axiom pages in the last 15s (bridge 1.9+ captures API answers and socket messages on coin pages)')
+    recordHeartbeat(database, 'axiom-capture', captured ? 'ok' : 'waiting', captured ? captured.replace(/^; (.)/, (_, first: string) => first.toUpperCase()) : 'Nothing captured from Axiom pages in the last 15s (bridge 1.9+ captures API answers and socket messages on coin pages)')
   }, 15_000)
   return new Promise<void>(resolve => {
     server.on('error', error => {

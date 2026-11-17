@@ -25,3 +25,16 @@ test('only public market answers are kept, never the signed-in person\'s own dat
   for (const path of ['/transactions-feed', '/token-info-v2', '/holder-data-v3', '/top-traders-v3']) assert.equal(isMarketPath(path), true, path)
   for (const path of ['/bundle-key-and-wallets-v2', '/get-settings', '/wo/token-balances-v1', '/batched-transactions-from-user', '/user-data', '/tracked-wallets']) assert.equal(isMarketPath(path), false, path)
 })
+
+test('trades feeds the Pulse tab polls are read into trades but not kept as captured answers', async () => {
+  const { default: Database } = await import('better-sqlite3')
+  const { trackerSchema } = await import('./db.js')
+  const { storeCapture } = await import('./axiom-capture.js')
+  const database = new Database(':memory:')
+  database.exec(trackerSchema)
+  const tokenAddress = 'c8ptadDszEWiv6CBS5MqTrDsaV3pqwtKxAXn5Nipump'
+  const feed = [{ signature: 'poll-sig-1', createdAt: '2026-11-17T01:17:33.528Z', type: 'buy', tokenAddress, walletAddress: 'BHMUS8GTWwr5teaJHzD3dwQA3qUCjvam6zAzV9zWfJqM', transactionPriceUsd: 0.001, amountToken: 1000 }]
+  storeCapture(database, { pairAddress: null, api: [{ url: `https://sol-api1.axiom.trade/transactions-feed?tokenAddress=${tokenAddress}&sortDirection=desc`, status: 200, body: JSON.stringify(feed), poll: true }] })
+  assert.equal((database.prepare('SELECT COUNT(*) AS n FROM coin_trades').get() as { n: number }).n, 1)
+  assert.equal((database.prepare('SELECT COUNT(*) AS n FROM axiom_capture').get() as { n: number }).n, 0)
+})

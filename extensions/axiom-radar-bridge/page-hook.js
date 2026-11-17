@@ -227,11 +227,11 @@
       window.postMessage({ source: 'axiom-radar-bridge-path', path: parsed.pathname.replace(/[1-9A-HJ-NP-Za-km-z]{32,44}/g, ':address').replace(/\/\d{3,}/g, '/:n').slice(0, 100) }, window.location.origin)
     } catch { }
   }
-  const shareApi = (url, status, body) => {
+  const shareApi = (url, status, body, poll = false) => {
     if (typeof body !== 'string' || body.length > 400000) return
     const start = body.trimStart()[0]
     if (start !== '{' && start !== '[') return
-    window.postMessage({ source: 'axiom-radar-bridge-api', url: String(url).slice(0, 600), status, body }, window.location.origin)
+    window.postMessage({ source: 'axiom-radar-bridge-api', url: String(url).slice(0, 600), status, body, ...(poll ? { poll: true } : {}) }, window.location.origin)
   }
   const nativeFetch = window.fetch
   if (nativeFetch && !nativeFetch.axiomRadarWrapped) {
@@ -239,6 +239,7 @@
       const result = nativeFetch.call(window, input, init)
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url
       if (url) notePath(url)
+      if (url) learnHost(url)
       if (url && isAxiomApi(url)) {
         result.then(response => {
           if (!/json|text/i.test(response.headers.get('content-type') ?? '')) return
@@ -259,6 +260,57 @@
     radarFetch.axiomRadarWrapped = true
     window.fetch = radarFetch
   }
+
+  const apiHost = { value: 'sol-api1.axiom.trade' }
+  const pollPlan = new Map()
+  const pollGapMs = 700
+  let pollMints = []
+  let pollBusy = false
+  let pollFailures = 0
+  let pollPausedUntil = 0
+  const learnHost = url => {
+    try {
+      const parsed = new URL(url, location.href)
+      if (/^sol-api\d*\.axiom\.trade$/.test(parsed.hostname)) apiHost.value = parsed.hostname
+    } catch { }
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window || event.data?.source !== 'axiom-radar-bridge-poll' || !Array.isArray(event.data.mints)) return
+    pollMints = event.data.mints.filter(mint => typeof mint === 'string' && address.test(mint)).slice(0, 60)
+    for (const mint of pollPlan.keys()) if (!pollMints.includes(mint)) pollPlan.delete(mint)
+  })
+  const pollOnce = async () => {
+    const now = Date.now()
+    if (pollBusy || now < pollPausedUntil || !pollMints.length || !location.pathname.startsWith('/pulse')) return
+    const due = pollMints.map(mint => ({ mint, plan: pollPlan.get(mint) ?? { dueAt: 0, newest: 0 } })).filter(item => item.plan.dueAt <= now).sort((first, second) => first.plan.dueAt - second.plan.dueAt)[0]
+    if (!due) return
+    pollBusy = true
+    const url = `https://${apiHost.value}/transactions-feed?tokenAddress=${due.mint}&sortDirection=desc`
+    try {
+      const response = await nativeFetch.call(window, url, { credentials: 'include' })
+      const body = await response.text()
+      if (!response.ok) {
+        pollFailures += 1
+        pollPausedUntil = Date.now() + Math.min(120000, 5000 * 2 ** Math.min(pollFailures, 5))
+        pollPlan.set(due.mint, { dueAt: Date.now() + 30000, newest: due.plan.newest })
+        return
+      }
+      pollFailures = 0
+      let rows = []
+      try { rows = JSON.parse(body) } catch { }
+      const times = Array.isArray(rows) ? rows.map(row => Date.parse(row?.createdAt)).filter(Number.isFinite) : []
+      const fresh = times.filter(at => at > due.plan.newest).length
+      const share = times.length ? fresh / times.length : 0
+      const wait = !due.plan.newest ? 8000 : share >= 0.5 ? 2500 : fresh >= 5 ? 5000 : fresh > 0 ? 10000 : 25000
+      pollPlan.set(due.mint, { dueAt: Date.now() + wait, newest: Math.max(due.plan.newest, ...times, 0) })
+      if (fresh || !due.plan.newest) shareApi(url, response.status, body, true)
+    } catch {
+      pollPlan.set(due.mint, { dueAt: Date.now() + 30000, newest: due.plan.newest })
+    } finally {
+      pollBusy = false
+    }
+  }
+  setInterval(() => { void pollOnce() }, pollGapMs)
   const NativeXhr = window.XMLHttpRequest
   if (NativeXhr && !NativeXhr.prototype.axiomRadarWrapped) {
     const nativeOpen = NativeXhr.prototype.open
