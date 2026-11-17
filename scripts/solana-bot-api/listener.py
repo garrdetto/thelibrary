@@ -1,8 +1,12 @@
 """
 listener.py — finds buy signals and puts them on the detections queue.
 
-Sniper:     every new pump.fun coin (`create` / `create_v2`), from a logsSubscribe
-            on the pump.fun program. The new mint is read from the transaction.
+Sniper:     every new pump.fun coin, from a logsSubscribe on the pump.fun program. Its own
+            events in the logs (pumpevents.py) give each launch and every trade as it confirms,
+            which feed market.py. With a ruleset (rules.json, strategy.py) each classic launch
+            is scored `decide_after_s` seconds in and only coins that pass are bought; without
+            one, every classic launch is bought at once. Logs without decodable events fall back
+            to reading the transaction.
 Copy-Trade: every successful transaction that mentions the target wallet; when
             the target's balance of a token goes up while its SOL goes down,
             that token is a buy signal.
@@ -20,6 +24,10 @@ import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 import config
+import market as market_mod
+import pumpevents
+import strategy
+from market import Market
 from rpc_client import RpcClient, get_client
 
 CREATE_MARKERS = ("Instruction: Create", "Instruction: CreateV2")
@@ -139,8 +147,10 @@ async def subscribe_logs(
                 async for raw in ws:
                     received = time.perf_counter()
                     msg = json.loads(raw)
-                    value = msg.get("params", {}).get("result", {}).get("value")
+                    result = msg.get("params", {}).get("result", {})
+                    value = result.get("value")
                     if value:
+                        value["_slot"] = int((result.get("context") or {}).get("slot") or 0)
                         await on_log(value, received)
         except asyncio.CancelledError:
             raise
@@ -158,20 +168,66 @@ def short(value: str, keep: int = 4) -> str:
 # --------------------------------------------------------------------------- #
 # Entry point used by bot_adapter / BotManager
 # --------------------------------------------------------------------------- #
-async def run_listener(settings, detections: asyncio.Queue, emit: Emit, *, rpc: Optional[RpcClient] = None, connect=None) -> None:
+async def run_listener(settings, detections: asyncio.Queue, emit: Emit, *, rpc: Optional[RpcClient] = None, connect=None,
+                       rules: Optional["strategy.Ruleset"] = None, ws_url: Optional[str] = None) -> None:
     rpc = rpc or get_client()
     gate = asyncio.Semaphore(config.LISTENER_CONCURRENCY)
     seen: Set[str] = set()
     pending: Set[asyncio.Task] = set()
     copy = settings.mode == "copytrade"
     target = settings.target_wallet
+    if rules is None and not copy:
+        rules = strategy.load_rules()
+    market = Market()
+    market_mod.ACTIVE = market
+    if not copy:
+        if rules:
+            ex = rules.exit
+            emit("info", f"Ruleset '{rules.name}': look at each new coin {rules.decide_after_s:g}s after launch, "
+                         f"buy if {len(rules.filters)} checks pass; sell at {ex.tp:+.0%} / {-ex.sl:+.0%}, "
+                         f"trail {ex.trail:.0%}, max {ex.hold_s:g}s{', or when the creator sells' if ex.dev_exit else ''}")
+        else:
+            emit("info", "No ruleset (rules.json): buying every new classic coin at launch and never selling", level="warning")
+
+    def spawn(coro) -> None:
+        task = asyncio.create_task(coro)
+        pending.add(task)
+        task.add_done_callback(pending.discard)
+
+    async def decide(book: "strategy.CoinBook") -> None:
+        await asyncio.sleep(max(0.0, rules.decide_after_s - (time.monotonic() - book.created_at)))
+        at = book.create_slot + int(round(rules.decide_after_s / strategy.SLOT_S))
+        feats = strategy.features(book, at)
+        ok, why = rules.passes(feats)
+        if not ok:
+            return
+        emit("detection", f"Ruleset buy signal ({why})", mint=book.mint)
+        await detections.put({"mint": book.mint, "source": "rules", "detected_at": time.perf_counter(), "classic": True,
+                              "features": dict(zip(strategy.FEATURES, feats))})
 
     async def handle(value: Dict[str, Any], received: float) -> None:
         signature = value.get("signature")
         if not signature or value.get("err") is not None or signature in seen:
             return
-        if not copy and not is_pump_create(value.get("logs") or []):
-            return
+        logs = value.get("logs") or []
+        if not copy:
+            events = list(pumpevents.decode_logs(logs))
+            launches = market.apply(events, int(value.get("_slot") or 0))
+            if rules is not None:
+                for book in launches:
+                    spawn(decide(book))
+                return
+            creates = [e for e in events if e["kind"] == "create"]
+            if creates:
+                seen.add(signature)
+                for e in creates:
+                    latency = (time.perf_counter() - received) * 1000
+                    emit("detection", "New pump.fun coin", mint=e["mint"], signature=signature, latency_ms=latency)
+                    await detections.put({"mint": e["mint"], "source": "pumpfun", "signature": signature, "detected_at": received,
+                                          "classic": bool(e.get("classic"))})
+                return
+            if not is_pump_create(logs):
+                return
         seen.add(signature)
         if len(seen) > 5000:
             seen.clear()
@@ -194,12 +250,12 @@ async def run_listener(settings, detections: asyncio.Queue, emit: Emit, *, rpc: 
                 await detections.put({"mint": mint, "source": "pumpfun", "signature": signature, "detected_at": received})
 
     async def on_log(value: Dict[str, Any], received: float) -> None:
-        task = asyncio.create_task(handle(value, received))
-        pending.add(task)
-        task.add_done_callback(pending.discard)
+        spawn(handle(value, received))
 
     try:
-        await subscribe_logs(target if copy else config.PUMP_FUN_PROGRAM, on_log, emit, connect=connect)
+        await subscribe_logs(target if copy else config.PUMP_FUN_PROGRAM, on_log, emit, connect=connect, ws_url=ws_url)
     finally:
         for task in list(pending):
             task.cancel()
+        if market_mod.ACTIVE is market:
+            market_mod.ACTIVE = None

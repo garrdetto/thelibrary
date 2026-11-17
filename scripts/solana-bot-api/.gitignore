@@ -3,3 +3,7 @@ __pycache__/
 .env
 keypair*.json
 *.keypair.json
+lab/*.db
+lab/*.db-*
+lab/outcomes.pkl*
+lab/*.log
