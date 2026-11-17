@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS coin_trades (
 );
 CREATE INDEX IF NOT EXISTS coin_trades_mint_at ON coin_trades (mint, at);
 CREATE INDEX IF NOT EXISTS coin_trades_wallet ON coin_trades (wallet);
+CREATE INDEX IF NOT EXISTS coin_trades_wallet_mint_at ON coin_trades (wallet, mint, at);
 CREATE INDEX IF NOT EXISTS coin_trades_at ON coin_trades (at);
 
 CREATE TABLE IF NOT EXISTS wallet_coin_stats (
