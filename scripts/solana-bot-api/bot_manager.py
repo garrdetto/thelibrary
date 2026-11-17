@@ -293,7 +293,7 @@ class BotManager:
             hooks = self.hooks
             preflight = getattr(hooks, "preflight", None)
             if preflight is not None:
-                preflight()  # e.g. listener.py / executor.py importable — fail fast with HTTP 400
+                preflight(settings)  # bot modules importable, keys present — fail fast with HTTP 400
             self._loop = asyncio.get_running_loop()
 
             detections: asyncio.Queue = asyncio.Queue(maxsize=1000)

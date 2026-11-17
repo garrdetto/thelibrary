@@ -70,9 +70,24 @@ class ProjectHooks:
         self._http = None  # shared httpx.AsyncClient — survives stop(), closed in aclose()
         self._address: Optional[str] = None
 
-    def preflight(self) -> None:
+    def preflight(self, settings: Optional[BotSettings] = None) -> None:
         _find_entrypoint("listener", ("run_listener", "run"))
         _find_entrypoint("executor", ("run_executor", "run"))
+        try:
+            config = importlib.import_module("config")
+        except ImportError:
+            return
+        jup_url = str(getattr(config, "JUPITER_API_URL", ""))
+        if "api.jup.ag" in jup_url and not jup_url.startswith("https://lite-api") and not getattr(config, "JUPITER_API_KEY", ""):
+            raise BotConfigError("Set JUPITER_API_KEY in .env (free key from https://portal.jup.ag)")
+        if settings is not None and not settings.dry_run:
+            load = getattr(config, "load_keypair", None)
+            try:
+                keypair = load() if load else None
+            except Exception as exc:
+                raise BotConfigError(f"PRIVATE_KEY / KEYPAIR_PATH could not be read: {type(exc).__name__}") from None
+            if keypair is None:
+                raise BotConfigError("LIVE mode needs PRIVATE_KEY or KEYPAIR_PATH in .env")
 
     async def run_listener(self, settings: BotSettings, detections: asyncio.Queue, emit) -> None:
         fn = _find_entrypoint("listener", ("run_listener", "run"))

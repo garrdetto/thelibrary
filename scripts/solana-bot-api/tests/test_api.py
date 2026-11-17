@@ -151,15 +151,26 @@ class ApiTests(unittest.TestCase):
             self.assertFalse(client.post("/api/stop", headers=AUTH).json()["running"])
         self.assertTrue(hooks.closed, "app shutdown closes sessions")
 
-    def test_missing_bot_modules_fail_fast(self):
+    def test_project_hooks_preflight(self):
+        import config
         from bot_adapter import ProjectHooks
+        from bot_manager import BotSettings
 
-        app = create_app(BotManager(hooks=ProjectHooks()), password=PASSWORD, allowed_origins="*")
-        with TestClient(app) as client:
-            res = client.post("/api/start", headers=AUTH, json={"buy_amount_sol": 0.1, "slippage_bps": 250})
-            self.assertEqual(res.status_code, 400)
-            self.assertIn("listener.py", res.json()["detail"])
-            self.assertFalse(client.get("/api/status", headers=AUTH).json()["running"])
+        saved = (config.JUPITER_API_KEY, config.PRIVATE_KEY, config.KEYPAIR_PATH)
+        try:
+            config.JUPITER_API_KEY, config.PRIVATE_KEY, config.KEYPAIR_PATH = "", "", ""
+            app = create_app(BotManager(hooks=ProjectHooks()), password=PASSWORD, allowed_origins="*")
+            with TestClient(app) as client:
+                res = client.post("/api/start", headers=AUTH, json={"buy_amount_sol": 0.1, "slippage_bps": 250})
+                self.assertEqual(res.status_code, 400)
+                self.assertIn("JUPITER_API_KEY", res.json()["detail"])
+                self.assertFalse(client.get("/api/status", headers=AUTH).json()["running"])
+            config.JUPITER_API_KEY = "k"
+            ProjectHooks().preflight(BotSettings(dry_run=True))
+            with self.assertRaisesRegex(Exception, "PRIVATE_KEY"):
+                ProjectHooks().preflight(BotSettings(dry_run=False))
+        finally:
+            config.JUPITER_API_KEY, config.PRIVATE_KEY, config.KEYPAIR_PATH = saved
 
     def test_crashed_task_stops_bot(self):
         client, _ = make_client(FakeHooks(crash_listener=True))

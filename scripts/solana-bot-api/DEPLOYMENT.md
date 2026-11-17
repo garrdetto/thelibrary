@@ -1,71 +1,59 @@
-# Axiom Bot API: deployment
+# Axiom Bot: setup and deployment
 
-The web layer (`api.py`, `bot_manager.py`, `bot_adapter.py`, `static/`, `web/`) sits **next to your bot's
-`config.py`, `rpc_client.py`, `listener.py`, `executor.py`**. It never runs on Cloudflare: the site's admin
-console only talks to it over HTTPS/WSS.
+Everything runs from this folder (`scripts/solana-bot-api/`): the bot (`config.py`, `rpc_client.py`,
+`jupiter.py`, `listener.py`, `executor.py`, `main.py`) and its web API (`api.py`). It never runs on
+Cloudflare: the site's admin tab talks to it over HTTPS/WSS from your browser.
 
-```
-your-bot/
-├── config.py  rpc_client.py  listener.py  executor.py  main.py   ← your bot (unchanged CLI)
-├── api.py  bot_manager.py  bot_adapter.py                        ← copy from scripts/solana-bot-api/
-├── static/index.html   web/solana-bot-client.js
-└── .env
-```
+## 0. What you need
 
-## 0. Wire your bot in (once)
-
-`bot_adapter.py` documents the contract at the top. `listener.py` and `executor.py` each need one
-coroutine (thin wrappers around your existing loops are fine):
-
-```python
-# listener.py
-async def run_listener(settings, detections, emit):
-    async for mint, ms in my_existing_stream(settings):        # your code
-        emit("detection", "New pool", mint=mint, latency_ms=ms)
-        await detections.put({"mint": mint})
-
-# executor.py
-async def run_executor(settings, detections, emit):
-    while True:
-        item = await detections.get()
-        quote = await jupiter_quote(item["mint"], settings.buy_amount_sol, settings.slippage_bps)
-        emit("quote", f"out {quote.out_amount}", mint=item["mint"], latency_ms=quote.ms)
-        sim = await simulate(quote)
-        emit("simulation", "ok" if sim.ok else sim.err, mint=item["mint"], level="info" if sim.ok else "error")
-        if settings.dry_run:
-            emit("trade", "DRY RUN buy", mint=item["mint"], level="success")
-            continue
-        sig = await send(quote)
-        emit("broadcast", "sent", mint=item["mint"], signature=sig)
-        emit("trade", "bought", mint=item["mint"], signature=sig, level="success")
-```
-
-Let `asyncio.CancelledError` propagate (that's how Stop works) and keep shared sessions open on cancel;
-`rpc_client.aclose()` / `close()`, if you have one, is called once when the server shuts down.
-`MAX_BUY_AMOUNT_SOL` comes from `.env` or `config.py` and every start request is checked against it.
+1. **A dedicated hot wallet.** Make a new wallet in Phantom (or `solana-keygen new -o keypair.json`) and send it
+   only what the bot may spend. Never use your main wallet.
+2. **A Solana RPC with WebSockets.** The public RPC rate-limits and drops `logsSubscribe` quickly; use a paid one
+   (Helius, QuickNode, Triton). Put the HTTPS URL in `RPC_URL`; the `wss://` one is derived from it.
+3. **A Jupiter API key.** Free at https://portal.jup.ag → `JUPITER_API_KEY`.
+4. **A dashboard password** for the API and the admin tab: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
 
 ## 1. Run locally
 
 ```bash
+cd scripts/solana-bot-api
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt -r requirements-web.txt
-cp .env.example .env            # set DASHBOARD_PASSWORD
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env            # fill in RPC_URL, PRIVATE_KEY, JUPITER_API_KEY, DASHBOARD_PASSWORD
+```
+
+Terminal only (dry run, nothing is sent):
+
+```bash
+.venv/bin/python main.py --mode sniper --buy 0.01 --slippage 5
+.venv/bin/python main.py --mode copytrade --target <wallet> --buy 0.02
+```
+
+With the web API, for the admin tab and the standalone panel:
+
+```bash
 .venv/bin/uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
 - Control panel: http://localhost:8000/
-- Admin console tab: open the library's admin → Site → Tools → **Axiom Bot**, API URL `http://localhost:8000`
+- Admin console: Site → Tools → **Axiom Bot**, API address `http://localhost:8000`
   (browsers allow `http://localhost` from an HTTPS page; any other host must be HTTPS).
 - Tests: `.venv/bin/python -m unittest discover -s tests -v`
+
+Run a dry run for a while first: watch that detections arrive, quotes come back and simulations pass. Only
+then untick Dry Run (and tick the confirmation) or pass `--live`.
+
+On Windows use `.venv\Scripts\python` and `.venv\Scripts\uvicorn` in place of `.venv/bin/...`.
 
 ## 2. VPS (Ubuntu 24.04, systemd, Caddy)
 
 ```bash
 sudo adduser --system --group --home /opt/axiom-bot axiombot
-sudo -u axiombot git clone <your bot repo> /opt/axiom-bot/app      # or scp the folder
+sudo -u axiombot git clone https://github.com/garrdetto/thelibrary /opt/axiom-bot/src
+sudo -u axiombot cp -r /opt/axiom-bot/src/scripts/solana-bot-api /opt/axiom-bot/app
 cd /opt/axiom-bot/app
 sudo -u axiombot python3 -m venv .venv
-sudo -u axiombot .venv/bin/pip install -r requirements.txt -r requirements-web.txt
+sudo -u axiombot .venv/bin/pip install -r requirements.txt
 sudo -u axiombot cp .env.example .env && sudo chmod 600 .env       # fill in secrets
 ```
 
