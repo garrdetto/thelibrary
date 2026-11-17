@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { walletSightings } from './axiom-capture.js'
+import { notePollStats, pollNote, walletSightings } from './axiom-capture.js'
 
 const pair = '7nzPonveUgJKzUFBi6jCgtEX5FhnCLqS4b8H3xpkb7aP'
 const mint = 'c8ptadDszEWiv6CBS5MqTrDsaV3pqwtKxAXn5Nipump'
@@ -37,4 +37,11 @@ test('trades feeds the Pulse tab polls are read into trades but not kept as capt
   storeCapture(database, { pairAddress: null, api: [{ url: `https://sol-api1.axiom.trade/transactions-feed?tokenAddress=${tokenAddress}&sortDirection=desc`, status: 200, body: JSON.stringify(feed), poll: true }] })
   assert.equal((database.prepare('SELECT COUNT(*) AS n FROM coin_trades').get() as { n: number }).n, 1)
   assert.equal((database.prepare('SELECT COUNT(*) AS n FROM axiom_capture').get() as { n: number }).n, 0)
+})
+
+test('the poll note says how the Pulse tab feed reads went, or that the tab is silent', () => {
+  assert.match(pollNote(1_000_000), /no word from the tab/)
+  notePollStats({ sent: 40, ok: 38, failed: 2, status: 200, mints: 55, hidden: true }, 1_000_000)
+  assert.equal(pollNote(1_010_000), 'Pulse tab trade polling: 38 of 40 feed reads ok, 2 failed (last HTTP 200), 55 coins, tab in background')
+  assert.match(pollNote(1_200_000), /no word from the tab/)
 })
