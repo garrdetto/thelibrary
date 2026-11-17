@@ -19,3 +19,9 @@ test('token, pair and pool addresses are never taken for wallets', () => {
   const found = walletSightings({ tokenAddress: mint, pairAddress: pair, poolAddress: walletA, devAddress: walletB }, new Set())
   assert.deepEqual(found.map(sighting => sighting.wallet), [walletB])
 })
+
+test('only public market answers are kept, never the signed-in person\'s own data', async () => {
+  const { isMarketPath } = await import('./axiom-capture.js')
+  for (const path of ['/transactions-feed', '/token-info-v2', '/holder-data-v3', '/top-traders-v3']) assert.equal(isMarketPath(path), true, path)
+  for (const path of ['/bundle-key-and-wallets-v2', '/get-settings', '/wo/token-balances-v1', '/batched-transactions-from-user', '/user-data', '/tracked-wallets']) assert.equal(isMarketPath(path), false, path)
+})

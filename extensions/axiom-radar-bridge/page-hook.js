@@ -75,10 +75,11 @@
     for (const [column, table] of Object.entries(pulseTables)) for (const row of table.values()) if (row.tokenAddress) rows.push({ ...row, column })
     window.postMessage({ source: 'axiom-radar-bridge-pulse', usdPerSol, rows: rows.slice(0, 300), at: Date.now() }, window.location.origin)
   }, 1000)
+  const marketPaths = new Set(['/transactions-feed', '/transactions-feed-trader-info', '/transactions-from-traders', '/trader-details-v2', '/sniper-transactions', '/token-info-v2', '/token-and-best-pair-info', '/token-stats', '/dev-tokens', '/dev-transfers', '/reused-image-tokens', '/similar-tokens', '/dex-paid', '/shareholder-claims', '/lighthouse', '/volume-overview', '/pool-state'])
   const isAxiomApi = url => {
     try {
       const parsed = new URL(url, location.href)
-      return parsed.hostname.endsWith('axiom.trade') && !/\.(js|css|png|jpe?g|webp|gif|svg|woff2?|ico|map)$/i.test(parsed.pathname)
+      return parsed.hostname.endsWith('axiom.trade') && (marketPaths.has(parsed.pathname) || /^\/(holder|top-?trader)/i.test(parsed.pathname))
     } catch { return false }
   }
   const shareApi = (url, status, body) => {
@@ -131,8 +132,6 @@
   const forward = (text, url) => {
     if (text.length > 60000) return
     if (interesting.test(text)) window.postMessage({ source: 'axiom-radar-bridge', frame: text }, window.location.origin)
-    const start = text.trimStart()[0]
-    if (start === '{' || start === '[') window.postMessage({ source: 'axiom-radar-bridge-stream', url: String(url).slice(0, 200), text }, window.location.origin)
   }
   const handle = (url, data) => {
     if (typeof data === 'string') {
