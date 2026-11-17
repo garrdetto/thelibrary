@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS axiom_wallets (
 CREATE INDEX IF NOT EXISTS axiom_wallets_wallet ON axiom_wallets (wallet);
 `
 
+/**
+ * Only Axiom's public market answers about coins, traders and trades are kept. Anything about the signed-in person (settings,
+ * balances, orders, keys, their own trades, friends, presence) is dropped here even if an older bridge sends it.
+ */
+export const marketPaths = new Set(['/transactions-feed', '/transactions-feed-trader-info', '/transactions-from-traders', '/trader-details-v2', '/sniper-transactions', '/token-info-v2', '/token-and-best-pair-info', '/token-stats', '/dev-tokens', '/dev-transfers', '/reused-image-tokens', '/similar-tokens', '/dex-paid', '/shareholder-claims', '/lighthouse', '/volume-overview', '/pool-state'])
+const marketPrefix = /^\/(holder|top-?trader)/i
+export const isMarketPath = (path: string) => marketPaths.has(path) || marketPrefix.test(path)
 const keepCaptureMs = 6 * 60 * 60_000
 const maxCaptureRows = 20_000
 const walletKey = /maker|wallet|owner|trader|signer|user|holder|buyer|seller|account|address|dev|creator|from|to$/i
@@ -131,18 +138,9 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
       const parsed = parseJson(answer.body)
       if (parsed === null) continue
       const { host, path, pair } = pathOf(answer.url)
-      if (!host.endsWith('axiom.trade')) continue
+      if (!host.endsWith('axiom.trade') || !isMarketPath(path)) continue
       record('api', path, pair ?? input.pairAddress, answer.body, parsed)
       captureStats.api += 1
-    }
-    for (const frame of input.streams ?? []) {
-      const parsed = parseJson(frame.text)
-      if (parsed === null) continue
-      const { path } = pathOf(frame.url)
-      const room = typeof (parsed as { room?: unknown }).room === 'string' ? (parsed as { room: string }).room : null
-      const pairInRoom = room?.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/)?.[0] ?? null
-      record('socket', `${path}${room ? ` ${room.replace(/[1-9A-HJ-NP-Za-km-z]{32,44}/g, ':address')}` : ''}`, pairInRoom ?? input.pairAddress, frame.text, parsed)
-      captureStats.streams += 1
     }
   })()
   if (now - lastPruneAt > 60_000) {
