@@ -1,7 +1,7 @@
 import type { TrackerDatabase } from './db.js'
 import { ensureCoinTrades, recordTrades, recordWalletStats, type CoinTrade, type WalletCoinStat } from './coin-trades.js'
 import type { PageStats } from './page-stats.js'
-import { solanaAddressPattern } from './runtime.js'
+import { isSolanaAddress } from './runtime.js'
 import { isWalletAddress } from './solana-rpc.js'
 import { trackerState } from './state.js'
 
@@ -55,8 +55,8 @@ export function tradesFrom(path: string, body: unknown): CoinTrade[] {
   for (const row of tradeRows(path, body)) {
     if (!row || typeof row !== 'object') continue
     const kind = row.type === 'buy' || row.type === 'sell' ? row.type : null
-    const mint = typeof row.tokenAddress === 'string' && solanaAddressPattern.test(row.tokenAddress) ? row.tokenAddress : null
-    const wallet = typeof row.walletAddress === 'string' && solanaAddressPattern.test(row.walletAddress) ? row.walletAddress : null
+    const mint = isSolanaAddress(row.tokenAddress) ? row.tokenAddress : null
+    const wallet = isSolanaAddress(row.walletAddress) ? row.walletAddress : null
     const at = typeof row.createdAt === 'string' ? Date.parse(row.createdAt) : NaN
     const tokens = finite(row.amountToken)
     const priceUsd = finite(row.transactionPriceUsd)
@@ -90,7 +90,7 @@ export type HolderRow = { wallet: string; pct: number | null }
 
 const walletKey = /wallet|owner|holder|address|maker|trader|user|account/i
 const notWalletKey = /token|mint|pair|pool|fund|creator|dev/i
-const isAddress = (value: unknown): value is string => typeof value === 'string' && solanaAddressPattern.test(value)
+const isAddress = (value: unknown): value is string => isSolanaAddress(value)
 
 /** Every array of objects in an answer, up to four levels down. */
 function objectLists(body: unknown, depth = 0, found: Row[][] = []): Row[][] {

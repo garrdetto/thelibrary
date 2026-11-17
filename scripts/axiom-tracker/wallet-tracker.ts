@@ -1,6 +1,6 @@
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { bestPairByMint, fetchPairsForMints, socialsOf } from './dexscreener.js'
-import { chunk, createLogger, errorMessage, fetchJson, isMainModule, runLoop, solanaAddressPattern, trackerConfig } from './runtime.js'
+import { chunk, createLogger, errorMessage, fetchJson, isMainModule, runLoop, isSolanaAddress, trackerConfig } from './runtime.js'
 import { latestMarket, trackerState } from './state.js'
 import { radarSettings } from './settings-store.js'
 
@@ -161,7 +161,7 @@ async function monitorSmartWallets(database: TrackerDatabase, key: string) {
         if (timestamp <= since || transaction.transactionError) continue
         newest = Math.max(newest, timestamp)
         for (const transfer of transaction.tokenTransfers ?? []) {
-          if (transfer.toUserAccount === wallet && transfer.mint && !ignoredMints.has(transfer.mint) && solanaAddressPattern.test(transfer.mint)) buys.push({ wallet, mint: transfer.mint, timestamp })
+          if (transfer.toUserAccount === wallet && transfer.mint && !ignoredMints.has(transfer.mint) && isSolanaAddress(transfer.mint)) buys.push({ wallet, mint: transfer.mint, timestamp })
         }
       }
       lastSwapSeen.set(wallet, newest)

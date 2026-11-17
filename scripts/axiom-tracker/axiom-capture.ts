@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { TrackerDatabase } from './db.js'
 import { mintForPair, readAxiomAnswer, saveHolderList, tradePaths } from './axiom-readers.js'
-import { solanaAddressPattern } from './runtime.js'
+import { isSolanaAddress } from './runtime.js'
 
 /**
  * Everything the Axiom pages fetch from Axiom's API and receive on their sockets, as the bridge (1.9+) forwards it: kept for a
@@ -73,7 +73,7 @@ export function walletSightings(value: unknown, skip: Set<string>): WalletSighti
     }
     const object = node as Record<string, unknown>
     for (const [key, field] of Object.entries(object)) {
-      if (typeof field === 'string' && solanaAddressPattern.test(field) && !skip.has(field) && walletKey.test(key) && !notWalletKey.test(key)) {
+      if (isSolanaAddress(field) && !skip.has(field) && walletKey.test(key) && !notWalletKey.test(key)) {
         found.push({ wallet: field, key, fields: primitiveFields(object) })
       }
     }
@@ -113,7 +113,7 @@ function ensureSchema(database: TrackerDatabase) {
 
 /** Stores one report's captured answers and records the wallets in them against the coin's pair address. */
 export const capturedTabsSchema = z.object({
-  holders: z.object({ paths: z.array(z.string().max(120)).max(40), rows: z.array(z.object({ wallet: z.string().regex(solanaAddressPattern), pct: z.number().min(0).max(100).nullable() }).strict()).max(150) }).strict().optional(),
+  holders: z.object({ paths: z.array(z.string().max(120)).max(40), rows: z.array(z.object({ wallet: z.string().refine(isSolanaAddress, 'Not a Solana address'), pct: z.number().min(0).max(100).nullable() }).strict()).max(150) }).strict().optional(),
   traders: z.object({ paths: z.array(z.string().max(120)).max(40) }).strict().optional(),
 }).strict()
 
