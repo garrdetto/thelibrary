@@ -113,24 +113,35 @@ export function loadFlipBook(database: TrackerDatabase, now = Date.now()) {
   ensureCoinTrades(database)
   const since = now - coinTradesKeepMs
   const byWallet = new Map<string, Map<string, Flip>>()
-  const rows = database.prepare(`
-    WITH first_buys AS (SELECT wallet, mint, MIN(at) AS first_at FROM coin_trades WHERE kind = 'buy' AND at >= ? GROUP BY wallet, mint)
-    SELECT t.wallet, t.mint, f.first_at AS firstBuyAt,
-      SUM(CASE WHEN t.kind = 'buy' THEN t.usd ELSE 0 END) AS buyUsd,
-      SUM(CASE WHEN t.kind = 'buy' THEN t.tokens ELSE 0 END) AS buyTokens,
-      SUM(CASE WHEN t.kind = 'sell' AND t.at >= f.first_at THEN t.usd ELSE 0 END) AS sellUsd,
-      SUM(CASE WHEN t.kind = 'sell' AND t.at >= f.first_at THEN t.tokens ELSE 0 END) AS sellTokens,
-      MAX(CASE WHEN t.kind = 'sell' AND t.at >= f.first_at THEN t.at END) AS lastSellAt
-    FROM coin_trades t JOIN first_buys f ON f.wallet = t.wallet AND f.mint = t.mint
-    WHERE t.at >= ? AND t.tokens IS NOT NULL GROUP BY t.wallet, t.mint HAVING sellTokens > 0
-  `).iterate(since, since) as Iterable<{ wallet: string; mint: string } & PairTotals>
-  for (const row of rows) {
-    const flip = flipOf(row.mint, row)
-    if (!flip) continue
-    const flips = byWallet.get(row.wallet) ?? new Map<string, Flip>()
-    flips.set(row.mint, flip)
-    byWallet.set(row.wallet, flips)
+  const trades = database.prepare('SELECT wallet, mint, kind, usd, tokens, at FROM coin_trades WHERE at >= ? ORDER BY wallet, mint, at').all(since) as Array<{ wallet: string; mint: string; kind: string; usd: number; tokens: number | null; at: number }>
+  let current: { wallet: string; mint: string; totals: PairTotals | null } | null = null
+  const finish = () => {
+    const totals = current?.totals
+    if (!current || !totals || totals.sellTokens <= 0) return
+    const flip = flipOf(current.mint, totals)
+    if (!flip) return
+    const flips = byWallet.get(current.wallet) ?? new Map<string, Flip>()
+    flips.set(current.mint, flip)
+    byWallet.set(current.wallet, flips)
   }
+  for (const trade of trades) {
+    if (!current || current.wallet !== trade.wallet || current.mint !== trade.mint) {
+      finish()
+      current = { wallet: trade.wallet, mint: trade.mint, totals: null }
+    }
+    if (trade.kind === 'buy' && !current.totals) current.totals = { buyUsd: 0, buyTokens: 0, sellUsd: 0, sellTokens: 0, firstBuyAt: trade.at, lastSellAt: null }
+    const totals = current.totals
+    if (!totals || trade.tokens === null) continue
+    if (trade.kind === 'buy') {
+      totals.buyUsd += trade.usd
+      totals.buyTokens += trade.tokens
+    } else if (trade.kind === 'sell') {
+      totals.sellUsd += trade.usd
+      totals.sellTokens += trade.tokens
+      totals.lastSellAt = trade.at
+    }
+  }
+  finish()
   const stats = database.prepare('SELECT wallet, mint, bought_usd, profit_usd, first_at, at FROM wallet_coin_stats WHERE at >= ? AND bought_usd > 0 AND profit_usd IS NOT NULL').iterate(since) as Iterable<{ wallet: string; mint: string; bought_usd: number; profit_usd: number; first_at: number | null; at: number }>
   for (const row of stats) {
     const flips = byWallet.get(row.wallet) ?? new Map<string, Flip>()

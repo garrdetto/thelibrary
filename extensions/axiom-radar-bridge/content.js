@@ -17,7 +17,7 @@ window.addEventListener('message', event => {
     if (frames.length > 400) frames.splice(0, frames.length - 400)
   }
   if (event.data?.source === 'axiom-radar-bridge-api' && typeof event.data.body === 'string') {
-    apiAnswers.push({ url: String(event.data.url).slice(0, 600), status: Number(event.data.status) || 0, body: event.data.body })
+    apiAnswers.push({ url: String(event.data.url).slice(0, 600), status: Number(event.data.status) || 0, body: event.data.body, ...(event.data.poll === true ? { poll: true } : {}) })
     if (apiAnswers.length > 60) apiAnswers.splice(0, apiAnswers.length - 60)
   }
   if (event.data?.source === 'axiom-radar-bridge-stream' && typeof event.data.text === 'string') {
@@ -396,13 +396,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true
 })
 
-const tabPattern = { holders: /^holders?\s*(\(?\s*[\d.,]+\s*[kKmM]?\s*\)?)?$/i, traders: /^top\s*traders?$/i, trades: /^trades$/i }
+const tabPattern = { holders: /^holders?\s*\(\s*[\d.,]+\s*[kKmM]?\s*\)$/i, traders: /^top\s*traders?$/i, trades: /^trades$/i }
 
 /** The tab in the coin page's lower panel whose label matches: the smallest visible clickable element with that text. */
 function panelTab(name) {
   let best = null
-  for (const element of document.querySelectorAll('button, [role="tab"], a, div, span, p')) {
-    if (element.childElementCount > 3) continue
+  for (const element of document.querySelectorAll('button, [role="tab"]')) {
     const text = (element.textContent ?? '').trim().replace(/\s+/g, ' ')
     if (!text || text.length > 24 || !tabPattern[name].test(text)) continue
     const rect = element.getBoundingClientRect()
@@ -551,6 +550,19 @@ function report() {
     stopReporting()
   }
 }
+
+let pollListAt = 0
+
+/** On the Pulse tab, asks the tracker which coins to follow and hands them to the page, which reads each one's trades feed in turn. */
+function refreshPollList() {
+  if (!location.pathname.startsWith('/pulse') || Date.now() - pollListAt < 5000 || !extensionAlive()) return
+  pollListAt = Date.now()
+  chrome.runtime.sendMessage({ type: 'axiom-radar-poll-list' }).then(answer => {
+    if (Array.isArray(answer?.mints)) window.postMessage({ source: 'axiom-radar-bridge-poll', mints: answer.mints.slice(0, 60) }, window.location.origin)
+  }).catch(() => undefined)
+}
+setInterval(refreshPollList, 5000)
+refreshPollList()
 
 const reportIfDue = () => { if (Date.now() - lastReportAt >= reportIntervalMs) report() }
 reportTimer = setInterval(reportIfDue, reportIntervalMs)

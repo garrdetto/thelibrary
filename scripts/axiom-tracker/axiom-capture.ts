@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { TrackerDatabase } from './db.js'
-import { mintForPair, readAxiomAnswer, saveHolderList } from './axiom-readers.js'
+import { mintForPair, readAxiomAnswer, saveHolderList, tradePaths } from './axiom-readers.js'
 import { solanaAddressPattern } from './runtime.js'
 
 /**
@@ -8,7 +8,7 @@ import { solanaAddressPattern } from './runtime.js'
  * few hours so new readers can be written from real answers, and every wallet in it is recorded per coin straight away.
  */
 
-export const capturedApiSchema = z.object({ url: z.string().max(600), status: z.number().int().min(0).max(999), body: z.string().max(400_000) }).strict()
+export const capturedApiSchema = z.object({ url: z.string().max(600), status: z.number().int().min(0).max(999), body: z.string().max(400_000), poll: z.literal(true).optional() }).strict()
 export const capturedStreamSchema = z.object({ url: z.string().max(200), text: z.string().max(60_000) }).strict()
 
 const schema = `
@@ -98,8 +98,8 @@ function pathOf(url: string) {
   }
 }
 
-export type CaptureStats = { api: number; streams: number; wallets: number; trades: number; holderReads: number; holderLists: number; traderRows: number; tabVisits: number; holdersPaths: Map<string, number>; tradersPaths: Map<string, number>; paths: Map<string, number> }
-export const captureStats: CaptureStats = { api: 0, streams: 0, wallets: 0, trades: 0, holderReads: 0, holderLists: 0, traderRows: 0, tabVisits: 0, holdersPaths: new Map(), tradersPaths: new Map(), paths: new Map() }
+export type CaptureStats = { polled: number; api: number; streams: number; wallets: number; trades: number; holderReads: number; holderLists: number; traderRows: number; tabVisits: number; holdersPaths: Map<string, number>; tradersPaths: Map<string, number>; paths: Map<string, number> }
+export const captureStats: CaptureStats = { polled: 0, api: 0, streams: 0, wallets: 0, trades: 0, holderReads: 0, holderLists: 0, traderRows: 0, tabVisits: 0, holdersPaths: new Map(), tradersPaths: new Map(), paths: new Map() }
 
 let prepared: TrackerDatabase | null = null
 let lastPruneAt = 0
@@ -162,10 +162,16 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
       if (parsed === null) continue
       const { host, path, pair } = pathOf(answer.url)
       if (!host.endsWith('axiom.trade') || !isMarketPath(path)) continue
+      if (answer.poll) {
+        answers.push({ path, pair: pair ?? input.pairAddress, parsed })
+        captureStats.polled += 1
+        continue
+      }
       record('api', path, pair ?? input.pairAddress, answer.body, parsed)
       captureStats.api += 1
     }
   })()
+  answers.sort((first, second) => Number(!tradePaths.has(first.path)) - Number(!tradePaths.has(second.path)))
   for (const answer of answers) {
     try {
       const read = readAxiomAnswer(database, answer.path, answer.pair, answer.parsed, now)
@@ -191,7 +197,9 @@ export function captureNote() {
   const busiest = [...captureStats.paths].sort((first, second) => second[1] - first[1]).slice(0, 4).map(([path, count]) => `${path} ×${count}`).join(', ')
   const top = (paths: Map<string, number>) => [...paths].sort((first, second) => second[1] - first[1]).slice(0, 5).map(([path]) => path).join(' ') || 'nothing'
   const tabs = captureStats.tabVisits ? `; opened Holders/Top Traders on ${captureStats.tabVisits} coin pages: ${captureStats.holderLists} holder lists saved, ${captureStats.traderRows} top-trader rows (Holders loaded ${top(captureStats.holdersPaths)}; Top Traders loaded ${top(captureStats.tradersPaths)})` : ''
-  const note = captureStats.api || tabs ? `; captured ${captureStats.api} Axiom answers: ${captureStats.trades} new trades, ${captureStats.holderReads} holder readings, ${captureStats.wallets} wallet sightings${busiest ? ` (${busiest})` : ''}${tabs}` : ''
+  const polled = captureStats.polled ? `; read ${captureStats.polled} trades feeds from the Pulse tab` : ''
+  captureStats.polled = 0
+  const note = captureStats.api || tabs || polled ? `${polled}; captured ${captureStats.api} Axiom answers: ${captureStats.trades} new trades, ${captureStats.holderReads} holder readings, ${captureStats.wallets} wallet sightings${busiest ? ` (${busiest})` : ''}${tabs}` : ''
   captureStats.holderLists = 0
   captureStats.traderRows = 0
   captureStats.tabVisits = 0
