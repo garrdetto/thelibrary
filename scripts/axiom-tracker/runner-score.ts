@@ -84,7 +84,6 @@ export type RunnerInput = {
   holders: number | null
   mintAuthority: boolean | null
   freezeAuthority: boolean | null
-  rugged: boolean
   devCreated: number | null
   devMigrated: number | null
   recycled: string | null
@@ -316,7 +315,6 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   gate('Live chart', [buyers !== null ? `${plural(buyers, 'buyer')} in 5m` : null, input.volume5m !== null ? `${money(input.volume5m)} volume` : null].filter(Boolean).join(', ') || 'not read yet',
     `${deadChartBuyers}+ buyers and some volume in 5m`, input.volume5m === null && buyers === null ? null : dead !== null, dead ?? undefined)
   gate('Bot-driven climb', input.botReason ?? 'none seen', 'no bot pattern', input.botReason !== null, `Bot-driven climb: ${input.botReason}`)
-  gate('RugCheck', input.rugged ? 'marked rugged' : 'not marked rugged', 'not rugged', input.rugged, 'RugCheck marked it rugged')
   const severe = input.severeSelling ?? input.selling
   const mildSelling = input.selling.filter(reason => !severe.includes(reason))
   gate('Big holder sell-off now', severe.length ? severe.join('; ') : mildSelling.length ? 'small trims only (cost points)' : 'no sell-off seen', 'no dev sell or group dumping twice the alert size', severe.length > 0)

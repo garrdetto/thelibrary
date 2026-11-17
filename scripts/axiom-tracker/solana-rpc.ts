@@ -16,8 +16,8 @@ export const onPublicNode = () => rpcUrl() === publicNode
  * bursts much sooner, so every Solana call in the tracker goes through these gaps. `background` callers (wallet profits)
  * take wallet histories at most every 3 seconds so the fresh-wallet checks keep most of that budget.
  */
-const publicGaps: Record<string, number> = { getSignaturesForAddress: 1_100, getTransaction: 450, getAccountInfo: 300 }
-const privateGaps: Record<string, number> = { getSignaturesForAddress: 150, getTransaction: 60, getAccountInfo: 60 }
+const publicGaps: Record<string, number> = { getSignaturesForAddress: 1_100, getTransaction: 450, getAccountInfo: 300, getMultipleAccounts: 300, getTokenLargestAccounts: 1_000 }
+const privateGaps: Record<string, number> = { getSignaturesForAddress: 150, getTransaction: 60, getAccountInfo: 60, getMultipleAccounts: 60, getTokenLargestAccounts: 100 }
 const backgroundHistoryGapMs = 3_000
 const limitPauseMs = 30_000
 
@@ -64,4 +64,51 @@ export async function solanaRpc<T>(method: string, params: unknown[], background
     noteSolanaLimit(error instanceof Error ? error.message : String(error))
     throw error
   }
+}
+
+const base58Alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+const fieldPrime = 2n ** 255n - 19n
+
+function modPow(base: bigint, exponent: bigint, modulus: bigint) {
+  let result = 1n
+  let value = ((base % modulus) + modulus) % modulus
+  let power = exponent
+  while (power > 0n) {
+    if (power & 1n) result = (result * value) % modulus
+    value = (value * value) % modulus
+    power >>= 1n
+  }
+  return result
+}
+
+const curveD = ((-121665n * modPow(121666n, fieldPrime - 2n, fieldPrime)) % fieldPrime + fieldPrime) % fieldPrime
+
+function base58Bytes(address: string) {
+  let value = 0n
+  for (const character of address) {
+    const digit = base58Alphabet.indexOf(character)
+    if (digit < 0) return null
+    value = value * 58n + BigInt(digit)
+  }
+  const bytes: number[] = []
+  while (value > 0n) { bytes.unshift(Number(value & 255n)); value >>= 8n }
+  for (const character of address) { if (character !== '1') break; bytes.unshift(0) }
+  return bytes.length === 32 ? bytes : null
+}
+
+/**
+ * True when the address is a point on the ed25519 curve, so a person's keypair can sign for it. Pools, bonding curves and
+ * other program accounts are derived off the curve, which is how they are told apart from wallets.
+ */
+export function isWalletAddress(address: string) {
+  const bytes = base58Bytes(address)
+  if (!bytes) return false
+  let y = 0n
+  for (let index = 31; index >= 0; index -= 1) y = (y << 8n) | BigInt(index === 31 ? bytes[index] & 0x7f : bytes[index])
+  if (y >= fieldPrime) return false
+  const ySquared = (y * y) % fieldPrime
+  const numerator = (ySquared - 1n + fieldPrime) % fieldPrime
+  const denominator = (curveD * ySquared + 1n) % fieldPrime
+  const xSquared = (numerator * modPow(denominator, fieldPrime - 2n, fieldPrime)) % fieldPrime
+  return xSquared === 0n || modPow(xSquared, (fieldPrime - 1n) / 2n, fieldPrime) === 1n
 }

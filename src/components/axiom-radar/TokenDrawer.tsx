@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, shortAddress, solscanAccountUrl } from './format'
 import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, WindowChange, changeClass, windowSourceNote } from './RadarTable'
@@ -82,7 +82,6 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div className="radar-drawer-links">
             <a href={axiomUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">Axiom<ExternalLink size={11}/></a>
             <a href={dexScreenerUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">DexScreener<ExternalLink size={11}/></a>
-            <a href={rugCheckUrl(live.mint)} target="_blank" rel="noopener noreferrer">RugCheck<ExternalLink size={11}/></a>
           </div>
         </div>
         <SignalBadge token={live}/>
@@ -173,7 +172,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
 
       <section className="radar-drawer-section">
         <h3>Quality checklist <QualityBadge token={live}/></h3>
-        {live.quality.checks.length === 0 ? <p className="radar-muted">No checks yet. Holder data arrives when the coin shows on your Axiom Pulse, and RugCheck within a minute or two.</p>
+        {live.quality.checks.length === 0 ? <p className="radar-muted">No checks yet. Holder data arrives when the coin shows on your Axiom Pulse, and from the Solana node within a few seconds.</p>
           : <ul className="radar-checks">{live.quality.checks.map(check => <li key={check.label} className={check.status}>
             <span aria-hidden="true">{check.status === 'pass' ? '✓' : check.status === 'warn' ? '!' : '✗'}</span>
             <strong>{check.label}</strong>
@@ -242,7 +241,6 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
         </div>}
         {live.holderTraits?.checkedAt && <p className="radar-note">Holder numbers last checked {relativeSeconds(live.holderTraits.checkedAt, Date.now())}.</p>}
         <dl className="radar-facts">
-          <div><dt>RugCheck risk score</dt><dd className="tabular">{live.safety.rugScore ?? '—'}</dd></div>
           <div><dt>Mint authority</dt><dd className={live.safety.mintAuthority ? 'radar-bad' : ''}>{authorityLabel(live.safety.mintAuthority)}</dd></div>
           <div><dt>Freeze authority</dt><dd className={live.safety.freezeAuthority ? 'radar-bad' : ''}>{authorityLabel(live.safety.freezeAuthority)}</dd></div>
         </dl>

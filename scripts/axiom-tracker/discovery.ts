@@ -1,10 +1,8 @@
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { bestPairByMint, fetchDiscoverySources, fetchPairsForMints, readMarket, socialsOf, type DexPair } from './dexscreener.js'
-import { saveAssessment } from './holder-refresh.js'
 import { jupiterMoverMints } from './jupiter.js'
-import { assessToken } from './rugcheck.js'
-import { createLogger, errorMessage, isMainModule, runLoop, trackerConfig } from './runtime.js'
-import { activeBotClimb, trackerState, type ActiveCandidate } from './state.js'
+import { createLogger, isMainModule, runLoop, trackerConfig } from './runtime.js'
+import { activeBotClimb, trackerState } from './state.js'
 import { radarSettings } from './settings-store.js'
 import { applyPulseMarket, pairFromPulse } from './pulse-market.js'
 import { safetyLevel } from './model.js'
@@ -15,11 +13,6 @@ const logger = createLogger('discovery')
 const watchlistLimit = 400
 const watchlistTtlMs = 6 * 60 * 60_000
 const pulseWindowMs = 3 * 60_000
-const enrichmentsPerCycle = 5
-const enrichmentRefreshMs = 30 * 60_000
-const enrichedAt = new Map<string, number>()
-let enriching = false
-let lastEnriched = 0
 /** The site takes at most 160 coins per update; Pulse coins come first, then the best of the rest. */
 export const trackedLimit = 150
 
@@ -90,21 +83,6 @@ function upsertTokens(database: TrackerDatabase, pairs: DexPair[], boosted: Set<
   })()
 }
 
-async function enrichCandidates(database: TrackerDatabase, candidates: ActiveCandidate[]) {
-  const now = Date.now()
-  const due = candidates.filter(candidate => now - (enrichedAt.get(candidate.mint) ?? 0) > enrichmentRefreshMs).slice(0, enrichmentsPerCycle)
-  for (const candidate of due) {
-    enrichedAt.set(candidate.mint, now)
-    try {
-      saveAssessment(database, candidate.mint, await assessToken(candidate.mint), now)
-    } catch (error) {
-      enrichedAt.set(candidate.mint, now - enrichmentRefreshMs + 2 * 60_000)
-      logger.warn('RugCheck enrichment failed', { mint: candidate.mint, error: errorMessage(error) })
-    }
-  }
-  return due.length
-}
-
 export async function runDiscoveryCycle(database: TrackerDatabase) {
   const now = Date.now()
   const [sources, jupiterMints] = await Promise.all([fetchDiscoverySources(), jupiterMoverMints().catch(() => [] as string[])])
@@ -128,7 +106,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
     if (pair) { best.set(mint, pair); fromCards += 1 }
   }
   const maxAgeMs = settings.maxAgeHours.enabled ? settings.maxAgeHours.value * 3_600_000 : Number.POSITIVE_INFINITY
-  const safety = database.prepare('SELECT mint, rug_score, mint_auth, freeze_auth, top10_pct FROM tokens WHERE mint IN (SELECT value FROM json_each(?))').all(JSON.stringify([...best.keys()])) as Array<{ mint: string; rug_score: number | null; mint_auth: number | null; freeze_auth: number | null; top10_pct: number | null }>
+  const safety = database.prepare('SELECT mint, mint_auth, freeze_auth, top10_pct FROM tokens WHERE mint IN (SELECT value FROM json_each(?))').all(JSON.stringify([...best.keys()])) as Array<{ mint: string; mint_auth: number | null; freeze_auth: number | null; top10_pct: number | null }>
   const safetyByMint = new Map(safety.map(row => [row.mint, row]))
   const eligible: DexPair[] = []
   for (const [mint, pair] of best) {
@@ -142,7 +120,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
     if (settings.minViewers.enabled && (!viewers || now - viewers.at > 60_000 || viewers.count < settings.minViewers.value)) continue
     if (settings.safeOnly) {
       const row = safetyByMint.get(mint)
-      const level = row ? safetyLevel({ rugScore: row.rug_score, mintAuthority: row.mint_auth === null ? null : row.mint_auth === 1, freezeAuthority: row.freeze_auth === null ? null : row.freeze_auth === 1, top10Pct: row.top10_pct }) : 'unknown'
+      const level = row ? safetyLevel({ mintAuthority: row.mint_auth === null ? null : row.mint_auth === 1, freezeAuthority: row.freeze_auth === null ? null : row.freeze_auth === 1, top10Pct: row.top10_pct }) : 'unknown'
       if (level !== 'safe' && level !== 'unknown') continue
     }
     eligible.push(pair)
@@ -167,15 +145,8 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   }
   for (const mint of trackerState.market.keys()) if (!ranked.some(entry => entry.pair.baseToken.address === mint)) trackerState.market.delete(mint)
 
-  if (!enriching) {
-    enriching = true
-    void enrichCandidates(database, trackerState.active)
-      .then(count => { lastEnriched = count })
-      .catch(error => logger.warn('RugCheck enrichment failed', { error: errorMessage(error) }))
-      .finally(() => { enriching = false })
-  }
   recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} tracked of ${best.size} coins checked, ${fromPulse.length} of ${trackerState.pulse.size} Pulse coins${fromCards ? ` (${fromCards} followed from their cards until DexScreener lists them)` : ''}`)
-  logger.info('Discovery cycle complete', { sourced: sources.mints.length, fromJupiter: jupiterMints.length, botClimbsSkipped: trackerState.botClimbs.size, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, fromCards, onPulse: trackerState.pulse.size, active: trackerState.active.length, enriched: lastEnriched, sourceFailures: sources.failures })
+  logger.info('Discovery cycle complete', { sourced: sources.mints.length, fromJupiter: jupiterMints.length, botClimbsSkipped: trackerState.botClimbs.size, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, fromCards, onPulse: trackerState.pulse.size, active: trackerState.active.length, sourceFailures: sources.failures })
 }
 
 export function startDiscovery(database: TrackerDatabase, signal: AbortSignal) {

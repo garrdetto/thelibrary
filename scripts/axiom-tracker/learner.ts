@@ -279,7 +279,6 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
       const highest = (...values: Array<number | null | undefined>) => values.reduce<number | null>((best, value) => typeof value === 'number' && Number.isFinite(value) ? Math.max(best ?? value, value) : best, null)
       const reading: TraitReading = {
         ...holderReading,
-        rugScore: token.safety?.rugScore ?? null,
         holders: token.holderTraits?.holders ?? token.pulse?.holders ?? null,
         traders: recentJupiter?.traders5m ?? null,
         liquidity: token.liquidityUsd,

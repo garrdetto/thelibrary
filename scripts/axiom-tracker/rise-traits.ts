@@ -1,4 +1,4 @@
-export const traitKeys = ['top10', 'dev', 'snipers', 'insiders', 'bundlers', 'linked', 'fresh', 'rugScore', 'holders', 'traders', 'liquidity', 'viewers', 'devCreated', 'devMigrated'] as const
+export const traitKeys = ['top10', 'dev', 'snipers', 'insiders', 'bundlers', 'linked', 'fresh', 'holders', 'traders', 'liquidity', 'viewers', 'devCreated', 'devMigrated'] as const
 
 export type TraitKey = typeof traitKeys[number]
 export type TraitReading = Partial<Record<TraitKey, number | null>>

@@ -51,7 +51,7 @@ test('a coin off Pulse is read every four minutes, one on Pulse every twenty', (
 test('fresh wallets over 10% score 0', () => {
   const input: RunnerInput = {
     now, marketCap: 30_000, liquidity: 14_000, priceChange: { m1: 3, m5: 20 }, ticks: [], top10: 14, dev: 0, devSold: true, snipers: 3, insiders: 2,
-    bundlers: 4, linked: 1, fresh: 10.5, proTraders: null, holders: 500, mintAuthority: false, freezeAuthority: false, rugged: false, devCreated: null, devMigrated: null,
+    bundlers: 4, linked: 1, fresh: 10.5, proTraders: null, holders: 500, mintAuthority: false, freezeAuthority: false, devCreated: null, devMigrated: null,
     recycled: null, buys5m: 300, volume5m: 42_000, buyers5m: 120, buyVolume5m: 20_000, sellVolume5m: 12_000, feesSol: 2, graduated: false, dexPaid: true,
     links: { twitter: null, telegram: null, website: null }, reusedLinks: [], smartHolders: 1, viewers: 100, viewersPerMin: 20, botReason: null,
     selling: [], devSelling: false, learned: [],

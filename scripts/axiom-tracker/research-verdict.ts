@@ -24,7 +24,6 @@ export type VerdictInput = {
   freshFallback: number | null
   mintAuthority: boolean | null
   freezeAuthority: boolean | null
-  riskyRugCheck: boolean
   shape: PriceShape | null
   earlyHolders: number | null
 }
@@ -69,6 +68,5 @@ export function judgeResearch(input: VerdictInput): ResearchVerdict {
   if (shape?.steadyRise && shape.steadyFall) flag('Rug pull pattern', 'Climbed in an even, steady line and then slid down in an even, steady line')
   if (input.mintAuthority) flag('Risky token settings', 'Mint authority was still enabled')
   if (input.freezeAuthority) flag('Risky token settings', 'Freeze authority was still enabled')
-  if (input.riskyRugCheck) flag('RugCheck risky', 'RugCheck rated it risky')
   return { negatives, kinds: [...new Set(kinds)], topHoldersPct: top10, freshPct: fresh }
 }

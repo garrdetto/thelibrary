@@ -32,7 +32,6 @@ type TokenRow = {
   image_url: string | null
   pair_created_at: number
   socials_json: string
-  rug_score: number | null
   mint_auth: number | null
   freeze_auth: number | null
   top10_pct: number | null
@@ -40,7 +39,6 @@ type TokenRow = {
   holders_total: number | null
   dev_pct: number | null
   insider_pct: number | null
-  rugged: number | null
   traits_checked_at: number | null
   fresh_pct?: number | null
   links_json?: string | null
@@ -222,7 +220,6 @@ function classify(token: RadarToken, settings: RadarSettings, liquidityChange1m:
   if (token.priceChange.s30 !== null && token.priceChange.s30 <= -20) alerts.push(`Price dumped ${Math.abs(token.priceChange.s30).toFixed(0)}% in 30s`)
   if (token.safety.mintAuthority) alerts.push('Mint authority still enabled')
   if (token.safety.freezeAuthority) alerts.push('Freeze authority still enabled')
-  if (token.holderTraits?.rugged) alerts.push('RugCheck marked it rugged')
   for (const selling of token.safetyPlan?.selling ?? []) alerts.push(selling)
   const redFlags = token.quality.checks.filter(check => check.status === 'fail').map(check => check.label)
   const buyRules = settings.buy
@@ -277,7 +274,7 @@ function finalize(entries: BuiltToken[], settings: RadarSettings) {
 const traitsCache = new Map<string, { at: number; traits: RadarHolderTraits | null }>()
 let lifecycleTableKnown = false
 
-/** The current holder numbers for one coin: the Pulse card while it is fresh, then Axiom's own coin page read in the last two minutes, otherwise the highest of an older page reading and the latest RugCheck and Jupiter readings, then the last card or the worst numbers on record. */
+/** The current holder numbers for one coin: the Pulse card while it is fresh, then Axiom's own coin page read in the last two minutes, otherwise the highest of an older page reading and the latest on-chain and Jupiter readings, then the last card or the worst numbers on record. */
 function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number): RadarHolderTraits | null {
   const cached = traitsCache.get(token.mint)
   if (cached && now - cached.at < 2_000) return cached.traits
@@ -297,15 +294,14 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
   const checkedAt = Math.max(fresh?.seenAt ?? 0, page.recent?.seenAt ?? 0, token.traits_checked_at ?? 0, card?.seenAt ?? 0) || null
   const traits: RadarHolderTraits = {
     top10: first(fresh?.top10Pct, page.live?.top10, highest(page.recent?.top10, token.top10_pct, jupiter?.top10Pct), card?.top10Pct, page.kept?.top10, worst?.top10),
-    dev: first(cardDev(fresh), page.live?.dev, highest(page.recent?.dev, token.dev_pct, jupiter?.devPct), cardDev(card), page.kept?.dev, worst?.dev),
+    dev: first(cardDev(fresh), page.live?.dev, highest(page.recent?.dev, jupiter?.devPct), cardDev(card), page.kept?.dev, worst?.dev),
     snipers: first(fresh?.snipersPct, page.recent?.snipers, card?.snipersPct, page.kept?.snipers, worst?.snipers),
     insiders: first(fresh?.insidersPct, page.recent?.insiders, card?.insidersPct, page.kept?.insiders, worst?.insiders),
     bundlers: first(fresh?.bundlersPct, page.recent?.bundlers, card?.bundlersPct, page.kept?.bundlers, worst?.bundlers),
-    linked: first(token.insider_pct, worst?.linked),
+    linked: first(worst?.linked),
     fresh: first(fresh?.freshPct, page.kept?.fresh, token.fresh_pct, card?.freshPct, worst?.fresh),
     proTraders: first(fresh?.proTradersPct, page.kept?.proTraders, card?.proTradersPct),
     holders: first(fresh?.holders, jupiter?.holders, token.holders_total, card?.holders),
-    rugged: token.rugged === 1,
     checkedAt,
   }
   const known = [traits.top10, traits.dev, traits.snipers, traits.insiders, traits.bundlers, traits.linked, traits.fresh, traits.proTraders, traits.holders].some(value => value !== null)
@@ -366,11 +362,11 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
   const delta1m = live.viewers !== null ? live.viewersDelta1m : stored.delta1m
   const delta5m = live.viewers !== null ? live.viewersDelta5m ?? stored.delta5m : stored.delta5m
   const pct5m = delta5m !== null && viewers !== null && viewers - delta5m > 0 ? Math.round((delta5m / (viewers - delta5m)) * 1000) / 10 : stored.pct5m
-  const safety = { rugScore: token.rug_score, mintAuthority: flag(token.mint_auth), freezeAuthority: flag(token.freeze_auth), top10Pct: token.top10_pct }
+  const safety = { mintAuthority: flag(token.mint_auth), freezeAuthority: flag(token.freeze_auth), top10Pct: token.top10_pct }
   const buys = live.market?.buys5m ?? latest?.buys_5m ?? null
   const sells = live.market?.sells5m ?? latest?.sells_5m ?? null
   const marketCap = live.market?.marketCap ?? latest?.market_cap ?? null
-  const checklist = assessQuality({ pulse: live.pulse, traits, marketCap, rugTop10Pct: token.top10_pct, mintAuthority: safety.mintAuthority, freezeAuthority: safety.freezeAuthority })
+  const checklist = assessQuality({ pulse: live.pulse, traits, marketCap, chainTop10Pct: token.top10_pct, mintAuthority: safety.mintAuthority, freezeAuthority: safety.freezeAuthority })
   const quality = { score: checklist.score, checks: checklist.checks }
   const { factors } = scoreSetup({ ...safety, viewers, viewersDelta5m: delta5m, viewersPerMin: live.viewersPerMin, quality: quality.score, runnerWallets: runners, buys5m: buys, sells5m: sells }, weights)
   const transactions = (buys ?? 0) + (sells ?? 0)
@@ -416,7 +412,6 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     holders: holderSource.holders,
     mintAuthority: safety.mintAuthority,
     freezeAuthority: safety.freezeAuthority,
-    rugged: traits?.rugged ?? false,
     devCreated: Math.max(card?.devCreated ?? -1, jupiter?.devMints ?? -1) >= 0 ? Math.max(card?.devCreated ?? 0, jupiter?.devMints ?? 0) : null,
     devMigrated: Math.max(card?.devMigrated ?? -1, jupiter?.devMigrations ?? -1) >= 0 ? Math.max(card?.devMigrated ?? 0, jupiter?.devMigrations ?? 0) : null,
     recycled: recycled.reason,
@@ -452,7 +447,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     sells5m: sells,
     botClimb,
     authorityOn: safety.mintAuthority === true || safety.freezeAuthority === true,
-    holderBlocked: runner.holderRisk.reasons.find(reason => / hold|RugCheck/.test(reason)) ?? null,
+    holderBlocked: runner.holderRisk.reasons.find(reason => / hold/.test(reason)) ?? null,
     severeSelling: (runnerInput.severeSelling?.length ?? 0) > 0 || runnerInput.devSelling === true,
   })
   const built: RadarToken = {
