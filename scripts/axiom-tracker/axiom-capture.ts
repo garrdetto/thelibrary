@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { TrackerDatabase } from './db.js'
+import { readAxiomAnswer } from './axiom-readers.js'
 import { solanaAddressPattern } from './runtime.js'
 
 /**
@@ -97,8 +98,8 @@ function pathOf(url: string) {
   }
 }
 
-export type CaptureStats = { api: number; streams: number; wallets: number; paths: Map<string, number> }
-export const captureStats: CaptureStats = { api: 0, streams: 0, wallets: 0, paths: new Map() }
+export type CaptureStats = { api: number; streams: number; wallets: number; trades: number; holderReads: number; paths: Map<string, number> }
+export const captureStats: CaptureStats = { api: 0, streams: 0, wallets: 0, trades: 0, holderReads: 0, paths: new Map() }
 
 let prepared: TrackerDatabase | null = null
 let lastPruneAt = 0
@@ -122,8 +123,10 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
   const insertCapture = database.prepare('INSERT INTO axiom_capture (kind, path, pair, body, at) VALUES (?, ?, ?, ?, ?)')
   const upsertWallet = database.prepare(`INSERT INTO axiom_wallets (pair, wallet, source, fields, first_at, last_at, seen) VALUES (?, ?, ?, ?, ?, ?, 1)
     ON CONFLICT (pair, wallet, source) DO UPDATE SET fields = excluded.fields, last_at = excluded.last_at, seen = axiom_wallets.seen + 1`)
+  const answers: Array<{ path: string; pair: string | null; parsed: unknown }> = []
   const record = (kind: 'api' | 'socket', path: string, pair: string | null, body: string, parsed: unknown) => {
     insertCapture.run(kind, path, pair, body, now)
+    if (kind === 'api') answers.push({ path, pair, parsed })
     captureStats.paths.set(`${kind} ${path}`, (captureStats.paths.get(`${kind} ${path}`) ?? 0) + 1)
     if (!parsed || !pair) return
     const skip = new Set([pair])
@@ -143,6 +146,13 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
       captureStats.api += 1
     }
   })()
+  for (const answer of answers) {
+    try {
+      const read = readAxiomAnswer(database, answer.path, answer.pair, answer.parsed, now)
+      captureStats.trades += read.trades
+      if (read.holders) captureStats.holderReads += 1
+    } catch { }
+  }
   if (now - lastPruneAt > 60_000) {
     lastPruneAt = now
     database.prepare('DELETE FROM axiom_capture WHERE at < ?').run(now - keepCaptureMs)
@@ -153,7 +163,9 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
 /** The heartbeat line: how much the bridge captured in the last interval and the busiest paths. */
 export function captureNote() {
   const busiest = [...captureStats.paths].sort((first, second) => second[1] - first[1]).slice(0, 4).map(([path, count]) => `${path} ×${count}`).join(', ')
-  const note = captureStats.api || captureStats.streams ? `; captured ${captureStats.api} API answers and ${captureStats.streams} socket messages, ${captureStats.wallets} wallet sightings${busiest ? ` (${busiest})` : ''}` : ''
+  const note = captureStats.api ? `; captured ${captureStats.api} Axiom answers: ${captureStats.trades} new trades, ${captureStats.holderReads} holder readings, ${captureStats.wallets} wallet sightings${busiest ? ` (${busiest})` : ''}` : ''
+  captureStats.trades = 0
+  captureStats.holderReads = 0
   captureStats.api = 0
   captureStats.streams = 0
   captureStats.wallets = 0
