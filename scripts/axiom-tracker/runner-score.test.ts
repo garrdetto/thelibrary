@@ -294,9 +294,7 @@ test('a coin the radar just found is judged on its earlier chart, not on how lon
   assert.equal(backfilled.ledger.pillars.find(pillar => pillar.key === 'chart')?.points, trackedLong.ledger.pillars.find(pillar => pillar.key === 'chart')?.points)
 })
 
-test('a trim of a couple of points is a mild alert; twice the trigger is severe', () => {
-  resetSellWatch()
-  for (let second = 0; second < 20; second++) watchSells('coin', reading(now + second * 1_000, {}))
+test('insiders trimming a few points is a mild alert; twice the trigger is severe', () => {
   let alerts: ReturnType<typeof watchSells> = []
   resetSellWatch()
   for (let second = 0; second < 20; second++) watchSells('coin', reading(now + second * 1_000, { insiders: 10 }))
