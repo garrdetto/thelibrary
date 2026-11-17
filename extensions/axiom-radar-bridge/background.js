@@ -27,8 +27,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
         body: JSON.stringify(report),
       })
       let response = await send(message.report)
-      if (response.status === 400 && (message.report?.stats || message.report?.pulse || message.report?.api || message.report?.streams || message.report?.lists || message.report?.probe || message.report?.digest || message.report?.discover)) {
-        const { stats, pulse, api, streams, lists, probe, digest, discover, ...plain } = message.report
+      if (response.status === 400 && (message.report?.stats || message.report?.pulse || message.report?.api || message.report?.streams || message.report?.lists || message.report?.probe || message.report?.digest || message.report?.discover || message.report?.tabs)) {
+        const { stats, pulse, api, streams, lists, probe, digest, discover, tabs, ...plain } = message.report
         response = await send(plain)
       }
       const result = await response.json().catch(() => ({}))
@@ -90,10 +90,26 @@ async function showInCycler(pulseTab, url) {
   return created.id
 }
 
+/** Asks the coin page to open its Holders and Top Traders tabs, retrying while the page loads; the page's turn lasts until it is done. */
+async function runTabsJob(tabId) {
+  const started = Date.now()
+  let answer = null
+  while (Date.now() - started < cycleMaxMs - 1_000) {
+    await new Promise(resolve => setTimeout(resolve, 1_500))
+    if (onShow?.tabId !== tabId) return
+    answer = await chrome.tabs.sendMessage(tabId, { type: 'axiom-radar-open-tabs' }).catch(() => null)
+    if (answer?.done) break
+  }
+  if (onShow?.tabId === tabId) onShow = { ...onShow, awaitingTabs: false }
+  const { listTabsOpened = 0 } = await chrome.storage.local.get('listTabsOpened')
+  await chrome.storage.local.set({ listTabsOpened: listTabsOpened + (answer?.ok ? 1 : 0), listTabsLast: { ok: Boolean(answer?.ok), reason: answer?.reason ?? null, at: Date.now() } })
+}
+
 /** How long the coin page on show keeps its turn: until its holder figures arrive (they load about 6 seconds in) or 15 seconds pass, and 6 seconds when only its viewer count is wanted. */
 function turnOver(now) {
   const shown = now - lastStepAt
   if (!onShow) return shown >= cycleStepMs
+  if (onShow.awaitingTabs) return shown >= cycleMaxMs + 5_000
   if (onShow.awaitingFigures) return shown >= cycleMaxMs
   return shown >= (onShow.gotFigures ? cycleMinMs : cycleStepMs)
 }
@@ -132,7 +148,8 @@ async function stepMissingViewers(pulseTab) {
   for (const [pairAddress, at] of visitedAt) if (now - at > 60 * 60_000) visitedAt.delete(pairAddress)
   const awaitingFigures = stale.some(item => item.pairAddress === next.pairAddress)
   const tabId = await showInCycler(pulseTab, `https://axiom.trade/meme/${next.pairAddress}`)
-  onShow = { tabId, awaitingFigures, gotFigures: false }
+  onShow = { tabId, awaitingFigures, gotFigures: false, awaitingTabs: true }
+  void runTabsJob(tabId).catch(() => undefined)
 }
 
 chrome.runtime.onMessage.addListener((message, sender) => {
