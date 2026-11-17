@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { notePulseFlow, pairFromPulse, pulseFlow5m, pulseIdentity, withPulseMarket } from './pulse-market.js'
+import { noteDexMarket, notePulseFlow, pairFromPulse, pulseFlow5m, pulseHoldMs, pulseIdentity, resetPulseHold, withPulseMarket } from './pulse-market.js'
 import { parsePulseCard } from './pulse-cards.js'
 import { trackerState } from './state.js'
 import { geckoAnswered, geckoGapMs, geckoLimited, geckoPacing, geckoReady, resetGeckoPacing } from './gecko-limit.js'
@@ -22,6 +22,31 @@ test('five-minute volume comes from the running totals on the card', () => {
   const flow = pulseFlow5m(mint, now + 120_000, now - 36 * 60_000)
   assert.ok(flow && Math.abs(flow.volume - 15_000) < 1, JSON.stringify(flow))
   assert.equal(flow?.txns, 300)
+})
+
+test('a card that goes quiet keeps its price until DexScreener publishes something newer', () => {
+  resetPulseHold()
+  const mint = 'Hold1111111111111111111111111111111111pump'
+  trackerState.pulseCards.set(mint, parsePulseCard(lines, 51, now))
+  const dex: MarketReading = { mint, pairAddress: 'pair', priceUsd: 0.000005, marketCap: 5_000, liquidityUsd: 5_000, volume5m: 1_000, buys5m: 10, sells5m: 5, pairCreatedAt: now - 60_000, readAt: now - 20_000 }
+  noteDexMarket(mint, dex)
+  const fresh = withPulseMarket(mint, dex, now + 1_000)
+  assert.equal(fresh?.marketCap, 10_900)
+  const quiet = withPulseMarket(mint, dex, now + 12_000)
+  assert.equal(quiet?.marketCap, 10_900, 'DexScreener still shows what it showed before the card moved')
+  assert.ok(Math.abs((quiet?.priceUsd ?? 0) - 0.0000109) < 1e-12)
+  assert.equal(quiet?.readAt, now)
+  assert.equal(withPulseMarket(mint, quiet, now + 13_000), quiet, 'a reading already carrying the card figure is left alone')
+  const newer: MarketReading = { ...dex, priceUsd: 0.000012, marketCap: 12_000, readAt: now + 20_000 }
+  noteDexMarket(mint, newer)
+  assert.equal(withPulseMarket(mint, newer, now + 21_000), newer)
+  assert.equal(withPulseMarket(mint, dex, now + 22_000), dex, 'the hold ended when DexScreener moved')
+  trackerState.pulseCards.set(mint, parsePulseCard(lines, 51, now + 30_000))
+  noteDexMarket(mint, dex)
+  withPulseMarket(mint, dex, now + 31_000)
+  assert.equal(withPulseMarket(mint, dex, now + 30_000 + pulseHoldMs + 1_000), dex, 'a card price is not kept past the hold')
+  trackerState.pulseCards.delete(mint)
+  resetPulseHold()
 })
 
 test('a fresh card moves the price with Axiom market cap, and a coin DexScreener lacks is followed from its card', () => {

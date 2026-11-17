@@ -4,7 +4,7 @@ import { jupiterMoverMints } from './jupiter.js'
 import { createLogger, isMainModule, runLoop, trackerConfig } from './runtime.js'
 import { activeBotClimb, trackerState } from './state.js'
 import { radarSettings } from './settings-store.js'
-import { applyPulseMarket, pairFromPulse } from './pulse-market.js'
+import { applyPulseMarket, noteDexMarket, pairFromPulse } from './pulse-market.js'
 import { safetyLevel } from './model.js'
 import { scoreDex } from './dex-score.js'
 import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
@@ -140,7 +140,9 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   upsertTokens(database, ranked.map(entry => entry.pair), sources.boosted, now)
   trackerState.active = ranked.map(({ pair, momentum }) => ({ mint: pair.baseToken.address, pairAddress: pair.pairAddress, symbol: pair.baseToken.symbol ?? '???', momentum }))
   for (const { pair } of ranked) {
-    trackerState.market.set(pair.baseToken.address, readMarket(pair, now))
+    const market = readMarket(pair, now)
+    trackerState.market.set(pair.baseToken.address, market)
+    noteDexMarket(pair.baseToken.address, market)
     applyPulseMarket(pair.baseToken.address, now)
   }
   for (const mint of trackerState.market.keys()) if (!ranked.some(entry => entry.pair.baseToken.address === mint)) trackerState.market.delete(mint)

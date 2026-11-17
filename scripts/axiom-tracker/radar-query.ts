@@ -19,6 +19,8 @@ import { chartHistory, withChartHistory } from './chart-history.js'
 import { pageStatsAt } from './page-stats.js'
 import { rankHolderWallets } from './wallet-ranking.js'
 import { walletScoreFor } from './wallet-score.js'
+import { earlyStart, stretchAboveLow, withEarlyGate } from './early-start.js'
+import { earlyState } from './early-state.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -141,10 +143,23 @@ function percentChange(current: number | null, previous: number | null) {
   return current !== null && previous !== null && previous > 0 ? Math.round(((current - previous) / previous) * 10_000) / 100 : null
 }
 
-function viewerGainPerMinute(ticks: MarketTick[], viewers: number | null, now: number) {
+/** The average viewer count over the readings between two moments, so one jumpy reading cannot set a rate. */
+export function averageViewers(ticks: MarketTick[], from: number, to: number) {
+  let total = 0
+  let count = 0
+  for (const tick of ticks) {
+    if (tick.viewers === null || tick.t < from || tick.t > to) continue
+    total += tick.viewers
+    count += 1
+  }
+  return count ? total / count : null
+}
+
+/** Viewers gained over the last minute: the last 10 seconds' average against the 20 seconds around a minute ago. */
+export function viewerGainPerMinute(ticks: MarketTick[], viewers: number | null, now: number) {
   if (viewers === null) return null
-  const minuteAgo = tickAt(ticks, now - 60_000, 8_000, 'viewers')
-  if (minuteAgo !== null) return viewers - minuteAgo
+  const before = averageViewers(ticks, now - 70_000, now - 50_000)
+  if (before !== null) return Math.round((averageViewers(ticks, now - 10_000, now) ?? viewers) - before)
   const earliest = ticks.find(tick => tick.viewers !== null && now - tick.t <= 60_000)
   if (!earliest || earliest.viewers === null || now - earliest.t < 20_000) return null
   return Math.round(((viewers - earliest.viewers) * 60_000) / (now - earliest.t))
@@ -346,6 +361,19 @@ function socialLinks(token: TokenRow): RunnerLinks {
   return { twitter: socials.twitter ?? null, telegram: socials.telegram ?? null, website: socials.website ?? null }
 }
 
+/** A minute-ago trade count under this is too thin to measure a rise against. */
+const minTradesBefore = 20
+
+/** The stored snapshot nearest a moment, within `tolerance`. */
+function snapshotNear(snapshots: SnapshotRow[], target: number, tolerance: number) {
+  let best: SnapshotRow | null = null
+  for (const row of snapshots) {
+    const distance = Math.abs(row.timestamp - target)
+    if (distance <= tolerance && (!best || distance < Math.abs(best.timestamp - target))) best = row
+  }
+  return best
+}
+
 /** One price a second from the live feed, preceded by the 10-second snapshots for the minutes before it. */
 function priceSeries(snapshots: SnapshotRow[], ticks: MarketTick[]): PricePoint[] {
   const live = ticks.filter(tick => tick.price !== null && tick.price > 0).map(tick => ({ t: tick.t, price: tick.price as number }))
@@ -394,12 +422,27 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
       : { t: now, source: 'chain', top10: traits?.top10 ?? null, bundlers: traits?.bundlers ?? null, insiders: traits?.insiders ?? null, dev: traits?.dev ?? null, price }, now)
   const recycled = recycledFor(database, token, now)
   const card = live.pulse
+  const series = withChartHistory(chartHistory(token.mint), priceSeries(snapshots, ticks))
+  const minuteAgo = snapshotNear(snapshots, now - 60_000, 20_000)
+  const tradesBefore = minuteAgo && minuteAgo.buys_5m !== null && minuteAgo.sells_5m !== null ? minuteAgo.buys_5m + minuteAgo.sells_5m : null
+  const earlySigns = earlyStart({
+    ageMinutes: token.pair_created_at > 0 ? Math.max(0, (now - token.pair_created_at) / 60_000) : null,
+    marketCap,
+    viewers: viewers === null ? null : Math.round(averageViewers(ticks, now - 8_000, now) ?? viewers),
+    viewersBefore: averageViewers(ticks, now - 38_000, now - 22_000),
+    volume5m,
+    volumeBefore: minuteAgo?.volume_5m ?? null,
+    trades5m: buys !== null && sells !== null ? buys + sells : null,
+    tradesBefore: tradesBefore !== null && tradesBefore >= minTradesBefore ? tradesBefore : null,
+    stretchPct: stretchAboveLow(series, now, price),
+    minuteChange: live.priceChange.m1,
+  })
   const runnerInput: Parameters<typeof scoreRunner>[0] = {
     now,
     marketCap,
     liquidity: live.market?.liquidityUsd ?? latest?.liquidity_usd ?? null,
     priceChange: { s5: live.priceChange.s5 ?? null, s30: live.priceChange.s30, m1: live.priceChange.m1, m5: live.priceChange.m5 },
-    ticks: withChartHistory(chartHistory(token.mint), priceSeries(snapshots, ticks)),
+    ticks: series,
     top10: traits?.top10 ?? null,
     dev: traits?.dev ?? null,
     devSold: card?.devSold ?? false,
@@ -416,6 +459,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     devMigrated: Math.max(card?.devMigrated ?? -1, jupiter?.devMigrations ?? -1) >= 0 ? Math.max(card?.devMigrated ?? 0, jupiter?.devMigrations ?? 0) : null,
     recycled: recycled.reason,
     buys5m: buys,
+    sells5m: sells,
     volume5m,
     buyers5m: jupiter?.organicBuyers5m ?? null,
     buyVolume5m: jupiter?.buyVolume5m ?? null,
@@ -428,12 +472,13 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     smartHolders: runners,
     viewers,
     viewersPerMin: live.viewersPerMin,
-    holdersPerMin: live.holdersPerMin,
+    holdersPerMin: holderSource.perMin,
     botReason: botReason ?? remembered?.reason ?? null,
     selling: sellAlerts.map(alert => alert.text),
     severeSelling: sellAlerts.filter(alert => alert.severe).map(alert => alert.text),
     devSelling: sellAlerts.some(alert => alert.dev),
     learned: [],
+    early: earlySigns,
   }
   const firstPass = scoreRunner(runnerInput)
   const learned = learnedFor(firstPass.tags)
@@ -509,6 +554,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     scoreTrail: scoreTrailFor(token.mint),
     dex,
     wallets: walletScoreFor(database, token.mint, marketCap, now),
+    early: withEarlyGate(earlySigns, runner.disqualified[0] ?? null),
   }
   return { token: built, liquidityChange1m: live.liquidityChange1m }
 }
@@ -531,6 +577,11 @@ export function buildRadarTokens(database: TrackerDatabase, weights: RadarWeight
   const result = buildRadarTokensNow(database, weights, now)
   builtTokens = { at: now, tokens: result }
   return result
+}
+
+/** The most recent scored list without building a new one, or null when none was built in the last `maxAgeMs`. */
+export function recentRadarTokens(now = Date.now(), maxAgeMs = 3_000): RadarToken[] | null {
+  return builtTokens && Math.abs(now - builtTokens.at) <= maxAgeMs ? builtTokens.tokens : null
 }
 
 function buildRadarTokensNow(database: TrackerDatabase, weights: RadarWeights, now: number): RadarToken[] {
@@ -656,6 +707,7 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     winners: learnerState.winners,
     adviceStudy: learnerState.adviceStudy,
     runner: runnerState.summary,
+    early: earlyState.summary,
   }
 }
 

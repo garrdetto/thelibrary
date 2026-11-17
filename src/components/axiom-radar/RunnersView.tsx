@@ -3,6 +3,7 @@ import type { RadarPayload, RadarRunnerAlert, RadarRunnerStats, RadarToken } fro
 import { AxiomLink, CoinName } from './AxiomLink'
 import { formatClock, formatCount, formatUsd } from './format'
 import { LearnStat } from './LearnedCoin'
+import { EarlyResults } from './EarlyStart'
 
 const share = (value: number | null | undefined) => value === null || value === undefined ? '—' : `${value < 1 ? value.toFixed(1) : Math.round(value)}%`
 const multiple = (value: number | null) => value === null ? '—' : `${value.toFixed(2)}x`
@@ -42,7 +43,7 @@ export function RunnersView({ payload, tokens, onOpen }: { payload: RadarPayload
   const live = tokens.filter(token => token.score >= threshold && !token.holderRisk?.blocked).sort((first, second) => second.score - first.score)
   return <div className="radar-learn">
     <div className="radar-section-head"><h2><Rocket size={16} aria-hidden="true"/> Runners</h2>
-      <p>Coins scoring {threshold} or more on the runner score: no step-one disqualifier (mint or freeze on, dev over 5%, top 10 over 35%, bundles over 35%, a serial launcher with under 10 graduated coins or a copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling), then holder percentages 20, Axiom demand and growth 45 (viewers, viewers and holders gained a minute, buy share, holders, volume), chart and liquidity 25 and hype 15, raised by a quarter. A top 10 up to 35% costs nothing unless it is dropping fast while the price falls, and market cap or distance to migration never costs points. Scores and holder sells are re-checked every second.</p></div>
+      <p>Coins scoring {threshold} or more on the runner score: no step-one disqualifier (mint or freeze on, dev over 5%, top 10 over 35%, bundles over 35%, a serial launcher with under 10 graduated coins or a copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling), then holder percentages 20, Axiom demand and growth 45 (viewers, viewers and holders gained a minute, buy share, holders, volume), chart and liquidity 25 and hype 15, raised by a quarter. The points go to what shows before a move, not to a move already made: the early-start signs (a big crowd and heavy trading for the coin's size, trades and viewers picking up, a price still near its 3-minute low) add up to 20, a price already more than 35% above its 3-minute low costs up to 10, and fading trading costs 6. A top 10 up to 35% costs nothing, and market cap or distance to migration never costs points. Scores are re-checked every second.</p></div>
 
     <div className="radar-learn-stats">
       <LearnStat label="Alert threshold" value={String(threshold)} note={runner && threshold > runner.normalThreshold ? `raised: the last ${runner.rollingDecided} alerts won under 40%` : 'normal'}/>
@@ -54,6 +55,8 @@ export function RunnersView({ payload, tokens, onOpen }: { payload: RadarPayload
       <div className="panel-heading"><h2>Score {threshold}+ right now</h2><span className="panel-caption">LIVE</span></div>
       {live.length === 0 ? <p className="radar-muted">No coin scores {threshold} or more right now.</p> : <ul className="radar-runner-list">{live.map(token => <RunnerCard key={token.mint} token={token} onOpen={onOpen}/>)}</ul>}
     </section>
+
+    <EarlyResults summary={payload.early}/>
 
     <section className="radar-card">
       <div className="panel-heading"><h2>Alert results</h2><span className="panel-caption">{runner?.alerts.length ?? 0} RECENT</span></div>
@@ -75,7 +78,7 @@ export function RunnersView({ payload, tokens, onOpen }: { payload: RadarPayload
 
     <section className="radar-card">
       <div className="panel-heading"><h2>What past alerts taught</h2><span className="panel-caption">{runner?.patterns.filter(pattern => pattern.points !== 0).length ?? 0} IN USE</span></div>
-      <p className="radar-note">Each scoring trait is graded on the alerts it was part of. A trait behind 3 or more false positives that make up half its alerts costs 10 points; one behind 3 runners in half its alerts earns 10, or 5 for 2 runners in 30%. A trait needs 5 finished alerts first.</p>
+      <p className="radar-note">Each scoring trait is graded on the alerts it was part of, counting only alerts raised before the price had run (within 35% of its 3-minute low): a late alert fails whatever the coin looked like. A trait behind 3 or more false positives that make up half its alerts, and that fails more often than alerts do overall, costs 10 points; one behind 3 runners in half its alerts earns 10, or 5 for 2 runners in 30%. A trait needs 5 finished alerts first, and traits that only say a coin is moving (moving up, viewers surging, holders growing) never earn or cost points.</p>
       {!runner?.patterns.length ? <p className="radar-muted">Nothing learned yet.</p> : <div className="radar-table-wrap"><table className="radar-mini-table">
         <thead><tr><th scope="col">Trait</th><th scope="col">Alerts</th><th scope="col">False positives</th><th scope="col">Runners</th><th scope="col">Points</th></tr></thead>
         <tbody>{runner.patterns.map(pattern => <tr key={pattern.tag}>

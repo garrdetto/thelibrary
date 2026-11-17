@@ -2,7 +2,7 @@ import type { TrackerDatabase } from './db.js'
 import { bestPairByMint, fetchTokenPairs, readMarket } from './dexscreener.js'
 import { chunk, createLogger, errorMessage, sleep } from './runtime.js'
 import { activeCandidates, freshViewerCount, trackerState } from './state.js'
-import { applyPulseMarket } from './pulse-market.js'
+import { applyPulseMarket, noteDexMarket } from './pulse-market.js'
 
 const logger = createLogger('live-market')
 const tickIntervalMs = 1_000
@@ -64,6 +64,7 @@ export function startLiveMarket(database: TrackerDatabase, signal: AbortSignal) 
           const markets = await fetchMarketsFast(mints)
           for (const [mint, market] of markets) {
             trackerState.market.set(mint, market)
+            noteDexMarket(mint, market)
             applyPulseMarket(mint, Date.now())
           }
         }

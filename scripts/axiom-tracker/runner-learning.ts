@@ -2,7 +2,7 @@ import type { RadarRunnerAlert, RadarToken } from '../../src/lib/axiom-radar-typ
 import { recordHeartbeat, type TrackerDatabase } from './db.js'
 import { learnerState, withLearning } from './learner-state.js'
 import { buildRadarTokens, loadModelState } from './radar-query.js'
-import { alertThresholds, learnedEdge, patternLabels, runnerState, type PatternStat } from './runner-state.js'
+import { alertThresholds, learnedEdge, motionTags, onTimeStretch, patternLabels, penaltyMargin, runnerState, type PatternStat } from './runner-state.js'
 import { createLogger, errorMessage, sleep } from './runtime.js'
 
 const logger = createLogger('runner-alerts')
@@ -77,9 +77,11 @@ export type AlertRow = {
   last_price: number | null
   last_at: number | null
   closed_at: number | null
+  /** How far the price was above its 3-minute low when the alert was raised, in percent; null on alerts from before it was recorded. */
+  stretch?: number | null
 }
 
-const peak = (current: number | null, multiple: number) => Math.round(Math.max(current ?? 0, multiple) * 1000) / 1000
+const peak =(current: number | null, multiple: number) => Math.round(Math.max(current ?? 0, multiple) * 1000) / 1000
 
 /**
  * Moves one alert forward with a new price: its best multiple within 15 minutes, 1 hour and 4 hours, its worst within
@@ -128,14 +130,22 @@ export function thresholdFor(rows: Array<Pick<AlertRow, 'hit_win_at' | 'hit_loss
   return { threshold: raised ? alertThresholds.raised : alertThresholds.normal, winRate, decided: decided.length }
 }
 
+/** An alert raised before the price had run: its stretch above the 3-minute low was recorded and within the limit. */
+export function raisedOnTime(row: Pick<AlertRow, 'stretch'>) {
+  return row.stretch !== null && row.stretch !== undefined && row.stretch <= onTimeStretch
+}
+
 /**
- * Per-pattern lessons from decided alerts: a pattern behind at least 3 false positives that make up half its alerts costs
- * 10 points; one behind 3 runners in half its alerts earns 10, or 5 for 2 runners in 30%. A pattern needs 5 alerts first.
+ * Per-pattern lessons from decided alerts that were raised on time (late alerts fail whatever the coin looked like, so they
+ * teach nothing about patterns): a pattern behind at least 3 false positives that make up half its alerts, and that fails
+ * 10 points more often than alerts do overall, costs 10 points; one behind 3 runners in half its alerts earns 10, or 5 for
+ * 2 runners in 30%. A pattern needs 5 alerts first, and tags that only describe a coin in motion never earn or cost points.
  */
-export function patternStats(rows: Array<Pick<AlertRow, 'tags_json' | 'outcome'>>): Map<string, PatternStat> {
+export function patternStats(rows: Array<Pick<AlertRow, 'tags_json' | 'outcome' | 'stretch'>>): Map<string, PatternStat> {
   const stats = new Map<string, PatternStat>()
-  for (const row of rows) {
-    if (row.outcome === 'open') continue
+  const decided = rows.filter(row => row.outcome !== 'open' && raisedOnTime(row))
+  const overallFailRate = decided.length ? decided.filter(row => row.outcome === 'false-positive').length / decided.length : 0
+  for (const row of decided) {
     let tags: string[] = []
     try { tags = JSON.parse(row.tags_json) as string[] } catch { tags = [] }
     for (const tag of new Set(tags)) {
@@ -147,10 +157,10 @@ export function patternStats(rows: Array<Pick<AlertRow, 'tags_json' | 'outcome'>
     }
   }
   for (const stat of stats.values()) {
-    if (stat.count < learningRules.patternMinimum) continue
+    if (stat.count < learningRules.patternMinimum || motionTags.has(stat.tag)) continue
     const fpRate = stat.falsePositives / stat.count
     const runRate = stat.runners / stat.count
-    if (stat.falsePositives >= 3 && fpRate >= 0.5) stat.points = -10
+    if (stat.falsePositives >= 3 && fpRate >= 0.5 && fpRate >= overallFailRate + penaltyMargin) stat.points = -10
     else if (stat.runners >= 3 && runRate >= 0.5) stat.points = 10
     else if (stat.runners >= 2 && runRate >= 0.3) stat.points = 5
   }
@@ -192,8 +202,9 @@ function statsOf(token: RadarToken) {
  */
 export function startRunnerAlerts(database: TrackerDatabase, signal: AbortSignal) {
   database.exec(runnerSchema)
-  const insert = database.prepare(`INSERT INTO runner_alerts (mint, symbol, name, pair_address, alerted_at, price, score, threshold, tags_json, stats_json, thesis_json, edge, peak_15m, peak_1h, peak_4h, low_10m, last_price, last_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 1, ?, ?)`)
+  if (!database.prepare("SELECT 1 FROM pragma_table_info('runner_alerts') WHERE name = 'stretch'").get()) database.exec('ALTER TABLE runner_alerts ADD COLUMN stretch REAL')
+  const insert = database.prepare(`INSERT INTO runner_alerts (mint, symbol, name, pair_address, alerted_at, price, score, threshold, tags_json, stats_json, thesis_json, edge, peak_15m, peak_1h, peak_4h, low_10m, last_price, last_at, stretch)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 1, ?, ?, ?)`)
   const update = database.prepare(`UPDATE runner_alerts SET peak_15m = ?, peak_1h = ?, peak_4h = ?, low_10m = ?, dumped_at = ?, hit_win_at = ?, hit_loss_at = ?, outcome = ?, last_price = ?, last_at = ?, closed_at = ? WHERE id = ?`)
   const lastAlert = database.prepare('SELECT MAX(alerted_at) AS at FROM runner_alerts WHERE mint = ?')
   let lastLearnAt = 0
@@ -235,7 +246,7 @@ export function startRunnerAlerts(database: TrackerDatabase, signal: AbortSignal
         const previous = (lastAlert.get(token.mint) as { at: number | null }).at
         if (previous !== null && now - previous < learningRules.realertMs) continue
         const tags = token.runnerTags ?? []
-        insert.run(token.mint, token.symbol, token.name, token.pairAddress, now, token.priceUsd, token.score, runnerState.threshold, JSON.stringify(tags), JSON.stringify(statsOf(token)), JSON.stringify(token.runnerThesis ?? []), learnedEdge(tags), token.priceUsd, now)
+        insert.run(token.mint, token.symbol, token.name, token.pairAddress, now, token.priceUsd, token.score, runnerState.threshold, JSON.stringify(tags), JSON.stringify(statsOf(token)), JSON.stringify(token.runnerThesis ?? []), learnedEdge(tags), token.priceUsd, now, token.early?.stretchPct ?? null)
         logger.info('Runner alert', { mint: token.mint, symbol: token.symbol, score: token.score, threshold: runnerState.threshold })
         dirty = true
       }

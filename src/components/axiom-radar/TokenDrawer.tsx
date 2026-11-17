@@ -8,6 +8,7 @@ import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, WindowChange, changeClass, windowSourceNote } from './RadarTable'
 import { ScoreLedger } from './ScoreLedger'
+import { EarlySigns } from './EarlyStart'
 import { DexScoreBreakdown } from './DexScoreBreakdown'
 import { useScoreMode } from './score-mode'
 import { fetchTokenDetail } from './useRadarFeed'
@@ -110,6 +111,11 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       {scoreMode.dex && <section className="radar-drawer-section" aria-labelledby="radar-dex-title">
         <h3 id="radar-dex-title">DexScreener score {live.dex?.score ?? '—'} <small>movement over 5s, 30s, 1m and 5m (longer windows weigh more), backed by liquidity and volume</small></h3>
         <DexScoreBreakdown token={live}/>
+      </section>}
+
+      {scoreMode.runner && live.early && <section className="radar-drawer-section" aria-labelledby="radar-early-title">
+        <h3 id="radar-early-title">Early start {live.early.score} <small>signs that show before the price moves, out of 100</small></h3>
+        <EarlySigns early={live.early}/>
       </section>}
 
       {scoreMode.runner && live.scoreLedger && <section className="radar-drawer-section" aria-labelledby="radar-ledger-title">

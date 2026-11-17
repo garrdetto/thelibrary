@@ -53,6 +53,43 @@ export function pulseFlow5m(mint: string, now: number, createdAt: number | null)
   return { volume: Math.max(0, (latest.volume - first.volume) * scale), txns: Math.max(0, Math.round((latest.txns - first.txns) * scale)) }
 }
 
+/** How long a card's price outlives the card while DexScreener still shows the figure it had when the card was read. */
+export const pulseHoldMs = 60_000
+
+type HeldPrice = { marketCap: number; seenAt: number; dexMarketCap: number }
+const held = new Map<string, HeldPrice>()
+const dexMarketCaps = new Map<string, number>()
+
+/** Notes DexScreener's own market cap for a coin as it arrives, before a card adjusts it. */
+export function noteDexMarket(mint: string, market: MarketReading | null) {
+  if (!market?.marketCap || market.marketCap <= 0) return
+  dexMarketCaps.set(mint, market.marketCap)
+  if (dexMarketCaps.size > 2_000) for (const key of dexMarketCaps.keys()) if (!trackerState.market.has(key)) { dexMarketCaps.delete(key); held.delete(key) }
+}
+
+/**
+ * The market reading once a coin's card has gone quiet. DexScreener's figure is cached for 20 seconds or more, so right
+ * after a card stops updating it is usually older than the card: taking it would step the price back to where it was
+ * before the card's last move and forward again on the next card. The card's price is kept until DexScreener publishes a
+ * different figure, for at most `pulseHoldMs`.
+ */
+function heldMarket(mint: string, market: MarketReading | null, now: number): MarketReading | null {
+  const hold = held.get(mint)
+  if (!hold || !market || !market.marketCap || market.marketCap <= 0 || !market.priceUsd) return market
+  if (now - hold.seenAt > pulseHoldMs || dexMarketCaps.get(mint) !== hold.dexMarketCap) {
+    held.delete(mint)
+    return market
+  }
+  if (market.marketCap !== hold.dexMarketCap) return market
+  return { ...market, priceUsd: market.priceUsd * (hold.marketCap / market.marketCap), marketCap: hold.marketCap, readAt: hold.seenAt }
+}
+
+/** Clears what `withPulseMarket` remembers between cards (for tests). */
+export function resetPulseHold() {
+  held.clear()
+  dexMarketCaps.clear()
+}
+
 /**
  * A market reading that follows Axiom's own card, which updates every second, instead of DexScreener's cached figures.
  * With a DexScreener reading the price moves with the card's market cap; without one the price comes from the market cap
@@ -60,10 +97,12 @@ export function pulseFlow5m(mint: string, now: number, createdAt: number | null)
  */
 export function withPulseMarket(mint: string, market: MarketReading | null, now: number): MarketReading | null {
   const card = trackerState.pulseCards.get(mint)
-  if (!card || now - card.seenAt > pulseFreshMs || !card.marketCap || card.marketCap <= 0) return market
+  if (!card || now - card.seenAt > pulseFreshMs || !card.marketCap || card.marketCap <= 0) return heldMarket(mint, market, now)
   if (market && market.marketCap && market.marketCap > 0 && market.priceUsd) {
     const ratio = card.marketCap / market.marketCap
     if (ratio < 0.2 || ratio > 5) return market
+    const dexMarketCap = dexMarketCaps.get(mint)
+    if (dexMarketCap !== undefined) held.set(mint, { marketCap: card.marketCap, seenAt: card.seenAt, dexMarketCap })
     return { ...market, priceUsd: market.priceUsd * ratio, marketCap: card.marketCap, liquidityUsd: market.liquidityUsd ?? card.liquidityUsd ?? null, readAt: card.seenAt }
   }
   const identity = trackerState.pulseNames.get(mint)
