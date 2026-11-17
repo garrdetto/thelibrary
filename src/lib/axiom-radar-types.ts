@@ -1,5 +1,5 @@
 import { defaultRadarSettings, type RadarSettings } from './axiom-radar-settings'
-import type { RadarAdvice, RadarAdviceStudy, RadarExplode, RadarExplosionSummary, RadarLearnerSummary, RadarMaker, RadarOutlook, RadarWinnersSummary } from './axiom-radar-learner'
+import type { RadarAdvice, RadarAdviceStudy, RadarExplode, RadarExplosionSummary, RadarLearnerSummary, RadarMaker, RadarOutlook, RadarTierMatch, RadarWinnersSummary } from './axiom-radar-learner'
 
 export const radarFeatureKeys = ['viewerVelocity', 'activeViewers', 'runnerWallets', 'buyPressure', 'safety'] as const
 export type RadarFeatureKey = typeof radarFeatureKeys[number]
@@ -200,6 +200,8 @@ export type RadarToken = {
   /** The Axiom Discover lists the coin is on in the owner's open tabs. */
   axiomLists?: Array<'trending' | 'surge'>
   outlook?: RadarOutlook | null
+  /** The 20-tier archive match: which past tier this coin looks most like, its expected tier and the chance it lands in the worst five. */
+  tierMatch?: RadarTierMatch | null
   explode?: RadarExplode | null
   maker?: RadarMaker | null
   advice?: RadarAdvice | null
