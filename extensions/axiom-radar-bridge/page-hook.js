@@ -105,11 +105,47 @@
     }
     pulseChangedAt = Date.now()
   }
-  const watchPulseWorker = worker => {
+  const digest = new Map()
+  const describe = (value, depth = 0) => {
+    if (Array.isArray(value)) {
+      if (!value.length || depth >= 6) return `array(${value.length})`
+      if (depth > 0 && value.length <= 90 && value.every(item => item === null || typeof item !== 'object')) return `[${value.map(item => describe(item, depth + 1)).join(', ')}]`
+      return `array(${value.length}) of ${describe(value[0], depth + 1)}`
+    }
+    if (value && typeof value === 'object') {
+      const keys = Object.keys(value)
+      const named = key => address.test(key) ? '<address>' : key.slice(0, 40)
+      return `{${keys.slice(0, 80).map(key => depth < 5 && value[key] && typeof value[key] === 'object' ? `${named(key)}: ${describe(value[key], depth + 1)}` : named(key)).join(', ')}${keys.length > 80 ? ', ...' : ''}}`
+    }
+    if (typeof value === 'string') return address.test(value) ? 'address' : `string(${value.length > 40 ? '40+' : value.length})`
+    return value === null ? 'null' : typeof value
+  }
+  /** Notes the layout (field names and types, never values) of one kind of data a Discover page receives, the first time it is seen. */
+  const noteShape = (kind, name, read) => {
+    if (!onDiscover()) return
+    const key = `${kind}:${String(name).slice(0, 160)}`
+    const entry = digest.get(key)
+    if (entry) { entry.count += 1; return }
+    if (digest.size >= 70) return
+    let shape = 'unreadable'
+    try { shape = describe(read()).slice(0, 1800) } catch { }
+    digest.set(key, { shape, count: 1 })
+  }
+  const scriptName = url => String(url).split(/[?#]/)[0].split('/').pop().slice(0, 80)
+  const watchPulseWorker = (worker, url) => {
+    const name = scriptName(url)
+    noteShape('worker', `${name} started`, () => ({}))
     worker.addEventListener('message', event => {
       const data = event.data
-      if (data?.type !== 'OUTPUT_BATCH' || !Array.isArray(data.messages)) return
-      for (const message of data.messages) if (message?.type === 'TABLE_OPERATIONS') applyPulseOperations(message)
+      if (data?.type !== 'OUTPUT_BATCH' || !Array.isArray(data.messages)) {
+        noteShape('worker', `${name} ${typeof data?.type === 'string' ? data.type.slice(0, 60) : typeof data}`, () => data)
+        return
+      }
+      for (const message of data.messages) {
+        if (message?.type === 'TABLE_OPERATIONS') applyPulseOperations(message)
+        noteShape('worker', `${name} ${String(message?.type).slice(0, 60)}${typeof message?.table === 'string' ? ` ${message.table.slice(0, 60)}` : ''}`, () => message)
+      }
+      pump()
     })
   }
   const NativeWorker = window.Worker
@@ -121,25 +157,49 @@
     }
     function RadarWorker(url, ...rest) {
       const worker = new NativeWorker(url, ...rest)
-      watchPulseWorker(worker)
+      watchPulseWorker(worker, url)
       return worker
     }
     RadarWorker.prototype = NativeWorker.prototype
     RadarWorker.axiomRadarWrapped = true
     window.Worker = RadarWorker
   }
-  setInterval(() => {
-    if (!usdPerSol || Date.now() - pulseChangedAt > 30000) return
+  const postPulse = now => {
+    if (!usdPerSol || now - pulseChangedAt > 30000) return
     const rows = []
     for (const [column, table] of Object.entries(pulseTables)) for (const row of table.values()) if (row.tokenAddress) rows.push({ ...row, column })
-    window.postMessage({ source: 'axiom-radar-bridge-pulse', usdPerSol, rows: rows.slice(0, 300), at: Date.now() }, window.location.origin)
-  }, 1000)
-  setInterval(() => {
-    const now = Date.now()
+    window.postMessage({ source: 'axiom-radar-bridge-pulse', usdPerSol, rows: rows.slice(0, 300), at: now }, window.location.origin)
+  }
+  const postLists = now => {
     const sources = []
     for (const source of listSources.values()) if (now - source.at <= 60000 && source.rows.size) sources.push({ kind: source.kind, name: source.name, at: source.at, rows: [...source.rows.values()].slice(0, 300) })
     if (sources.length) window.postMessage({ source: 'axiom-radar-bridge-lists', sources, at: now }, window.location.origin)
-  }, 1000)
+  }
+  const postDigest = now => {
+    if (!digest.size) return
+    window.postMessage({ source: 'axiom-radar-bridge-digest', entries: [...digest.entries()].map(([key, entry]) => ({ key, shape: entry.shape, count: entry.count })), at: now }, window.location.origin)
+  }
+  let pumpedAt = 0
+  let digestAt = 0
+  /**
+   * Sends what has been collected, at most once a second. It runs from the page's own data events as well as a timer:
+   * Chrome slows timers in a background tab to as little as once a minute, while worker and socket messages keep arriving.
+   */
+  function pump() {
+    const now = Date.now()
+    if (now - pumpedAt < 1000) return
+    pumpedAt = now
+    postPulse(now)
+    postLists(now)
+    if (now - digestAt >= 10000) {
+      digestAt = now
+      postDigest(now)
+    }
+  }
+  setInterval(pump, 1000)
+  const pathOf = url => {
+    try { return new URL(url, location.href).pathname.slice(0, 120) } catch { return 'unknown' }
+  }
   const listName = url => {
     try {
       const parsed = new URL(url, location.href)
@@ -172,7 +232,11 @@
       } else if (url && onDiscover() && listName(url)) {
         result.then(response => {
           if (!response.ok || !/json/i.test(response.headers.get('content-type') ?? '')) return
-          response.clone().text().then(body => noteCoinList('api', listName(response.url || url) ?? listName(url), body)).catch(() => undefined)
+          response.clone().text().then(body => {
+            noteCoinList('api', listName(response.url || url) ?? listName(url), body)
+            if (body.length <= 3000000) noteShape('api', pathOf(response.url || url), () => JSON.parse(body))
+            pump()
+          }).catch(() => undefined)
         }).catch(() => undefined)
       }
       return result
@@ -197,6 +261,8 @@
             if (this.status < 200 || this.status >= 300) return
             const body = this.responseType === '' || this.responseType === 'text' ? this.responseText : this.responseType === 'json' ? JSON.stringify(this.response) : null
             noteCoinList('api', listName(this.responseURL || String(url)) ?? listName(String(url)), body)
+            if (typeof body === 'string' && body.length <= 3000000) noteShape('api', pathOf(this.responseURL || String(url)), () => JSON.parse(body))
+            pump()
           } catch { }
         })
       }
@@ -224,13 +290,19 @@
       if (onDiscover()) {
         try {
           const room = data.slice(0, 600).match(/"(?:room|channel|event|type)"\s*:\s*"([^"]{1,60})"/)
-          noteCoinList('socket', `${new URL(url).hostname}${room ? `/${room[1]}` : ''}`, data)
+          const name = `${new URL(url).hostname}${room ? `/${room[1]}` : ''}`
+          noteCoinList('socket', name, data)
+          if (data.length <= 300000) noteShape('socket', name, () => JSON.parse(data))
+          pump()
         } catch { }
       }
       return
     }
     if (data instanceof ArrayBuffer) {
       const bytes = new Uint8Array(data)
+      if (onDiscover()) {
+        try { noteShape('socket', `${new URL(url).hostname} binary`, () => ({ bytes: bytes.length })) } catch { }
+      }
       const hex = Array.from(bytes.slice(0, 64), byte => byte.toString(16).padStart(2, '0')).join('')
       remember(url, 'binary', `len=${bytes.length} hex=${hex} utf8=${decoder.decode(bytes.slice(0, 3000))}`)
       if (bytes.length <= 60000) forward(decoder.decode(bytes), url)

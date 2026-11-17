@@ -3,6 +3,8 @@ const apiAnswers = []
 const streamFrames = []
 let pulseFeed = null
 let listFeed = null
+let digestFeed = null
+let pageDigestAt = 0
 const reportIntervalMs = 1000
 let sampleResolver = null
 
@@ -22,10 +24,12 @@ window.addEventListener('message', event => {
   }
   if (event.data?.source === 'axiom-radar-bridge-pulse' && Array.isArray(event.data.rows)) pulseFeed = { usdPerSol: event.data.usdPerSol, rows: event.data.rows, at: event.data.at }
   if (event.data?.source === 'axiom-radar-bridge-lists' && Array.isArray(event.data.sources)) listFeed = { sources: event.data.sources, at: event.data.at }
+  if (event.data?.source === 'axiom-radar-bridge-digest' && Array.isArray(event.data.entries)) digestFeed = { entries: event.data.entries, at: event.data.at }
   if (event.data?.source === 'axiom-radar-bridge-sample' && sampleResolver) {
     sampleResolver(event.data.frames)
     sampleResolver = null
   }
+  if (/^axiom-radar-bridge(-pulse|-lists|-digest|-api)?$/.test(String(event.data?.source))) reportIfDue()
 })
 
 function parseCompactNumber(text) {
@@ -197,6 +201,53 @@ function listReport() {
   return { lists: buildLists(sources, tab, drawn), probe }
 }
 
+/**
+ * How a Discover page is laid out, so its lists can be read: the short labels near the top (which one is selected), how
+ * many rows, links and token images it has, one row's text and structure, and the layout of the data it receives (field
+ * names and types from the page hook, never values). Labels with figures in them are left out.
+ */
+function pageDigest() {
+  const marked = node => node.getAttribute('aria-selected') === 'true' || node.getAttribute('aria-pressed') === 'true' || ['page', 'true'].includes(node.getAttribute('aria-current') ?? '') || /^(active|on|selected|checked)$/i.test(node.getAttribute('data-state') ?? '')
+  const anyAddress = /[1-9A-HJ-NP-Za-km-z]{32,44}/g
+  const shapeOfUrl = value => String(value).replace(anyAddress, '<address>').replace(/[?#].*$/, '').slice(0, 120)
+  const labels = []
+  for (const element of document.querySelectorAll('button, a, [role="tab"], [role="button"]')) {
+    const text = (element.textContent ?? '').trim().replace(/\s+/g, ' ')
+    if (!text || text.length > 28 || (/\d/.test(text) && !/^\d{1,2}\s?[smhdw]$/i.test(text))) continue
+    const rect = element.getBoundingClientRect()
+    if (!rect.width || rect.top < 0 || rect.top > 460) continue
+    labels.push(`${text}${marked(element) ? '*' : ''}@${Math.round(rect.top)}:${lightness(getComputedStyle(element).color).toFixed(2)}`)
+    if (labels.length >= 70) break
+  }
+  const withAddress = Array.from(document.querySelectorAll('img[src]')).filter(image => boundedAddress.test(image.getAttribute('src') ?? ''))
+  const links = Array.from(document.querySelectorAll('a[href]'), link => link.getAttribute('href') ?? '').filter(href => href.search(anyAddress) >= 0)
+  const rows = Array.from(document.querySelectorAll('[role="row"], tr, a[href*="/meme/"], a[href*="/token/"]')).filter(row => {
+    const rect = row.getBoundingClientRect()
+    return rect.width > 200 && rect.height > 20 && rect.height < 200
+  })
+  const sample = rows[Math.min(2, rows.length - 1)] ?? null
+  const layout = row => [row, ...row.querySelectorAll('*')].slice(0, 45).map(node => `${node.tagName.toLowerCase()}${Array.from(node.attributes).filter(attribute => attribute.name !== 'class' && attribute.name !== 'style').slice(0, 6).map(attribute => `[${attribute.name}${attribute.value.search(anyAddress) >= 0 ? `=${shapeOfUrl(attribute.value)}` : ''}]`).join('')}`).join(' ').slice(0, 1500)
+  const feeds = []
+  let budget = 45000
+  for (const entry of digestFeed?.entries ?? []) {
+    const size = String(entry.key).length + String(entry.shape).length
+    if (size > budget) break
+    budget -= size
+    feeds.push({ key: String(entry.key).slice(0, 200), shape: String(entry.shape).slice(0, 1800), count: Number(entry.count) || 0 })
+  }
+  return {
+    address: `${location.pathname}${location.search}`.slice(0, 200),
+    labels,
+    counts: { rows: document.querySelectorAll('[role="row"]').length, tableRows: document.querySelectorAll('tr').length, memeLinks: document.querySelectorAll('a[href*="/meme/"]').length, tokenLinks: document.querySelectorAll('a[href*="/token/"]').length, addressImages: withAddress.length, images: document.querySelectorAll('img').length, eyes: document.querySelectorAll('i.ri-eye-line').length },
+    imageShapes: [...new Set(withAddress.slice(0, 40).map(image => shapeOfUrl(image.getAttribute('src'))))].slice(0, 4),
+    linkShapes: [...new Set(links.slice(0, 60).map(shapeOfUrl))].slice(0, 6),
+    headings: Array.from(document.querySelectorAll('h1, h2, h3, th, [role="columnheader"]'), node => (node.textContent ?? '').trim().slice(0, 30)).filter(Boolean).slice(0, 30),
+    rowText: sample ? (sample.innerText ?? '').split('\n').map(line => line.trim()).filter(Boolean).slice(0, 16).map(line => line.slice(0, 40)) : [],
+    rowLayout: sample ? layout(sample) : '',
+    feeds,
+  }
+}
+
 const percentLine = /^<?\s*(\d+(?:\.\d+)?)\s*%$/
 let pageStatsCache = { at: 0, stats: null }
 
@@ -338,11 +389,16 @@ function report() {
   const cards = pairAddress ? [] : eyeCards()
   const pulse = !pairAddress && pulseFeed && Date.now() - pulseFeed.at < 5000 ? pulseFeed : null
   const { lists, probe } = pairAddress ? { lists: [], probe: null } : listReport()
+  let digest = null
+  if (!pairAddress && onDiscoverPage() && Date.now() - pageDigestAt >= 10000) {
+    pageDigestAt = Date.now()
+    try { digest = JSON.stringify(pageDigest()).slice(0, 78000) } catch { }
+  }
   if (!pairAddress && !batch.length && !cards.length && !pulse && !api.length && !streams.length && !lists.length && !probe) return
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
   const stats = pairAddress ? pageStats() : null
   try {
-    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}) } }).catch(() => undefined)
+    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}), ...(digest ? { digest } : {}) } }).catch(() => undefined)
   } catch {
     stopReporting()
   }

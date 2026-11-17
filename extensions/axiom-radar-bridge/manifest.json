@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Axiom Radar Bridge",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Sends every coin in the three Axiom Pulse columns (not only the cards on screen), the coins on Discover’s Trending and Surge lists in your open tabs, the viewer counts shown on Axiom Pulse and the holder figures on Axiom coin pages to the Axiom Radar tracker on this computer, keeps the Pulse and Discover tabs updating in the background, keeps the Radar’s picks on the Axiom watchlist, and passes on Axiom’s public market data about each coin (trades, traders, holder figures and every Pulse field, never anything about your own account) so the Radar can follow the wallets in each coin.",
   "permissions": [
     "storage"

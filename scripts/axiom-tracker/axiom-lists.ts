@@ -30,13 +30,21 @@ export const discoverProbeSchema = z.object({
 export type DiscoverProbe = z.infer<typeof discoverProbeSchema>
 
 const probes = new Map<string, { probe: DiscoverProbe; at: number }>()
+const probeLoggedAt = new Map<string, number>()
 
-/** Remembers the latest report from each Discover tab (one per list it shows); returns true when what it says has changed. */
+/**
+ * Remembers the latest report from each Discover tab (one per list it shows; tabs whose list is unknown are told apart by
+ * the feeds they see). Returns true when what a tab says has changed and it has not been logged in the last minute.
+ */
 export function noteDiscoverProbe(probe: DiscoverProbe, now: number) {
-  const key = probe.tab ?? 'unknown'
+  const key = probe.tab ?? `unknown ${probe.sources}`.slice(0, 200)
   const before = probes.get(key)?.probe
   probes.set(key, { probe, at: now })
-  return !before || before.how !== probe.how || before.sources !== probe.sources || before.page !== probe.page
+  if (probes.size > 8) for (const [other, entry] of probes) if (now - entry.at > 60_000) { probes.delete(other); probeLoggedAt.delete(other) }
+  const changed = !before || before.how !== probe.how || before.sources !== probe.sources || before.page !== probe.page
+  if (!changed || now - (probeLoggedAt.get(key) ?? 0) < 60_000) return false
+  probeLoggedAt.set(key, now)
+  return true
 }
 
 /** The status line for the Discover tabs: what each open one is showing and where its coins come from, or what is missing. */
@@ -44,7 +52,7 @@ export function discoverNote(now: number) {
   const fresh = [...probes.entries()].filter(([, entry]) => now - entry.at < 30_000)
   if (!fresh.length) return null
   return fresh.map(([key, { probe }]) => {
-    if (key === 'unknown') return `A Discover tab is open but the bridge cannot tell which list it shows (${probe.how}; ${probe.labels}); ${probe.drawn} coins drawn${probe.sources ? `; feeds ${probe.sources}` : ''}`
+    if (probe.tab === null) return `A Discover tab is open but the bridge cannot tell which list it shows (${probe.how}; ${probe.labels}); ${probe.drawn} coins drawn${probe.sources ? `; feeds ${probe.sources}` : ''}`
     const list = key as AxiomList
     const named = probe.sources.split('; ').filter(source => (list === 'surge' ? /surg/i : /trend/i).test(source))
     return `${axiomListLabels[list]} tab (${probe.how}): ${axiomListSeen[list].count} coins from ${named.length ? named.join(', ') : `the ${probe.drawn} rows drawn`}${probe.sources && !named.length ? `; other feeds ${probe.sources}` : ''}`
@@ -106,5 +114,6 @@ export function axiomListNote(now: number) {
 export function resetAxiomLists() {
   seenOn.clear()
   probes.clear()
+  probeLoggedAt.clear()
   for (const list of axiomListNames) axiomListSeen[list] = { at: 0, count: 0 }
 }
