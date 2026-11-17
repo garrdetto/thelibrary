@@ -115,7 +115,14 @@
     if (value && typeof value === 'object') {
       const keys = Object.keys(value)
       const named = key => address.test(key) ? '<address>' : key.slice(0, 40)
-      return `{${keys.slice(0, 80).map(key => depth < 5 && value[key] && typeof value[key] === 'object' ? `${named(key)}: ${describe(value[key], depth + 1)}` : named(key)).join(', ')}${keys.length > 80 ? ', ...' : ''}}`
+      let last = null
+      return `{${keys.slice(0, 80).map(key => {
+        if (depth >= 5 || !value[key] || typeof value[key] !== 'object') return named(key)
+        const inner = describe(value[key], depth + 1)
+        const same = inner === last && inner.length > 12
+        last = inner
+        return `${named(key)}: ${same ? '(same)' : inner}`
+      }).join(', ')}${keys.length > 80 ? ', ...' : ''}}`
     }
     if (typeof value === 'string') return address.test(value) ? 'address' : `string(${value.length > 40 ? '40+' : value.length})`
     return value === null ? 'null' : typeof value
@@ -128,7 +135,7 @@
     if (entry) { entry.count += 1; return }
     if (digest.size >= 70) return
     let shape = 'unreadable'
-    try { shape = describe(read()).slice(0, 1800) } catch { }
+    try { shape = describe(read()).slice(0, 4000) } catch { }
     digest.set(key, { shape, count: 1 })
   }
   const scriptName = url => String(url).split(/[?#]/)[0].split('/').pop().slice(0, 80)
