@@ -55,6 +55,14 @@ def new_mints(tx: Dict[str, Any]) -> List[str]:
     return found
 
 
+def pick_launch_mint(mints: List[str]) -> List[str]:
+    """pump.fun launches use vanity mints ending in "pump"; prefer one of those."""
+    for mint in mints:
+        if mint.endswith("pump"):
+            return [mint]
+    return mints[:1]
+
+
 def wallet_buys(tx: Dict[str, Any], wallet: str) -> List[Dict[str, Any]]:
     """Tokens `wallet` gained in this transaction while spending SOL (or WSOL)."""
     meta = tx.get("meta") or {}
@@ -181,7 +189,7 @@ async def run_listener(settings, detections: asyncio.Queue, emit: Emit, *, rpc: 
                 emit("detection", f"Target bought {buy['sol_spent']:.4f} SOL of a coin", mint=buy["mint"], signature=signature, latency_ms=latency)
                 await detections.put({"mint": buy["mint"], "source": "copytrade", "signature": signature, "detected_at": received})
         else:
-            for mint in new_mints(tx)[:1]:
+            for mint in pick_launch_mint(new_mints(tx)):
                 emit("detection", "New pump.fun coin", mint=mint, signature=signature, latency_ms=latency)
                 await detections.put({"mint": mint, "source": "pumpfun", "signature": signature, "detected_at": received})
 

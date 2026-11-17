@@ -66,6 +66,30 @@ class Jupiter:
             route=" → ".join(labels) or "direct",
         )
 
+    async def quote_sell(self, mint: str, token_amount: int, slippage_bps: int) -> Quote:
+        resp = await self._http.get(
+            "/quote",
+            params={
+                "inputMint": mint,
+                "outputMint": config.WSOL_MINT,
+                "amount": str(token_amount),
+                "slippageBps": str(slippage_bps),
+                "restrictIntermediateTokens": "true",
+            },
+        )
+        body = _json(resp)
+        if resp.status_code != 200 or "outAmount" not in body:
+            message = str(body.get("error") or body.get("message") or f"HTTP {resp.status_code}")
+            raise JupiterError(message, no_route=resp.status_code in (400, 404), status=resp.status_code)
+        labels = [step.get("swapInfo", {}).get("label", "?") for step in body.get("routePlan", [])]
+        return Quote(
+            raw=body,
+            in_lamports=int(body["outAmount"]),
+            out_amount=int(body["inAmount"]),
+            price_impact_pct=float(body.get("priceImpactPct") or 0) * 100,
+            route=" → ".join(labels) or "direct",
+        )
+
     async def build_swap(self, quote: Quote, user_public_key: str) -> Dict[str, Any]:
         resp = await self._http.post(
             "/swap",

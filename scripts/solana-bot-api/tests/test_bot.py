@@ -145,6 +145,25 @@ class ParsingTests(unittest.TestCase):
         existing["meta"]["preTokenBalances"] = [{"mint": MINT}]
         self.assertEqual(listener.new_mints(existing), [])
 
+    def test_pick_launch_mint_prefers_pump_suffix(self):
+        self.assertEqual(listener.pick_launch_mint(["OtherMint111", "AbcPUMPxyzpump"]), ["AbcPUMPxyzpump"])
+        self.assertEqual(listener.pick_launch_mint(["OnlyOne111"]), ["OnlyOne111"])
+        self.assertEqual(listener.pick_launch_mint([]), [])
+
+    def test_get_transaction_asks_for_v1(self):
+        seen = {}
+
+        def handler(request):
+            seen.update(json.loads(request.content))
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": None})
+
+        async def scenario():
+            rpc = rpc_client.RpcClient("http://rpc.test", transport=httpx.MockTransport(handler))
+            await rpc.get_transaction("sig")
+            await rpc.aclose()
+        run(scenario())
+        self.assertEqual(seen["params"][1]["maxSupportedTransactionVersion"], 1)
+
     def test_wallet_buys(self):
         self.assertEqual(listener.wallet_buys(copy_tx(), TARGET), [{"mint": MINT, "amount": 5000, "sol_spent": 0.1}])
         self.assertEqual(listener.wallet_buys(copy_tx(sol_delta=50_000_000), TARGET), [], "token in + SOL in is not a buy")

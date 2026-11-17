@@ -51,7 +51,7 @@ class RpcClient:
     async def get_transaction(self, signature: str) -> Optional[Dict[str, Any]]:
         return await self.call(
             "getTransaction",
-            [signature, {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}],
+            [signature, {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 1}],
         )
 
     async def simulate(self, tx_bytes: bytes) -> Dict[str, Any]:
