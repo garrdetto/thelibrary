@@ -14,7 +14,7 @@ import { applyPulseFeed, pulseFeedSchema, pulseFeedSeen } from './pulse-feed.js'
 import { watchlistResult, watchlistStatus } from './watchlist.js'
 import { needsPageRead, pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
 import { capturedApiSchema, capturedStreamSchema, captureNote, storeCapture } from './axiom-capture.js'
-import { applyAxiomLists, axiomListNote, axiomListsSchema } from './axiom-lists.js'
+import { applyAxiomLists, axiomListNote, axiomListsSchema, discoverNote, discoverProbeSchema, noteDiscoverProbe } from './axiom-lists.js'
 
 const logger = createLogger('extension-intake')
 const bodyLimit = 8_000_000
@@ -44,6 +44,7 @@ const report = z.object({
   stats: z.record(z.string().max(40), z.number().min(0).max(100)).refine(value => Object.keys(value).length <= 60).optional(),
   pulse: pulseFeedSchema.optional(),
   lists: axiomListsSchema.optional(),
+  probe: discoverProbeSchema.optional(),
   api: z.array(capturedApiSchema).max(30).optional(),
   streams: z.array(capturedStreamSchema).max(400).optional(),
 }).strict()
@@ -128,6 +129,8 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
   }
   if (input.pulse) applyPulseFeed(input.pulse, now)
   if (input.lists) applyAxiomLists(input.lists, now)
+  if (input.probe && noteDiscoverProbe(input.probe, now)) logger.info('Discover tab seen', input.probe)
+  const pulsePage = !/^https:\/\/axiom\.trade\/discover/.test(input.url)
   const counts = new Map<string, number>()
   if (pageMint && input.pageViewers !== null) counts.set(pageMint, input.pageViewers)
   for (const text of input.frames) {
@@ -137,7 +140,7 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
     for (const [mint, count] of extractViewerCounts(frame, resolveMint, fallback)) counts.set(mint, Math.max(count, counts.get(mint) ?? 0))
   }
   for (const card of input.cards ?? []) {
-    if (card.mint) {
+    if (card.mint && pulsePage) {
       if (card.lines?.length && !(input.pulse && input.pulse.rows.some(row => (row as { tokenAddress?: unknown } | null)?.tokenAddress === card.mint))) {
         const metrics = parsePulseCard(card.lines, card.viewers, now)
         trackerState.pulseCards.set(card.mint, metrics)
@@ -235,6 +238,8 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
   const heartbeat = setInterval(() => {
     const lists = axiomListNote(Date.now())
     recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - pulseFeedSeen.at < 15_000 ? `Reading all ${pulseFeedSeen.count} coins in the Pulse columns${pulseFeedSeen.skipped ? ` (${pulseFeedSeen.skipped} unreadable)` : ''}${lists}${pageStatsNote()}` : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards (update the bridge to 1.7 for every coin in the columns)${lists}${pageStatsNote()}` : lists ? `Reading Discover${lists}; no Pulse cards in the last 15s${pageStatsNote()}` : `No Pulse cards in the last 15s: keep the Axiom Pulse tab visible${pageStatsNote()}`)
+    const discover = discoverNote(Date.now())
+    recordHeartbeat(database, 'axiom-lists', discover ? 'ok' : 'waiting', discover ?? 'No Discover tab seen in the last 30s (bridge 1.10+ reads Trending and Surge from open Discover tabs)')
     const captured = captureNote()
     recordHeartbeat(database, 'axiom-capture', captured ? 'ok' : 'waiting', captured ? captured.replace(/^; c/, 'C') : 'Nothing captured from Axiom pages in the last 15s (bridge 1.9+ captures API answers and socket messages on coin pages)')
   }, 15_000)

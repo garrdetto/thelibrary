@@ -18,6 +18,39 @@ const listRowSchema = z.object({
 export const axiomListsSchema = z.array(z.object({ list: z.enum(axiomListNames), rows: z.array(z.unknown()).max(300) }).strict()).max(8)
 export type AxiomListReport = z.infer<typeof axiomListsSchema>
 
+/** What a Discover tab says about itself with every report: which list it is showing and how the bridge worked that out, the feeds it saw and the rows drawn. */
+export const discoverProbeSchema = z.object({
+  page: z.string().max(120),
+  tab: z.enum(axiomListNames).nullable(),
+  how: z.string().max(40),
+  labels: z.string().max(200),
+  sources: z.string().max(800),
+  drawn: z.number().int().min(0).max(10_000),
+}).strict()
+export type DiscoverProbe = z.infer<typeof discoverProbeSchema>
+
+const probes = new Map<string, { probe: DiscoverProbe; at: number }>()
+
+/** Remembers the latest report from each Discover tab (one per list it shows); returns true when what it says has changed. */
+export function noteDiscoverProbe(probe: DiscoverProbe, now: number) {
+  const key = probe.tab ?? 'unknown'
+  const before = probes.get(key)?.probe
+  probes.set(key, { probe, at: now })
+  return !before || before.how !== probe.how || before.sources !== probe.sources || before.page !== probe.page
+}
+
+/** The status line for the Discover tabs: what each open one is showing and where its coins come from, or what is missing. */
+export function discoverNote(now: number) {
+  const fresh = [...probes.entries()].filter(([, entry]) => now - entry.at < 30_000)
+  if (!fresh.length) return null
+  return fresh.map(([key, { probe }]) => {
+    if (key === 'unknown') return `A Discover tab is open but the bridge cannot tell which list it shows (${probe.how}; ${probe.labels}); ${probe.drawn} coins drawn${probe.sources ? `; feeds ${probe.sources}` : ''}`
+    const list = key as AxiomList
+    const named = probe.sources.split('; ').filter(source => (list === 'surge' ? /surg/i : /trend/i).test(source))
+    return `${axiomListLabels[list]} tab (${probe.how}): ${axiomListSeen[list].count} coins from ${named.length ? named.join(', ') : `the ${probe.drawn} rows drawn`}${probe.sources && !named.length ? `; other feeds ${probe.sources}` : ''}`
+  }).join(' | ').slice(0, 900)
+}
+
 const seenOn = new Map<string, Map<AxiomList, number>>()
 export const axiomListSeen: Record<AxiomList, { at: number; count: number }> = { trending: { at: 0, count: 0 }, surge: { at: 0, count: 0 } }
 
@@ -72,5 +105,6 @@ export function axiomListNote(now: number) {
 
 export function resetAxiomLists() {
   seenOn.clear()
+  probes.clear()
   for (const list of axiomListNames) axiomListSeen[list] = { at: 0, count: 0 }
 }
