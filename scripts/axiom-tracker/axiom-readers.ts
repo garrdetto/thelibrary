@@ -1,5 +1,5 @@
 import type { TrackerDatabase } from './db.js'
-import { recordTrades, recordWalletStats, type CoinTrade, type WalletCoinStat } from './coin-trades.js'
+import { ensureCoinTrades, recordTrades, recordWalletStats, type CoinTrade, type WalletCoinStat } from './coin-trades.js'
 import type { PageStats } from './page-stats.js'
 import { solanaAddressPattern } from './runtime.js'
 import { isWalletAddress } from './solana-rpc.js'
@@ -184,6 +184,34 @@ export function saveHolderList(database: TrackerDatabase, mint: string, pair: st
   return kept.length
 }
 
+type TraderInfo = { walletAddress?: unknown; isTopHolder?: unknown; firstBuyAt?: unknown; avgEntryPriceUsd?: unknown }
+
+/**
+ * Axiom's per-wallet summary of a coin's traders (`/transactions-feed-trader-info`): with each wallet's average entry price and
+ * its sells in the trades feed, what it put in and what it made on the sells. Wallets Axiom marks as top holders join `holders`.
+ */
+export function traderInfoStats(database: TrackerDatabase, mint: string, body: unknown, now: number) {
+  if (!Array.isArray(body)) return { stats: [] as WalletCoinStat[], topHolders: [] as string[] }
+  ensureCoinTrades(database)
+  const sums = database.prepare(`SELECT kind, SUM(usd) AS usd, SUM(tokens) AS tokens FROM coin_trades WHERE mint = ? AND wallet = ? GROUP BY kind`)
+  const stats: WalletCoinStat[] = []
+  const topHolders: string[] = []
+  for (const row of body as TraderInfo[]) {
+    if (!row || typeof row !== 'object' || !isAddress(row.walletAddress)) continue
+    const wallet = row.walletAddress
+    if (row.isTopHolder === true) topHolders.push(wallet)
+    const entry = finite(row.avgEntryPriceUsd)
+    const totals = { buy: { usd: 0, tokens: 0 }, sell: { usd: 0, tokens: 0 } }
+    for (const sum of sums.all(mint, wallet) as Array<{ kind: 'buy' | 'sell'; usd: number | null; tokens: number | null }>) totals[sum.kind] = { usd: sum.usd ?? 0, tokens: sum.tokens ?? 0 }
+    const cost = entry !== null && entry > 0 && totals.sell.tokens > 0 ? totals.sell.tokens * entry : null
+    const boughtUsd = Math.max(totals.buy.usd, cost ?? 0)
+    if (boughtUsd <= 0) continue
+    const firstAt = typeof row.firstBuyAt === 'string' ? Date.parse(row.firstBuyAt) : NaN
+    stats.push({ wallet, mint, source: 'axiom-trader-info', boughtUsd: Math.round(boughtUsd * 100) / 100, soldUsd: totals.sell.usd ? Math.round(totals.sell.usd * 100) / 100 : null, profitUsd: cost === null ? null : Math.round((totals.sell.usd - cost) * 100) / 100, holdingPct: null, firstAt: Number.isFinite(firstAt) ? firstAt : null, at: now })
+  }
+  return { stats, topHolders }
+}
+
 /** Records what one captured answer says: new trades, holder figures, a holders list and top-trader rows. */
 export function readAxiomAnswer(database: TrackerDatabase, path: string, pair: string | null, body: unknown, now = Date.now()) {
   let trades = 0
@@ -199,6 +227,15 @@ export function readAxiomAnswer(database: TrackerDatabase, path: string, pair: s
       trackerState.pageStats.set(mint, stats)
       holders = true
     }
+  }
+  if (mint && path === '/transactions-feed-trader-info') {
+    const read = traderInfoStats(database, mint, body, now)
+    if (read.stats.length) recordWalletStats(database, read.stats)
+    if (read.topHolders.length) {
+      const insert = database.prepare('INSERT OR IGNORE INTO holders (mint, wallet, pct, updated_at) VALUES (?, ?, NULL, ?)')
+      database.transaction(() => { for (const wallet of read.topHolders) insert.run(mint, wallet, now) })()
+    }
+    traderRows += read.stats.length
   }
   if (mint && /holder/i.test(path)) holderList = saveHolderList(database, mint, pair, holdersFrom(body), now)
   if (mint && /top-?trader/i.test(path)) {

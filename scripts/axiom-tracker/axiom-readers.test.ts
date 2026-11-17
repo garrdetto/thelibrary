@@ -50,3 +50,27 @@ test('a top traders answer gives dollars in, out and profit per wallet', () => {
   assert.equal(stats[0].source, 'axiom-top-traders')
   assert.equal(tradersFrom(wallets.map(walletAddress => ({ walletAddress, boughtSol: 1 })), mint, 5).length, 0)
 })
+
+test('trader info turns each wallet average entry and its sells into dollars in and realised profit, and flags top holders', async () => {
+  const { default: Database } = await import('better-sqlite3')
+  const { trackerSchema } = await import('./db.js')
+  const { recordTrades } = await import('./coin-trades.js')
+  const { traderInfoStats } = await import('./axiom-readers.js')
+  const database = new Database(':memory:')
+  database.exec(trackerSchema)
+  recordTrades(database, [
+    { tx: 'a', mint, wallet: wallets[0], kind: 'buy', usd: 50, tokens: 1000, priceUsd: 0.05, at: 1, source: 'axiom-trades' },
+    { tx: 'b', mint, wallet: wallets[0], kind: 'sell', usd: 120, tokens: 1000, priceUsd: 0.12, at: 2, source: 'axiom-trades' },
+    { tx: 'c', mint, wallet: wallets[1], kind: 'sell', usd: 30, tokens: 500, priceUsd: 0.06, at: 3, source: 'axiom-trades' },
+  ])
+  const { stats, topHolders } = traderInfoStats(database, mint, [
+    { walletAddress: wallets[0], avgEntryPriceUsd: 0.05, isTopHolder: false, firstBuyAt: '2026-11-17T01:00:00.000Z' },
+    { walletAddress: wallets[1], avgEntryPriceUsd: 0.1, isTopHolder: true },
+    { walletAddress: wallets[2], avgEntryPriceUsd: 0.1, isTopHolder: true },
+  ], 9)
+  assert.deepEqual(topHolders, [wallets[1], wallets[2]])
+  assert.equal(stats.length, 2)
+  assert.deepEqual([stats[0].boughtUsd, stats[0].soldUsd, stats[0].profitUsd], [50, 120, 70])
+  assert.deepEqual([stats[1].boughtUsd, stats[1].soldUsd, stats[1].profitUsd], [50, 30, -20])
+  assert.equal(stats[0].source, 'axiom-trader-info')
+})
