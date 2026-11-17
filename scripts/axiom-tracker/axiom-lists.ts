@@ -70,6 +70,12 @@ function oddOneOut<T>(items: T[], key: (item: T) => string) {
 /** The names of Discover's sub-tabs. Anything else the bridge reports from around that row (filters, badges, labels inside the cards) is not a tab. */
 const subTabNames = /^(top|trending|surge|callouts|streamers)$/i
 
+/**
+ * Discover's four sub-tabs. The bridge leaves out a label with a figure in it, and Axiom sometimes puts a counter on the
+ * selected tab, so when exactly one of the four is not reported and the other three all look unselected, it is the one.
+ */
+const discoverTabOrder = ['Top', 'Surge', 'Callouts', 'Streamers']
+
 /** The real sub-tabs among the labels the bridge reports: the named ones sitting in the same row as Top. */
 export function discoverSubTabs(tabs: DiscoverTab[]) {
   const named = tabs.filter(tab => subTabNames.test(tab.text.trim()) && tab.height >= 14)
@@ -78,24 +84,23 @@ export function discoverSubTabs(tabs: DiscoverTab[]) {
 }
 
 /**
- * Which sub-tab is selected. Axiom does not mark it; it draws the selected tab's text white and the others grey. So it
- * is the one tab drawn unlike the rest, which all look alike: by its text colour first, then its whole look, its class
- * names, and where it sits. When no tab stands out there is no answer.
+ * Which sub-tab is selected. Axiom does not mark it; it draws the selected tab's text white and the others grey, so it
+ * is the one tab whose text colour differs from the rest. Only colour is compared: the Surge tab is always built and
+ * sized differently from the other three, selected or not. When no tab stands out there is no answer, except when the
+ * selected tab itself was not reported (see `discoverTabOrder`).
  */
 export function selectedDiscoverTab(reported: DiscoverTab[]): { tab: DiscoverTab; list: AxiomList | null; how: string } | null {
   const tabs = discoverSubTabs(reported)
   const pick = (tab: DiscoverTab, how: string) => ({ tab, list: listOfTab(tab.text), how })
   const marked = tabs.filter(tab => tab.marked)
   if (marked.length === 1) return pick(marked[0], 'marked selected')
-  const ways: Array<[(tab: DiscoverTab) => string, string]> = [
-    [tab => tab.look.split('|')[2] ?? '', 'its text is a different colour from the other tabs'],
-    [tab => tab.look, 'drawn unlike the other tabs'],
-    [tab => tab.classes, 'styled unlike the other tabs'],
-    [tab => `${tab.top}|${tab.height}`, 'sits unlike the other tabs'],
-  ]
-  for (const [key, how] of ways) {
-    const odd = oddOneOut(tabs, key)
-    if (odd) return pick(odd, how)
+  const odd = oddOneOut(tabs, tab => tab.look.split('|')[2] ?? '')
+  if (odd) return pick(odd, 'its text is a different colour from the other tabs')
+  const reportedNames = new Set(tabs.map(tab => tab.text.trim().toLowerCase().replace(/^trending$/, 'top')))
+  const unreported = discoverTabOrder.filter(name => !reportedNames.has(name.toLowerCase()))
+  const colours = new Set(tabs.map(tab => tab.look.split('|')[2] ?? ''))
+  if (tabs.length === discoverTabOrder.length - 1 && unreported.length === 1 && colours.size === 1) {
+    return pick({ ...tabs[0], text: unreported[0], look: '', classes: '' }, 'the other three tabs are all drawn unselected')
   }
   return null
 }
