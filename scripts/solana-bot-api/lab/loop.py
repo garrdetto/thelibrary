@@ -15,7 +15,7 @@ os.makedirs("freezes", exist_ok=True)
 def load():
     d = pickle.load(open("outcomes.pkl", "rb"))
     rows = sorted(d["rows"].values(), key=lambda r: r["t"])
-    T = np.array([r["t"] for r in rows]); F = np.stack([r["f"] for r in rows]); P = np.stack([r["p"] for r in rows], axis=1)
+    T = np.array([r["t"] for r in rows]); F = np.stack([r["f"] for r in rows]); P = np.stack([r["p"] for r in rows], axis=1).astype(np.float32)
     return d, T, F, np.nan_to_num(P, nan=0.0), ~np.isnan(P)
 
 
@@ -148,4 +148,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    every = float(sys.argv[sys.argv.index("--every") + 1]) if "--every" in sys.argv else 0
+    while True:
+        try:
+            main()
+        except FileNotFoundError:
+            print("no outcomes.pkl yet (processor.py writes it once coins are 13 minutes old)")
+        if not every:
+            break
+        time.sleep(every)

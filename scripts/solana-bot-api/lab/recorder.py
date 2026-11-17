@@ -16,6 +16,7 @@ PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
 URL = os.environ.get("RPC_WS", "wss://api.mainnet-beta.solana.com")
 DB = sys.argv[1] if len(sys.argv) > 1 else "pump.db"
 FOLLOW_S = 40 * 60  # keep recording a coin's trades for 40 min after launch
+KEEP_S = float(os.environ.get("KEEP_HOURS", "24")) * 3600  # delete coins older than this
 
 db = sqlite3.connect(DB, isolation_level=None)
 db.execute("PRAGMA journal_mode=WAL")
@@ -109,6 +110,11 @@ async def housekeeping():
             for m in [m for m, t in followed.items() if t < old]:
                 del followed[m]
             print(time.strftime("%H:%M:%S"), stats, "following", len(followed), flush=True)
+            if int(now) // 3600 != int(now - 60) // 3600:
+                gone = int(now * 1000 - KEEP_S * 1000)
+                db.execute("DELETE FROM trades WHERE mint IN (SELECT mint FROM coins WHERE recv_ms < ?)", (gone,))
+                db.execute("DELETE FROM coins WHERE recv_ms < ?", (gone,))
+                db.execute("DELETE FROM gaps WHERE up_ms < ?", (gone,))
 
 
 async def main():

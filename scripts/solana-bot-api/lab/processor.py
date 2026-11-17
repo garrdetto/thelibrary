@@ -19,6 +19,7 @@ EXITS = [sim.Exit(tp, sl, tr, arm, h, True)
          for tr, arm in ((0, 0), (0.15, 0.15), (0.3, 0.3))
          for h in (20, 60, 180, 600)]
 MATURE_MS = (600 + max(W_LIST) + 60) * 1000
+KEEP_MS = float(os.environ.get("KEEP_HOURS", "12")) * 3_600_000  # outcomes kept for the search
 
 
 def process(c):
@@ -45,11 +46,14 @@ def main():
             done = pickle.load(fh)["rows"]
     while True:
         now = int(time.time() * 1000)
-        coins = [c for c in sim.load(DB, 0, now - MATURE_MS) if c.mint not in done]
+        since = max((r["t"] for r in done.values()), default=0) - 5 * 60_000
+        coins = [c for c in sim.load(DB, since, now - MATURE_MS) if c.mint not in done]
         t = time.time()
         for c in coins:
             f, p = process(c)
-            done[c.mint] = {"t": c.recv_ms, "f": f, "p": p, "n": len(c.slot)}
+            done[c.mint] = {"t": c.recv_ms, "f": f, "p": p.astype(np.float16), "n": len(c.slot)}
+        for m in [m for m, r in done.items() if r["t"] < now - KEEP_MS]:
+            del done[m]
         if coins:
             tmp = OUT + ".tmp"
             with open(tmp, "wb") as fh:

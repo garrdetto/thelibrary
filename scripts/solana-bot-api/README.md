@@ -45,13 +45,19 @@ The same `strategy.py` scores coins in the backtests, so a ruleset runs exactly 
 | `lab/sim.py` | Replays a coin: the buy lands `L` slots after the decision on the curve as other traders left it, constant-product fills, 1.25 % pump.fun fee each way, a network fee per transaction |
 | `lab/processor.py` | Once a coin's trading window is over, stores its features and the result of every exit rule at each decision time and delay |
 | `lab/search.py` | Walk-forward: picks a ruleset from earlier blocks only and scores it on the next two blocks it never saw |
+| `lab/loop.py` | Every 20 minutes freezes a ruleset (chosen on the earlier two thirds of the coins, confirmed on the last third) into `freezes/`, and scores every earlier freeze on coins launched after it; PASS = its first two fresh 20-minute blocks both profitable at 2.4 s and 4.8 s delay with 30+ trades each (`loop.log`) |
+| `lab/copytest.py` | Learns wallets that made money on new coins in one window and copies their buys (at the bot's delay, selling when they sell) in the next |
+| `lab/ecosystem.config.cjs` | Runs the recorder, processor and loop under PM2 (the recorder keeps 24 h, the processor 12 h; `KEEP_HOURS` changes either) |
 
 ```bash
 cd scripts/solana-bot-api/lab
 python recorder.py pump.db        # leave running
 python processor.py               # leave running; writes outcomes.pkl
 python search.py 20               # 20-minute blocks
+python loop.py --every 1200       # freeze and forward-test every 20 minutes
 ```
+
+Or all three under PM2: `pm2 start lab/ecosystem.config.cjs` (needs `pip install numpy websockets`).
 
 A round trip at 0.1 SOL costs about 5 % before the price moves (2.5 % pump.fun fees, 2 % network fees at the
 0.001 SOL priority cap, the buy's own price impact), so a ruleset has to beat that on every trade it takes.

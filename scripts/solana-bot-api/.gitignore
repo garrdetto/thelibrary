@@ -7,3 +7,5 @@ lab/*.db
 lab/*.db-*
 lab/outcomes.pkl*
 lab/*.log
+lab/freezes/
+lab/loop.log
