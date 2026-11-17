@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { z } from 'zod'
 import { extractViewerCounts, parseFrame } from './axiom-collector.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
-import { createLogger, errorMessage, isMainModule, solanaAddressPattern, trackerConfig } from './runtime.js'
+import { createLogger, errorMessage, isMainModule, isSolanaAddress, trackerConfig } from './runtime.js'
 import { activeCandidates, trackerState } from './state.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { compactPayload } from './site-publisher.js'
@@ -20,8 +20,8 @@ const logger = createLogger('extension-intake')
 const bodyLimit = 8_000_000
 
 const watchlistReport = z.object({
-  mint: z.string().regex(solanaAddressPattern),
-  pairAddress: z.string().regex(solanaAddressPattern),
+  mint: z.string().refine(isSolanaAddress, 'Not a Solana address'),
+  pairAddress: z.string().refine(isSolanaAddress, 'Not a Solana address'),
   symbol: z.string().max(40),
   action: z.enum(['add', 'remove']),
   ok: z.boolean(),
@@ -30,13 +30,13 @@ const watchlistReport = z.object({
 
 const report = z.object({
   url: z.string().max(500),
-  pairAddress: z.string().regex(solanaAddressPattern).nullable(),
+  pairAddress: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
   pageViewers: z.number().int().min(0).max(1_000_000).nullable(),
   frames: z.array(z.string().max(60_000)).max(200),
   cards: z.array(z.object({
     viewers: z.number().int().min(0).max(1_000_000),
-    pairAddress: z.string().regex(solanaAddressPattern).nullable(),
-    mint: z.string().regex(solanaAddressPattern).nullable(),
+    pairAddress: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
+    mint: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
     short: z.object({ prefix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/), suffix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/) }).nullable(),
     lines: z.array(z.string().max(60)).max(60).optional(),
     icons: z.array(z.string().max(80)).max(40).optional(),
@@ -97,7 +97,7 @@ function serveLive(database: TrackerDatabase, request: IncomingMessage, response
   }
   if (url.pathname === '/live/data') {
     const mint = url.searchParams.get('mint')
-    const body = mint === null ? { ...compactPayload(buildRadarPayload(database)), source: 'local' } : solanaAddressPattern.test(mint) ? buildTokenDetail(database, mint) : null
+    const body = mint === null ? { ...compactPayload(buildRadarPayload(database)), source: 'local' } : isSolanaAddress(mint) ? buildTokenDetail(database, mint) : null
     response.writeHead(body ? 200 : 404, { ...liveHeaders(origin), 'Content-Type': 'application/json; charset=utf-8' })
     response.end(JSON.stringify(body ?? { error: 'Not found.' }))
     return

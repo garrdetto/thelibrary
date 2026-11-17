@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { RadarPulseMetrics } from '../../src/lib/axiom-radar-types.js'
-import { solanaAddressPattern } from './runtime.js'
+import { isSolanaAddress } from './runtime.js'
 import { notePulseFlow } from './pulse-market.js'
 import { trackerState } from './state.js'
 
@@ -10,8 +10,8 @@ const text = z.string().max(300).nullable().optional()
 /** One coin from Axiom Pulse's worker feed, as the bridge (1.7+) forwards it: every coin in the three columns, drawn or not. */
 export const pulseRowSchema = z.object({
   column: z.enum(['newPairs', 'finalStretch', 'migrated']),
-  pairAddress: z.string().regex(solanaAddressPattern),
-  tokenAddress: z.string().regex(solanaAddressPattern),
+  pairAddress: z.string().refine(isSolanaAddress, 'Not a Solana address'),
+  tokenAddress: z.string().refine(isSolanaAddress, 'Not a Solana address'),
   tokenName: text,
   tokenTicker: text,
   createdAt: z.unknown().optional(),

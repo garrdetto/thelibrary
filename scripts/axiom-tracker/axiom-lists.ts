@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { solanaAddressPattern } from './runtime.js'
+import { isSolanaAddress } from './runtime.js'
 import { trackerState } from './state.js'
 
 /** Axiom lists besides Pulse that the bridge reads from the owner's open tabs: Discover's Trending and Surge. */
@@ -10,7 +10,7 @@ export const axiomListLabels: Record<AxiomList, string> = { trending: 'Trending'
 export const axiomListWindowMs = 3 * 60_000
 
 const listRowSchema = z.object({
-  tokenAddress: z.string().regex(solanaAddressPattern),
+  tokenAddress: z.string().refine(isSolanaAddress, 'Not a Solana address'),
   userCount: z.union([z.number(), z.string().max(40)]).nullable().optional(),
 }).passthrough()
 
