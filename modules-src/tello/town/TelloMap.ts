@@ -1,9 +1,9 @@
 /**
  * Tello's maps: the corner map (turned with the camera, N cycles its range)
- * and the full map of Montello (Ctrl), both drawn from one picture of the
- * town painted once from the baked data: ground cover with hill shading,
- * water, every road by class, every building, then street and place names
- * as vectors at any zoom. Click a spot or pick a place for directions along
+ * and the full map of Montello (Ctrl), both drawn from clip-art tiles painted
+ * from the baked data at the zoom they are shown at (MapTiles.ts): ground
+ * cover with hill shading, water, every tree, road and building, then street
+ * and place names as vectors at any zoom. Click a spot or pick a place for directions along
  * the real road network; the route shows on both maps with the distance left.
  *
  * Map drawing works in map coordinates (x east, z north).
@@ -12,7 +12,7 @@ import type { MapMarker } from '../../rackreel/ui/Minimap'
 import type { Poi } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { RoadGraph, type Route } from './Routes'
-import { paintMontelloBase } from './MapBase'
+import { MapTiles } from './MapTiles'
 
 const RANGES = [70, 130, 260, 520]
 const POI_COLOR: Record<string, string> = { fuel: '#ffb347', food: '#ff8f6b', bar: '#e8a24a', bank: '#7fe0c0', fire: '#ff5a4a', landmark: '#ffe58a', lodging: '#c7a6ff', school: '#ffd966', civic: '#8fd0ff', church: '#ffffff', park: '#9fe08a', shop: '#f6c1e0', water: '#a9dcff' }
@@ -30,8 +30,9 @@ export interface MapOptions {
 
 export class TelloMap {
   private readonly land: TelloLand
-  /** The town's picture, painted the first time a map is drawn (a host world that draws its own map never needs it). */
-  private picture: HTMLCanvasElement | null = null
+  /** The town's map tiles, set up the first time a map is drawn. */
+  private tiles: MapTiles | null = null
+  private redrawQueued = false
   private readonly mini: HTMLCanvasElement
   private readonly miniG: CanvasRenderingContext2D
   private readonly graph: RoadGraph
@@ -78,7 +79,7 @@ export class TelloMap {
   }
 
   /** Draws the map into `g` for a view centred on a map point; `rot` turns it (radians, the camera's yaw is up when rot = -yaw). */
-  private draw(g: CanvasRenderingContext2D, v: View, mini: boolean, dpr: number, here: { x: number; z: number; heading: number }): void {
+  private draw(g: CanvasRenderingContext2D, v: View, mini: boolean, dpr: number, here: { x: number; z: number; heading: number }): boolean {
     const land = this.land
     g.setTransform(1, 0, 0, 1, 0, 0)
     g.fillStyle = '#1c2a22'
@@ -87,9 +88,8 @@ export class TelloMap {
     g.rotate(v.rot)
     g.scale(v.s, v.s)
     g.translate(-v.cx, v.cz)
-    g.imageSmoothingEnabled = true
-    this.picture ??= paintMontelloBase(land, { vectors: true })
-    g.drawImage(this.picture, land.x0, -(land.z0 + land.size), land.size, land.size)
+    this.tiles ??= new MapTiles(land)
+    const pending = this.tiles.draw(g, v, mini ? 6 : 24)
     if (this.route) {
       const p = this.route.pts
       g.lineCap = 'round'
@@ -114,20 +114,26 @@ export class TelloMap {
     const reach = Math.hypot(v.W, v.H) / 2 / v.s
     g.textAlign = 'center'
     g.textBaseline = 'middle'
-    if (!mini && v.s > 0.55) {
-      g.font = `700 ${Math.round(11 * dpr)}px Inter, system-ui, sans-serif`
+    if (mini ? v.s > 1.4 : v.s > 0.55) {
+      g.font = `700 ${Math.round((mini ? 10 : 11) * dpr)}px Inter, system-ui, sans-serif`
       const drawn = new Set<string>()
+      const spacing = mini ? 140 : 260
       for (const road of land.doc.roads) {
         if (!road.n || road.k > 1) continue
         const mid = Math.floor(road.p.length / 4) * 2
         const x = road.p[mid], z = road.p[mid + 1]
-        if (Math.hypot(x - v.cx, z - v.cz) > reach) continue
-        const key = `${road.n}|${Math.round(x / 260)},${Math.round(z / 260)}`
+        if (Math.hypot(x - v.cx, z - v.cz) > (mini ? reach * 0.62 : reach)) continue
+        const key = `${road.n}|${Math.round(x / spacing)},${Math.round(z / spacing)}`
         if (drawn.has(key)) continue
+        let length = 0
+        for (let k = 2; k < road.p.length; k += 2) length += Math.hypot(road.p[k] - road.p[k - 2], road.p[k + 1] - road.p[k - 1])
+        if (length * v.s < g.measureText(road.n).width * 1.1) continue
         drawn.add(key)
         const [sx, sy] = screen(x, z)
         const a = Math.max(0, mid - 2)
-        let ang = Math.atan2(-(road.p[a + 3] - road.p[a + 1]), road.p[a + 2] - road.p[a])
+        let ang = Math.atan2(-(road.p[a + 3] - road.p[a + 1]), road.p[a + 2] - road.p[a]) + v.rot
+        if (ang > Math.PI) ang -= Math.PI * 2
+        if (ang < -Math.PI) ang += Math.PI * 2
         if (ang > Math.PI / 2) ang -= Math.PI
         if (ang < -Math.PI / 2) ang += Math.PI
         g.save()
@@ -155,7 +161,7 @@ export class TelloMap {
         g.arc(sx, sy, 3.2 * dpr, 0, Math.PI * 2)
         g.fill()
       }
-      if (mini ? water && v.s > 0.3 : v.s > (water ? 0.12 : 0.8)) {
+      if (mini ? (water ? v.s > 0.3 : v.s > 2.5) : v.s > (water ? 0.12 : 0.8)) {
         g.font = `${water ? 'italic 700' : '700'} ${Math.round((water ? 13 : 11) * dpr)}px Inter, system-ui, sans-serif`
         g.lineWidth = 3 * dpr
         g.strokeStyle = 'rgba(20,18,14,.85)'
@@ -190,6 +196,7 @@ export class TelloMap {
     g.stroke()
     g.fill()
     g.restore()
+    return pending
   }
 
   cycleZoom(): string {
@@ -391,6 +398,7 @@ export class TelloMap {
   hide(): void {
     if (!this.root || this.root.hidden) return
     this.root.hidden = true
+    this.tiles?.trim()
     const canvas = this.opts.canvas
     if (canvas) {
       canvas.focus()
@@ -413,7 +421,14 @@ export class TelloMap {
       view.width = W
       view.height = H
     }
-    this.draw(view.getContext('2d')!, { cx: this.center.x, cz: this.center.z, s: this.scale * dpr, rot: 0, W, H }, false, dpr, this.opts.where())
+    const pending = this.draw(view.getContext('2d')!, { cx: this.center.x, cz: this.center.z, s: this.scale * dpr, rot: 0, W, H }, false, dpr, this.opts.where())
+    if (pending && !this.redrawQueued) {
+      this.redrawQueued = true
+      requestAnimationFrame(() => {
+        this.redrawQueued = false
+        this.redraw()
+      })
+    }
     if (this.info) this.info.textContent = this.goal && this.route ? `Directions to ${this.goal.name}: ${distance(this.route.length)} by road.` : this.goal ? `${this.goal.name} is marked; no road reaches it.` : 'Drag to pan, scroll to zoom. Click a spot or pick a place for directions.'
   }
 
