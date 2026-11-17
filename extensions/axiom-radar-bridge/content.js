@@ -1,4 +1,6 @@
 const frames = []
+const apiAnswers = []
+const streamFrames = []
 let pulseFeed = null
 const reportIntervalMs = 1000
 let sampleResolver = null
@@ -8,6 +10,14 @@ window.addEventListener('message', event => {
   if (event.data?.source === 'axiom-radar-bridge' && typeof event.data.frame === 'string') {
     frames.push(event.data.frame)
     if (frames.length > 400) frames.splice(0, frames.length - 400)
+  }
+  if (event.data?.source === 'axiom-radar-bridge-api' && typeof event.data.body === 'string') {
+    apiAnswers.push({ url: String(event.data.url).slice(0, 600), status: Number(event.data.status) || 0, body: event.data.body })
+    if (apiAnswers.length > 60) apiAnswers.splice(0, apiAnswers.length - 60)
+  }
+  if (event.data?.source === 'axiom-radar-bridge-stream' && typeof event.data.text === 'string') {
+    streamFrames.push({ url: String(event.data.url).slice(0, 200), text: event.data.text })
+    if (streamFrames.length > 2000) streamFrames.splice(0, streamFrames.length - 2000)
   }
   if (event.data?.source === 'axiom-radar-bridge-pulse' && Array.isArray(event.data.rows)) pulseFeed = { usdPerSol: event.data.usdPerSol, rows: event.data.rows, at: event.data.at }
   if (event.data?.source === 'axiom-radar-bridge-sample' && sampleResolver) {
@@ -213,13 +223,19 @@ function report() {
   lastReportAt = Date.now()
   const pairAddress = pairFromUrl()
   const batch = frames.splice(0, 200)
+  const api = []
+  let apiBytes = 0
+  while (apiAnswers.length && api.length < 30 && apiBytes + apiAnswers[0].body.length <= 3000000) { apiBytes += apiAnswers[0].body.length; api.push(apiAnswers.shift()) }
+  const streams = []
+  let streamBytes = 0
+  while (streamFrames.length && streams.length < 400 && streamBytes + streamFrames[0].text.length <= 2000000) { streamBytes += streamFrames[0].text.length; streams.push(streamFrames.shift()) }
   const cards = pairAddress ? [] : eyeCards()
   const pulse = !pairAddress && pulseFeed && Date.now() - pulseFeed.at < 5000 ? pulseFeed : null
-  if (!pairAddress && !batch.length && !cards.length && !pulse) return
+  if (!pairAddress && !batch.length && !cards.length && !pulse && !api.length && !streams.length) return
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
   const stats = pairAddress ? pageStats() : null
   try {
-    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}) } }).catch(() => undefined)
+    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}) } }).catch(() => undefined)
   } catch {
     stopReporting()
   }

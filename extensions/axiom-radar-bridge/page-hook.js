@@ -21,6 +21,15 @@
       if (value === undefined) continue
       row[key] = value instanceof Date ? value.getTime() : value
     }
+    for (const [key, value] of Object.entries(item)) {
+      if (key in row) continue
+      if (value instanceof Date) row[key] = value.getTime()
+      else if (value === null || typeof value === 'number' || typeof value === 'boolean') row[key] = value
+      else if (typeof value === 'string' && value.length <= 200) row[key] = value
+      else if (value && typeof value === 'object') {
+        try { const json = JSON.stringify(value); if (json.length <= 1500) row[key] = value } catch { }
+      }
+    }
     return row
   }
   const applyPulseOperations = message => {
@@ -66,6 +75,50 @@
     for (const [column, table] of Object.entries(pulseTables)) for (const row of table.values()) if (row.tokenAddress) rows.push({ ...row, column })
     window.postMessage({ source: 'axiom-radar-bridge-pulse', usdPerSol, rows: rows.slice(0, 300), at: Date.now() }, window.location.origin)
   }, 1000)
+  const isAxiomApi = url => {
+    try {
+      const parsed = new URL(url, location.href)
+      return parsed.hostname.endsWith('axiom.trade') && !/\.(js|css|png|jpe?g|webp|gif|svg|woff2?|ico|map)$/i.test(parsed.pathname)
+    } catch { return false }
+  }
+  const shareApi = (url, status, body) => {
+    if (typeof body !== 'string' || body.length > 400000) return
+    const start = body.trimStart()[0]
+    if (start !== '{' && start !== '[') return
+    window.postMessage({ source: 'axiom-radar-bridge-api', url: String(url).slice(0, 600), status, body }, window.location.origin)
+  }
+  const nativeFetch = window.fetch
+  if (nativeFetch && !nativeFetch.axiomRadarWrapped) {
+    const radarFetch = function (input, init) {
+      const result = nativeFetch.call(window, input, init)
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url
+      if (url && isAxiomApi(url)) {
+        result.then(response => {
+          if (!/json|text/i.test(response.headers.get('content-type') ?? '')) return
+          response.clone().text().then(body => shareApi(response.url || url, response.status, body)).catch(() => undefined)
+        }).catch(() => undefined)
+      }
+      return result
+    }
+    radarFetch.axiomRadarWrapped = true
+    window.fetch = radarFetch
+  }
+  const NativeXhr = window.XMLHttpRequest
+  if (NativeXhr && !NativeXhr.prototype.axiomRadarWrapped) {
+    const nativeOpen = NativeXhr.prototype.open
+    NativeXhr.prototype.open = function (method, url, ...rest) {
+      if (isAxiomApi(String(url))) {
+        this.addEventListener('load', () => {
+          try {
+            const body = this.responseType === '' || this.responseType === 'text' ? this.responseText : this.responseType === 'json' ? JSON.stringify(this.response) : null
+            shareApi(this.responseURL || url, this.status, body)
+          } catch { }
+        })
+      }
+      return nativeOpen.call(this, method, url, ...rest)
+    }
+    NativeXhr.prototype.axiomRadarWrapped = true
+  }
   const Native = window.WebSocket
   if (!Native || Native.axiomRadarWrapped) return
   const interesting = /viewer|watch|online|concurrent/i
@@ -75,20 +128,23 @@
     recent.push({ at: Date.now(), url: String(url).slice(0, 200), kind, text: text.slice(0, 4000) })
     if (recent.length > 120) recent.shift()
   }
-  const forward = text => {
-    if (text.length <= 60000 && interesting.test(text)) window.postMessage({ source: 'axiom-radar-bridge', frame: text }, window.location.origin)
+  const forward = (text, url) => {
+    if (text.length > 60000) return
+    if (interesting.test(text)) window.postMessage({ source: 'axiom-radar-bridge', frame: text }, window.location.origin)
+    const start = text.trimStart()[0]
+    if (start === '{' || start === '[') window.postMessage({ source: 'axiom-radar-bridge-stream', url: String(url).slice(0, 200), text }, window.location.origin)
   }
   const handle = (url, data) => {
     if (typeof data === 'string') {
       remember(url, 'text', data)
-      forward(data)
+      forward(data, url)
       return
     }
     if (data instanceof ArrayBuffer) {
       const bytes = new Uint8Array(data)
       const hex = Array.from(bytes.slice(0, 64), byte => byte.toString(16).padStart(2, '0')).join('')
       remember(url, 'binary', `len=${bytes.length} hex=${hex} utf8=${decoder.decode(bytes.slice(0, 3000))}`)
-      if (bytes.length <= 60000) forward(decoder.decode(bytes))
+      if (bytes.length <= 60000) forward(decoder.decode(bytes), url)
       return
     }
     if (data instanceof Blob) data.arrayBuffer().then(buffer => handle(url, buffer)).catch(() => undefined)
