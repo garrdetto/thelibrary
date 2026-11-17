@@ -253,8 +253,24 @@ export function loadWalletBook(database: TrackerDatabase, now = Date.now()) {
     const sighting = buySighting(row)
     if (sighting) sightings.push(sighting)
   }
+  addArchivedRecords(database, results, sightings)
   book = buildWalletBook(sightings, results, now, loadWalletProfits(database), flips)
   return book
+}
+
+/** Coins and wallet stakes kept in the coin archive count too, so wallet records survive a fresh start and the 7-day holder pruning. Live rows win. */
+function addArchivedRecords(database: TrackerDatabase, results: CoinResult[], sightings: WalletSighting[]) {
+  if (!database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'wallet_archive'").get()) return
+  const known = new Set(results.map(result => result.mint))
+  for (const row of database.prepare('SELECT mint, first_mcap, peak_mcap, peak_mcap_at, outcome, closed_at FROM coin_archive').iterate() as Iterable<LifecycleRow>) {
+    if (known.has(row.mint)) continue
+    const result = coinResult(row)
+    if (result) results.push(result)
+  }
+  const seen = new Set(sightings.map(sighting => `${sighting.wallet}|${sighting.mint}`))
+  for (const row of database.prepare('SELECT wallet, mint, pct, at FROM wallet_archive').iterate() as Iterable<WalletSighting>) {
+    if (!seen.has(`${row.wallet}|${row.mint}`)) sightings.push(row)
+  }
 }
 
 /** The Wallet Score of one coin from its top holders and the wallets buying it now, or null before either is known. */

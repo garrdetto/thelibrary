@@ -12,6 +12,15 @@ export type RadarOutlook = {
   reasons: RadarOutlookReason[]
 }
 
+/** Where a live coin sits on the 20-tier ladder built from every archived coin (tier 1 = best outcomes, 20 = worst). */
+export type RadarTierMatch = {
+  tier: number
+  expectedTier: number
+  risk: number
+  score: number
+  coins: number
+}
+
 export type RadarExplode = {
   chance: number
   learned: boolean
