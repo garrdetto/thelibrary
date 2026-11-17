@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { TrackerDatabase } from './db.js'
-import { readAxiomAnswer } from './axiom-readers.js'
+import { mintForPair, readAxiomAnswer, saveHolderList } from './axiom-readers.js'
 import { solanaAddressPattern } from './runtime.js'
 
 /**
@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS axiom_wallets_wallet ON axiom_wallets (wallet);
  * balances, orders, keys, their own trades, friends, presence) is dropped here even if an older bridge sends it.
  */
 export const marketPaths = new Set(['/transactions-feed', '/transactions-feed-trader-info', '/transactions-from-traders', '/trader-details-v2', '/sniper-transactions', '/token-info-v2', '/token-and-best-pair-info', '/token-stats', '/dev-tokens', '/dev-transfers', '/reused-image-tokens', '/similar-tokens', '/dex-paid', '/shareholder-claims', '/lighthouse', '/volume-overview', '/pool-state'])
-const marketPrefix = /^\/(holder|top-?trader)/i
+const marketPrefix = /holder|top-?trader/i
 export const isMarketPath = (path: string) => marketPaths.has(path) || marketPrefix.test(path)
 const keepCaptureMs = 6 * 60 * 60_000
 const maxCaptureRows = 20_000
@@ -98,8 +98,8 @@ function pathOf(url: string) {
   }
 }
 
-export type CaptureStats = { api: number; streams: number; wallets: number; trades: number; holderReads: number; paths: Map<string, number> }
-export const captureStats: CaptureStats = { api: 0, streams: 0, wallets: 0, trades: 0, holderReads: 0, paths: new Map() }
+export type CaptureStats = { api: number; streams: number; wallets: number; trades: number; holderReads: number; holderLists: number; traderRows: number; tabVisits: number; holdersPaths: Map<string, number>; tradersPaths: Map<string, number>; paths: Map<string, number> }
+export const captureStats: CaptureStats = { api: 0, streams: 0, wallets: 0, trades: 0, holderReads: 0, holderLists: 0, traderRows: 0, tabVisits: 0, holdersPaths: new Map(), tradersPaths: new Map(), paths: new Map() }
 
 let prepared: TrackerDatabase | null = null
 let lastPruneAt = 0
@@ -112,13 +112,33 @@ function ensureSchema(database: TrackerDatabase) {
 }
 
 /** Stores one report's captured answers and records the wallets in them against the coin's pair address. */
-export function storeCapture(database: TrackerDatabase, input: { pairAddress: string | null; api?: Array<z.infer<typeof capturedApiSchema>>; streams?: Array<z.infer<typeof capturedStreamSchema>>; pulse?: { rows: unknown[] } }, now = Date.now()) {
+export const capturedTabsSchema = z.object({
+  holders: z.object({ paths: z.array(z.string().max(120)).max(40), rows: z.array(z.object({ wallet: z.string().regex(solanaAddressPattern), pct: z.number().min(0).max(100).nullable() }).strict()).max(150) }).strict().optional(),
+  traders: z.object({ paths: z.array(z.string().max(120)).max(40) }).strict().optional(),
+}).strict()
+
+const holderListAt = new Map<string, number>()
+
+/** What a coin page's Holders and Top Traders tabs loaded: the API addresses (for the heartbeat) and the holders drawn on the page, used when no API holders list arrived in the last minute. */
+function storeTabs(database: TrackerDatabase, pair: string | null, tabs: z.infer<typeof capturedTabsSchema>, now: number) {
+  captureStats.tabVisits += 1
+  for (const path of tabs.holders?.paths ?? []) captureStats.holdersPaths.set(path, (captureStats.holdersPaths.get(path) ?? 0) + 1)
+  for (const path of tabs.traders?.paths ?? []) captureStats.tradersPaths.set(path, (captureStats.tradersPaths.get(path) ?? 0) + 1)
+  if (!pair || !tabs.holders?.rows.length || now - (holderListAt.get(pair) ?? 0) < 60_000) return
+  const mint = mintForPair(database, pair)
+  if (mint && saveHolderList(database, mint, pair, tabs.holders.rows, now)) captureStats.holderLists += 1
+}
+
+export function storeCapture(database: TrackerDatabase, input: { pairAddress: string | null; api?: Array<z.infer<typeof capturedApiSchema>>; streams?: Array<z.infer<typeof capturedStreamSchema>>; pulse?: { rows: unknown[] }; tabs?: z.infer<typeof capturedTabsSchema> }, now = Date.now()) {
   if (input.pulse?.rows.length && now - lastPulseSampleAt >= 60_000) {
     ensureSchema(database)
     lastPulseSampleAt = now
     database.prepare('INSERT INTO axiom_capture (kind, path, pair, body, at) VALUES (?, ?, NULL, ?, ?)').run('pulse', 'pulse rows', JSON.stringify(input.pulse.rows.slice(0, 20)), now)
   }
-  if (!input.api?.length && !input.streams?.length) return
+  if (!input.api?.length && !input.streams?.length) {
+    if (input.tabs) storeTabs(database, input.pairAddress, input.tabs, now)
+    return
+  }
   ensureSchema(database)
   const insertCapture = database.prepare('INSERT INTO axiom_capture (kind, path, pair, body, at) VALUES (?, ?, ?, ?, ?)')
   const upsertWallet = database.prepare(`INSERT INTO axiom_wallets (pair, wallet, source, fields, first_at, last_at, seen) VALUES (?, ?, ?, ?, ?, ?, 1)
@@ -151,8 +171,14 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
       const read = readAxiomAnswer(database, answer.path, answer.pair, answer.parsed, now)
       captureStats.trades += read.trades
       if (read.holders) captureStats.holderReads += 1
+      if (read.holderList) {
+        captureStats.holderLists += 1
+        if (answer.pair) holderListAt.set(answer.pair, now)
+      }
+      captureStats.traderRows += read.traderRows
     } catch { }
   }
+  if (input.tabs) storeTabs(database, input.pairAddress, input.tabs, now)
   if (now - lastPruneAt > 60_000) {
     lastPruneAt = now
     database.prepare('DELETE FROM axiom_capture WHERE at < ?').run(now - keepCaptureMs)
@@ -163,7 +189,14 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
 /** The heartbeat line: how much the bridge captured in the last interval and the busiest paths. */
 export function captureNote() {
   const busiest = [...captureStats.paths].sort((first, second) => second[1] - first[1]).slice(0, 4).map(([path, count]) => `${path} ×${count}`).join(', ')
-  const note = captureStats.api ? `; captured ${captureStats.api} Axiom answers: ${captureStats.trades} new trades, ${captureStats.holderReads} holder readings, ${captureStats.wallets} wallet sightings${busiest ? ` (${busiest})` : ''}` : ''
+  const top = (paths: Map<string, number>) => [...paths].sort((first, second) => second[1] - first[1]).slice(0, 5).map(([path]) => path).join(' ') || 'nothing'
+  const tabs = captureStats.tabVisits ? `; opened Holders/Top Traders on ${captureStats.tabVisits} coin pages: ${captureStats.holderLists} holder lists saved, ${captureStats.traderRows} top-trader rows (Holders loaded ${top(captureStats.holdersPaths)}; Top Traders loaded ${top(captureStats.tradersPaths)})` : ''
+  const note = captureStats.api || tabs ? `; captured ${captureStats.api} Axiom answers: ${captureStats.trades} new trades, ${captureStats.holderReads} holder readings, ${captureStats.wallets} wallet sightings${busiest ? ` (${busiest})` : ''}${tabs}` : ''
+  captureStats.holderLists = 0
+  captureStats.traderRows = 0
+  captureStats.tabVisits = 0
+  captureStats.holdersPaths.clear()
+  captureStats.tradersPaths.clear()
   captureStats.trades = 0
   captureStats.holderReads = 0
   captureStats.api = 0

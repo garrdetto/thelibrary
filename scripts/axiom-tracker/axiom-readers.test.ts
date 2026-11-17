@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { holderStatsFrom, tradesFrom } from './axiom-readers.js'
+import { holderStatsFrom, holdersFrom, tradersFrom, tradesFrom } from './axiom-readers.js'
 
 const mint = 'c8ptadDszEWiv6CBS5MqTrDsaV3pqwtKxAXn5Nipump'
 const wallet = 'BHMUS8GTWwr5teaJHzD3dwQA3qUCjvam6zAzV9zWfJqM'
@@ -28,4 +28,25 @@ test('token info gives the exact holder shares', () => {
   assert.equal(stats?.fresh, 3.3)
   assert.equal(stats?.proTraders, 51.9)
   assert.equal(holderStatsFrom({ holderStats: null }, 1), null)
+})
+
+const wallets = ['BHMUS8GTWwr5teaJHzD3dwQA3qUCjvam6zAzV9zWfJqM', '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9', '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM']
+
+test('a holders answer gives each wallet and its share in percent, wherever the list sits', () => {
+  const rows = holdersFrom({ data: { holders: wallets.map((walletAddress, index) => ({ walletAddress, tokenAddress: mint, holdingPercent: 3 - index, amount: 100 })) } })
+  assert.deepEqual(rows.map(row => [row.wallet, row.pct]), wallets.map((wallet, index) => [wallet, 3 - index]))
+  const fractions = holdersFrom(wallets.map((owner, index) => ({ owner, percentage: 0.03 - index / 100 })))
+  assert.equal(fractions[0].pct, 3)
+  assert.equal(holdersFrom([{ walletAddress: wallets[0], percent: 2 }]).length, 0)
+})
+
+test('a top traders answer gives dollars in, out and profit per wallet', () => {
+  const stats = tradersFrom(wallets.map((walletAddress, index) => ({ walletAddress, usdBought: 100 * (index + 1), usdSold: 150 * (index + 1), boughtSol: 1, firstBuyAt: '2026-11-17T01:00:00.000Z' })), mint, 5)
+  assert.equal(stats.length, 3)
+  assert.equal(stats[1].boughtUsd, 200)
+  assert.equal(stats[1].soldUsd, 300)
+  assert.equal(stats[1].profitUsd, 100)
+  assert.equal(stats[0].firstAt, Date.parse('2026-11-17T01:00:00.000Z'))
+  assert.equal(stats[0].source, 'axiom-top-traders')
+  assert.equal(tradersFrom(wallets.map(walletAddress => ({ walletAddress, boughtSol: 1 })), mint, 5).length, 0)
 })

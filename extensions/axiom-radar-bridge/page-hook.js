@@ -217,8 +217,15 @@
   const isAxiomApi = url => {
     try {
       const parsed = new URL(url, location.href)
-      return parsed.hostname.endsWith('axiom.trade') && (marketPaths.has(parsed.pathname) || /^\/(holder|top-?trader)/i.test(parsed.pathname))
+      return parsed.hostname.endsWith('axiom.trade') && (marketPaths.has(parsed.pathname) || /holder|top-?trader/i.test(parsed.pathname))
     } catch { return false }
+  }
+  const notePath = url => {
+    try {
+      const parsed = new URL(url, location.href)
+      if (!parsed.hostname.endsWith('axiom.trade') || parsed.hostname === location.hostname || /\.(js|css|png|jpe?g|webp|svg|woff2?|ico)$/i.test(parsed.pathname)) return
+      window.postMessage({ source: 'axiom-radar-bridge-path', path: parsed.pathname.replace(/[1-9A-HJ-NP-Za-km-z]{32,44}/g, ':address').replace(/\/\d{3,}/g, '/:n').slice(0, 100) }, window.location.origin)
+    } catch { }
   }
   const shareApi = (url, status, body) => {
     if (typeof body !== 'string' || body.length > 400000) return
@@ -231,6 +238,7 @@
     const radarFetch = function (input, init) {
       const result = nativeFetch.call(window, input, init)
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url
+      if (url) notePath(url)
       if (url && isAxiomApi(url)) {
         result.then(response => {
           if (!/json|text/i.test(response.headers.get('content-type') ?? '')) return
@@ -255,6 +263,7 @@
   if (NativeXhr && !NativeXhr.prototype.axiomRadarWrapped) {
     const nativeOpen = NativeXhr.prototype.open
     NativeXhr.prototype.open = function (method, url, ...rest) {
+      notePath(String(url))
       if (isAxiomApi(String(url))) {
         this.addEventListener('load', () => {
           try {

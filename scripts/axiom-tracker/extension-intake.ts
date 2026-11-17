@@ -13,7 +13,7 @@ import { notePulseFlow, pulseIdentity } from './pulse-market.js'
 import { applyPulseFeed, pulseFeedSchema, pulseFeedSeen } from './pulse-feed.js'
 import { watchlistResult, watchlistStatus } from './watchlist.js'
 import { needsPageRead, pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
-import { capturedApiSchema, capturedStreamSchema, captureNote, storeCapture } from './axiom-capture.js'
+import { capturedApiSchema, capturedStreamSchema, capturedTabsSchema, captureNote, storeCapture } from './axiom-capture.js'
 import { applyAxiomLists, applyDiscoverPage, axiomListNote, axiomListsSchema, discoverNote, discoverPageSchema, discoverProbeSchema, noteDiscoverProbe } from './axiom-lists.js'
 
 const logger = createLogger('extension-intake')
@@ -49,6 +49,7 @@ const report = z.object({
   discover: discoverPageSchema.optional(),
   api: z.array(capturedApiSchema).max(30).optional(),
   streams: z.array(capturedStreamSchema).max(400).optional(),
+  tabs: capturedTabsSchema.optional(),
 }).strict()
 
 export type ExtensionReport = z.input<typeof report>
