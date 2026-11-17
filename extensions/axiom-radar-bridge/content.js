@@ -1,5 +1,6 @@
 const frames = []
 const apiAnswers = []
+let pollStats = null
 const streamFrames = []
 let pulseFeed = null
 let listFeed = null
@@ -15,6 +16,10 @@ window.addEventListener('message', event => {
   if (event.data?.source === 'axiom-radar-bridge' && typeof event.data.frame === 'string') {
     frames.push(event.data.frame)
     if (frames.length > 400) frames.splice(0, frames.length - 400)
+  }
+  if (event.data?.source === 'axiom-radar-bridge-poll-stats') {
+    const number = value => Math.max(0, Math.min(1e9, Math.round(Number(value) || 0)))
+    pollStats = { sent: number(event.data.sent), ok: number(event.data.ok), failed: number(event.data.failed), status: Math.max(-1, Math.min(999, Math.round(Number(event.data.status) || 0))), mints: number(event.data.mints), hidden: event.data.hidden === true }
   }
   if (event.data?.source === 'axiom-radar-bridge-api' && typeof event.data.body === 'string') {
     apiAnswers.push({ url: String(event.data.url).slice(0, 600), status: Number(event.data.status) || 0, body: event.data.body, ...(event.data.poll === true ? { poll: true } : {}) })
@@ -541,11 +546,13 @@ function report() {
   }
   const tabs = tabsFound && tabsFound.pairAddress === pairAddress ? { ...(tabsFound.holders ? { holders: tabsFound.holders } : {}), ...(tabsFound.traders ? { traders: tabsFound.traders } : {}) } : null
   tabsFound = null
-  if (!pairAddress && !batch.length && !cards.length && !pulse && !api.length && !streams.length && !lists.length && !probe) return
+  const poll = pollStats
+  pollStats = null
+  if (!pairAddress && !batch.length && !cards.length && !pulse && !api.length && !streams.length && !lists.length && !probe && !poll) return
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
   const stats = pairAddress ? pageStats() : null
   try {
-    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}), ...(discover ? { discover } : {}), ...(digest ? { digest } : {}), ...(tabs ? { tabs } : {}) } }).catch(() => undefined)
+    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}), ...(discover ? { discover } : {}), ...(digest ? { digest } : {}), ...(tabs ? { tabs } : {}), ...(poll ? { poll } : {}) } }).catch(() => undefined)
   } catch {
     stopReporting()
   }

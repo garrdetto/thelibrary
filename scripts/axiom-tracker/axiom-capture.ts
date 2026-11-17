@@ -193,6 +193,21 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
 }
 
 /** The heartbeat line: how much the bridge captured in the last interval and the busiest paths. */
+export const pollStatsSchema = z.object({ sent: z.number().int().min(0), ok: z.number().int().min(0), failed: z.number().int().min(0), status: z.number().int().min(-1).max(999), mints: z.number().int().min(0).max(1000), hidden: z.boolean() }).strict()
+let lastPoll: (z.infer<typeof pollStatsSchema> & { at: number }) | null = null
+
+/** Keeps the Pulse tab's latest poll counters for the status line. */
+export function notePollStats(stats: z.infer<typeof pollStatsSchema>, now = Date.now()) {
+  lastPoll = { ...stats, at: now }
+}
+
+/** Describes the Pulse tab's trade polling, or why it is not running. */
+export function pollNote(now = Date.now()) {
+  if (!lastPoll || now - lastPoll.at > 120_000) return 'Pulse tab trade polling: no word from the tab'
+  const status = lastPoll.status === -1 ? 'network error' : `HTTP ${lastPoll.status}`
+  return `Pulse tab trade polling: ${lastPoll.ok} of ${lastPoll.sent} feed reads ok, ${lastPoll.failed} failed (last ${status}), ${lastPoll.mints} coins${lastPoll.hidden ? ', tab in background' : ''}`
+}
+
 export function captureNote() {
   const busiest = [...captureStats.paths].sort((first, second) => second[1] - first[1]).slice(0, 4).map(([path, count]) => `${path} ×${count}`).join(', ')
   const top = (paths: Map<string, number>) => [...paths].sort((first, second) => second[1] - first[1]).slice(0, 5).map(([path]) => path).join(' ') || 'nothing'

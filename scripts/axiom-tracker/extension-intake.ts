@@ -13,7 +13,7 @@ import { notePulseFlow, pulseIdentity } from './pulse-market.js'
 import { applyPulseFeed, pulseFeedSchema, pulseFeedSeen } from './pulse-feed.js'
 import { watchlistResult, watchlistStatus } from './watchlist.js'
 import { needsPageRead, pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
-import { capturedApiSchema, capturedStreamSchema, capturedTabsSchema, captureNote, storeCapture } from './axiom-capture.js'
+import { capturedApiSchema, capturedStreamSchema, capturedTabsSchema, captureNote, notePollStats, pollNote, pollStatsSchema, storeCapture } from './axiom-capture.js'
 import { applyAxiomLists, applyDiscoverPage, axiomListNote, axiomListsSchema, discoverNote, discoverPageSchema, discoverProbeSchema, noteDiscoverProbe } from './axiom-lists.js'
 
 const logger = createLogger('extension-intake')
@@ -50,6 +50,7 @@ const report = z.object({
   api: z.array(capturedApiSchema).max(30).optional(),
   streams: z.array(capturedStreamSchema).max(400).optional(),
   tabs: capturedTabsSchema.optional(),
+  poll: pollStatsSchema.optional(),
 }).strict()
 
 export type ExtensionReport = z.input<typeof report>
@@ -262,6 +263,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       if (parsed.data.digest) {
         try { keepDiscoverDigest(parsed.data.url, parsed.data.digest, Date.now()) } catch (error) { logger.warn('Keeping the Discover layout report failed', { error: errorMessage(error) }) }
       }
+      if (parsed.data.poll) notePollStats(parsed.data.poll)
       try { storeCapture(database, parsed.data) } catch (error) { logger.warn('Storing captured Axiom data failed', { error: errorMessage(error) }) }
       if (process.env.AXIOM_DEBUG_CARDS === '1') {
         mkdirSync(resolve('data'), { recursive: true })
@@ -281,6 +283,8 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
     recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - pulseFeedSeen.at < 15_000 ? `Reading all ${pulseFeedSeen.count} coins in the Pulse columns${pulseFeedSeen.skipped ? ` (${pulseFeedSeen.skipped} unreadable)` : ''}${lists}${pageStatsNote()}` : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards (update the bridge to 1.7 for every coin in the columns)${lists}${pageStatsNote()}` : lists ? `Reading Discover${lists}; no Pulse cards in the last 15s${pageStatsNote()}` : `No Pulse cards in the last 15s: keep the Axiom Pulse tab visible${pageStatsNote()}`)
     const discover = discoverNote(Date.now())
     recordHeartbeat(database, 'axiom-lists', discover ? 'ok' : 'waiting', discover ?? 'No Discover tab seen in the last 30s (bridge 1.12+ reads the Top and Surge tabs of open Discover pages)')
+    const polling = pollNote()
+    recordHeartbeat(database, 'pulse-poller', polling.includes(' ok, ') && !/ 0 of /.test(polling) ? 'ok' : 'waiting', polling)
     const captured = captureNote()
     recordHeartbeat(database, 'axiom-capture', captured ? 'ok' : 'waiting', captured ? captured.replace(/^; (.)/, (_, first: string) => first.toUpperCase()) : 'Nothing captured from Axiom pages in the last 15s (bridge 1.9+ captures API answers and socket messages on coin pages)')
   }, 15_000)
