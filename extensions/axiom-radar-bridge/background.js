@@ -27,8 +27,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
         body: JSON.stringify(report),
       })
       let response = await send(message.report)
-      if (response.status === 400 && (message.report?.stats || message.report?.pulse || message.report?.api || message.report?.streams || message.report?.lists || message.report?.probe || message.report?.digest)) {
-        const { stats, pulse, api, streams, lists, probe, digest, ...plain } = message.report
+      if (response.status === 400 && (message.report?.stats || message.report?.pulse || message.report?.api || message.report?.streams || message.report?.lists || message.report?.probe || message.report?.digest || message.report?.discover)) {
+        const { stats, pulse, api, streams, lists, probe, digest, discover, ...plain } = message.report
         response = await send(plain)
       }
       const result = await response.json().catch(() => ({}))

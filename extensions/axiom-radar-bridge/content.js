@@ -98,7 +98,9 @@ function eyeCards() {
 }
 
 const listNames = ['trending', 'surge']
-const listLabel = { trending: /^trending$/i, surge: /^surg(e|ing)$/i }
+const listLabel = { trending: /^(top|trending)$/i, surge: /^surg(e|ing)$/i }
+const subTabName = /^(top|trending|surge|surging)$/i
+let subTabCache = { at: 0, tabs: [] }
 const boundedAddress = /(?:^|[^A-Za-z0-9])([1-9A-HJ-NP-Za-km-z]{32,44})(?:[^A-Za-z0-9]|$)/
 let discoverTabCache = { at: 0, list: null, how: '', labels: '' }
 
@@ -153,20 +155,82 @@ function discoverTab() {
   return discoverTabCache
 }
 
-/** The coins drawn in the page's main list: token images grouped by the element their rows share, largest group wins, so a ticker bar or a side panel is not mistaken for the list. */
-function discoverRows() {
+function isMarked(node) {
+  return node.getAttribute('aria-selected') === 'true' || node.getAttribute('aria-pressed') === 'true' || ['page', 'true'].includes(node.getAttribute('aria-current') ?? '') || /^(active|on|selected|checked)$/i.test(node.getAttribute('data-state') ?? '')
+}
+
+/**
+ * The labels in the row of Discover's sub-tabs (Top, Surge, Callouts, ...), each with how it is drawn: weight, size, colours,
+ * underline and class names. Axiom does not mark the selected tab, so the tracker tells it from the others by its look.
+ */
+function subTabs() {
+  const now = Date.now()
+  if (now - subTabCache.at < 2000) return subTabCache.tabs
+  const found = []
+  for (const element of document.querySelectorAll('button, a, [role="tab"], [role="button"], span, p, div')) {
+    if (element.childElementCount > 2) continue
+    const text = (element.textContent ?? '').trim()
+    if (!text || text.length > 16 || /\d/.test(text)) continue
+    const rect = element.getBoundingClientRect()
+    if (!rect.width || !rect.height || rect.top < 0 || rect.top > 460) continue
+    found.push({ element, text, top: rect.top, left: rect.left, height: rect.height, area: rect.width * rect.height })
+  }
+  const anchors = found.filter(item => subTabName.test(item.text))
+  const byText = new Map()
+  for (const item of found) {
+    if (!anchors.some(anchor => Math.abs(anchor.top - item.top) <= 10)) continue
+    const best = byText.get(item.text)
+    if (!best || item.area < best.area) byText.set(item.text, item)
+  }
+  const tabs = [...byText.values()].sort((first, second) => first.left - second.left).slice(0, 12).map(item => {
+    const holder = item.element.closest('button, a, [role="tab"], [role="button"]') ?? item.element
+    const style = getComputedStyle(item.element)
+    const around = getComputedStyle(holder)
+    return {
+      text: item.text.slice(0, 24),
+      top: Math.round(item.top),
+      left: Math.round(item.left),
+      height: Math.round(item.height),
+      marked: [holder, item.element].some(isMarked),
+      look: [style.fontWeight, style.fontSize, style.color, style.opacity, style.textDecorationLine, around.backgroundColor, around.borderBottomColor, around.borderBottomWidth, around.color].join('|').slice(0, 240),
+      classes: (typeof holder.className === 'string' ? holder.className : '').slice(0, 200),
+    }
+  })
+  subTabCache = { at: now, tabs }
+  return tabs
+}
+
+/**
+ * The coins drawn in the page's main list, each with its viewer count when the card shows one. A card is the largest
+ * element around a token image that holds no other coin's image; cards are grouped by the element they share and the
+ * largest group wins, so a ticker bar or a side panel is not mistaken for the list. Images above `minTop` are ignored.
+ */
+function discoverRows(minTop = 0) {
+  const mintOf = image => (image.getAttribute('src') ?? '').match(boundedAddress)?.[1] ?? null
   const groups = new Map()
   for (const image of document.querySelectorAll('img[src]')) {
-    const match = (image.getAttribute('src') ?? '').match(boundedAddress)
-    if (!match) continue
-    const row = image.closest('a[href*="/meme/"], tr, [role="row"], li') ?? image.parentElement?.parentElement
-    const parent = row?.parentElement
-    if (!parent) continue
-    const link = row.matches?.('a[href*="/meme/"]') ? row : row.querySelector?.('a[href*="/meme/"]')
+    const mint = mintOf(image)
+    if (!mint) continue
+    let card = image
+    for (let depth = 0; depth < 16 && card.parentElement; depth++) {
+      const mints = new Set()
+      for (const other of card.parentElement.querySelectorAll('img[src]')) {
+        const found = mintOf(other)
+        if (found) mints.add(found)
+        if (mints.size > 1) break
+      }
+      if (mints.size > 1) break
+      card = card.parentElement
+    }
+    const container = card.parentElement
+    if (!container || card.getBoundingClientRect().top < minTop) continue
+    const link = card.matches?.('a[href*="/meme/"]') ? card : card.querySelector?.('a[href*="/meme/"]')
     const pair = link?.getAttribute('href')?.match(/\/meme\/([1-9A-HJ-NP-Za-km-z]{32,44})/)?.[1] ?? null
-    const coins = groups.get(parent) ?? new Map()
-    if (!coins.has(match[1])) coins.set(match[1], { tokenAddress: match[1], ...(pair ? { pairAddress: pair } : {}) })
-    groups.set(parent, coins)
+    const eye = card.querySelector?.('i.ri-eye-line')
+    const viewers = eye ? parseCompactNumber((eye.parentElement?.innerText ?? '').trim()) : null
+    const coins = groups.get(container) ?? new Map()
+    if (!coins.has(mint)) coins.set(mint, { tokenAddress: mint, ...(pair ? { pairAddress: pair } : {}), ...(viewers !== null ? { userCount: viewers } : {}) })
+    groups.set(container, coins)
   }
   let best = null
   for (const coins of groups.values()) if (!best || coins.size > best.size) best = coins
@@ -194,11 +258,12 @@ function buildLists(sources, tab, drawn) {
 
 function listReport() {
   const sources = listFeed && Date.now() - listFeed.at < 5000 ? listFeed.sources : []
-  if (!onDiscoverPage()) return { lists: buildLists(sources, { list: null }, []), probe: null }
+  if (!onDiscoverPage()) return { lists: buildLists(sources, { list: null }, []), probe: null, discover: null }
   const tab = discoverTab()
-  const drawn = discoverRows()
+  const tabs = subTabs()
+  const drawn = discoverRows(tabs.length ? Math.min(...tabs.map(item => item.top)) : 0)
   const probe = { page: location.pathname.slice(0, 120), tab: tab.list, how: tab.how.slice(0, 40), labels: tab.labels.slice(0, 200), sources: sources.map(source => `${source.kind}:${source.name}=${source.rows.length}`).join('; ').slice(0, 800), drawn: drawn.length }
-  return { lists: buildLists(sources, tab, drawn), probe }
+  return { lists: buildLists(sources, tabs.length ? { list: null } : tab, drawn), probe, discover: { tabs, coins: drawn } }
 }
 
 /**
@@ -228,12 +293,12 @@ function pageDigest() {
   const sample = rows[Math.min(2, rows.length - 1)] ?? null
   const layout = row => [row, ...row.querySelectorAll('*')].slice(0, 45).map(node => `${node.tagName.toLowerCase()}${Array.from(node.attributes).filter(attribute => attribute.name !== 'class' && attribute.name !== 'style').slice(0, 6).map(attribute => `[${attribute.name}${attribute.value.search(anyAddress) >= 0 ? `=${shapeOfUrl(attribute.value)}` : ''}]`).join('')}`).join(' ').slice(0, 1500)
   const feeds = []
-  let budget = 45000
+  let budget = 60000
   for (const entry of digestFeed?.entries ?? []) {
     const size = String(entry.key).length + String(entry.shape).length
     if (size > budget) break
     budget -= size
-    feeds.push({ key: String(entry.key).slice(0, 200), shape: String(entry.shape).slice(0, 1800), count: Number(entry.count) || 0 })
+    feeds.push({ key: String(entry.key).slice(0, 200), shape: String(entry.shape).slice(0, 4000), count: Number(entry.count) || 0 })
   }
   return {
     address: `${location.pathname}${location.search}`.slice(0, 200),
@@ -244,6 +309,7 @@ function pageDigest() {
     headings: Array.from(document.querySelectorAll('h1, h2, h3, th, [role="columnheader"]'), node => (node.textContent ?? '').trim().slice(0, 30)).filter(Boolean).slice(0, 30),
     rowText: sample ? (sample.innerText ?? '').split('\n').map(line => line.trim()).filter(Boolean).slice(0, 16).map(line => line.slice(0, 40)) : [],
     rowLayout: sample ? layout(sample) : '',
+    tabs: subTabs(),
     feeds,
   }
 }
@@ -388,7 +454,7 @@ function report() {
   while (streamFrames.length && streams.length < 400 && streamBytes + streamFrames[0].text.length <= 2000000) { streamBytes += streamFrames[0].text.length; streams.push(streamFrames.shift()) }
   const cards = pairAddress ? [] : eyeCards()
   const pulse = !pairAddress && pulseFeed && Date.now() - pulseFeed.at < 5000 ? pulseFeed : null
-  const { lists, probe } = pairAddress ? { lists: [], probe: null } : listReport()
+  const { lists, probe, discover } = pairAddress ? { lists: [], probe: null, discover: null } : listReport()
   let digest = null
   if (!pairAddress && onDiscoverPage() && Date.now() - pageDigestAt >= 10000) {
     pageDigestAt = Date.now()
@@ -398,7 +464,7 @@ function report() {
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
   const stats = pairAddress ? pageStats() : null
   try {
-    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}), ...(digest ? { digest } : {}) } }).catch(() => undefined)
+    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards, ...(stats ? { stats } : {}), ...(pulse ? { pulse: { usdPerSol: pulse.usdPerSol, rows: pulse.rows } } : {}), ...(api.length ? { api } : {}), ...(streams.length ? { streams } : {}), ...(lists.length ? { lists } : {}), ...(probe ? { probe } : {}), ...(discover ? { discover } : {}), ...(digest ? { digest } : {}) } }).catch(() => undefined)
   } catch {
     stopReporting()
   }
