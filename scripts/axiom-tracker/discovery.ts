@@ -7,13 +7,14 @@ import { radarSettings } from './settings-store.js'
 import { applyPulseMarket, noteDexMarket, pairFromPulse } from './pulse-market.js'
 import { safetyLevel } from './model.js'
 import { scoreDex } from './dex-score.js'
+import { axiomListMints } from './axiom-lists.js'
 import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
 
 const logger = createLogger('discovery')
 const watchlistLimit = 400
 const watchlistTtlMs = 6 * 60 * 60_000
 const pulseWindowMs = 3 * 60_000
-/** The site takes at most 300 coins per update; Pulse coins come first, then the best of the rest. */
+/** The site takes at most 300 coins per update; Pulse, Trending and Surge coins come first, then the best of the rest. */
 export const trackedLimit = 300
 
 export function passesMarketRequirements(pair: DexPair, settings: RadarSettings) {
@@ -92,11 +93,13 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
     if (now - seenAt > pulseWindowMs) trackerState.pulse.delete(mint)
     else if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
   }
+  const listed = new Set(axiomListMints(now))
+  for (const mint of listed) if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
   const settings = radarSettings()
   const pinned = new Set(settings.pinned)
   for (const mint of pinned) if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
-  for (const [mint, firstSeen] of trackerState.watchlist) if (now - firstSeen > watchlistTtlMs && !pinned.has(mint) && !trackerState.pulse.has(mint)) trackerState.watchlist.delete(mint)
-  const watched = [...new Set([...pinned, ...trackerState.pulse.keys(), ...[...trackerState.watchlist.entries()].sort((first, second) => second[1] - first[1]).map(([mint]) => mint)])].slice(0, watchlistLimit)
+  for (const [mint, firstSeen] of trackerState.watchlist) if (now - firstSeen > watchlistTtlMs && !pinned.has(mint) && !trackerState.pulse.has(mint) && !listed.has(mint)) trackerState.watchlist.delete(mint)
+  const watched = [...new Set([...pinned, ...trackerState.pulse.keys(), ...listed, ...[...trackerState.watchlist.entries()].sort((first, second) => second[1] - first[1]).map(([mint]) => mint)])].slice(0, watchlistLimit)
 
   const best = bestPairByMint(await fetchPairsForMints(watched, trackerConfig.discoveryIntervalMs))
   let fromCards = 0
@@ -112,7 +115,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   for (const [mint, pair] of best) {
     if (pinned.has(mint)) { eligible.push(pair); continue }
     const onPulse = trackerState.pulse.has(mint)
-    if (onPulse) { eligible.push(pair); continue }
+    if (onPulse || listed.has(mint)) { eligible.push(pair); continue }
     if (activeBotClimb(mint, now)) continue
     if (pair.pairCreatedAt && now - pair.pairCreatedAt > maxAgeMs) continue
     if (!(onPulse && settings.pulseBypassesMarket) && !passesMarketRequirements(pair, settings)) continue
@@ -132,10 +135,11 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   const sorted = eligible
     .map(pair => ({ pair, momentum: momentumOf(pair, now), dexRank: dexRankOf(pair) }))
     .sort((first, second) => Number(pinned.has(second.pair.baseToken.address)) - Number(pinned.has(first.pair.baseToken.address)) || viewerCount(second.pair.baseToken.address) - viewerCount(first.pair.baseToken.address) || (second.momentum + second.dexRank * 0.5) - (first.momentum + first.dexRank * 0.5))
-  const kept = (entry: (typeof sorted)[number]) => pinned.has(entry.pair.baseToken.address) || trackerState.pulse.has(entry.pair.baseToken.address)
+  const kept = (entry: (typeof sorted)[number]) => pinned.has(entry.pair.baseToken.address) || trackerState.pulse.has(entry.pair.baseToken.address) || listed.has(entry.pair.baseToken.address)
   const always = sorted.filter(kept)
   const ranked = [...always, ...sorted.filter(entry => !kept(entry)).slice(0, Math.max(0, settings.maxCoins - always.length))].slice(0, trackedLimit)
   const fromPulse = ranked.filter(entry => trackerState.pulse.has(entry.pair.baseToken.address))
+  const fromLists = ranked.filter(entry => listed.has(entry.pair.baseToken.address))
 
   upsertTokens(database, ranked.map(entry => entry.pair), sources.boosted, now)
   trackerState.active = ranked.map(({ pair, momentum }) => ({ mint: pair.baseToken.address, pairAddress: pair.pairAddress, symbol: pair.baseToken.symbol ?? '???', momentum }))
@@ -147,7 +151,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   }
   for (const mint of trackerState.market.keys()) if (!ranked.some(entry => entry.pair.baseToken.address === mint)) trackerState.market.delete(mint)
 
-  recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} tracked of ${best.size} coins checked, ${fromPulse.length} of ${trackerState.pulse.size} Pulse coins${fromCards ? ` (${fromCards} followed from their cards until DexScreener lists them)` : ''}`)
+  recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} tracked of ${best.size} coins checked, ${fromPulse.length} of ${trackerState.pulse.size} Pulse coins${listed.size ? `, ${fromLists.length} of ${listed.size} Trending and Surge coins` : ''}${fromCards ? ` (${fromCards} followed from their cards until DexScreener lists them)` : ''}`)
   logger.info('Discovery cycle complete', { sourced: sources.mints.length, fromJupiter: jupiterMints.length, botClimbsSkipped: trackerState.botClimbs.size, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, fromCards, onPulse: trackerState.pulse.size, active: trackerState.active.length, sourceFailures: sources.failures })
 }
 

@@ -21,6 +21,7 @@ import { rankHolderWallets } from './wallet-ranking.js'
 import { walletScoreFor } from './wallet-score.js'
 import { earlyStart, stretchAboveLow, withEarlyGate } from './early-start.js'
 import { earlyState } from './early-state.js'
+import { axiomListsOf } from './axiom-lists.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -545,6 +546,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     alerts: [],
     pinned: settings.pinned.includes(token.mint),
     onPulse: trackerState.pulse.has(token.mint),
+    axiomLists: axiomListsOf(token.mint, now),
     safetyPlan: runner.safetyPlan,
     runnerTags: runner.tags,
     runnerThesis: runner.thesis,
@@ -607,7 +609,7 @@ function buildRadarTokensNow(database: TrackerDatabase, weights: RadarWeights, n
   const finished = finalize(entries, settings)
   for (const token of finished) if (token.scoreLedger) token.scoreTrail = recordScore(token.mint, now, token.scoreLedger)
   forgetScoreTrails(now)
-  return finished.filter(token => !token.botClimb || token.pinned || token.onPulse).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
+  return finished.filter(token => !token.botClimb || token.pinned || token.onPulse || Boolean(token.axiomLists?.length)).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
 }
 
 const returnOf = (price: number | null, entry: number) => price === null || entry <= 0 ? null : price / entry - 1

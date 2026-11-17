@@ -1,5 +1,5 @@
 (() => {
-  if (location.pathname.startsWith('/pulse') || location.pathname.startsWith('/meme/') || location.pathname.startsWith('/token/')) {
+  if (location.pathname.startsWith('/pulse') || location.pathname.startsWith('/discover') || location.pathname.startsWith('/meme/') || location.pathname.startsWith('/token/')) {
     try {
       Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get: () => false })
       Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get: () => 'visible' })
@@ -32,9 +32,68 @@
     }
     return row
   }
+  const onDiscover = () => location.pathname.startsWith('/discover')
+  const address = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
+  const listFields = ['tokenAddress', 'pairAddress', 'tokenTicker', 'tokenName', 'userCount']
+  const listSources = new Map()
+  const isCoinRow = item => Boolean(item) && typeof item === 'object' && typeof item.pairAddress === 'string' && address.test(item.pairAddress) && typeof item.tokenAddress === 'string' && address.test(item.tokenAddress)
+  const listRow = item => {
+    const row = {}
+    for (const key of listFields) {
+      const value = item[key]
+      if (typeof value === 'string' ? value.length <= 120 : typeof value === 'number' && Number.isFinite(value)) row[key] = value
+    }
+    return row
+  }
+  const sourceFor = (kind, name) => {
+    const key = `${kind}:${name}`
+    let source = listSources.get(key)
+    if (!source) {
+      if (listSources.size >= 24) {
+        const oldest = [...listSources.entries()].sort((first, second) => first[1].at - second[1].at)[0]
+        if (oldest) listSources.delete(oldest[0])
+      }
+      source = { kind, name: String(name).slice(0, 160), rows: new Map(), at: 0 }
+      listSources.set(key, source)
+    }
+    return source
+  }
+  const coinRowsIn = value => {
+    const arrays = Array.isArray(value) ? [value] : value && typeof value === 'object' ? Object.values(value).filter(Array.isArray) : []
+    if (value && typeof value === 'object' && !Array.isArray(value)) for (const inner of Object.values(value)) if (inner && typeof inner === 'object' && !Array.isArray(inner)) arrays.push(...Object.values(inner).filter(Array.isArray))
+    return arrays.find(list => list.length >= 3 && list.slice(0, 5).every(isCoinRow)) ?? null
+  }
+  const noteCoinList = (kind, name, body) => {
+    if (typeof body !== 'string' || body.length > 3000000 || !body.includes('"pairAddress"') || !body.includes('"tokenAddress"')) return
+    let parsed
+    try { parsed = JSON.parse(body) } catch { return }
+    const rows = coinRowsIn(parsed)
+    if (!rows) return
+    const source = sourceFor(kind, name)
+    source.rows = new Map(rows.filter(isCoinRow).slice(0, 300).map(item => [item.pairAddress, listRow(item)]))
+    source.at = Date.now()
+  }
+  const applyListOperations = message => {
+    if (typeof message.table !== 'string' || !Array.isArray(message.operations)) return
+    let source = listSources.get(`table:${message.table}`) ?? null
+    for (const op of message.operations) {
+      if (!op || typeof op !== 'object') continue
+      if (Array.isArray(op.items)) {
+        if (!op.items.some(isCoinRow)) continue
+        source = source ?? sourceFor('table', message.table)
+        source.rows = new Map(op.items.filter(isCoinRow).slice(0, 400).map(item => [item.pairAddress, listRow(item)]))
+      } else if (isCoinRow(op.item)) {
+        source = source ?? sourceFor('table', message.table)
+        if (source.rows.size < 400 || source.rows.has(op.item.pairAddress)) source.rows.set(op.item.pairAddress, listRow(op.item))
+      } else if (source && op.type === 'remove' && op.pairAddress) source.rows.delete(op.pairAddress)
+      else if (source && op.pairAddress && op.set && source.rows.has(op.pairAddress)) Object.assign(source.rows.get(op.pairAddress), listRow(op.set))
+    }
+    if (source) source.at = Date.now()
+  }
   const applyPulseOperations = message => {
-    const table = pulseTables[message.table]
-    if (!table || !Array.isArray(message.operations)) return
+    const table = Object.hasOwn(pulseTables, message.table) ? pulseTables[message.table] : null
+    if (!table) return applyListOperations(message)
+    if (!Array.isArray(message.operations)) return
     for (const op of message.operations) {
       if (!op || typeof op !== 'object') continue
       if (Array.isArray(op.items)) {
@@ -62,7 +121,7 @@
     }
     function RadarWorker(url, ...rest) {
       const worker = new NativeWorker(url, ...rest)
-      if (/PulseWorker/i.test(String(url))) watchPulseWorker(worker)
+      watchPulseWorker(worker)
       return worker
     }
     RadarWorker.prototype = NativeWorker.prototype
@@ -75,6 +134,18 @@
     for (const [column, table] of Object.entries(pulseTables)) for (const row of table.values()) if (row.tokenAddress) rows.push({ ...row, column })
     window.postMessage({ source: 'axiom-radar-bridge-pulse', usdPerSol, rows: rows.slice(0, 300), at: Date.now() }, window.location.origin)
   }, 1000)
+  setInterval(() => {
+    const now = Date.now()
+    const sources = []
+    for (const source of listSources.values()) if (now - source.at <= 60000 && source.rows.size) sources.push({ kind: source.kind, name: source.name, at: source.at, rows: [...source.rows.values()].slice(0, 300) })
+    if (sources.length) window.postMessage({ source: 'axiom-radar-bridge-lists', sources, at: now }, window.location.origin)
+  }, 1000)
+  const listName = url => {
+    try {
+      const parsed = new URL(url, location.href)
+      return parsed.hostname.endsWith('axiom.trade') ? `${parsed.pathname}${parsed.search}`.slice(0, 160) : null
+    } catch { return null }
+  }
   const marketPaths = new Set(['/transactions-feed', '/transactions-feed-trader-info', '/transactions-from-traders', '/trader-details-v2', '/sniper-transactions', '/token-info-v2', '/token-and-best-pair-info', '/token-stats', '/dev-tokens', '/dev-transfers', '/reused-image-tokens', '/similar-tokens', '/dex-paid', '/shareholder-claims', '/lighthouse', '/volume-overview', '/pool-state'])
   const isAxiomApi = url => {
     try {
@@ -98,6 +169,11 @@
           if (!/json|text/i.test(response.headers.get('content-type') ?? '')) return
           response.clone().text().then(body => shareApi(response.url || url, response.status, body)).catch(() => undefined)
         }).catch(() => undefined)
+      } else if (url && onDiscover() && listName(url)) {
+        result.then(response => {
+          if (!response.ok || !/json/i.test(response.headers.get('content-type') ?? '')) return
+          response.clone().text().then(body => noteCoinList('api', listName(response.url || url) ?? listName(url), body)).catch(() => undefined)
+        }).catch(() => undefined)
       }
       return result
     }
@@ -113,6 +189,14 @@
           try {
             const body = this.responseType === '' || this.responseType === 'text' ? this.responseText : this.responseType === 'json' ? JSON.stringify(this.response) : null
             shareApi(this.responseURL || url, this.status, body)
+          } catch { }
+        })
+      } else if (onDiscover() && listName(String(url))) {
+        this.addEventListener('load', () => {
+          try {
+            if (this.status < 200 || this.status >= 300) return
+            const body = this.responseType === '' || this.responseType === 'text' ? this.responseText : this.responseType === 'json' ? JSON.stringify(this.response) : null
+            noteCoinList('api', listName(this.responseURL || String(url)) ?? listName(String(url)), body)
           } catch { }
         })
       }
@@ -137,6 +221,12 @@
     if (typeof data === 'string') {
       remember(url, 'text', data)
       forward(data, url)
+      if (onDiscover()) {
+        try {
+          const room = data.slice(0, 600).match(/"(?:room|channel|event|type)"\s*:\s*"([^"]{1,60})"/)
+          noteCoinList('socket', `${new URL(url).hostname}${room ? `/${room[1]}` : ''}`, data)
+        } catch { }
+      }
       return
     }
     if (data instanceof ArrayBuffer) {
