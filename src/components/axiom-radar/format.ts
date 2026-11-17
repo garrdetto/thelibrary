@@ -74,5 +74,4 @@ export function relativeSeconds(timestamp: number | null, now: number) {
 export const axiomUrl = (pairAddress: string) => `https://axiom.trade/meme/${pairAddress}`
 export const dexScreenerUrl = (pairAddress: string) => `https://dexscreener.com/solana/${pairAddress}`
 export const dexScreenerEmbedUrl = (pairAddress: string) => `https://dexscreener.com/solana/${pairAddress}?embed=1&theme=dark&trades=0&info=0`
-export const rugCheckUrl = (mint: string) => `https://rugcheck.xyz/tokens/${mint}`
 export const solscanAccountUrl = (address: string) => `https://solscan.io/account/${address}`

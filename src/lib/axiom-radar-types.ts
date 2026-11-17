@@ -28,7 +28,7 @@ export type RadarHistoryPoint = { t: number; viewers: number | null; marketCap: 
 
 export type RadarSocials = { twitter: string | null; telegram: string | null; website: string | null }
 
-export type RadarHolderTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; proTraders?: number | null; holders: number | null; rugged: boolean; checkedAt: number | null }
+export type RadarHolderTraits = { top10: number | null; dev: number | null; snipers: number | null; insiders: number | null; bundlers: number | null; linked: number | null; fresh?: number | null; proTraders?: number | null; holders: number | null; checkedAt: number | null }
 
 export type RadarHolderRisk = { blocked: boolean; multiplier: number; reasons: string[] }
 
@@ -147,7 +147,6 @@ export type RadarToken = {
   buyRatio: number | null
   safety: {
     level: RadarSafetyLevel
-    rugScore: number | null
     mintAuthority: boolean | null
     freezeAuthority: boolean | null
     top10Pct: number | null

@@ -122,6 +122,13 @@ export function initializeTrackerSchema(database: TrackerDatabase) {
   for (const [name, type] of [['holders_total', 'INTEGER'], ['dev_pct', 'REAL'], ['insider_pct', 'REAL'], ['rugged', 'INTEGER'], ['traits_checked_at', 'INTEGER'], ['fresh_pct', 'REAL'], ['fresh_checked_at', 'INTEGER'], ['links_json', 'TEXT'], ['graduated', 'INTEGER'], ['dex_paid', 'INTEGER'], ['dex_paid_checked_at', 'INTEGER']]) {
     if (!columns.has(name)) database.exec(`ALTER TABLE tokens ADD COLUMN ${name} ${type}`)
   }
+  database.exec('CREATE TABLE IF NOT EXISTS tracker_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)')
+  if (!database.prepare("SELECT 1 FROM tracker_migrations WHERE name = 'drop-rugcheck'").get()) {
+    database.transaction(() => {
+      database.exec('UPDATE tokens SET rug_score = NULL, rugged = NULL, dev_pct = NULL, insider_pct = NULL, top10_pct = NULL')
+      database.prepare("INSERT INTO tracker_migrations (name, applied_at) VALUES ('drop-rugcheck', ?)").run(Date.now())
+    })()
+  }
   const weights = database.prepare('SELECT COUNT(*) AS count FROM model_weights').get() as { count: number }
   if (weights.count === 0) {
     database.prepare('INSERT INTO model_weights (w_viewer_velocity, w_active_viewers, w_runner_wallets, w_buy_pressure, w_safety, win_rate, sample_count, updated_at) VALUES (1, 1, 1, 1, 1, NULL, 0, ?)').run(Date.now())

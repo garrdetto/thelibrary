@@ -62,14 +62,14 @@ type QualityInput = {
   pulse: RadarPulseMetrics | null
   traits?: RadarHolderTraits | null
   marketCap: number | null
-  rugTop10Pct: number | null
+  chainTop10Pct: number | null
   mintAuthority: boolean | null
   freezeAuthority: boolean | null
 }
 
 const band = (value: number, passBelow: number, failAbove: number): RadarQualityCheck['status'] => value <= passBelow ? 'pass' : value > failAbove ? 'fail' : 'warn'
 
-/** A checklist built from the Pulse card and RugCheck, using common trader rules of thumb. Score is the weighted share passed. */
+/** A checklist built from the Pulse card and the Solana node, using common trader rules of thumb. Score is the weighted share passed. */
 export function assessQuality(input: QualityInput) {
   const checks: Array<RadarQualityCheck & { weight: number }> = []
   const pulse = input.pulse

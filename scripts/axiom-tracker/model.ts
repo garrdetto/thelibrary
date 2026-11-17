@@ -10,7 +10,7 @@ export const radarThresholds = {
 
 export const defaultWeights: RadarWeights = { viewerVelocity: 1, activeViewers: 1, runnerWallets: 1, buyPressure: 1, safety: 1 }
 
-export type SafetyInput = { rugScore: number | null; mintAuthority: boolean | null; freezeAuthority: boolean | null; top10Pct: number | null }
+export type SafetyInput = { mintAuthority: boolean | null; freezeAuthority: boolean | null; top10Pct: number | null }
 
 export type ScoreInput = SafetyInput & {
   viewers: number | null
@@ -25,9 +25,8 @@ export type ScoreInput = SafetyInput & {
 const clamp = (value: number, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(minimum, value))
 
 export function safetyFactor(input: SafetyInput) {
-  if (input.rugScore === null && input.mintAuthority === null && input.freezeAuthority === null && input.top10Pct === null) return null
+  if (input.mintAuthority === null && input.freezeAuthority === null && input.top10Pct === null) return null
   let factor = 1
-  if (input.rugScore !== null) factor -= clamp(input.rugScore / 100) * 0.5
   if (input.mintAuthority) factor -= 0.25
   if (input.freezeAuthority) factor -= 0.25
   if (input.top10Pct !== null && input.top10Pct > 30) factor -= clamp((input.top10Pct - 30) / 50) * 0.3

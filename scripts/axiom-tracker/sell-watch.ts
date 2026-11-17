@@ -1,4 +1,4 @@
-/** One reading of a coin's holder shares and price; `source` keeps Pulse-card and RugCheck/Jupiter numbers from being compared with each other. */
+/** One reading of a coin's holder shares and price; `source` keeps Pulse-card and on-chain/Jupiter numbers from being compared with each other. */
 export type ShareReading = { t: number; source: string; top10: number | null; bundlers: number | null; insiders: number | null; dev: number | null; price: number | null }
 
 export type SellState = { readings: ShareReading[]; alerts: Array<{ text: string; until: number; dev: boolean; severe: boolean }> }
@@ -42,7 +42,7 @@ const share = (value: number) => `${value < 1 ? value.toFixed(1) : Math.round(va
 
 /**
  * Watches a coin's holder shares every time they are read (every second while its Pulse card is fresh, every few seconds
- * from RugCheck and Jupiter otherwise) and raises an instant alert when bundlers, the top 10, insiders or the dev start
+ * from the Solana node and Jupiter otherwise) and raises an instant alert when bundlers, the top 10, insiders or the dev start
  * selling. An alert holds for 5 minutes so a gap in the readings does not clear it.
  */
 export function watchSells(mint: string, reading: ShareReading, now = reading.t): SellState['alerts'] {

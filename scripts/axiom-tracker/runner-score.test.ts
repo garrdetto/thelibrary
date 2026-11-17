@@ -33,7 +33,6 @@ function strong(overrides: Partial<RunnerInput> = {}): RunnerInput {
     holders: 360,
     mintAuthority: false,
     freezeAuthority: false,
-    rugged: false,
     devCreated: 3,
     devMigrated: 1,
     recycled: null,
@@ -254,7 +253,7 @@ test('the ledger lists every gate and rule, and its points add up to the score',
     const result = scoreRunner(input)
     const ledger = result.ledger
     assert.equal(ledger.score, result.score)
-    assert.equal(ledger.gates.length, 14)
+    assert.equal(ledger.gates.length, 13)
     assert.equal(ledger.gates.some(gate => gate.status === 'fail'), result.disqualified.length > 0)
     for (const pillar of ledger.pillars) {
       assert.equal(pillar.points, pillar.checks.reduce((total, item) => total + item.points, 0), pillar.key)

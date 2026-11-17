@@ -7,7 +7,7 @@ import { judgeResearch, type VerdictInput } from './research-verdict.js'
 import { stepRise, type RiseState } from './rise-traits.js'
 
 const clean = { top10: 18, fresh: 4, dev: 0, bundlers: 6, insiders: 3, snipers: 2, linked: 1, holders: 420, traders: 140, devCreated: 3, devMigrated: 1 }
-const verdict = (overrides: Partial<VerdictInput> = {}) => judgeResearch({ rise: clean, freshFallback: null, mintAuthority: false, freezeAuthority: false, riskyRugCheck: false, shape: null, earlyHolders: 150, ...overrides })
+const verdict = (overrides: Partial<VerdictInput> = {}) => judgeResearch({ rise: clean, freshFallback: null, mintAuthority: false, freezeAuthority: false, shape: null, earlyHolders: 150, ...overrides })
 
 test('a coin with clean holder numbers before its peak is positive', () => {
   assert.deepEqual(verdict().negatives, [])
