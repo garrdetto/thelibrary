@@ -45,6 +45,8 @@ const cycleMinMs = 4_000
 const cycleMaxMs = 15_000
 const revisitAfterMs = 45_000
 const visitedAt = new Map()
+const tabsOpenedAt = new Map()
+const tabsEveryMs = 10 * 60_000
 let lastStepAt = 0
 let onShow = null
 
@@ -128,7 +130,7 @@ async function stepMissingViewers(pulseTab) {
   const { cycleMissing = true, keepWatchlist = true } = await chrome.storage.local.get(['cycleMissing', 'keepWatchlist'])
   if (!cycleMissing && !keepWatchlist) return
   const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/status`)
-  const { missing = [], stale = [], watchlist = null } = await response.json()
+  const { missing = [], stale = [], visit = [], watchlist = null } = await response.json()
   const job = keepWatchlist ? nextWatchJob(watchlist, now) : null
   if (job) {
     watchTriedAt.set(`${job.action}:${job.mint}`, now)
@@ -141,15 +143,18 @@ async function stepMissingViewers(pulseTab) {
   if (!cycleMissing) return
   const lastVisit = item => visitedAt.get(item.pairAddress) ?? 0
   const waiting = [...missing, ...stale].filter((item, index, all) => item.pairAddress && all.findIndex(other => other.pairAddress === item.pairAddress) === index)
-  const next = waiting.filter(item => now - lastVisit(item) > revisitAfterMs).sort((first, second) => lastVisit(first) - lastVisit(second))[0]
+  const next = waiting.filter(item => now - lastVisit(item) > revisitAfterMs).sort((first, second) => lastVisit(first) - lastVisit(second))[0] ?? visit.find(item => item.pairAddress && now - lastVisit(item) > revisitAfterMs)
   await chrome.storage.local.set({ missingViewers: missing.length })
   if (!next) return
   visitedAt.set(next.pairAddress, now)
   for (const [pairAddress, at] of visitedAt) if (now - at > 60 * 60_000) visitedAt.delete(pairAddress)
   const awaitingFigures = stale.some(item => item.pairAddress === next.pairAddress)
   const tabId = await showInCycler(pulseTab, `https://axiom.trade/meme/${next.pairAddress}`)
-  onShow = { tabId, awaitingFigures, gotFigures: false, awaitingTabs: true }
-  void runTabsJob(tabId).catch(() => undefined)
+  const wantTabs = now - (tabsOpenedAt.get(next.pairAddress) ?? 0) > tabsEveryMs
+  if (wantTabs) tabsOpenedAt.set(next.pairAddress, now)
+  for (const [pairAddress, at] of tabsOpenedAt) if (now - at > 60 * 60_000) tabsOpenedAt.delete(pairAddress)
+  onShow = { tabId, awaitingFigures, gotFigures: false, awaitingTabs: wantTabs }
+  if (wantTabs) void runTabsJob(tabId).catch(() => undefined)
 }
 
 chrome.runtime.onMessage.addListener((message, sender) => {

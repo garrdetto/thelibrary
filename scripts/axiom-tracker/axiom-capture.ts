@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { TrackerDatabase } from './db.js'
-import { mintForPair, readAxiomAnswer, saveHolderList } from './axiom-readers.js'
+import { mintForPair, readAxiomAnswer, saveHolderList, tradePaths } from './axiom-readers.js'
 import { solanaAddressPattern } from './runtime.js'
 
 /**
@@ -166,6 +166,7 @@ export function storeCapture(database: TrackerDatabase, input: { pairAddress: st
       captureStats.api += 1
     }
   })()
+  answers.sort((first, second) => Number(!tradePaths.has(first.path)) - Number(!tradePaths.has(second.path)))
   for (const answer of answers) {
     try {
       const read = readAxiomAnswer(database, answer.path, answer.pair, answer.parsed, now)

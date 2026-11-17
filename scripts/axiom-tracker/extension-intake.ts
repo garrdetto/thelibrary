@@ -56,6 +56,9 @@ export type ExtensionReport = z.input<typeof report>
 
 const siteOrigins = new Set([(process.env.AXIOM_SITE_ORIGIN?.trim() || 'https://thelibrary.garrdetto.workers.dev').replace(/\/$/, ''), 'http://localhost:3000'])
 const liveIntervalMs = 1_000
+const coinPageVisits = new Map<string, number>()
+const coinRevisitMs = 4 * 60_000
+const visitListSize = 40
 
 function localHost(request: IncomingMessage) {
   const host = (request.headers.host ?? '').split(':')[0]
@@ -231,7 +234,10 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
         for (const [mint, stats] of trackerState.pageStats) if (now - stats.seenAt > pageStatsKeptMs) trackerState.pageStats.delete(mint)
         let watchlist: ReturnType<typeof watchlistStatus> | null = null
         try { watchlist = watchlistStatus(database, now) } catch (error) { logger.warn('Watchlist plan failed', { error: errorMessage(error) }) }
-        return send(response, 200, { ok: true, tracked, missing, stale, watchlist })
+        for (const [address, at] of coinPageVisits) if (now - at > 60 * 60_000) coinPageVisits.delete(address)
+        const visitedAt = (candidate: { mint: string; pairAddress: string | null }) => Math.max(coinPageVisits.get(candidate.mint) ?? 0, candidate.pairAddress ? coinPageVisits.get(candidate.pairAddress) ?? 0 : 0)
+        const visit = tracked.slice(0, visitListSize).filter(candidate => candidate.pairAddress && now - visitedAt(candidate) > coinRevisitMs).sort((first, second) => visitedAt(first) - visitedAt(second))
+        return send(response, 200, { ok: true, tracked, missing, stale, visit, watchlist })
       }
       if (request.method === 'POST' && url.pathname === '/extension/watchlist') {
         const parsed = watchlistReport.safeParse(JSON.parse(await readBody(request)))
@@ -252,6 +258,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       const parsed = report.safeParse(JSON.parse(await readBody(request)))
       if (!parsed.success) return send(response, 400, { error: 'Report could not be read.' })
       const matched = applyExtensionReport(database, parsed.data)
+      if (parsed.data.pairAddress) coinPageVisits.set(parsed.data.pairAddress, Date.now())
       if (parsed.data.digest) {
         try { keepDiscoverDigest(parsed.data.url, parsed.data.digest, Date.now()) } catch (error) { logger.warn('Keeping the Discover layout report failed', { error: errorMessage(error) }) }
       }

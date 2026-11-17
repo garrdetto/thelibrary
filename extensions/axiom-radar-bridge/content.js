@@ -396,13 +396,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true
 })
 
-const tabPattern = { holders: /^holders?\s*(\(?\s*[\d.,]+\s*[kKmM]?\s*\)?)?$/i, traders: /^top\s*traders?$/i, trades: /^trades$/i }
+const tabPattern = { holders: /^holders?\s*\(\s*[\d.,]+\s*[kKmM]?\s*\)$/i, traders: /^top\s*traders?$/i, trades: /^trades$/i }
 
 /** The tab in the coin page's lower panel whose label matches: the smallest visible clickable element with that text. */
 function panelTab(name) {
   let best = null
-  for (const element of document.querySelectorAll('button, [role="tab"], a, div, span, p')) {
-    if (element.childElementCount > 3) continue
+  for (const element of document.querySelectorAll('button, [role="tab"]')) {
     const text = (element.textContent ?? '').trim().replace(/\s+/g, ' ')
     if (!text || text.length > 24 || !tabPattern[name].test(text)) continue
     const rect = element.getBoundingClientRect()
