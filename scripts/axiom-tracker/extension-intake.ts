@@ -45,6 +45,7 @@ const report = z.object({
   pulse: pulseFeedSchema.optional(),
   lists: axiomListsSchema.optional(),
   probe: discoverProbeSchema.optional(),
+  digest: z.string().max(80_000).optional(),
   api: z.array(capturedApiSchema).max(30).optional(),
   streams: z.array(capturedStreamSchema).max(400).optional(),
 }).strict()
@@ -163,6 +164,31 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
   return counts.size
 }
 
+const discoverDigests = new Map<string, { url: string; at: number; digest: unknown }>()
+let digestWrittenAt = 0
+
+/**
+ * Keeps the layout report each Discover tab sends (labels, counts, one row and the field names of the data it receives)
+ * and writes the latest from every tab to `data/axiom-discover-digest.json`, at most every 10 seconds.
+ */
+export function keepDiscoverDigest(url: string, text: string, now: number, write = true) {
+  let digest: unknown
+  try { digest = JSON.parse(text) } catch { return null }
+  const page = digest as { labels?: unknown; feeds?: unknown }
+  const selected = Array.isArray(page.labels) ? page.labels.filter((label): label is string => typeof label === 'string' && label.includes('*')).join(',') : ''
+  const feeds = Array.isArray(page.feeds) ? page.feeds.map(feed => String((feed as { key?: unknown } | null)?.key ?? '')).join(',') : ''
+  const key = `${url}|${selected}|${feeds}`.slice(0, 600)
+  discoverDigests.set(key, { url, at: now, digest })
+  while (discoverDigests.size > 6) discoverDigests.delete([...discoverDigests.entries()].sort((first, second) => first[1].at - second[1].at)[0][0])
+  const snapshot = { at: now, tabs: [...discoverDigests.values()].sort((first, second) => second.at - first.at) }
+  if (write && now - digestWrittenAt >= 10_000) {
+    digestWrittenAt = now
+    mkdirSync(resolve('data'), { recursive: true })
+    writeFileSync(resolve('data/axiom-discover-digest.json'), JSON.stringify(snapshot, null, 1))
+  }
+  return snapshot
+}
+
 /** Says how many coin pages gave holder figures lately and whether Axiom shows a fresh-wallet figure on them. */
 function pageStatsNote(now = Date.now()) {
   const recent = [...trackerState.pageStats.values()].filter(stats => now - stats.seenAt <= pageStatsFreshMs)
@@ -221,6 +247,9 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       const parsed = report.safeParse(JSON.parse(await readBody(request)))
       if (!parsed.success) return send(response, 400, { error: 'Report could not be read.' })
       const matched = applyExtensionReport(database, parsed.data)
+      if (parsed.data.digest) {
+        try { keepDiscoverDigest(parsed.data.url, parsed.data.digest, Date.now()) } catch (error) { logger.warn('Keeping the Discover layout report failed', { error: errorMessage(error) }) }
+      }
       try { storeCapture(database, parsed.data) } catch (error) { logger.warn('Storing captured Axiom data failed', { error: errorMessage(error) }) }
       if (process.env.AXIOM_DEBUG_CARDS === '1') {
         mkdirSync(resolve('data'), { recursive: true })

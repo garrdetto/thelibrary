@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
 import { applyAxiomLists, axiomListsOf, axiomListsSchema, discoverNote, discoverProbeSchema, noteDiscoverProbe, resetAxiomLists } from './axiom-lists.js'
+import { keepDiscoverDigest } from './extension-intake.js'
 
 const bridgeFile = (name: string) => readFileSync(new URL(`../../extensions/axiom-radar-bridge/${name}`, import.meta.url), 'utf8')
 const letters = 'ABCDEFGHJK'
@@ -21,6 +22,8 @@ function loadPageHook(pathname: string) {
   const intervals: Array<() => void> = []
   const workers: Array<{ url: string; listeners: Listener[] }> = []
   const fetched = new Map<string, { type: string; body: string; ok?: boolean }>()
+  const clock = { now: 1_800_000_000_000 }
+  class FakeDate extends Date { static now() { return clock.now } }
   class FakeWorker {
     url: string
     listeners: Listener[] = []
@@ -53,13 +56,15 @@ function loadPageHook(pathname: string) {
   }
   const context = vm.createContext({
     window, location: window.location, document: { addEventListener: () => undefined }, Document: class { }, setInterval: (callback: () => void) => { intervals.push(callback); return intervals.length },
-    URL, TextDecoder, Blob, ArrayBuffer, Uint8Array, Promise, JSON, Date, Map, Set, Object, Array, String, Number, Boolean, RegExp, Math, console,
+    URL, TextDecoder, Blob, ArrayBuffer, Uint8Array, Promise, JSON, Date: FakeDate, Map, Set, Object, Array, String, Number, Boolean, RegExp, Math, console,
   })
   for (const key of ['Worker', 'WebSocket', 'XMLHttpRequest', 'fetch']) Object.defineProperty(context, key, { get: () => window[key], set: value => { window[key] = value } })
   vm.runInContext(bridgeFile('page-hook.js'), context)
-  const tick = () => { posted.length = 0; for (const callback of intervals) callback() }
+  const advance = (ms: number) => { clock.now += ms }
+  const tick = () => { posted.length = 0; advance(1_000); for (const callback of intervals) callback() }
   const lists = () => { tick(); return plain(posted.find(message => message.source === 'axiom-radar-bridge-lists')?.sources ?? []) as Array<{ kind: string; name: string; rows: Array<Record<string, unknown>> }> }
-  return { window, workers, fetched, posted, tick, lists, settle: () => new Promise(resolve => setTimeout(resolve, 5)) }
+  const digest = () => { advance(10_000); tick(); return plain(posted.find(message => message.source === 'axiom-radar-bridge-digest')?.entries ?? []) as Array<{ key: string; shape: string; count: number }> }
+  return { window, workers, fetched, posted, tick, lists, digest, advance, settle: () => new Promise(resolve => setTimeout(resolve, 5)) }
 }
 
 const batch = (table: string, operations: unknown[]) => ({ data: { type: 'OUTPUT_BATCH', messages: [{ type: 'TABLE_OPERATIONS', table, operations }] } })
@@ -114,6 +119,60 @@ test('on a Discover page, API answers and socket messages that carry coin rows b
   await pulsePage.window.fetch('https://api7.axiom.trade/surge-tokens')
   await pulsePage.settle()
   assert.deepEqual(pulsePage.lists(), [])
+})
+
+test('what was collected goes out on the page\'s own data events, at most once a second, so a background tab is not held to its slowed timer', () => {
+  const page = loadPageHook('/pulse')
+  const worker = new page.window.Worker('/workers/PulseWorker.unified-abc.js')
+  worker.postMessage({ type: 'UPDATE_USD_PER_NATIVE', payload: { chain: 'sol', usdPerNative: 70 } })
+  const emit = (table: string, items: unknown[]) => { for (const listener of page.workers[0].listeners) listener(batch(table, [{ items }])) }
+  const pulses = () => page.posted.filter(message => message.source === 'axiom-radar-bridge-pulse').length
+  emit('newPairs', [coin(1), coin(2), coin(3)])
+  assert.equal(pulses(), 1, 'sent on the first data event, with no timer tick')
+  emit('newPairs', [coin(1), coin(2), coin(3), coin(4)])
+  assert.equal(pulses(), 1, 'not again within the same second')
+  page.advance(1_000)
+  emit('newPairs', [coin(1), coin(2), coin(3), coin(4), coin(5)])
+  assert.equal(pulses(), 2)
+  assert.equal(page.posted.filter(message => message.source === 'axiom-radar-bridge-pulse').at(-1)?.rows.length, 5)
+})
+
+test('a Discover page reports the layout of the data it receives: field names and types, never values', async () => {
+  const page = loadPageHook('/discover')
+  const worker = new page.window.Worker('https://axiom.trade/workers/DiscoverWorker.unified-abc.js?v=3')
+  for (const listener of page.workers[0].listeners) listener(batch('hotTokens', [{ items: [coin(1), coin(2), coin(3)] }]))
+  for (const listener of page.workers[0].listeners) listener({ data: { type: 'READY', version: '1.2.3' } })
+  page.fetched.set('https://api7.axiom.trade/discover-list?period=5m', { type: 'application/json', body: JSON.stringify({ rows: [[pair(1), mint(1), 'SECRETNAME', 12.5, null], [pair(2), mint(2), 'OTHER', 3, null]], wallets: { [mint(9)]: { balance: 4.2 } } }) })
+  await page.window.fetch('https://api7.axiom.trade/discover-list?period=5m')
+  await page.settle()
+  const socket = new page.window.WebSocket('wss://cluster3.axiom.trade/')
+  for (const listener of socket.listeners) listener({ data: JSON.stringify({ room: 'surge-updates', content: { pair: pair(3), mc: 9 } }) })
+  const entries = page.digest()
+  const shapes = Object.fromEntries(entries.map(entry => [entry.key, entry.shape]))
+  assert.equal(shapes['worker:DiscoverWorker.unified-abc.js started'], '{}')
+  assert.equal(shapes['worker:DiscoverWorker.unified-abc.js TABLE_OPERATIONS hotTokens'], '{type, table, operations: array(1) of {items: array(3) of {pairAddress, tokenAddress, tokenTicker, tokenName, userCount, marketCap}}}')
+  assert.equal(shapes['worker:DiscoverWorker.unified-abc.js READY'], '{type, version}')
+  assert.equal(shapes['api:/discover-list'], '{rows: array(2) of [address, address, string(10), number, null], wallets: {<address>: {balance}}}')
+  assert.equal(shapes['socket:cluster3.axiom.trade/surge-updates'], '{room, content: {pair, mc}}')
+  const text = JSON.stringify(entries)
+  for (const secret of ['SECRETNAME', mint(1), pair(3), '4.2', '1.2.3']) assert.ok(!text.includes(secret), secret)
+  assert.ok(worker)
+  const pulsePage = loadPageHook('/pulse')
+  const other = new pulsePage.window.Worker('/workers/PulseWorker.unified-abc.js')
+  for (const listener of pulsePage.workers[0].listeners) listener(batch('newPairs', [{ items: [coin(1), coin(2), coin(3)] }]))
+  assert.deepEqual(pulsePage.digest(), [])
+  assert.ok(other)
+})
+
+test('the tracker keeps the latest layout report from each Discover tab', () => {
+  const now = 1_800_000_000_000
+  const tab = (selected: string, feed: string) => JSON.stringify({ address: '/discover', labels: [`Trending${selected === 'Trending' ? '*' : ''}@120:0.90`, `Surge${selected === 'Surge' ? '*' : ''}@120:0.50`], counts: { rows: 30 }, feeds: [{ key: feed, shape: '{rows}', count: 4 }] })
+  keepDiscoverDigest('https://axiom.trade/discover', tab('Trending', 'api:/a'), now, false)
+  const snapshot = keepDiscoverDigest('https://axiom.trade/discover', tab('Surge', 'api:/b'), now + 1_000, false)
+  assert.equal(snapshot?.tabs.length, 2)
+  assert.equal((snapshot?.tabs[0].digest as { feeds: Array<{ key: string }> }).feeds[0].key, 'api:/b')
+  assert.equal(keepDiscoverDigest('https://axiom.trade/discover', tab('Surge', 'api:/b'), now + 2_000, false)?.tabs.length, 2)
+  assert.equal(keepDiscoverDigest('https://axiom.trade/discover', 'not json', now, false), null)
 })
 
 type FakeElement = { tag: string; attributes: Record<string, string>; parentElement: FakeElement | null; children: FakeElement[] }
@@ -221,7 +280,9 @@ test('the tracker takes the lists and the tab report the bridge sends, and says 
   assert.equal(noteDiscoverProbe(probe, now), true)
   assert.equal(noteDiscoverProbe(probe, now + 1_000), false)
   assert.equal(discoverNote(now + 2_000), 'Surge tab (selected tab): 3 coins from the 3 rows drawn; other feeds table:trendingTokens=3')
-  noteDiscoverProbe({ page: '/discover', tab: null, how: 'tabs look the same', labels: 'trending 0.45, surge 0.45', sources: '', drawn: 22 }, now + 3_000)
+  assert.equal(noteDiscoverProbe({ page: '/discover', tab: null, how: 'tabs look the same', labels: 'trending 0.45, surge 0.45', sources: '', drawn: 22 }, now + 3_000), true)
+  assert.equal(noteDiscoverProbe({ page: '/discover', tab: null, how: 'tabs look the same', labels: 'trending 0.45, surge 0.45', sources: 'api:/x=5', drawn: 22 }, now + 3_100), true, 'a second unidentified tab is told apart by its feeds')
+  assert.equal(noteDiscoverProbe({ page: '/discover', tab: null, how: 'no label', labels: '', sources: '', drawn: 22 }, now + 3_200), false, 'the same tab is not logged twice within a minute')
   assert.ok(discoverNote(now + 4_000)?.includes('cannot tell which list it shows (tabs look the same'))
   assert.equal(discoverNote(now + 60_000), null)
   assert.equal(discoverProbeSchema.safeParse({ ...probe, tab: 'portfolio' }).success, false)
