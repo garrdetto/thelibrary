@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 from typing import Callable, Dict, Iterable, Optional, Set
 
-from strategy import CoinBook
+from strategy import CoinBook, LaunchHistory
 
 ACTIVE: Optional["Market"] = None
 KEEP_S = 5 * 60  # forget coins this long after launch unless one is held
@@ -25,6 +25,7 @@ class Market:
         self.keep_s = keep_s
         self.held: Set[str] = set()
         self.listeners: Dict[str, Callable[[CoinBook, Dict], None]] = {}
+        self.history = LaunchHistory()
         self._last_prune = time.monotonic()
 
     def apply(self, events: Iterable[Dict], slot: int) -> list:
@@ -34,8 +35,11 @@ class Market:
         for e in events:
             kind = e["kind"]
             if kind == "create":
-                if e.get("classic") and e["mint"] not in self.books:
-                    book = CoinBook(e["mint"], e["creator"], slot, created_at=time.monotonic())
+                if e["mint"] in self.books:
+                    continue
+                dev_n, sym_n = self.history.record(e["creator"], e.get("symbol", ""), time.time())
+                if e.get("classic"):
+                    book = CoinBook(e["mint"], e["creator"], slot, created_at=time.monotonic(), dev_launches=dev_n, sym_dupes=sym_n)
                     self.books[e["mint"]] = book
                     launches.append(book)
             elif kind == "trade":

@@ -28,6 +28,8 @@ Feature meanings (all at the decision moment, creator's own trades excluded unle
   ret_since0   price change since the first trade
   buy_sol      SOL spent by other buyers
   big_buys     buys of 1 SOL or more by others
+  dev_launches coins this creator launched before, in the last 6 h the bot (or recorder) has been watching
+  sym_dupes    coins launched with the same ticker in the 30 min before this one
 """
 
 from __future__ import annotations
@@ -43,7 +45,9 @@ LAMPORTS = 1_000_000_000
 PUMP_FEE = 0.0125  # 0.95% protocol + 0.30% creator, each way, on classic curves
 
 FEATURES = ["dev_buy", "n_buy", "n_sell", "uniq", "raised", "dev_sold", "top_share", "early_snipe", "mom5",
-            "sell_ratio", "quiet", "ret_since0", "buy_sol", "big_buys"]
+            "sell_ratio", "quiet", "ret_since0", "buy_sol", "big_buys", "dev_launches", "sym_dupes"]
+DEV_HISTORY_S = 6 * 3600   # dev_launches counts the creator's launches seen in this window
+SYM_HISTORY_S = 30 * 60    # sym_dupes counts launches with the same ticker in this window
 OPS = (">=", "<=")
 
 
@@ -73,6 +77,8 @@ class CoinBook:
     vt: List[int] = field(default_factory=list)
     rs: List[int] = field(default_factory=list)
     completed: bool = False
+    dev_launches: int = 0
+    sym_dupes: int = 0
 
     def add(self, slot: int, buy: bool, sol: int, tok: int, user: str, vs: int, vt: int, rs: int) -> None:
         # trades arrive almost always in order; keep the lists sorted by slot if one doesn't
@@ -137,7 +143,34 @@ def features(c: CoinBook, d: int) -> Optional[List[float]]:
     p0 = c.vs[0] / c.vt[0]
     p = c.vs[k] / c.vt[k]
     return [dev_buy, float(n_buy), float(n_sell), float(len(by)), raised, dev_sold, top, float(early), raised - raised_5,
-            n_sell / max(1, n_buy + n_sell), (d - c.slot[k]) * SLOT_S, p / p0 - 1, buy_sol, float(big)]
+            n_sell / max(1, n_buy + n_sell), (d - c.slot[k]) * SLOT_S, p / p0 - 1, buy_sol, float(big),
+            float(c.dev_launches), float(c.sym_dupes)]
+
+
+class LaunchHistory:
+    """Remembers recent launches to give each new coin its dev_launches and sym_dupes."""
+
+    def __init__(self) -> None:
+        from collections import deque
+        self.by_dev: Dict[str, "deque"] = {}
+        self.by_sym: Dict[str, "deque"] = {}
+        self._deque = deque
+
+    def record(self, creator: str, symbol: str, at_s: float) -> Tuple[int, int]:
+        """Counts before this launch, then remember it."""
+        sym = (symbol or "").strip().lower()
+        out = []
+        for table, key, window in ((self.by_dev, creator, DEV_HISTORY_S), (self.by_sym, sym, SYM_HISTORY_S)):
+            q = table.setdefault(key, self._deque())
+            while q and at_s - q[0] > window:
+                q.popleft()
+            out.append(len(q))
+            q.append(at_s)
+        if len(self.by_sym) > 50_000:
+            for table, window in ((self.by_dev, DEV_HISTORY_S), (self.by_sym, SYM_HISTORY_S)):
+                for key in [k for k, q in table.items() if not q or at_s - q[-1] > window]:
+                    del table[key]
+        return out[0], out[1]
 
 
 # --------------------------------------------------------------------------- rules

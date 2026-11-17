@@ -169,6 +169,25 @@ class StrategyTests(unittest.TestCase):
         self.assertIsNone(strategy.load_rules("/nonexistent/rules.json"))
 
 
+class HistoryTests(unittest.TestCase):
+    def test_counts_creator_and_ticker_history_in_their_windows(self):
+        h = strategy.LaunchHistory()
+        self.assertEqual(h.record("dev1", "CAT", 0), (0, 0))
+        self.assertEqual(h.record("dev1", "cat ", 60), (1, 1), "same creator, same ticker (case and spaces ignored)")
+        self.assertEqual(h.record("dev2", "CAT", 120), (0, 2))
+        self.assertEqual(h.record("dev2", "CAT", 120 + strategy.SYM_HISTORY_S + 1), (1, 0), "tickers older than 30 min drop out")
+        self.assertEqual(h.record("dev1", "DOG", strategy.DEV_HISTORY_S + 61), (0, 0), "creator launches older than 6 h drop out")
+
+    def test_market_stamps_new_books(self):
+        m = market_mod.Market()
+        m.apply(pumpevents.decode_logs([create_line()]), 1)
+        second = Keypair().pubkey()
+        books = m.apply(pumpevents.decode_logs([create_line(mint=second)]), 2)
+        self.assertEqual((books[0].dev_launches, books[0].sym_dupes), (1, 1))
+        f = dict(zip(strategy.FEATURES, strategy.features(book_with([(2, True, 1, 1, "a", 1, 1, 1)], 2), 2)))
+        self.assertEqual((f["dev_launches"], f["sym_dupes"]), (0.0, 0.0))
+
+
 class MarketTests(unittest.TestCase):
     def test_tracks_classic_launches_and_their_trades(self):
         m = market_mod.Market()

@@ -41,6 +41,8 @@ class Coin:
     dev: np.ndarray    # trade by the creator
     users: list
     complete_slot: int | None
+    dev_launches: int = 0
+    sym_dupes: int = 0
 
 
 def load(path: str, t0_ms: int = 0, t1_ms: int = 1 << 62, follow_ms: int = 0) -> list[Coin]:
@@ -56,6 +58,9 @@ def load(path: str, t0_ms: int = 0, t1_ms: int = 1 << 62, follow_ms: int = 0) ->
         if c:
             c[4].append(row[1:])
     done = dict(db.execute("select mint, slot from completes"))
+    hist, counts = strategy.LaunchHistory(), {}
+    for mint, recv, creator, sym in db.execute("select mint, recv_ms, creator, sym from coins order by recv_ms"):
+        counts[mint] = hist.record(creator, sym or "", recv / 1000)
     out = []
     for mint, recv, cslot, creator, rows in coins.values():
         if not rows:
@@ -63,7 +68,7 @@ def load(path: str, t0_ms: int = 0, t1_ms: int = 1 << 62, follow_ms: int = 0) ->
         a = np.array([r[:8] for r in rows], dtype=np.float64)
         users = [r[8] for r in rows]
         out.append(Coin(mint, recv, cslot, creator, a[:, 0].astype(np.int64), a[:, 2].astype(np.int8), a[:, 3], a[:, 4], a[:, 5], a[:, 6], a[:, 7],
-                        np.array([u == creator for u in users]), users, done.get(mint)))
+                        np.array([u == creator for u in users]), users, done.get(mint), *counts.get(mint, (0, 0))))
     out.sort(key=lambda c: c.recv_ms)
     return out
 
@@ -88,7 +93,7 @@ FEATURES = strategy.FEATURES
 
 def book_of(c: Coin) -> "strategy.CoinBook":
     if getattr(c, "_book", None) is None:
-        b = strategy.CoinBook(c.mint, c.creator, c.cslot)
+        b = strategy.CoinBook(c.mint, c.creator, c.cslot, dev_launches=c.dev_launches, sym_dupes=c.sym_dupes)
         b.slot, b.buy, b.sol, b.tok = c.slot.tolist(), [bool(x) for x in c.buy], c.sol.tolist(), c.tok.tolist()
         b.user, b.vs, b.vt, b.rs = list(c.users), c.vs.tolist(), c.vt.tolist(), c.rs.tolist()
         c._book = b
