@@ -6,6 +6,24 @@ async function trackerPort() {
 }
 
 const pinnedTabs = new Set()
+let pollList = { at: 0, mints: [] }
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== 'axiom-radar-poll-list' || !sender.tab?.url?.startsWith('https://axiom.trade/')) return
+  void (async () => {
+    if (Date.now() - pollList.at > 5000) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/status`)
+        const { tracked = [] } = await response.json()
+        pollList = { at: Date.now(), mints: tracked.map(item => item.mint).filter(Boolean).slice(0, 60) }
+      } catch {
+        pollList = { at: Date.now(), mints: pollList.mints }
+      }
+    }
+    sendResponse({ mints: pollList.mints })
+  })()
+  return true
+})
 
 chrome.runtime.onInstalled.addListener(async () => {
   const tabs = await chrome.tabs.query({ url: 'https://axiom.trade/*' }).catch(() => [])
