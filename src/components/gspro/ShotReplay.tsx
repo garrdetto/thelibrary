@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Gauge, RotateCcw, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Gauge, RotateCcw, Trash2, X } from 'lucide-react'
 import { clubLabel } from '@/lib/gspro/clubs'
 import { traceFlight, type TracePoint } from '@/lib/gspro/flight'
 import { fmt, signed, type EnrichedShot } from '@/lib/gspro/stats'
 import { HOLD_AFTER, SWING_LEAD } from './range/timing'
 import type { CameraMode } from './range/RangeScene'
+import { gsproApi } from './api'
+import { useShotsRemoved } from './ReplayContext'
 
 const RangeView = lazy(() => import('./range/RangeView'))
 
@@ -225,9 +227,34 @@ function Plot({ kind, path, ghosts, t, reach }: { kind: 'side' | 'top'; path: Pa
   </figure>
 }
 
-export function ShotReplay({ shots, index: startIndex, onClose }: { shots: EnrichedShot[]; index: number; onClose: () => void }) {
+function ShotList({ shots, index, onPick }: { shots: EnrichedShot[]; index: number; onPick: (index: number) => void }) {
+  const list = useRef<HTMLOListElement | null>(null)
+  useEffect(() => {
+    const active = list.current?.querySelector<HTMLElement>('[aria-current="true"]')
+    active?.scrollIntoView({ block: 'nearest' })
+  }, [index])
+  return <nav className="gs-replay-list" aria-label="Shots to replay">
+    <p className="gs-replay-list-head">Shots <span>{shots.length}</span></p>
+    <ol ref={list}>
+      {shots.map((item, position) => <li key={`${item.id}:${position}`}>
+        <button type="button" aria-current={position === index ? 'true' : undefined} className={item.excluded ? 'is-excluded' : ''} onClick={() => onPick(position)}>
+          <span className="gs-replay-list-club">{item.club ?? '?'}</span>
+          <span className="gs-replay-list-main"><b>{fmt(item.carryYards, 0)}<small> yd</small></b><small>{item.offline === null ? '' : `${fmt(Math.abs(item.offline), 0)} ${item.offline >= 0 ? 'R' : 'L'} · `}{fmt(item.ballSpeed, 0)} mph</small></span>
+          <span className="gs-replay-list-time">{new Date(item.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+        </button>
+      </li>)}
+    </ol>
+  </nav>
+}
+
+export function ShotReplay({ shots: startShots, index: startIndex, onClose }: { shots: EnrichedShot[]; index: number; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement | null>(null)
+  const [shots, setShots] = useState(startShots)
   const [index, setIndex] = useState(startIndex)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const removeShots = useShotsRemoved()
   const [slow, setSlow] = useState(false)
   const [clock, setClock] = useState(0)
   const [run, setRun] = useState(0)
@@ -264,6 +291,27 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
   }, [path, slow, run])
 
   const step = useCallback((delta: number) => setIndex(current => Math.max(0, Math.min(shots.length - 1, current + delta))), [shots.length])
+  useEffect(() => { setConfirmDelete(false); setDeleteError(null) }, [index])
+  const deletable = !shot.sessionId.startsWith('gr_')
+
+  async function deleteShot() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await gsproApi.deleteShots([shot.id])
+      removeShots([shot.id])
+      const rest = shots.filter(item => item.id !== shot.id)
+      if (!rest.length) { dialog.current?.close(); return }
+      setShots(rest)
+      setIndex(current => Math.min(current, rest.length - 1))
+    } catch (failure) {
+      setDeleteError(failure instanceof Error ? failure.message : 'The shot could not be deleted.')
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
 
   const stats: [string, string][] = [
     ['Carry', `${fmt(shot.carryYards, 0)} yd${shot.carryEstimated ? ' (est.)' : ''}`],
@@ -295,14 +343,18 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
           <h2 id="gs-replay-title">{clubLabel(shot.club)} <span>{shot.shape}</span></h2>
         </div>
         <div className="gs-row-actions">
+          {deletable && <button type="button" className={`gs-delete ${confirmDelete ? 'is-confirming' : ''}`} disabled={deleting} onBlur={() => setConfirmDelete(false)} aria-label={confirmDelete ? 'Click again to delete this shot for good' : 'Delete this shot'} onClick={() => void deleteShot()}><Trash2 size={14} aria-hidden/>{deleting ? 'Deleting…' : confirmDelete ? 'Delete for good?' : 'Delete shot'}</button>}
           <button type="button" className="gs-icon-button" aria-label="Previous shot" disabled={index === 0} onClick={() => step(-1)}><ChevronLeft size={16} aria-hidden/></button>
           <button type="button" className="gs-icon-button" aria-label="Next shot" disabled={index === shots.length - 1} onClick={() => step(1)}><ChevronRight size={16} aria-hidden/></button>
           <button type="button" className="gs-icon-button" aria-label="Close replay" onClick={() => dialog.current?.close()}><X size={16} aria-hidden/></button>
         </div>
       </header>
+      {deleteError && <p className="gs-notice" role="alert">{deleteError}</p>}
+      <div className="gs-replay-split">
+      <div className="gs-replay-main">
       {path ? <>
         <Suspense fallback={<DownTheLine path={path} t={t} reach={reach}/>}>
-          <RangeView points={path.points} landingIndex={path.landingIndex} handed={shot.handed} ballSpeed={shot.ballSpeed} launch={shot.launch} spin={shot.totalSpin} club={clubLabel(shot.club)} clock={clock} mode={mode} fallback={<DownTheLine path={path} t={t} reach={reach}/>}/>
+          <RangeView points={path.points} landingIndex={path.landingIndex} handed={shot.handed} ballSpeed={shot.ballSpeed} launch={shot.launch} spin={shot.totalSpin} club={clubLabel(shot.club)} clubCode={shot.club} clock={clock} mode={mode} fallback={<DownTheLine path={path} t={t} reach={reach}/>}/>
         </Suspense>
         <div className="gs-replay-controls">
           <button type="button" className="gs-button ghost" onClick={() => setRun(value => value + 1)}><RotateCcw size={15} aria-hidden/>Replay</button>
@@ -317,6 +369,9 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
           <Plot kind="top" path={path} ghosts={ghosts} t={t} reach={reach}/>
         </div>
       </> : <p className="gs-muted">This shot has no launch data to recreate.</p>}
+      </div>
+      <ShotList shots={shots} index={index} onPick={setIndex}/>
+      </div>
       <dl className="gs-replay-stats">
         {stats.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl>

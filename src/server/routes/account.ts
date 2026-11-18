@@ -35,7 +35,9 @@ export async function redeemTicket(request: Request, env: Env, prefix: string) {
   return ticket
 }
 
-async function signIn(request: Request, env: Env, input: { username: string; password: string }) {
+const ACCOUNT_ACCESS_CODE = 'fox'
+
+async function signIn(request: Request, env: Env, input: { username: string; password: string; accessCode?: string }) {
   const network = `ip:${clientIp(request)}`
   const account = `user:${input.username}`
   const wait = await lockedFor(env, [account, network])
@@ -76,6 +78,7 @@ async function signIn(request: Request, env: Env, input: { username: string; pas
   }
 
   if (reservedNames.has(input.username)) return json({ error: 'That username is reserved. Choose another username.' }, 400)
+  if (input.accessCode?.trim().toLowerCase() !== ACCOUNT_ACCESS_CODE) return json({ error: input.accessCode?.trim() ? 'That access code is not right. Check it and try again.' : 'Enter the access code to create a new account.', needsAccessCode: true }, 403)
   const creationKey = `create:${clientIp(request)}`
   if (await overDailyLimit(env, creationKey, NEW_ACCOUNTS_PER_NETWORK)) return json({ error: 'Too many new accounts from this network today. Try again tomorrow.' }, 429)
   const id = crypto.randomUUID()
@@ -107,7 +110,7 @@ export async function poolAccount(request: Request, env: Env) {
     const user = await requireUser(request, env, 'Sign in to connect to the lobby.')
     return json({ ticket: await issueTicket(env, user.id, user.username, 'pool:') })
   }
-  const credentials = z.object({ username: usernameField, password: z.string().min(1).max(128) }).safeParse(input)
+  const credentials = z.object({ username: usernameField, password: z.string().min(1).max(128), accessCode: z.string().max(64).optional() }).safeParse(input)
   if (!credentials.success) return json({ error: usernameMessage }, 400)
   return signIn(request, env, credentials.data)
 }

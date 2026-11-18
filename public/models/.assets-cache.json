@@ -1708,5 +1708,45 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "character"
+ },
+ "gspro/club-wood.glb": {
+  "hash": "54326c491b8f075038572d791886ca5ffdbcf6d1",
+  "before": 5664292,
+  "after": 937872,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "gspro/club-iron.glb": {
+  "hash": "7caf1e27f62c2690f4cda87c2131f94955d48e8d",
+  "before": 6176692,
+  "after": 1292708,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "gspro/club-driver.glb": {
+  "hash": "853bba62a2335e20d41040686e07da050c98fcce",
+  "before": 6865732,
+  "after": 1554160,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "gspro/golfer.glb": {
+  "hash": "e13f29271b6121038f445fb75ab4002b06da031d",
+  "before": 6960964,
+  "after": 1470092,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
  }
 }

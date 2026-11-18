@@ -1,11 +1,11 @@
 import { Fragment, useMemo, useState } from 'react'
-import { Play } from 'lucide-react'
-import { allClubs, clubLabel } from '@/lib/gspro/clubs'
+import { Play, Trash2 } from 'lucide-react'
+import { clubLabel, recordedClubs } from '@/lib/gspro/clubs'
 import { fmt, signed, type EnrichedShot } from '@/lib/gspro/stats'
 import { loadSort, saveSort, shotSortKeys, sortShots, type ShotSortKey, type SortState } from '@/lib/gspro/sorting'
 import type { GsproShot } from '@/lib/gspro/types'
 import { gsproApi } from './api'
-import { useReplay } from './ReplayContext'
+import { useReplay, useShotsRemoved } from './ReplayContext'
 import { SortBar, SortHeader } from './SortBar'
 
 const sortKeys = Object.keys(shotSortKeys) as ShotSortKey[]
@@ -16,6 +16,8 @@ export function ShotTable({ shots, onShot, dated = false, id }: { shots: Enriche
   const [error, setError] = useState<string | null>(null)
   const [sort, setSortState] = useState<SortState<ShotSortKey>>(() => typeof window === 'undefined' ? defaultSort : loadSort(id, sortKeys, defaultSort))
   const openReplay = useReplay()
+  const removeShots = useShotsRemoved()
+  const [confirming, setConfirming] = useState<number | null>(null)
   const sorted = useMemo(() => sortShots(shots, sort), [shots, sort])
   const grouped = sort.byClub && sort.key !== 'club'
   const groups = useMemo(() => {
@@ -42,6 +44,15 @@ export function ShotTable({ shots, onShot, dated = false, id }: { shots: Enriche
     finally { setBusy(null) }
   }
 
+  async function remove(shot: EnrichedShot) {
+    if (confirming !== shot.id) { setConfirming(shot.id); return }
+    setBusy(shot.id)
+    setError(null)
+    try { await gsproApi.deleteShots([shot.id]); removeShots([shot.id]) }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'The shot could not be deleted.') }
+    finally { setBusy(null); setConfirming(null) }
+  }
+
   if (!shots.length) return <p className="gs-muted">No shots yet.</p>
   const header = (key: ShotSortKey, label: string) => <SortHeader sortKey={key} state={sort} onChange={setSort} first={shotSortKeys[key].first}>{label}</SortHeader>
   return <>
@@ -52,21 +63,21 @@ export function ShotTable({ shots, onShot, dated = false, id }: { shots: Enriche
         <thead><tr>
           <th scope="col"><span className="sr-only">Replay</span></th>{header('time', dated ? 'When' : 'Time')}{header('club', 'Club')}{header('carry', 'Carry')}{header('total', 'Total')}{header('offline', 'Offline')}
           {header('ballSpeed', 'Ball')}{header('clubSpeed', 'Club spd')}{header('smash', 'Smash')}{header('launch', 'Launch')}{header('spin', 'Spin')}{header('spinAxis', 'Axis')}
-          {header('attackAngle', 'AoA')}{header('path', 'Path')}{header('face', 'Face')}<th scope="col">Shape</th><th scope="col">Use</th>
+          {header('attackAngle', 'AoA')}{header('path', 'Path')}{header('face', 'Face')}<th scope="col">Shape</th><th scope="col">Use</th><th scope="col"><span className="sr-only">Delete</span></th>
         </tr></thead>
         <tbody>
           {sorted.map((shot, index) => {
             const startsGroup = grouped && (index === 0 || sorted[index - 1].club !== shot.club)
             return <Fragment key={shot.id}>
-              {startsGroup && <tr className="gs-group-row"><th colSpan={17} scope="rowgroup">{clubLabel(shot.club)} {(() => { const entry = groups.get(shot.club)!; return <span>{entry.count} shot{entry.count === 1 ? '' : 's'}{entry.carried ? ` · average carry ${fmt(entry.carry / entry.carried, 0)} yd` : ''}</span> })()}</th></tr>}
+              {startsGroup && <tr className="gs-group-row"><th colSpan={18} scope="rowgroup">{clubLabel(shot.club)} {(() => { const entry = groups.get(shot.club)!; return <span>{entry.count} shot{entry.count === 1 ? '' : 's'}{entry.carried ? ` · average carry ${fmt(entry.carry / entry.carried, 0)} yd` : ''}</span> })()}</th></tr>}
               <tr className={`gs-row ${shot.excluded ? 'is-excluded' : ''}`} onClick={event => { if (!(event.target as HTMLElement).closest('button, select')) openReplay(sorted, index) }}>
                 <td><button type="button" className="gs-play" aria-label={`Replay shot from ${new Date(shot.createdAt).toLocaleTimeString()}`} onClick={() => openReplay(sorted, index)}><Play size={13} aria-hidden/></button></td>
                 <td>{new Date(shot.createdAt).toLocaleString([], dated ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' } : { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</td>
                 <td>
                   <select aria-label="Club" value={shot.club ?? ''} disabled={busy === shot.id} onChange={event => change(shot, { club: event.target.value || null })}>
                     <option value="">?</option>
-                    {shot.club && !allClubs.some(club => club.code === shot.club) && <option value={shot.club}>{shot.club}</option>}
-                    {allClubs.map(club => <option key={club.code} value={club.code}>{club.code}</option>)}
+                    {shot.club && !recordedClubs.some(club => club.code === shot.club) && <option value={shot.club}>{shot.club}</option>}
+                    {recordedClubs.map(club => <option key={club.code} value={club.code}>{club.code}</option>)}
                   </select>
                 </td>
                 <td>{fmt(shot.carryYards, 0)}{shot.carryEstimated ? <sup title="Estimated from launch data">e</sup> : null}</td>
@@ -85,6 +96,11 @@ export function ShotTable({ shots, onShot, dated = false, id }: { shots: Enriche
                 <td>
                   <button type="button" className="gs-toggle" aria-pressed={!shot.excluded} disabled={busy === shot.id} onClick={() => change(shot, { excluded: !shot.excluded })}>
                     {shot.excluded ? 'Excluded' : 'Counted'}
+                  </button>
+                </td>
+                <td>
+                  <button type="button" className={`gs-delete ${confirming === shot.id ? 'is-confirming' : ''}`} disabled={busy === shot.id} onBlur={() => setConfirming(current => current === shot.id ? null : current)} aria-label={confirming === shot.id ? 'Click again to delete this shot for good' : `Delete shot from ${new Date(shot.createdAt).toLocaleTimeString()}`} onClick={() => void remove(shot)}>
+                    <Trash2 size={13} aria-hidden/>{confirming === shot.id ? 'Delete?' : null}
                   </button>
                 </td>
               </tr>

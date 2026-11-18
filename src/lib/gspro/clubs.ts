@@ -26,8 +26,8 @@ const table: ClubInfo[] = [
   { code: 'PW', label: 'Pitching wedge', kind: 'wedge', order: 22, loft: 46 },
   { code: 'GW', label: 'Gap wedge', kind: 'wedge', order: 23, loft: 50 },
   { code: 'AW', label: 'Approach wedge', kind: 'wedge', order: 24, loft: 52 },
-  { code: 'SW', label: 'Sand wedge', kind: 'wedge', order: 25, loft: 56 },
-  { code: 'LW', label: 'Lob wedge', kind: 'wedge', order: 26, loft: 60 },
+  { code: 'SW', label: '56° wedge', kind: 'wedge', order: 25, loft: 56 },
+  { code: 'LW', label: '60° wedge', kind: 'wedge', order: 26, loft: 60 },
   { code: 'PT', label: 'Putter', kind: 'putter', order: 27, loft: 3 },
 ]
 
@@ -44,6 +44,16 @@ const aliases: Record<string, string> = {
 }
 
 export const allClubs: readonly ClubInfo[] = table
+
+/** The clubs the analyzer records: driver, 3 and 5 wood, 3–9 iron, PW, AW, 56° and 60°. Shots tagged with any other club are dropped. */
+export const recordedClubCodes = ['DR', '3W', '5W', '3I', '4I', '5I', '6I', '7I', '8I', '9I', 'PW', 'AW', 'SW', 'LW'] as const
+const recordedSet = new Set<string>(recordedClubCodes)
+export const recordedClubs: readonly ClubInfo[] = table.filter(club => recordedSet.has(club.code))
+
+/** True for a club the analyzer keeps, and for an untagged shot (null), which the player can label afterwards. */
+export function isRecordedClub(code: string | null) {
+  return code === null || recordedSet.has(code)
+}
 
 /** Turns GSPro codes ("7I", "DR"), launch-monitor names ("7 Iron", "Driver", "56°") and similar into a GSPro club code. */
 export function normalizeClub(value: unknown): string | null {

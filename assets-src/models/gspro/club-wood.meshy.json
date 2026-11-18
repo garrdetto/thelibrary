@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "a single golf fairway wood club, compact black steel wood head, long graphite shaft, black rubber grip, isolated, game asset",
+    "target": "furniture",
+    "negative": "floor, background, text, logos",
+    "aiModel": "latest",
+    "polycount": 8000,
+    "texturePrompt": "",
+    "rig": false,
+    "height": null
+  },
+  "tasks": {
+    "preview": {
+      "id": "01a1ef84-8fd8-7643-ae7a-9cc452d9de9e",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:36:47.032Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1ef85-6836-701a-a9b5-51fc539d5665",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:37:40.397Z",
+      "credits": 10
+    }
+  },
+  "credits": 30,
+  "files": [
+    "assets-src/models/gspro/club-wood.glb"
+  ],
+  "createdAt": "2026-11-18T16:36:44.340Z",
+  "clips": [],
+  "cleanup": "generic (Blender 5.2.3)",
+  "updatedAt": "2026-11-18T16:38:09.453Z"
+}

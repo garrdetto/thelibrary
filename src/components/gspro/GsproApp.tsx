@@ -8,7 +8,7 @@ import { AnalyzeView } from './AnalyzeView'
 import { TipsView } from './TipsView'
 import { BridgeView } from './BridgeView'
 import { CourseView } from './CourseView'
-import { ReplayContext } from './ReplayContext'
+import { ReplayContext, ShotsRemovedContext } from './ReplayContext'
 import { ShotReplay } from './ShotReplay'
 
 export type Scope = { kind: 'session'; id: string } | { kind: 'days'; days: number }
@@ -119,6 +119,13 @@ export default function GsproApp() {
     setScoped(list => list?.map(item => item.id === shot.id ? shot : item) ?? list)
   }, [])
 
+  const removeShots = useCallback((ids: number[]) => {
+    const gone = new Set(ids)
+    setLive(list => list.filter(item => !gone.has(item.id)))
+    setScoped(list => list?.filter(item => !gone.has(item.id)) ?? list)
+    loadSessions()
+  }, [loadSessions])
+
   const enrichedScope = useMemo(() => scoped?.map(enrichShot) ?? null, [scoped])
   const online = bridgeOnline(bridge, serverNow)
 
@@ -127,7 +134,7 @@ export default function GsproApp() {
     window.history.replaceState(null, '', `#${next}`)
   }
 
-  return <ReplayContext.Provider value={openReplay}><div className="gs-app">
+  return <ReplayContext.Provider value={openReplay}><ShotsRemovedContext.Provider value={removeShots}><div className="gs-app">
     <nav className="gs-tabs" aria-label="Analyzer sections">
       {tabs.map(item => <button key={item.id} type="button" className={tab === item.id ? 'is-active' : ''} aria-current={tab === item.id ? 'page' : undefined} onClick={() => choose(item.id)}>
         <item.icon size={15} aria-hidden/>{item.label}
@@ -144,5 +151,5 @@ export default function GsproApp() {
     {tab === 'tips' && <TipsView scope={scope} sessions={sessions} shots={enrichedScope} error={scopeError} onScope={setScope}/>}
     {tab === 'bridge' && <BridgeView bridge={bridge} online={online} sessions={sessions} onBridge={setBridge} onSessions={loadSessions} onImported={id => { loadSessions(); setScope({ kind: 'session', id }); choose('analyze') }} onDeleted={id => { loadSessions(); setLive(list => list.filter(shot => shot.sessionId !== id)); if (scope.kind === 'session' && scope.id === id) setScope({ kind: 'days', days: 90 }) }}/>}
     {replay && <ShotReplay key={replay.key} shots={replay.shots} index={replay.index} onClose={() => setReplay(null)}/>}
-  </div></ReplayContext.Provider>
+  </div></ShotsRemovedContext.Provider></ReplayContext.Provider>
 }

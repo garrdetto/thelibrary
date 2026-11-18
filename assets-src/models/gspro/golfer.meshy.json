@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "a realistic adult male golfer, athletic build, white short-sleeve polo shirt, navy golf trousers, brown leather belt, white golf shoes, white golf glove on left hand, navy baseball cap, T-pose, game asset",
+    "target": "character",
+    "negative": "logos, text, weapons",
+    "aiModel": "latest",
+    "polycount": 15000,
+    "texturePrompt": "",
+    "rig": true,
+    "height": 1.83
+  },
+  "tasks": {
+    "preview": {
+      "id": "01a1ef84-8ff6-759a-93c8-ced9d4a36878",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:36:47.067Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1ef85-2a9a-7769-818b-d5bf920ee2a3",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:37:24.608Z",
+      "credits": 10
+    },
+    "rig": {
+      "id": "01a1ef85-9848-75c2-b9e8-f3b4fc308f62",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:37:55.762Z",
+      "credits": 5
+    },
+    "animate:0": {
+      "id": "01a1ef85-eeaf-7075-ba54-f6ef8df96a33",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:38:14.895Z",
+      "credits": 3
+    }
+  },
+  "credits": 38,
+  "files": [
+    "assets-src/models/gspro/golfer.glb"
+  ],
+  "createdAt": "2026-11-18T16:36:44.339Z",
+  "clips": [
+    {
+      "id": 0,
+      "meshyName": "Idle",
+      "label": "idle"
+    }
+  ],
+  "cleanup": "generic (Blender 5.2.3)",
+  "updatedAt": "2026-11-18T16:38:22.968Z"
+}

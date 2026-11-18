@@ -293,3 +293,29 @@
   .gs-range-numbers b { font-size: 19px; }
   .gs-range-launch { display: none; }
 }
+
+.gs-delete { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 9px; border: 1px solid var(--lib-line); background: transparent; color: var(--lib-muted); cursor: pointer; white-space: nowrap; }
+.gs-delete:hover:not(:disabled), .gs-delete:focus-visible { color: var(--gs-bad); border-color: color-mix(in srgb, var(--gs-bad) 50%, transparent); }
+.gs-delete.is-confirming { background: var(--gs-bad); border-color: var(--gs-bad); color: #fff; }
+.gs-delete:disabled { opacity: .6; cursor: progress; }
+.gs-replay { width: min(1320px, calc(100vw - 32px)); }
+.gs-replay-split { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 16px; align-items: start; }
+.gs-replay-main { display: grid; gap: 14px; min-width: 0; }
+.gs-replay-list { position: sticky; top: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: min(640px, calc(100vh - 140px)); border: 1px solid var(--lib-line); border-radius: 14px; background: var(--gs-soft); overflow: hidden; }
+.gs-replay-list-head { margin: 0; padding: 10px 12px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--lib-muted); border-bottom: 1px solid var(--lib-line); display: flex; justify-content: space-between; }
+.gs-replay-list ol { list-style: none; margin: 0; padding: 6px; overflow-y: auto; display: grid; gap: 4px; align-content: start; }
+.gs-replay-list button { width: 100%; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--lib-text); font: inherit; text-align: left; cursor: pointer; }
+.gs-replay-list button:hover { background: var(--gs-card); }
+.gs-replay-list button:focus-visible { outline: 2px solid var(--lib-accent); outline-offset: 1px; }
+.gs-replay-list button[aria-current="true"] { background: var(--gs-card); border-color: var(--lib-accent); box-shadow: 0 2px 8px -4px var(--lib-shadow); }
+.gs-replay-list button.is-excluded { opacity: .55; }
+.gs-replay-list-club { font-size: 12px; font-weight: 800; text-align: center; padding: 4px 0; border-radius: 7px; background: var(--lib-chip); color: var(--lib-strong); }
+.gs-replay-list-main { display: grid; min-width: 0; }
+.gs-replay-list-main b { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--lib-strong); }
+.gs-replay-list-main b small { font-size: 11px; font-weight: 500; color: var(--lib-muted); }
+.gs-replay-list-main > small { font-size: 11px; color: var(--lib-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-replay-list-time { font-size: 11px; color: var(--lib-muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) {
+  .gs-replay-split { grid-template-columns: minmax(0, 1fr); }
+  .gs-replay-list { position: static; max-height: 260px; }
+}

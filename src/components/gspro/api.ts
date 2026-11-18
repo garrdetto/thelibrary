@@ -24,6 +24,7 @@ export const gsproApi = {
   newSession: () => post<{ ok: true }>({ action: 'new-session' }),
   importShots: (label: string, shots: ShotInput[], sessionId?: string) => post<{ sessionId: string; added: number }>({ action: 'import', data: { label, shots, sessionId } }),
   updateShot: (id: number, change: { club?: string | null; excluded?: boolean }) => post<{ shot: GsproShot }>({ action: 'update-shot', id, ...change }),
+  deleteShots: (ids: number[]) => post<{ deleted: number }>({ action: 'delete-shots', ids }),
   renameSession: (id: string, label: string) => post<{ ok: true }>({ action: 'rename-session', id, label }),
   deleteSession: (id: string) => post<{ ok: true }>({ action: 'delete-session', id }),
   coach: (data: CoachInput) => post<CoachResult>({ action: 'coach', data }),

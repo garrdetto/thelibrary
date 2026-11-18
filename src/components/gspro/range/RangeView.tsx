@@ -10,6 +10,7 @@ export type RangeViewProps = {
   launch: number
   spin: number
   club: string
+  clubCode: string | null
   clock: number
   mode: CameraMode
   fallback: ReactNode
@@ -26,7 +27,7 @@ function pointAt(points: TracePoint[], t: number) {
   return points[points.length - 1]
 }
 
-export default function RangeView({ points, landingIndex, handed, ballSpeed, launch, spin, club, clock, mode, fallback }: RangeViewProps) {
+export default function RangeView({ points, landingIndex, handed, ballSpeed, launch, spin, club, clubCode, clock, mode, fallback }: RangeViewProps) {
   const box = useRef<HTMLDivElement | null>(null)
   const canvas = useRef<HTMLCanvasElement | null>(null)
   const api = useRef<RangeSceneApi | null>(null)
@@ -34,12 +35,14 @@ export default function RangeView({ points, landingIndex, handed, ballSpeed, lau
   const restLabel = useRef<HTMLDivElement | null>(null)
   const [failed, setFailed] = useState(false)
   const [height, setHeight] = useState(360)
+  const [modelsReady, setModelsReady] = useState(0)
 
   useEffect(() => {
     if (!canvas.current || !box.current) return
     let scene: RangeSceneApi
     try { scene = createRangeScene(canvas.current) } catch { setFailed(true); return }
     api.current = scene
+    scene.onReady(() => setModelsReady(value => value + 1))
     const node = box.current
     const update = () => {
       const width = Math.max(260, node.clientWidth)
@@ -54,8 +57,8 @@ export default function RangeView({ points, landingIndex, handed, ballSpeed, lau
   }, [])
 
   useEffect(() => {
-    api.current?.setShot({ points, landingIndex, handed, ballSpeed })
-  }, [points, landingIndex, handed, ballSpeed])
+    api.current?.setShot({ points, landingIndex, handed, ballSpeed, club: clubCode })
+  }, [points, landingIndex, handed, ballSpeed, clubCode])
 
   useEffect(() => {
     const scene = api.current
@@ -68,7 +71,7 @@ export default function RangeView({ points, landingIndex, handed, ballSpeed, lau
     }
     place(landingLabel.current, info.landing)
     place(restLabel.current, info.rest && info.landing && Math.hypot(info.rest.x - info.landing.x, info.rest.y - info.landing.y) > 4 ? info.rest : null)
-  }, [clock, mode, points, landingIndex, height])
+  }, [clock, mode, points, landingIndex, height, modelsReady])
 
   if (failed) return <>{fallback}</>
 
