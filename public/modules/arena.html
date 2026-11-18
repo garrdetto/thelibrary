@@ -65,6 +65,15 @@
       #objective-line{margin-top:3px;font-size:15px;font-weight:600;letter-spacing:.04em;font-variant-numeric:tabular-nums;background:var(--panel);border:1px solid var(--hud-dim);padding:4px 12px;display:inline-block}
       #center-message{left:50%;top:34%;transform:translateX(-50%);font-size:22px;letter-spacing:.12em;text-transform:uppercase;text-align:center;max-width:min(680px,90vw);opacity:0;transition:opacity .2s}
       #center-message.show{opacity:1}
+      #countdown{left:50%;top:42%;transform:translate(-50%,-50%);text-align:center;font-size:clamp(64px,16vw,180px);font-weight:700;line-height:1;letter-spacing:.06em;text-transform:uppercase;color:#fff;text-shadow:0 0 28px var(--hud-glow),0 4px 10px rgba(0,0,0,.75)}
+      #countdown.small{font-size:clamp(34px,7vw,72px);letter-spacing:.14em}
+      #countdown:empty{display:none}
+      #countdown.pop{animation:count-pop .9s ease-out}
+      @keyframes count-pop{from{transform:translate(-50%,-50%) scale(1.45);opacity:.2}30%{opacity:1}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+      .settings{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 16px;padding:10px 14px;border:1px solid var(--hud-dim);background:rgba(207,230,255,.04);font-size:12.5px}
+      .settings label{letter-spacing:.14em;text-transform:uppercase;font-size:11.5px}
+      .settings input[type=range]{flex:1;min-width:160px;accent-color:#7fd8ff}
+      .settings output{min-width:5ch;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
       #weapon-reserve{display:block;font-size:12px;letter-spacing:.08em;opacity:.85;margin-top:2px;font-variant-numeric:tabular-nums}
       #scope{inset:0;opacity:0;background:radial-gradient(circle at 50% 50%,transparent 0 min(34vh,34vw),rgba(4,10,16,.82) calc(min(34vh,34vw) + 2px))}
       #scope::before{content:"";position:absolute;left:50%;top:50%;width:calc(min(34vh,34vw) * 2);height:calc(min(34vh,34vw) * 2);transform:translate(-50%,-50%);border-radius:50%;box-shadow:inset 0 0 0 2px rgba(207,230,255,.55),inset 0 0 40px rgba(0,0,0,.45)}
@@ -106,9 +115,9 @@
       body.loading #prompt{display:none}
       #error{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:24px;color:#0d1520}
       @media (max-width:640px){#tracker{width:110px;height:110px}#killfeed{bottom:136px}#weapon-ammo{font-size:24px}#weapon-rounds,#arsenal .bar{width:130px}#vitals{top:56px}#objective{top:100px}#center-message{font-size:16px}.card{padding:16px}}
-      @media (prefers-reduced-motion: reduce){#crosshair,#damage,#center-message{transition:none}}
+      @media (prefers-reduced-motion: reduce){#crosshair,#damage,#center-message{transition:none}#countdown.pop{animation:none}}
     </style>
-    <script type="module" crossorigin src="/modules/chunks/arena-CV5JpF_q.js"></script>
+    <script type="module" crossorigin src="/modules/chunks/arena-v6lK7iOo.js"></script>
     <link rel="modulepreload" crossorigin href="/modules/chunks/modulepreload-polyfill-B5Qt9EMX.js">
     <link rel="modulepreload" crossorigin href="/modules/chunks/vendor-playcanvas-D9Qh8QTW.js">
     <link rel="modulepreload" crossorigin href="/modules/chunks/animation.pure--IqCAPaX.js">
@@ -123,7 +132,7 @@
   </head>
   <body class="loading">
     <div id="stage">
-      <div id="hud" class="hud"><h1>Vector Arena</h1><p>WASD move · Mouse look · Space jump · Shift sprint</p><p>Click fire · Hold right-click to zoom the Battle Rifle 2× · 1 / 2, Q or wheel switch · R reload · M modes</p></div>
+      <div id="hud" class="hud"><h1>Vector Arena</h1><p>WASD move · Mouse look · Space jump · Shift sprint</p><p>Click fire · Hold right-click to zoom the Battle Rifle 2× · 1 / 2, Q or wheel switch · R reload · Esc or M menu</p></div>
       <div id="vitals" class="hud"><div class="label"><span>Health</span><span id="health-text">100</span></div><div class="bar"><div id="health-fill"></div></div></div>
       <div id="arsenal" class="hud"><div id="weapon-name">Assault Rifle</div><div id="weapon-ammo">32</div><span id="weapon-reserve" hidden></span><div id="weapon-rounds" aria-hidden="true"></div><div class="bar"><div id="weapon-reload"></div></div><small>1 Assault Rifle · 2 Battle Rifle (right-click zoom)</small></div>
       <canvas id="tracker" class="hud" aria-label="Motion tracker" role="img"></canvas>
@@ -131,18 +140,20 @@
       <div id="status" class="hud" aria-live="polite"></div>
       <div id="objective" class="hud" hidden><div id="objective-title"></div><div id="objective-line"></div></div>
       <div id="center-message" class="hud" role="status" aria-live="polite"></div>
+      <div id="countdown" class="hud" role="status" aria-live="assertive"></div>
       <div id="scope" class="hud" aria-hidden="true"><span>2×</span></div>
       <div id="crosshair" class="hud" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div id="hitmarker" class="hud" aria-hidden="true"></div>
       <div id="damage" class="hud" aria-hidden="true"></div>
       <div id="dead" class="hud" role="status"></div>
-      <div id="prompt" class="hud"><span>Click the arena to look around · Esc releases the mouse<button type="button" id="prompt-modes">Modes</button></span></div>
+      <div id="prompt" class="hud"><span>Click the arena to look around · Esc opens the menu<button type="button" id="prompt-modes">Modes</button></span></div>
       <div id="menu" class="panel" role="dialog" aria-modal="true" aria-labelledby="menu-title" hidden>
         <div class="card">
           <div class="menu-top"><div><h2 id="menu-title">Vector Arena</h2><p class="lead">Pick a mode. Hold right-click with the Battle Rifle to zoom 2× and keep firing.</p></div><button type="button" class="ghost" id="menu-close" hidden>Back</button></div>
+          <div class="settings"><label for="menu-sensitivity">Mouse sensitivity</label><input type="range" id="menu-sensitivity" min="0.2" max="3" step="0.05" value="1"/><output id="menu-sensitivity-value" for="menu-sensitivity">1.00×</output></div>
           <div class="modes">
-            <section class="mode"><span class="tag">Online · 2 players</span><h3>1v1 Duel</h3><p>One on one, first to 10 eliminations or the most after five minutes.</p><div class="row"><button type="button" data-mode="duel">Find a duel</button><button type="button" class="ghost" data-mode="duel" data-action="host">Private code</button></div></section>
-            <section class="mode"><span class="tag">Online · 4 players</span><h3>2v2 Squads</h3><p>Two blue against two red, first team to 15 eliminations or the most after seven minutes.</p><div class="row"><button type="button" data-mode="squads">Find a squad</button><button type="button" class="ghost" data-mode="squads" data-action="host">Private code</button></div></section>
+            <section class="mode"><span class="tag">Online · 2 players</span><h3>1v1 Duel</h3><p>One on one, first to 5 eliminations or the most after five minutes.</p><div class="row"><button type="button" data-mode="duel">Find a duel</button><button type="button" class="ghost" data-mode="duel" data-action="host">Private code</button></div></section>
+            <section class="mode"><span class="tag">Online · 4 players</span><h3>2v2 Squads</h3><p>Two blue against two red, first team to 5 eliminations or the most after seven minutes.</p><div class="row"><button type="button" data-mode="squads">Find a squad</button><button type="button" class="ghost" data-mode="squads" data-action="host">Private code</button></div></section>
             <section class="mode"><span class="tag">Online · up to 8</span><h3>Open Battle</h3><p>Drop-in blue against red with no clock and no score limit.</p><div class="row"><button type="button" data-mode="open">Join</button></div></section>
             <section class="mode"><span class="tag">Solo · leaderboard</span><h3>Training Range</h3><p>Sixty seconds of pop-up targets across the arena. Fast drops, headshots, long shots and streaks score more. High scores are listed under the arena.</p><div class="row"><button type="button" data-mode="range">Start the range</button></div></section>
             <section class="mode siege"><span class="tag">Solo · leaderboard</span><h3>Rolling Siege</h3><p>2,000 rounds. Bat-swinging raiders in wheelchairs roll in from every gate, more and faster every second. Two body bursts or one head burst melts one. Nobody lasts past two minutes.</p><div class="row"><button type="button" data-mode="horde">Hold the line</button></div></section>

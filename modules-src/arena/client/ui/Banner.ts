@@ -15,6 +15,8 @@ export class Banner {
   private readonly title = element('objective-title')
   private readonly line = element('objective-line')
   private readonly center = element('center-message')
+  private readonly big = element('countdown')
+  private lastBig = ''
   private lastTitle = ''
   private lastLine = ''
   private lastCenter = ''
@@ -38,9 +40,21 @@ export class Banner {
     this.lastCenter = text
   }
 
+  countdown(text: string): void {
+    if (!this.big || text === this.lastBig) return
+    this.lastBig = text
+    this.big.textContent = text
+    this.big.classList.toggle('small', text.length > 3)
+    this.big.classList.remove('pop')
+    if (!text) return
+    void this.big.offsetWidth
+    this.big.classList.add('pop')
+  }
+
   hide(): void {
     if (this.box) this.box.hidden = true
     this.message('')
+    this.countdown('')
     this.lastTitle = ''
     this.lastLine = ''
   }

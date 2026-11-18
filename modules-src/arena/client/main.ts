@@ -134,7 +134,24 @@ export async function startArena(stage: HTMLElement): Promise<void> {
     canvas.focus()
   }
 
-  const menu = new Menu(request => start(request))
+  const relock = () => {
+    if (document.pointerLockElement === canvas) return
+    try {
+      Promise.resolve(canvas.requestPointerLock?.()).catch(() => {})
+    } catch {
+      canvas.focus()
+    }
+  }
+  const menu = new Menu(request => start(request), scale => weapons.setSensitivity(scale), relock)
+
+  let wasLocked = false
+  document.addEventListener('pointerlockchange', () => {
+    const locked = document.pointerLockElement === canvas
+    const released = wasLocked && !locked
+    wasLocked = locked
+    if (!released || menu.open || results.open || document.body.classList.contains('loading')) return
+    menu.show(current !== null)
+  })
 
   window.addEventListener('keydown', event => {
     if (event.code !== 'KeyM' || event.repeat) return
