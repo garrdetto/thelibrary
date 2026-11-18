@@ -9,6 +9,7 @@ import type { FirstPersonPlayer } from '../player/FirstPerson'
 import { WeaponState, type AmmoPool } from './WeaponState'
 import { WeaponEffects } from './Effects'
 import { ViewModel, type ViewModelSpec } from './ViewModel'
+import { HitMarks } from '../ui/HitMarks'
 
 export interface HitTarget {
   playerId: string
@@ -84,6 +85,7 @@ export function zoomedFov(base: number, zoom: number): number {
 export class WeaponSystem {
   readonly view: ViewModel
   readonly effects: WeaponEffects
+  readonly marks: HitMarks
   private readonly states = new Map<WeaponId, WeaponState>()
   private trigger = false
   private aim = false
@@ -107,6 +109,7 @@ export class WeaponSystem {
   ) {
     for (const id of WEAPON_IDS) this.states.set(id, new WeaponState(WEAPONS[id]))
     this.effects = new WeaponEffects(scene)
+    this.marks = new HitMarks(scene, camera, canvas.parentElement)
     this.view = new ViewModel(scene, camera, VIEW_MODELS, 'assault')
     this.baseFov = camera.fov
     this.baseSensibility = camera.angularSensibility
@@ -268,6 +271,7 @@ export class WeaponSystem {
     this.view.setReload(state.reloadProgress)
     this.view.update(dt, this.player.moving, this.player.grounded)
     this.effects.update(dt)
+    this.marks.update(dt)
   }
 
   private fire(state: WeaponState): void {
@@ -307,6 +311,7 @@ export class WeaponSystem {
       const head = meta.part === 'head'
       const damage = Math.round(spec.damage * (head ? spec.headMultiplier : 1))
       const result = local.shot(meta.part, damage, hitPoint, spec.id)
+      this.marks.add(hitPoint, pick?.pickedMesh ?? null, head, result.killed)
       this.hooks.marker?.(head, result.killed)
       this.hooks.fired?.(spec.id, true)
       return
@@ -316,7 +321,9 @@ export class WeaponSystem {
     const enemy = target && myTeam !== null && target.team !== myTeam ? target : null
     if (enemy) {
       const feet = meta?.feet ?? hitPoint.y - 1
-      this.hooks.hit(enemy, hitPoint.y - feet >= 1.45)
+      const headshot = hitPoint.y - feet >= 1.45
+      this.marks.add(hitPoint, pick?.pickedMesh ?? null, headshot, false)
+      this.hooks.hit(enemy, headshot)
     }
     this.hooks.fired?.(spec.id, Boolean(enemy))
     this.hooks.shoot({

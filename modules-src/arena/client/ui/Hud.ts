@@ -63,9 +63,12 @@ export class Hud {
 
   hit(headshot: boolean, kill = false): void {
     if (!this.hitmarker) return
-    this.hitmarker.className = kill ? 'show kill' : headshot ? 'show head' : 'show'
+    const marker = this.hitmarker
+    marker.className = ''
+    void marker.offsetWidth
+    marker.className = kill ? 'show kill' : headshot ? 'show head' : 'show'
     window.clearTimeout(this.hitTimer)
-    this.hitTimer = window.setTimeout(() => { if (this.hitmarker) this.hitmarker.className = '' }, kill ? 400 : 160)
+    this.hitTimer = window.setTimeout(() => { marker.className = '' }, kill ? 520 : 260)
   }
 
   private hurt(): void {

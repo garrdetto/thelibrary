@@ -112,6 +112,7 @@ export async function startArena(stage: HTMLElement): Promise<void> {
   const start = (request: ModeRequest) => {
     results.hide()
     current?.dispose()
+    weapons.marks.clear()
     current = null
     lastRequest = request
     document.body.dataset.mode = request.mode
