@@ -11,6 +11,7 @@ export type ChatModule = { id: string; label: string; invite: InviteKind | null 
 
 type ChatMessage = { id: number; username: string; text: string; at: number; thread: string | null; meta: { invite?: ChatInvite } | null }
 type ReadMark = { username: string; thread: string | null; id: number }
+type Removal = { thread: string | null; id: number | null; upTo: number | null }
 type Pane = { kind: 'list' } | { kind: 'people' } | { kind: 'new' } | { kind: 'thread'; key: string }
 type Thread = { key: string; last: ChatMessage | null; unread: number; lastUnread: ChatMessage | null }
 
@@ -79,6 +80,8 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const [sending, setSending] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const [typedName, setTypedName] = useState('')
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const returnFocus = useRef<Element | null>(null)
   const lastInput = useRef(0)
@@ -92,6 +95,14 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const activityRef = useRef(activity)
   activityRef.current = activity
   const now = clock + clockOffset
+
+  const applyRemovals = useCallback((removed: Removal[]) => {
+    if (!removed.length) return
+    setMessages(current => {
+      const next = current.filter(item => !removed.some(mark => (mark.thread ?? GROUP) === (item.thread ?? GROUP) && (mark.id === item.id || (mark.upTo !== null && item.id <= mark.upTo))))
+      return next.length === current.length ? current : next
+    })
+  }, [])
 
   const merge = useCallback((incoming: ChatMessage[]) => {
     if (!incoming.length) return
@@ -111,7 +122,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
       if (lastId.current) params.set('after', String(lastId.current))
       const response = await fetch(`/api/group-chat?${params}`, { cache: 'no-store' })
       if (!response.ok) return
-      const data = await response.json() as { messages: ChatMessage[]; isAdmin: boolean; online: ChatPresence[]; recent?: ChatPresence[]; reads?: ReadMark[]; now?: number }
+      const data = await response.json() as { messages: ChatMessage[]; isAdmin: boolean; online: ChatPresence[]; recent?: ChatPresence[]; reads?: ReadMark[]; removed?: Removal[]; now?: number }
       if (!loaded.current) {
         loaded.current = true
         const stored = loadSeen(username)
@@ -124,6 +135,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
         }
       }
       merge(data.messages)
+      applyRemovals(data.removed ?? [])
       setOnline(data.online)
       setRecent(data.recent ?? [])
       setOnlineLoaded(true)
@@ -132,7 +144,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
       if (typeof data.now === 'number') setClockOffset(data.now - Date.now())
       setClock(Date.now())
     } catch { /* offline: try again next tick */ }
-  }, [username, merge])
+  }, [username, merge, applyRemovals])
 
   useEffect(() => {
     const mark = () => { lastInput.current = Date.now() }
@@ -284,7 +296,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
     if (open && list && stickBottom.current) list.scrollTop = list.scrollHeight
   }, [shown.length, open, activeKey])
 
-  useEffect(() => { setError(''); setNotice(''); stickBottom.current = true }, [pane])
+  useEffect(() => { setError(''); setNotice(''); setConfirmClear(false); stickBottom.current = true }, [pane])
 
   const unreadTotal = threads.reduce((sum, item) => sum + item.unread, 0)
   const newest = newestOf(threads)
@@ -318,7 +330,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   async function postJson(body: unknown) {
     const response = await fetch('/api/group-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const data = await response.json().catch(() => ({})) as { message?: ChatMessage; error?: string }
-    if (!response.ok) throw new Error(data.error ?? 'Message not sent.')
+    if (!response.ok) throw new Error(data.error ?? 'Request failed. Try again.')
     if (data.message) merge([data.message])
     return data
   }
@@ -363,6 +375,22 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   async function remove(id: number) {
     const response = await fetch('/api/group-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id }) }).catch(() => null)
     if (response?.ok) setMessages(current => current.filter(item => item.id !== id))
+  }
+
+  async function clearChat(key: string) {
+    if (clearing) return
+    setClearing(true); setError('')
+    try {
+      const data = await postJson({ action: 'clear', thread: key === GROUP ? null : key }) as { upTo?: number }
+      const upTo = data.upTo ?? Number.MAX_SAFE_INTEGER
+      setMessages(current => current.filter(item => (item.thread ?? GROUP) !== key || item.id > upTo))
+      setDrafts(current => current.filter(item => item !== key))
+      setPane({ kind: 'list' })
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Chat not deleted.')
+    } finally {
+      setClearing(false)
+    }
   }
 
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -414,7 +442,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const back = <button type="button" className="gc-icon" aria-label="Back to chats" onClick={() => setPane({ kind: 'list' })}><ArrowLeft size={16}/></button>
   const threadNames = pane.kind === 'thread' ? othersIn(pane.key, username ?? '') : []
   const header = pane.kind === 'thread'
-    ? <>{back}<Avatar name={threadNames[0] ?? 'everyone'} group={pane.key === GROUP ? 0 : threadNames.length} status={threadNames.length === 1 ? presenceStatus(people.get(threadNames[0]), now) : undefined}/><span className="gc-heading"><strong>{titleFor(pane.key)}{pane.key !== GROUP && <Lock size={10} aria-label="Private"/>}</strong><small>{presenceLine(pane.key)}</small></span></>
+    ? <>{back}<Avatar name={threadNames[0] ?? 'everyone'} group={pane.key === GROUP ? 0 : threadNames.length} status={threadNames.length === 1 ? presenceStatus(people.get(threadNames[0]), now) : undefined}/><span className="gc-heading"><strong>{titleFor(pane.key)}{pane.key !== GROUP && <Lock size={10} aria-label="Private"/>}</strong><small>{presenceLine(pane.key)}</small></span>{(pane.key !== GROUP || isAdmin) && <button type="button" className={`gc-icon gc-clear${confirmClear ? ' is-on' : ''}`} aria-label={pane.key === GROUP ? 'Clear the Everyone chat' : 'Delete this chat'} title={pane.key === GROUP ? 'Clear chat' : 'Delete chat'} aria-expanded={confirmClear} onClick={() => setConfirmClear(value => !value)}><Trash2 size={15}/></button>}</>
     : pane.kind === 'new'
       ? <>{back}<span className="gc-heading"><strong>New private chat</strong><small>Up to 8 people</small></span></>
       : <span className="gc-heading"><strong>Messages</strong><small>{onlineCount === null ? 'Connecting…' : `${onlineCount} online now`}</small></span>
@@ -486,6 +514,13 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
         </div>}
 
         {pane.kind === 'thread' && <>
+          {confirmClear && <div className="gc-confirm" role="alertdialog" aria-label="Delete chat">
+            <p>{pane.key === GROUP ? 'Clear every message in the Everyone chat? This removes them for everyone.' : 'Delete this chat? Every message in it is removed for everyone in the chat.'}</p>
+            <span>
+              <button type="button" className="gc-mini" onClick={() => setConfirmClear(false)} disabled={clearing}>Cancel</button>
+              <button type="button" className="gc-mini is-danger" onClick={() => void clearChat(pane.key)} disabled={clearing}>{clearing ? 'Deleting…' : pane.key === GROUP ? 'Clear chat' : 'Delete chat'}</button>
+            </span>
+          </div>}
           {pane.key !== GROUP && canInvite && <div className="gc-invitebar"><span>{module!.label}</span><button type="button" className="gc-mini is-accent" disabled={sending} onClick={() => void invite(othersIn(pane.key, username))}><Gamepad2 size={13}/> {inviteNote}</button></div>}
           <div className="group-chat-list" ref={listRef} onScroll={event => { const el = event.currentTarget; stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}>
             {!shown.length ? <p className="group-chat-hint">{pane.key === GROUP ? 'No messages yet. Say hi!' : `Private chat with ${titleFor(pane.key)}. Only you ${othersIn(pane.key, username).length > 1 ? 'all' : 'two'} can see it.`}</p> : shown.map((item, index) => {
