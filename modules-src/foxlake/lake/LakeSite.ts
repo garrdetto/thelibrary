@@ -85,7 +85,7 @@ export function findLakeSite(land: TelloLand): LakeSite {
   const scene = (p: SitePoint): SitePoint => ({ x: land.toSceneX(p.x), z: land.toSceneZ(p.z) })
   const dockStart = at(2)
   const dockEnd = at(-(DOCK_LENGTH - 2))
-  const boat = { x: dockEnd.x + side.x * 2.6 + dirIn.x * 1.5, z: dockEnd.z + side.z * 2.6 + dirIn.z * 1.5 }
+  const boat = { x: dockEnd.x + side.x * 2.9 + dirIn.x * 1.5, z: dockEnd.z + side.z * 2.9 + dirIn.z * 1.5 }
   const utv = { x: at(14).x - side.x * 6, z: at(14).z - side.z * 6 }
 
   const centre = lakeCentre(land, at(-120))

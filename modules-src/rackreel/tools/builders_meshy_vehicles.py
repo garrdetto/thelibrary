@@ -1,7 +1,7 @@
 VEHICLE_SPECS = {
     'utv': {'height': 2.05, 'wheels': True},
     'quad': {'length': 2.3, 'wheels': True},
-    'boat': {'length': 6.42, 'rear': -3.38, 'wheels': False},
+    'boat': {'length': 6.42, 'rear': -3.38, 'wheels': False, 'stretch': (1.2, 1.2), 'seats': ((1.25, 1.8, 0.3, 0.34), (-2.12, -1.48, 0.3, 0.42))},
 }
 VEHICLE_TEXTURE = 2048
 VEHICLE_INFO = {}
@@ -70,6 +70,18 @@ def motor_faces(bm):
     return labels, Vector((0, transom - 0.08, top))
 
 
+def spread_seats(bm, seats):
+    deck = max((f.calc_center_median().z for f in bm.faces if f.normal.z > 0.9 and 0.5 < abs(f.calc_center_median().x) < 0.7 and f.calc_center_median().z < 1.1), default=0.95)
+    for (y0, y1, half, dx) in seats:
+        faces = [f for f in bm.faces if y0 < f.calc_center_median().y < y1 and abs(f.calc_center_median().x) < half and f.calc_center_median().z > deck + 0.015]
+        if not faces:
+            continue
+        moved = {v for f in faces for v in f.verts}
+        copy = bmesh.ops.duplicate(bm, geom=faces)
+        bmesh.ops.translate(bm, vec=(dx, 0, 0), verts=[e for e in copy['geom'] if isinstance(e, bmesh.types.BMVert)])
+        bmesh.ops.translate(bm, vec=(-dx, 0, 0), verts=list(moved))
+
+
 def build_meshy_vehicle(name, fallback):
     src = meshy_source(name)
     if not src:
@@ -80,6 +92,12 @@ def build_meshy_vehicle(name, fallback):
     if not spec['wheels']:
         hull = [v.co.z for v in bm.verts if v.co.y > spec['rear'] + 0.9]
         bmesh.ops.translate(bm, vec=(0, 0, -min(hull)), verts=bm.verts[:])
+    if spec.get('seats'):
+        bm.normal_update()
+        spread_seats(bm, spec['seats'])
+    if spec.get('stretch'):
+        sx, sy = spec['stretch']
+        bmesh.ops.scale(bm, vec=(sx, sy, 1), verts=bm.verts[:])
     bm.faces.index_update()
     bm.normal_update()
     n0 = bm.verts.layers.float_vector.new('n0')

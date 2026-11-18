@@ -70,7 +70,8 @@ import type { DetailSwitch } from '../ui/PauseMenu'
 import { formatValue as fmtValue } from '../systems/LootTableManager'
 import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
-import { ANCHOR_MAX_SPEED, BOARD_MAX_SPEED, BOARD_RANGE, CONSOLE_SEAT, DECK_SEATS, DECK_SEAT_NAMES, PASSENGER_SEAT, createAnchorLine, otherSeat, swivelToward } from './BoatSeats'
+import { Headlights } from './Headlights'
+import { ANCHOR_MAX_SPEED, BOARD_MAX_SPEED, BOARD_RANGE, CONSOLE_SEAT, DECK_SEATS, DECK_SEAT_NAMES, PASSENGER_SEAT, createAnchorLine, nextSeat, otherSeat, swivelToward } from './BoatSeats'
 import type { DeckSeat } from './BoatSeats'
 import { VehicleCamera } from '../systems/VehicleCamera'
 import type { RemoteBoat } from './Online'
@@ -368,6 +369,7 @@ export class Game {
   private spawnHeading = 0
   private anchorLine!: Mesh
   private deckSeat: DeckSeat | null = null
+  private headlights: Headlights | null = null
   private swivel = 0
   private crewOf: string | null = null
   private crewBoat: RemoteBoat | null = null
@@ -528,6 +530,7 @@ export class Game {
     const bought = this.options.ridesBought === true
     this.utvVehicle = this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), bought ? own.utv : garaged?.position ?? landmarks.utv, garaged?.heading ?? landmarks.utvHeading)
     this.boat = this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), bought ? own.boat : landmarks.boat, landmarks.boatHeading)
+    this.headlights = new Headlights(scene, this.utvVehicle.root)
     const side = new Vector3(Math.cos(landmarks.utvHeading), 0, -Math.sin(landmarks.utvHeading))
     this.quadSpot.copyFrom(landmarks.utv).addInPlace(side.scale(4.5))
     this.quadSpotHeading = landmarks.utvHeading
@@ -1059,6 +1062,7 @@ export class Game {
       else if (e.code === 'KeyP') this.openPanel('party', null)
       else if (e.code === 'KeyQ') this.toggleAnchor()
       else if (e.code === 'KeyF') this.switchSeat()
+      else if (e.code === 'KeyL') this.toggleHeadlights()
     })
     addEventListener('keyup', (e) => this.keys.delete(e.code))
     addEventListener('blur', () => this.releaseInput())
@@ -1381,7 +1385,7 @@ export class Game {
     this.avatar.root.rotationQuaternion = null
     this.avatar.root.rotation.set(0, 0, 0)
     this.avatar.root.position.copyFrom(v.seat).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
-    this.hud.toast(v.external?.controlsHint?.(v) ?? (v.kind === 'BOAT' ? 'W/S throttle · A/D tiller · Q to drop anchor · E to step out near shore' : 'W/S throttle · A/D steer · Space brake · E to step out'))
+    this.hud.toast(v.external?.controlsHint?.(v) ?? (v.kind === 'BOAT' ? 'W/S throttle · A/D tiller · Q to drop anchor · E to step out near shore' : `W/S throttle · A/D steer · Space brake${v === this.utvVehicle ? ' · L headlights' : ''} · E to step out`))
   }
 
   private toggleAnchor(): void {
@@ -1411,7 +1415,13 @@ export class Game {
     this.anchorLine.setEnabled(true)
     this.audio.splash()
     const crew = this.online.crewOf(this.online.id)
-    this.hud.toast(`Anchor down. You're on the ${DECK_SEAT_NAMES[0]} seat${crew ? `, ${crew} has the ${DECK_SEAT_NAMES[1]}` : ''}. F switches seats · Q pulls the anchor.`)
+    this.hud.toast(`Anchor down. You're on the ${DECK_SEAT_NAMES[0]} seat${crew ? `, ${crew} has the ${DECK_SEAT_NAMES[otherSeat(0)]}` : ''}. F moves you round the four fishing seats · Q pulls the anchor.`)
+  }
+
+  private toggleHeadlights(): void {
+    if (!this.headlights || this.mode !== 'vehicle' || this.vehicles.active !== this.utvVehicle) return
+    this.audio.click()
+    this.hud.toast(this.headlights.toggle() ? 'Headlights on.' : 'Headlights off.')
   }
 
   private switchSeat(): void {
@@ -1432,9 +1442,9 @@ export class Game {
       return
     }
     if (this.fishing.busy) this.fishing.cancel()
-    this.deckSeat = otherSeat(this.deckSeat)
+    this.deckSeat = nextSeat(this.deckSeat)
     const crew = this.online.crewOf(this.online.id)
-    this.hud.toast(`Moved to the ${DECK_SEAT_NAMES[this.deckSeat]} seat${crew ? `; ${crew} takes the other one` : ''}.`)
+    this.hud.toast(`Moved to the ${DECK_SEAT_NAMES[this.deckSeat]} seat${crew ? `; ${crew} takes the ${DECK_SEAT_NAMES[otherSeat(this.deckSeat)]}` : ''}.`)
   }
 
   private hideOverlappedBoat(): void {
@@ -1892,6 +1902,7 @@ export class Game {
     this.ext?.update?.(dt)
     this.lighting.update()
     this.hud.setClock(this.clock.label)
+    this.headlights?.update(this.lighting.night, this.ctx.camera.globalPosition)
     this.weeds.update(this.ctx.camera.globalPosition)
     this.skyMat.setFloat('time', this.time)
     this.waterMat.setFloat('time', this.time)

@@ -6,8 +6,8 @@ import { disposeRig, instantiate } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { PLAY_LIMIT, forestDensity } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
-import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, ABANDONED_DOWN_SECONDS, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, HERD_TURNOVER_SECONDS, LEAVE_GONE, LEAVE_SECONDS, SAFE_DISTANCE, coverMatters, fleeSpeed, react } from './Herd'
-import type { DeerMood, Senses } from './Herd'
+import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, ABANDONED_DOWN_SECONDS, COURT_RANGE, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, HERD_TURNOVER_SECONDS, IDLE_ACTS, LEAVE_GONE, LEAVE_SECONDS, MOUNT_PITCH, MOUNT_SECONDS, SAFE_DISTANCE, coverMatters, fleeSpeed, hipLift, mountOffset, nextIdle, react } from './Herd'
+import type { DeerMood, IdleAct, Senses } from './Herd'
 import { SPECIES_BY_ID, classify, measure } from './LootTableManager'
 import type { LootTableManager, SpeciesTemplate, Specimen } from './LootTableManager'
 
@@ -40,6 +40,10 @@ export interface Animal {
   scan: number
   scanYaw: number
   stomp: number
+  /** What it is doing while calm: looking round, or a buck courting or mounted on a doe (`IdleAct`). */
+  act: IdleAct
+  /** The other animal in a courtship (its id), 0 when none. */
+  mate: number
 }
 
 export interface NetAnimal {
@@ -57,6 +61,8 @@ export interface NetAnimal {
   tp: number
   sd?: number
   dt: number
+  /** Index into `IDLE_ACTS`. */
+  ac?: number
 }
 
 export interface ShotResult {
@@ -256,7 +262,7 @@ export class Wildlife {
     const heading = this.rng() * Math.PI * 2
     const animal: Animal = {
       id: id ?? this.nextId++, template, specimen, rig, antlers, doe, position, heading, desired: heading, speed: 0, state: 'graze', stateTime: 2 + this.rng() * 5, fleeTime: 0,
-      gait: this.rng() * 10, scale, wounds: 0, goal: position.clone(), tagged: false, leaving: -1, downTime: 0, lastDistance: Infinity, alarm: 0, scan: 2 + this.rng() * 4, scanYaw: 0, stomp: 0,
+      gait: this.rng() * 10, scale, wounds: 0, goal: position.clone(), tagged: false, leaving: -1, downTime: 0, lastDistance: Infinity, alarm: 0, scan: 2 + this.rng() * 4, scanYaw: 0, stomp: 0, act: 'none', mate: 0,
     }
     this.animals.push(animal)
     if (specimen.legendary) this.onLegendSpawn?.(animal)
@@ -278,6 +284,7 @@ export class Wildlife {
   }
 
   remove(animal: Animal): void {
+    this.endAct(animal)
     const i = this.animals.indexOf(animal)
     if (i >= 0) this.animals.splice(i, 1)
     if (animal.antlers) disposeRig(animal.antlers, (m) => this.ctx.unregisterDynamic(m))
@@ -304,6 +311,7 @@ export class Wildlife {
       }
     }
     if (!best) return null
+    this.endAct(best)
     const away = best.position.subtract(player)
     away.y = 0
     best.goal = player.add(away.normalize().scale(55 + this.rng() * 25))
@@ -372,7 +380,7 @@ export class Wildlife {
   snapshot(): NetAnimal[] {
     return this.animals.filter((a) => !a.tagged).map((a) => ({
       id: a.id, sp: a.template.id, doe: a.doe, x: Math.round(a.position.x * 100) / 100, z: Math.round(a.position.z * 100) / 100, h: Math.round(a.heading * 1000) / 1000,
-      v: Math.round(a.speed * 100) / 100, st: a.state, val: a.specimen.value, wt: a.specimen.weightLb, leg: a.specimen.legendary, tp: a.specimen.trophyPoints, sd: a.specimen.seed, dt: Math.round(a.downTime * 10) / 10,
+      v: Math.round(a.speed * 100) / 100, st: a.state, ac: IDLE_ACTS.indexOf(a.act), val: a.specimen.value, wt: a.specimen.weightLb, leg: a.specimen.legendary, tp: a.specimen.trophyPoints, sd: a.specimen.seed, dt: Math.round(a.downTime * 10) / 10,
     }))
   }
 
@@ -405,6 +413,7 @@ export class Wildlife {
       if (!n) continue
       if (n.st === 'down' && a.state !== 'down') a.downTime = n.dt
       a.state = n.st
+      a.act = IDLE_ACTS[n.ac ?? 0] ?? 'none'
       a.speed = n.v
       const k = Math.min(1, dt * 6)
       a.position.x += (n.x + Math.sin(n.h) * n.v * 0.12 - a.position.x) * k
@@ -412,6 +421,7 @@ export class Wildlife {
       a.position.y = this.terrain.heightAt(a.position.x, a.position.z)
       a.heading += wrapAngle(n.h - a.heading) * k
       if (a.state === 'down') a.downTime += dt
+      a.stateTime -= dt
       this.pose(a, dt, a.state === 'down' ? 0 : a.speed)
     }
   }
@@ -485,16 +495,45 @@ export class Wildlife {
           a.stateTime = 3 + this.rng() * 4
         }
       }
+      if (a.act !== 'none' && ((a.state !== 'graze' && a.state !== 'walk') || a.leaving >= 0 || ((a.act === 'court' || a.act === 'mount' || a.act === 'stand') && !this.partner(a)))) this.endAct(a)
       if (a.state === 'graze' && a.stateTime <= 0) {
-        a.state = 'walk'
-        a.stateTime = 5 + this.rng() * 8
-        a.goal = a.position.add(new Vector3((this.rng() - 0.5) * 50, 0, (this.rng() - 0.5) * 50))
+        if (a.act === 'mount') {
+          this.endAct(a)
+          a.stateTime = 4 + this.rng() * 5
+        } else if (a.act === 'stand') a.stateTime = 1
+        else this.chooseIdle(a)
+      } else if (a.state === 'walk' && a.act === 'court') {
+        const doe = this.partner(a)!
+        this.mountSpot(a, doe, a.goal)
+        const d = a.goal.subtract(a.position)
+        d.y = 0
+        if (d.length() < 0.5) {
+          a.state = 'graze'
+          a.act = 'mount'
+          a.stateTime = MOUNT_SECONDS[0] + this.rng() * (MOUNT_SECONDS[1] - MOUNT_SECONDS[0])
+          a.desired = doe.heading
+          doe.stateTime = a.stateTime + 1.5
+        } else if (a.stateTime <= 0) {
+          this.endAct(a)
+          a.state = 'graze'
+          a.stateTime = 5 + this.rng() * 6
+        } else a.desired = Math.atan2(d.x, d.z)
       } else if (a.state === 'walk') {
         const d = a.goal.subtract(a.position)
         if (d.length() < 2 || a.stateTime <= 0) {
           a.state = 'graze'
           a.stateTime = 5 + this.rng() * 10
         } else a.desired = Math.atan2(d.x, d.z)
+      }
+      if (a.act === 'mount') {
+        const doe = this.partner(a)
+        if (doe) {
+          this.mountSpot(a, doe, a.goal)
+          a.desired = doe.heading
+          a.position.x += (a.goal.x - a.position.x) * Math.min(1, dt * 4)
+          a.position.z += (a.goal.z - a.position.z) * Math.min(1, dt * 4)
+        }
+        a.speed = 0
       }
       const running = a.state === 'flee' || a.state === 'wounded'
       if (running) {
@@ -511,9 +550,11 @@ export class Wildlife {
         }
       }
       const buck = !a.doe && a.template.id === 'whitetail'
-      const target = running ? (a.template.id === 'whitetail' ? fleeSpeed(a.fleeTime, buck) : 8) * (a.state === 'wounded' ? 0.75 : 1) : a.state === 'walk' ? 1.25 : 0
+      const courting = a.act === 'court' ? Math.min(1.25, Math.max(0.35, Math.hypot(a.goal.x - a.position.x, a.goal.z - a.position.z) * 0.7)) : 1.25
+      const target = running ? (a.template.id === 'whitetail' ? fleeSpeed(a.fleeTime, buck) : 8) * (a.state === 'wounded' ? 0.75 : 1) : a.state === 'walk' ? courting : 0
       a.speed += (target - a.speed) * Math.min(1, dt * (running ? 4 : 1.5))
-      const turnRate = running ? 3.2 : a.state === 'alert' ? 2.2 : 1.2
+      if (a.act === 'mount') a.speed = 0
+      const turnRate = running ? 3.2 : a.state === 'alert' ? 2.2 : a.act === 'mount' ? 3 : 1.2
       const dh = wrapAngle(a.desired - a.heading)
       a.heading += Math.sign(dh) * Math.min(Math.abs(dh), turnRate * dt)
       if (a.speed > 0.05) {
@@ -544,6 +585,78 @@ export class Wildlife {
     }
   }
 
+  private byId(id: number): Animal | null {
+    if (!id) return null
+    for (const b of this.animals) if (b.id === id) return b
+    return null
+  }
+
+  /** The animal it is courting with, while both are still calm and still paired with each other. */
+  private partner(a: Animal): Animal | null {
+    const b = this.byId(a.mate)
+    if (!b || b.mate !== a.id || b.leaving >= 0 || (b.state !== 'graze' && b.state !== 'walk')) return null
+    const pair = a.act === 'stand' ? b.act === 'court' || b.act === 'mount' : b.act === 'stand'
+    return pair ? b : null
+  }
+
+  /** Stops whatever the animal was doing while calm; a courtship ends for both of them. */
+  private endAct(a: Animal): void {
+    const b = this.byId(a.mate)
+    a.act = 'none'
+    a.mate = 0
+    if (b && b.mate === a.id) {
+      b.act = 'none'
+      b.mate = 0
+      if (b.state === 'graze') b.stateTime = Math.min(b.stateTime, 2 + this.rng() * 3)
+    }
+  }
+
+  /** Where a buck stands to mount `doe`: right behind her, facing the way she faces. */
+  private mountSpot(buck: Animal, doe: Animal, out: Vector3): void {
+    const back = mountOffset(buck.scale, doe.scale)
+    out.set(doe.position.x - Math.sin(doe.heading) * back, doe.position.y, doe.position.z - Math.cos(doe.heading) * back)
+  }
+
+  private calmDoeNear(buck: Animal): Animal | null {
+    let best: Animal | null = null
+    let bestD = COURT_RANGE
+    for (const b of this.animals) {
+      if (!b.doe || b.template.id !== 'whitetail' || b.act !== 'none' || b.leaving >= 0 || b.wounds > 0 || (b.state !== 'graze' && b.state !== 'walk')) continue
+      const d = Vector3.Distance(b.position, buck.position)
+      if (d < bestD) {
+        bestD = d
+        best = b
+      }
+    }
+    return best
+  }
+
+  /** A calm animal that has fed a while picks what to do next: wander, stand and look round, keep feeding or, for a buck near a doe, court her. */
+  private chooseIdle(a: Animal): void {
+    a.act = 'none'
+    const buck = a.template.id === 'whitetail' && !a.doe
+    const doe = buck ? this.calmDoeNear(a) : null
+    const choice = nextIdle(this.rng(), this.rng(), doe !== null)
+    if (choice === 'court' && doe) {
+      a.state = 'walk'
+      a.act = 'court'
+      a.mate = doe.id
+      a.stateTime = 40
+      this.mountSpot(a, doe, a.goal)
+      doe.state = 'graze'
+      doe.act = 'stand'
+      doe.mate = a.id
+      doe.stateTime = 45
+    } else if (choice === 'walk') {
+      a.state = 'walk'
+      a.stateTime = 5 + this.rng() * 8
+      a.goal = a.position.add(new Vector3((this.rng() - 0.5) * 50, 0, (this.rng() - 0.5) * 50))
+    } else if (choice === 'look') {
+      a.act = 'look'
+      a.stateTime = 4 + this.rng() * 5
+    } else a.stateTime = 5 + this.rng() * 7
+  }
+
   private pose(a: Animal, dt: number, speed: number): void {
     const root = a.rig.root
     root.position.copyFrom(a.position)
@@ -556,6 +669,11 @@ export class Wildlife {
       return
     }
     const deer = a.template.id === 'whitetail'
+    const mounted = a.act === 'mount'
+    if (mounted) {
+      a.gait += dt * 5
+      pitch = MOUNT_PITCH + Math.sin(a.gait) * 0.03
+    }
     const bounding = deer && speed > 6.5
     const trot = Math.min(1, Math.max(0, (speed - 2) / 4))
     if (bounding) {
@@ -590,6 +708,20 @@ export class Wildlife {
       root.position.y += Math.abs(Math.sin(a.gait * 2)) * 0.025 * Math.min(1, speed)
     }
     a.stomp = Math.max(0, a.stomp - dt)
+    if (mounted) {
+      for (let i = 0; i < BACK_LEGS.length; i++) {
+        const j = a.rig.joints.get(BACK_LEGS[i])
+        if (j) j.rotation.x = -pitch
+      }
+      for (let i = 0; i < FRONT_LEGS.length; i++) {
+        const j = a.rig.joints.get(FRONT_LEGS[i])
+        if (j) j.rotation.x = -0.45
+      }
+      const lift = hipLift(pitch)
+      root.position.x += Math.sin(a.heading) * lift.z * a.scale
+      root.position.y += lift.y * a.scale
+      root.position.z += Math.cos(a.heading) * lift.z * a.scale
+    }
     Quaternion.FromEulerAnglesToRef(pitch, a.heading, 0, root.rotationQuaternion!)
     const head = a.rig.joints.get('head')
     if (head) {
@@ -598,10 +730,11 @@ export class Wildlife {
         a.scan = a.scan < -2.5 ? 3 + this.rng() * 6 : a.scan
         if (a.scan > 0) a.scanYaw = (this.rng() - 0.5) * 1.1
       }
-      const lookingUp = a.state === 'graze' && a.scan < 0
+      const standing = a.state === 'graze' && (a.act === 'look' || a.act === 'stand' || mounted)
+      const lookingUp = a.state === 'graze' && (a.scan < 0 || standing)
       const grazing = a.state === 'graze' && speed < 0.2 && !lookingUp
-      const targetX = grazing ? 0.95 + Math.sin(a.gait * 0.3) * 0.05 : a.state === 'alert' || lookingUp ? -0.32 : bounding ? 0.1 : a.state === 'walk' ? 0.12 + Math.sin(a.gait * 2) * 0.05 : 0.15
-      let targetY = lookingUp ? a.scanYaw : 0
+      const targetX = grazing ? 0.95 + Math.sin(a.gait * 0.3) * 0.05 : mounted ? 0.05 : a.state === 'alert' || lookingUp ? -0.32 : bounding ? 0.1 : a.state === 'walk' ? 0.12 + Math.sin(a.gait * 2) * 0.05 : 0.15
+      let targetY = a.act === 'look' ? Math.sin(a.stateTime * 0.8 + a.id) * 0.85 : a.act === 'stand' ? Math.sin(a.stateTime * 0.4 + a.id) * 0.35 : mounted ? 0 : lookingUp ? a.scanYaw : 0
       if (a.state === 'alert') targetY = 0
       if (grazing) a.gait += dt * 0.6
       head.rotation.x += (targetX - head.rotation.x) * Math.min(1, dt * (a.state === 'alert' ? 6 : 2.5))
