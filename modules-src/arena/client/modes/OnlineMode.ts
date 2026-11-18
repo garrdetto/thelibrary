@@ -111,6 +111,7 @@ export class OnlineMode implements ActiveMode {
         if (damage.target === self) ctx.hud.setHealth(damage.health)
         else if (damage.attacker === self) {
           this.tally.hit()
+          ctx.weapons.marks.upgrade(damage.health <= 0, damage.headshot)
           ctx.hud.hit(damage.headshot, damage.health <= 0)
         }
       },
