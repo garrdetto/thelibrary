@@ -1,0 +1,13 @@
+{
+  "name": "axiom-tracker-server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1",
+    "tsx": "4.23.15",
+    "zod": "4.3.6"
+  }
+}
