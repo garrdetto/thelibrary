@@ -37,6 +37,9 @@ const ease = (value: number) => value < 0.5 ? 2 * value * value : 1 - (-2 * valu
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
 const UP = new THREE.Vector3(0, 1, 0)
 const TARGET = new THREE.Vector3(0, 0, -1)
+const KNEE_FLEX = 0.5
+const ANKLE_AHEAD = 0.05
+const STANCE_WIDEN = 0.03
 
 const scratchA = new THREE.Vector3()
 const scratchB = new THREE.Vector3()
@@ -141,36 +144,63 @@ export function createRiggedGolfer(assets: GolfAssets, handed: 'RH' | 'LH', club
   const hips = bone('Hips'), spineLow = bone('Spine02'), spineMid = bone('Spine01'), chest = bone('Spine'), neck = bone('neck'), headBone = bone('Head')
   const leftArm = bone('LeftArm'), leftForeArm = bone('LeftForeArm'), leftHand = bone('LeftHand')
   const rightArm = bone('RightArm'), rightForeArm = bone('RightForeArm'), rightHand = bone('RightHand')
-  const legs = (['Left', 'Right'] as const).map(side => ({ up: bone(`${side}UpLeg`), low: bone(`${side}Leg`), foot: bone(`${side}Foot`) }))
+  const legs = (['Left', 'Right'] as const).map(side => ({ up: bone(`${side}UpLeg`), low: bone(`${side}Leg`), foot: bone(`${side}Foot`), toe: bone(`${side}ToeBase`) }))
   const rest = [...bones.values()].map(item => ({ bone: item, quaternion: item.quaternion.clone(), position: item.position.clone() }))
   const ready = Boolean(hips && spineLow && chest && leftArm && leftForeArm && leftHand && rightArm && rightForeArm && rightHand)
+  const legsReady = legs.every(leg => leg.up && leg.low && leg.foot && leg.toe)
+
+  const handedScale = outer.scale.x
+  outer.scale.x = 1
+  outer.updateMatrixWorld(true)
+  const restFeet = legs.map(leg => legsReady
+    ? { ankle: worldPosition(leg.foot!), flat: leg.foot!.getWorldQuaternion(new THREE.Quaternion()), thigh: worldPosition(leg.up!).distanceTo(worldPosition(leg.low!)), shin: worldPosition(leg.low!).distanceTo(worldPosition(leg.foot!)) }
+    : null)
+  outer.scale.x = handedScale
+  outer.updateMatrixWorld(true)
+  const plants = legs.map(() => new THREE.Vector3())
 
   const ball = new THREE.Vector3(0, 0.025, 0)
   let amplitude = 1
   const rotation = new THREE.Quaternion()
 
+  /** Puts both feet flat on their planted spots with the knees flexed forward over them. */
+  function plantLegs() {
+    if (!legsReady) return
+    for (const [index, leg] of legs.entries()) {
+      const pole = new THREE.Vector3(1, 0, (index === 0 ? -1 : 1) * 0.15)
+      reach(leg.up!, leg.low!, leg.foot!, plants[index], pole)
+      leg.foot!.parent!.getWorldQuaternion(parentQ)
+      leg.foot!.quaternion.copy(parentQ.invert().multiply(restFeet[index]!.flat))
+      leg.foot!.updateMatrixWorld(true)
+    }
+    outer.updateMatrixWorld(true)
+  }
+
   function address() {
     for (const item of rest) { item.bone.quaternion.copy(item.quaternion); item.bone.position.copy(item.position) }
     root.position.set(0, 0, 0)
     outer.updateMatrixWorld(true)
-    const ankleRest = Math.min(...legs.map(leg => leg.foot ? worldPosition(leg.foot).y : 0))
     const bendAxis = new THREE.Vector3(0, 0, 1)
-    if (legs.every(leg => leg.up && leg.low && leg.foot)) {
-      for (const [index, leg] of legs.entries()) {
-        rotateWorld(leg.up!, rotation.setFromAxisAngle(TARGET, (index === 0 ? 1 : -1) * 0.07))
-        rotateWorld(leg.up!, rotation.setFromAxisAngle(bendAxis, -0.3))
-        rotateWorld(leg.low!, rotation.setFromAxisAngle(bendAxis, 0.48))
-        rotateWorld(leg.foot!, rotation.setFromAxisAngle(bendAxis, -0.18))
-      }
-    }
     if (spineLow) rotateWorld(spineLow, rotation.setFromAxisAngle(bendAxis, -0.52))
     if (spineMid) rotateWorld(spineMid, rotation.setFromAxisAngle(bendAxis, -0.1))
     if (neck) rotateWorld(neck, rotation.setFromAxisAngle(bendAxis, 0.42))
     outer.updateMatrixWorld(true)
-    const ankle = Math.min(...legs.map(leg => leg.foot ? worldPosition(leg.foot).y : 0))
     const shoulders = worldPosition(leftArm!).add(worldPosition(rightArm!)).multiplyScalar(0.5)
-    root.position.set(-0.6 - shoulders.x, ankleRest - ankle, (clubKind === 'iron' ? 0.03 : 0.12) - shoulders.z)
+    root.position.set(-0.6 - shoulders.x, 0, (clubKind === 'iron' ? 0.03 : 0.12) - shoulders.z)
     outer.updateMatrixWorld(true)
+    if (!legsReady) return
+    let drop = 0
+    for (const [index, leg] of legs.entries()) {
+      const feet = restFeet[index]!
+      const hip = worldPosition(leg.up!)
+      const ankle = plants[index].set(hip.x + ANKLE_AHEAD, feet.ankle.y, feet.ankle.z + root.position.z + (index === 0 ? -1 : 1) * STANCE_WIDEN)
+      const span = Math.sqrt(feet.thigh ** 2 + feet.shin ** 2 + 2 * feet.thigh * feet.shin * Math.cos(KNEE_FLEX))
+      const across = Math.hypot(ankle.x - hip.x, ankle.z - hip.z)
+      drop += (ankle.y + Math.sqrt(Math.max(0, span ** 2 - across ** 2)) - hip.y) / legs.length
+    }
+    root.position.y = drop
+    outer.updateMatrixWorld(true)
+    plantLegs()
   }
 
   function pose(clock: number) {
@@ -182,35 +212,44 @@ export function createRiggedGolfer(assets: GolfAssets, handed: 'RH' | 'LH', club
     const top = -0.25
     let angle: number
     let turn: number
+    let hipTurn: number
     let hinge: number
-    if (clock <= start + 0.3) { angle = 0; turn = 0; hinge = 0 }
+    if (clock <= start + 0.3) { angle = 0; turn = 0; hipTurn = 0; hinge = 0 }
     else if (clock <= top) {
       const share = ease(clamp01((clock - start - 0.3) / (top - start - 0.3)))
       angle = -1.75 * share
-      turn = -1.05 * share
+      turn = -1.5 * share
+      hipTurn = -0.7 * share
       hinge = -1.35 * clamp01(share * 1.4 - 0.25)
     } else if (clock <= 0) {
-      const share = clamp01((clock - top) / -top) ** 2.2
+      const progress = clamp01((clock - top) / -top)
+      const share = progress ** 2.2
       angle = -1.75 * (1 - share)
-      turn = -1.05 + 1.3 * share
+      turn = -1.5 + 1.75 * share
+      hipTurn = -0.7 + 1.25 * progress ** 1.3
       hinge = -1.35 * (1 - clamp01((share - 0.45) / 0.55) ** 1.5)
     } else {
       const share = 1 - (1 - clamp01(clock / 0.5)) ** 3
       angle = 2.1 * share
-      turn = 0.25 + 0.95 * share
+      turn = 0.25 + 1.45 * share
+      hipTurn = 0.55 + 0.85 * share
       hinge = 1.25 * clamp01(share * 1.6 - 0.2)
     }
     angle *= amplitude
     turn *= amplitude
+    hipTurn *= amplitude
     hinge *= amplitude
 
+    if (hips) rotateWorld(hips, rotation.setFromAxisAngle(UP, hipTurn))
+    outer.updateMatrixWorld(true)
     const spineAxis = chest ? worldPosition(chest).sub(worldPosition(spineLow!)).normalize() : UP.clone()
-    const hipTurn = rotation.setFromAxisAngle(UP, turn * 0.35)
-    if (spineLow) rotateWorld(spineLow, hipTurn)
-    if (spineMid) rotateWorld(spineMid, new THREE.Quaternion().setFromAxisAngle(spineAxis, turn * 0.45))
-    if (chest) rotateWorld(chest, new THREE.Quaternion().setFromAxisAngle(spineAxis, turn * 0.25))
+    const twist = turn - hipTurn
+    if (spineLow) rotateWorld(spineLow, new THREE.Quaternion().setFromAxisAngle(spineAxis, twist * 0.3))
+    if (spineMid) rotateWorld(spineMid, new THREE.Quaternion().setFromAxisAngle(spineAxis, twist * 0.4))
+    if (chest) rotateWorld(chest, new THREE.Quaternion().setFromAxisAngle(spineAxis, twist * 0.3))
     if (neck && headBone) rotateWorld(neck, new THREE.Quaternion().setFromAxisAngle(spineAxis, -turn * 0.85 * (clock < 0.15 ? 1 : 0.4)))
     outer.updateMatrixWorld(true)
+    plantLegs()
 
     const left = worldPosition(leftArm!)
     const right = worldPosition(rightArm!)
