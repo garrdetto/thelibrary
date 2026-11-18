@@ -3,8 +3,8 @@ import type { Env } from '../env.js'
 import { HttpError, json, parseStored, readJson, readText, requireSameOrigin } from '../http.js'
 import { currentUser, randomHex, sha256 } from '../auth.js'
 import { gemini, TEXT_MODEL } from '../gemini.js'
-import { courseShotSchema, ensureGsproTables, insertCourseShots, insertShots, SESSION_GAP_MS, sessionId, sessionLabel, shotColumns, shotFromOpenConnect, shotInputSchema, toBridgeStatus, toSession, toShot } from '../gspro.js'
-import { normalizeClub } from '../../lib/gspro/clubs.js'
+import { courseShotSchema, ensureGsproTables, insertCourseShots, insertShots, refreshSession, SESSION_GAP_MS, sessionId, sessionLabel, shotColumns, shotFromOpenConnect, shotInputSchema, toBridgeStatus, toSession, toShot } from '../gspro.js'
+import { isRecordedClub, normalizeClub } from '../../lib/gspro/clubs.js'
 import type { ShotInput } from '../../lib/gspro/types.js'
 
 const ingestLimit = 1_500_000
@@ -66,7 +66,7 @@ async function ingest(request: Request, env: Env) {
     const at = Math.min(item.at, now + 60_000)
     const shot = shotFromOpenConnect(item.payload, { ref: item.ref, at, club: normalizeClub(item.club ?? null), handed: item.handed ?? 'RH' })
     accepted.push(item.ref)
-    if (!shot) continue
+    if (!shot || !isRecordedClub(shot.club)) continue
     const last: number = current ? current.shots[current.shots.length - 1].at : 0
     if (!current || at - last > SESSION_GAP_MS) {
       await flush()
@@ -188,6 +188,7 @@ const actionInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('import'), data: importInput }),
   z.object({ action: z.literal('update-shot'), id: z.number().int().positive(), club: z.string().max(12).nullable().optional(), excluded: z.boolean().optional() }),
   z.object({ action: z.literal('rename-session'), id: z.string().regex(/^gs_[a-f0-9]{16}$/), label: z.string().trim().min(1).max(80) }),
+  z.object({ action: z.literal('delete-shots'), ids: z.array(z.number().int().positive()).min(1).max(500) }),
   z.object({ action: z.literal('delete-session'), id: z.string().regex(/^gs_[a-f0-9]{16}$/) }),
   z.object({ action: z.literal('delete-round'), id: z.string().regex(/^gr_[a-f0-9]{16}$/) }),
   z.object({ action: z.literal('coach'), data: z.unknown() }),
@@ -220,13 +221,14 @@ async function act(request: Request, env: Env, userId: string) {
         const first = Math.min(...data.shots.map(shot => shot.at))
         await env.DB.prepare(`INSERT INTO gspro_sessions (id, user_id, label, source, started_at, last_shot_at, shot_count, closed) VALUES (?, ?, ?, 'csv', ?, ?, 0, 1)`).bind(id, userId, data.label, first, first).run()
       }
-      const shots = data.shots.map(shot => ({ ...shot, ref: `${id}:${shot.ref}` }))
+      const shots = data.shots.filter(shot => isRecordedClub(shot.club)).map(shot => ({ ...shot, ref: `${id}:${shot.ref}` }))
       const added = await insertShots(env, userId, id, 'csv', shots)
       return json({ sessionId: id, added })
     }
     case 'update-shot': {
       const row = await env.DB.prepare('SELECT session_id FROM gspro_shots WHERE id = ? AND user_id = ?').bind(input.id, userId).first<{ session_id: string }>()
       if (!row) throw new HttpError(404, 'That shot was not found.')
+      if (input.club !== undefined && !isRecordedClub(normalizeClub(input.club))) throw new HttpError(400, 'That club is not one the analyzer records.')
       if (input.club !== undefined) await env.DB.prepare('UPDATE gspro_shots SET club = ? WHERE id = ?').bind(normalizeClub(input.club), input.id).run()
       if (input.excluded !== undefined) await env.DB.prepare('UPDATE gspro_shots SET excluded = ? WHERE id = ?').bind(input.excluded ? 1 : 0, input.id).run()
       const updated = await env.DB.prepare(`SELECT ${shotColumns} FROM gspro_shots WHERE id = ?`).bind(input.id).first()
@@ -235,6 +237,14 @@ async function act(request: Request, env: Env, userId: string) {
     case 'rename-session':
       await env.DB.prepare('UPDATE gspro_sessions SET label = ? WHERE id = ? AND user_id = ?').bind(input.label, input.id, userId).run()
       return json({ ok: true })
+    case 'delete-shots': {
+      const ids = [...new Set(input.ids)]
+      const marks = ids.map(() => '?').join(',')
+      const sessions = await env.DB.prepare(`SELECT DISTINCT session_id FROM gspro_shots WHERE user_id = ? AND id IN (${marks})`).bind(userId, ...ids).all<{ session_id: string }>()
+      const removed = await env.DB.prepare(`DELETE FROM gspro_shots WHERE user_id = ? AND id IN (${marks})`).bind(userId, ...ids).run()
+      for (const row of sessions.results ?? []) await refreshSession(env, row.session_id)
+      return json({ deleted: removed.meta?.changes ?? 0 })
+    }
     case 'delete-session':
       await env.DB.batch([
         env.DB.prepare('DELETE FROM gspro_shots WHERE session_id = ? AND user_id = ?').bind(input.id, userId),
@@ -256,7 +266,7 @@ async function act(request: Request, env: Env, userId: string) {
  * `/api/gspro/ingest` (POST, `Authorization: Bearer gsb_…`, server-to-server, no same-origin check): the local GSPro bridge
  * sends Open Connect shot JSON and heartbeats; shots are grouped into bridge sessions split by 30-minute gaps.
  * `/api/gspro` (admin only): GET `?live&since=<id>`, `?sessions`, `?shots&session=<id>` or `?shots&days=<n>`, or the bridge
- * status; POST actions `create-key`, `revoke-key`, `new-session`, `import`, `update-shot`, `rename-session`, `delete-session`, `coach`.
+ * status; POST actions `create-key`, `revoke-key`, `new-session`, `import`, `update-shot`, `delete-shots`, `rename-session`, `delete-session`, `coach`.
  */
 export async function gspro(request: Request, env: Env) {
   const url = new URL(request.url)
