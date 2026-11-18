@@ -1,6 +1,7 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 
 import { initializeSiteTheme } from '@/lib/site-themes'
+import { MusicPlayer } from '@/components/music/MusicPlayer'
 
 import '../styles.css'
 
@@ -55,6 +56,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <MusicPlayer />
         <Scripts />
       </body>
     </html>
