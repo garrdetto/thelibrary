@@ -354,7 +354,7 @@ export function ShotReplay({ shots: startShots, index: startIndex, onClose }: { 
       <div className="gs-replay-main">
       {path ? <>
         <Suspense fallback={<DownTheLine path={path} t={t} reach={reach}/>}>
-          <RangeView points={path.points} landingIndex={path.landingIndex} handed={shot.handed} ballSpeed={shot.ballSpeed} launch={shot.launch} spin={shot.totalSpin} club={clubLabel(shot.club)} clock={clock} mode={mode} fallback={<DownTheLine path={path} t={t} reach={reach}/>}/>
+          <RangeView points={path.points} landingIndex={path.landingIndex} handed={shot.handed} ballSpeed={shot.ballSpeed} launch={shot.launch} spin={shot.totalSpin} club={clubLabel(shot.club)} clubCode={shot.club} clock={clock} mode={mode} fallback={<DownTheLine path={path} t={t} reach={reach}/>}/>
         </Suspense>
         <div className="gs-replay-controls">
           <button type="button" className="gs-button ghost" onClick={() => setRun(value => value + 1)}><RotateCcw size={15} aria-hidden/>Replay</button>

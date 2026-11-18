@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "a single golf driver club, large black titanium driver head, long graphite shaft, black rubber grip, isolated, game asset",
+    "target": "furniture",
+    "negative": "floor, background, text, logos",
+    "aiModel": "latest",
+    "polycount": 8000,
+    "texturePrompt": "",
+    "rig": false,
+    "height": null
+  },
+  "tasks": {
+    "preview": {
+      "id": "01a1ef84-8fe9-76dc-8540-c747dda5c93d",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:36:47.579Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1ef85-16f9-7491-bb9d-f684cd8159a5",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-18T16:37:19.909Z",
+      "credits": 10
+    }
+  },
+  "credits": 30,
+  "files": [
+    "assets-src/models/gspro/club-driver.glb"
+  ],
+  "createdAt": "2026-11-18T16:36:44.344Z",
+  "clips": [],
+  "cleanup": "generic (Blender 5.2.3)",
+  "updatedAt": "2026-11-18T16:37:48.771Z"
+}
