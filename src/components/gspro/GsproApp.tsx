@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, BarChart3, Cable, Lightbulb } from 'lucide-react'
+import { Activity, BarChart3, Cable, Flag, Lightbulb } from 'lucide-react'
 import type { BridgeStatus, GsproSession, GsproShot } from '@/lib/gspro/types'
 import { enrichShot, type EnrichedShot } from '@/lib/gspro/stats'
 import { gsproApi } from './api'
@@ -7,6 +7,7 @@ import { LiveView } from './LiveView'
 import { AnalyzeView } from './AnalyzeView'
 import { TipsView } from './TipsView'
 import { BridgeView } from './BridgeView'
+import { CourseView } from './CourseView'
 import { ReplayContext } from './ReplayContext'
 import { ShotReplay } from './ShotReplay'
 
@@ -14,6 +15,7 @@ export type Scope = { kind: 'session'; id: string } | { kind: 'days'; days: numb
 
 const tabs = [
   { id: 'live', label: 'Live', icon: Activity },
+  { id: 'course', label: 'On course', icon: Flag },
   { id: 'analyze', label: 'Analyze', icon: BarChart3 },
   { id: 'tips', label: 'Tips', icon: Lightbulb },
   { id: 'bridge', label: 'Bridge & import', icon: Cable },
@@ -137,6 +139,7 @@ export default function GsproApp() {
     </nav>
     {liveError && <p className="gs-notice" role="alert">{liveError}</p>}
     {tab === 'live' && <LiveView shots={live} openSession={openSession} bridge={bridge} online={online} onShot={replaceShot} onNewSession={() => gsproApi.newSession().then(loadSessions)} onSetup={() => choose('bridge')}/>}
+    {tab === 'course' && <CourseView onSetup={() => choose('bridge')}/>}
     {tab === 'analyze' && <AnalyzeView scope={scope} sessions={sessions} shots={enrichedScope} error={scopeError} onScope={setScope} onShot={replaceShot}/>}
     {tab === 'tips' && <TipsView scope={scope} sessions={sessions} shots={enrichedScope} error={scopeError} onScope={setScope}/>}
     {tab === 'bridge' && <BridgeView bridge={bridge} online={online} sessions={sessions} onBridge={setBridge} onSessions={loadSessions} onImported={id => { loadSessions(); setScope({ kind: 'session', id }); choose('analyze') }} onDeleted={id => { loadSessions(); setLive(list => list.filter(shot => shot.sessionId !== id)); if (scope.kind === 'session' && scope.id === id) setScope({ kind: 'days', days: 90 }) }}/>}

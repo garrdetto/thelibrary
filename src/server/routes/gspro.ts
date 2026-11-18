@@ -1,13 +1,13 @@
 import { z } from 'zod'
 import type { Env } from '../env.js'
-import { HttpError, json, readJson, readText, requireSameOrigin } from '../http.js'
+import { HttpError, json, parseStored, readJson, readText, requireSameOrigin } from '../http.js'
 import { currentUser, randomHex, sha256 } from '../auth.js'
 import { gemini, TEXT_MODEL } from '../gemini.js'
-import { ensureGsproTables, insertShots, SESSION_GAP_MS, sessionId, sessionLabel, shotColumns, shotFromOpenConnect, shotInputSchema, toBridgeStatus, toSession, toShot } from '../gspro.js'
+import { courseShotSchema, ensureGsproTables, insertCourseShots, insertShots, SESSION_GAP_MS, sessionId, sessionLabel, shotColumns, shotFromOpenConnect, shotInputSchema, toBridgeStatus, toSession, toShot } from '../gspro.js'
 import { normalizeClub } from '../../lib/gspro/clubs.js'
 import type { ShotInput } from '../../lib/gspro/types.js'
 
-const ingestLimit = 600_000
+const ingestLimit = 1_500_000
 const bridgeShot = z.object({
   ref: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
   at: z.number().int().positive(),
@@ -17,12 +17,15 @@ const bridgeShot = z.object({
 })
 const ingestInput = z.object({
   shots: z.array(bridgeShot).max(200).optional(),
+  course: z.array(z.unknown()).max(100).optional(),
+  bag: z.array(z.object({ name: z.string().min(1).max(40), loft: z.number().finite().min(0).max(80) })).max(30).optional(),
   heartbeat: z.object({
     version: z.string().max(32),
     gsproConnected: z.boolean(),
     monitorConnected: z.boolean(),
     queued: z.number().int().min(0).max(1_000_000),
     listen: z.string().max(64),
+    roundFile: z.boolean().optional(),
   }).optional(),
 })
 
@@ -73,9 +76,14 @@ async function ingest(request: Request, env: Env) {
     current!.raw.push(JSON.stringify(item.payload).slice(0, 4000))
   }
   await flush()
+  const courseItems = parsed.data.course ?? []
+  const course = courseItems.map(item => courseShotSchema.safeParse(item)).filter(result => result.success).map(result => result.data!)
+  const acceptedCourse = courseItems.map(item => item && typeof item === 'object' && 'ref' in item ? String((item as { ref: unknown }).ref) : '').filter(Boolean)
+  const addedCourse = course.length ? await insertCourseShots(env, owner.user_id, course) : 0
+  if (parsed.data.bag) await env.DB.prepare('INSERT INTO gspro_settings (user_id, bag, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET bag = excluded.bag, updated_at = excluded.updated_at').bind(owner.user_id, JSON.stringify(parsed.data.bag), now).run()
   const status = parsed.data.heartbeat ? JSON.stringify(parsed.data.heartbeat) : null
   await env.DB.prepare('UPDATE gspro_bridge SET last_seen_at = ?, status = COALESCE(?, status) WHERE user_id = ?').bind(now, status, owner.user_id).run()
-  return json({ ok: true, accepted, added })
+  return json({ ok: true, accepted, added, acceptedCourse, addedCourse, skippedCourse: courseItems.length - course.length })
 }
 
 async function requireAdmin(request: Request, env: Env) {
@@ -107,6 +115,21 @@ async function read(request: Request, env: Env, userId: string) {
       session: session ? toSession(session as Parameters<typeof toSession>[0]) : null,
       now: Date.now(),
     })
+  }
+  if (params.has('rounds')) {
+    const rows = await env.DB.prepare('SELECT id, course, started_at, last_shot_at, shot_count, players FROM gspro_rounds WHERE user_id = ? ORDER BY last_shot_at DESC LIMIT 200').bind(userId).all<{ id: string; course: string; started_at: number; last_shot_at: number; shot_count: number; players: string }>()
+    return json({ rounds: rows.results.map(row => ({ id: row.id, course: row.course, startedAt: row.started_at, lastShotAt: row.last_shot_at, shotCount: row.shot_count, players: parseStored<string[]>(row.players, []) })) })
+  }
+  if (params.has('round')) {
+    const id = params.get('round') ?? ''
+    const owned = await env.DB.prepare('SELECT id FROM gspro_rounds WHERE id = ? AND user_id = ?').bind(id, userId).first()
+    if (!owned) throw new HttpError(404, 'That round was not found.')
+    const rows = await env.DB.prepare('SELECT id, round_id, data FROM gspro_course_shots WHERE round_id = ? ORDER BY hole, hole_shot, id').bind(id).all<{ id: number; round_id: string; data: string }>()
+    return json({ shots: rows.results.map(row => ({ ...parseStored<Record<string, unknown>>(row.data, {}), id: row.id, roundId: row.round_id })) })
+  }
+  if (params.has('bag')) {
+    const row = await env.DB.prepare('SELECT bag, updated_at FROM gspro_settings WHERE user_id = ?').bind(userId).first<{ bag: string | null; updated_at: number }>()
+    return json({ bag: parseStored<{ name: string; loft: number }[]>(row?.bag, []), updatedAt: row?.updated_at ?? null })
   }
   if (params.has('sessions')) {
     const rows = await env.DB.prepare('SELECT id, label, source, started_at, last_shot_at, shot_count, closed FROM gspro_sessions WHERE user_id = ? ORDER BY last_shot_at DESC LIMIT 300').bind(userId).all()
@@ -166,6 +189,7 @@ const actionInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('update-shot'), id: z.number().int().positive(), club: z.string().max(12).nullable().optional(), excluded: z.boolean().optional() }),
   z.object({ action: z.literal('rename-session'), id: z.string().regex(/^gs_[a-f0-9]{16}$/), label: z.string().trim().min(1).max(80) }),
   z.object({ action: z.literal('delete-session'), id: z.string().regex(/^gs_[a-f0-9]{16}$/) }),
+  z.object({ action: z.literal('delete-round'), id: z.string().regex(/^gr_[a-f0-9]{16}$/) }),
   z.object({ action: z.literal('coach'), data: z.unknown() }),
 ])
 
@@ -215,6 +239,12 @@ async function act(request: Request, env: Env, userId: string) {
       await env.DB.batch([
         env.DB.prepare('DELETE FROM gspro_shots WHERE session_id = ? AND user_id = ?').bind(input.id, userId),
         env.DB.prepare('DELETE FROM gspro_sessions WHERE id = ? AND user_id = ?').bind(input.id, userId),
+      ])
+      return json({ ok: true })
+    case 'delete-round':
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM gspro_course_shots WHERE round_id = ? AND user_id = ?').bind(input.id, userId),
+        env.DB.prepare('DELETE FROM gspro_rounds WHERE id = ? AND user_id = ?').bind(input.id, userId),
       ])
       return json({ ok: true })
     case 'coach':

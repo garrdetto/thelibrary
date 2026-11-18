@@ -47,6 +47,7 @@ export type BridgeStatus = {
   monitorConnected: boolean
   queued: number
   listen: string | null
+  roundFile: boolean
 }
 
 /** Shot fields sent by the bridge or a CSV import before the server stores them. */

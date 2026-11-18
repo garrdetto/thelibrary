@@ -1,5 +1,5 @@
 import { clubInfo, clubOrder } from './clubs'
-import { estimateFlight } from './flight'
+import { estimateFlight, type TracePoint } from './flight'
 import type { GsproShot } from './types'
 
 export type EnrichedShot = GsproShot & {
@@ -15,6 +15,10 @@ export type EnrichedShot = GsproShot & {
   /** Spin axis, path, face and start line signed so positive is the player's fade side (right for RH, left for LH). */
   fadeAxis: number
   shape: string
+  /** GSPro's own path for course shots (replay frame), with the touchdown sample index and a context line. */
+  actualPath?: TracePoint[]
+  landingIndex?: number
+  context?: string
 }
 
 export type Metric = { n: number; mean: number; sd: number; median: number; min: number; max: number }

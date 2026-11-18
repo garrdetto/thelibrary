@@ -14,6 +14,11 @@ const schema = [
   `CREATE INDEX IF NOT EXISTS gspro_shots_user_idx ON gspro_shots (user_id, id)`,
   `CREATE INDEX IF NOT EXISTS gspro_shots_session_idx ON gspro_shots (session_id, id)`,
   `CREATE TABLE IF NOT EXISTS gspro_bridge (user_id TEXT PRIMARY KEY, key_hash TEXT NOT NULL UNIQUE, key_hint TEXT NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER, status TEXT)`,
+  `CREATE TABLE IF NOT EXISTS gspro_rounds (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, round_key TEXT NOT NULL, course TEXT NOT NULL, started_at INTEGER NOT NULL, last_shot_at INTEGER NOT NULL, shot_count INTEGER NOT NULL DEFAULT 0, players TEXT NOT NULL DEFAULT '[]', UNIQUE (user_id, round_key))`,
+  `CREATE INDEX IF NOT EXISTS gspro_rounds_user_idx ON gspro_rounds (user_id, last_shot_at)`,
+  `CREATE TABLE IF NOT EXISTS gspro_course_shots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, round_id TEXT NOT NULL, shot_ref TEXT NOT NULL UNIQUE, player TEXT NOT NULL, hole INTEGER NOT NULL, hole_shot INTEGER NOT NULL, seen_at INTEGER NOT NULL, data TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS gspro_course_shots_round_idx ON gspro_course_shots (round_id, hole, hole_shot)`,
+  `CREATE TABLE IF NOT EXISTS gspro_settings (user_id TEXT PRIMARY KEY, bag TEXT, updated_at INTEGER NOT NULL)`,
 ]
 
 let ready: Promise<void> | null = null
@@ -184,5 +189,62 @@ export function toBridgeStatus(row: BridgeRow | null): BridgeStatus {
     monitorConnected: Boolean(status.monitorConnected),
     queued: typeof status.queued === 'number' ? status.queued : 0,
     listen: typeof status.listen === 'string' ? status.listen : null,
+    roundFile: Boolean(status.roundFile),
   }
+}
+
+const coordinate = z.number().finite().min(-1e6).max(1e6)
+const worldPoint = z.object({ x: coordinate, y: coordinate, z: coordinate })
+
+export const courseShotSchema = z.object({
+  ref: z.string().min(8).max(64).regex(/^[A-Za-z0-9-]+$/),
+  round: z.string().min(8).max(64).regex(/^[A-Za-z0-9-]+$/),
+  seenAt: z.number().int().positive(),
+  player: z.string().min(1).max(40),
+  course: z.string().min(1).max(80),
+  hole: z.number().int().min(0).max(40),
+  holeShot: z.number().int().min(1).max(30),
+  par: z.number().int().min(3).max(6),
+  clubIndex: z.number().int().min(0).max(40).nullable(),
+  final: z.boolean(),
+  putt: z.boolean(),
+  water: z.boolean(),
+  startSurface: z.number().int().min(-1).max(100),
+  endSurface: z.number().int().min(-1).max(100),
+  toPin: z.number().finite().min(0).max(1000),
+  total: z.number().finite().min(0).max(1000),
+  ball: z.object({ speed: z.number().finite().min(0).max(250), launch: z.number().finite().min(-90).max(90), direction: z.number().finite().min(-180).max(180), totalSpin: z.number().finite().min(-20000).max(20000), backSpin: z.number().finite().min(-20000).max(20000), sideSpin: z.number().finite().min(-20000).max(20000), spinAxis: z.number().finite().min(-180).max(180) }),
+  start: worldPoint,
+  touchdown: worldPoint,
+  end: worldPoint,
+  flight: z.array(z.tuple([coordinate, coordinate, coordinate])).max(400),
+  touchdownTime: z.number().finite().min(0).max(60),
+  roll: z.array(z.tuple([z.number().finite().min(0).max(120), coordinate, coordinate, coordinate])).max(60),
+  material: z.string().max(40).nullable(),
+})
+
+export type CourseShotRow = z.infer<typeof courseShotSchema>
+
+/** Stores course shots, creating each round the first time one of its shots arrives, and refreshes the round's totals. */
+export async function insertCourseShots(env: Env, userId: string, shots: CourseShotRow[]) {
+  const byRound = new Map<string, CourseShotRow[]>()
+  for (const shot of shots) byRound.set(shot.round, [...(byRound.get(shot.round) ?? []), shot])
+  let added = 0
+  for (const [roundKey, list] of byRound) {
+    let round = await env.DB.prepare('SELECT id FROM gspro_rounds WHERE user_id = ? AND round_key = ?').bind(userId, roundKey).first<{ id: string }>()
+    if (!round) {
+      const id = `gr_${sessionId().slice(3)}`
+      const first = Math.min(...list.map(shot => shot.seenAt))
+      await env.DB.prepare('INSERT OR IGNORE INTO gspro_rounds (id, user_id, round_key, course, started_at, last_shot_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, userId, roundKey, list[0].course, first, first).run()
+      round = await env.DB.prepare('SELECT id FROM gspro_rounds WHERE user_id = ? AND round_key = ?').bind(userId, roundKey).first<{ id: string }>()
+    }
+    if (!round) continue
+    const results = await env.DB.batch(list.map(shot => env.DB.prepare('INSERT OR IGNORE INTO gspro_course_shots (user_id, round_id, shot_ref, player, hole, hole_shot, seen_at, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(userId, round.id, `${userId}:${shot.ref}`, shot.player, shot.hole, shot.holeShot, shot.seenAt, JSON.stringify(shot)))) as { meta?: { changes?: number } }[]
+    added += results.reduce((sum, result) => sum + (result?.meta?.changes ?? 0), 0)
+    const players = await env.DB.prepare('SELECT DISTINCT player FROM gspro_course_shots WHERE round_id = ?').bind(round.id).all<{ player: string }>()
+    await env.DB.prepare('UPDATE gspro_rounds SET shot_count = (SELECT COUNT(*) FROM gspro_course_shots WHERE round_id = ?1), last_shot_at = COALESCE((SELECT MAX(seen_at) FROM gspro_course_shots WHERE round_id = ?1), last_shot_at), players = ?2 WHERE id = ?1')
+      .bind(round.id, JSON.stringify(players.results.map(row => row.player))).run()
+  }
+  return added
 }

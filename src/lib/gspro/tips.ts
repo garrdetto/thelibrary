@@ -41,7 +41,7 @@ function ironNumber(code: string | null) {
   return match ? Number(match[1]) : null
 }
 
-export function clubTips(summary: ClubSummary): DataTip[] {
+export function clubTips(summary: ClubSummary, staticLoft?: number): DataTip[] {
   const tips: DataTip[] = []
   const club = summary.club
   const name = clubLabel(club)
@@ -105,6 +105,14 @@ export function clubTips(summary: ClubSummary): DataTip[] {
     else if (offline.sd <= carry.mean * 0.05) add({ key: 'tight', level: 'strength', title: `${name}: tight pattern`, detail: `±${fmt(offline.sd, 0)} yards offline and ±${fmt(carry.sd, 0)} yards of carry. This is a club to trust under pressure.` })
   }
 
+  const delivered = summary.dynamicLoft
+  if (staticLoft && delivered && delivered.n >= MIN_SHOTS && (kind === 'iron' || kind === 'wedge')) {
+    const deloft = staticLoft - delivered.mean
+    if (deloft < 0) add({ key: 'loft-added', level: 'focus', title: `${name}: adding loft at impact`, detail: `You deliver ${fmt(delivered.mean)}° of loft against ${fmt(staticLoft)}° on the club (from your ProTee bag). Good iron strikers take 4–8° off with the hands ahead of the ball; adding loft usually means the clubhead is passing the hands early.`, drill: 'Hit half-swing punch shots holding the finish with the shaft leaning toward the target and the lead wrist flat.', articleId: 'spin-loft' })
+    else if (deloft > 10) add({ key: 'loft-lean', level: 'watch', title: `${name}: a lot of shaft lean`, detail: `Delivered loft is ${fmt(delivered.mean)}°, ${fmt(deloft)}° under the ${fmt(staticLoft)}° static loft. That much lean keeps flight low and can cost height into greens.`, articleId: 'spin-loft' })
+    else if (deloft >= 3) add({ key: 'loft-good', level: 'strength', title: `${name}: solid loft delivery`, detail: `${fmt(delivered.mean)}° delivered against ${fmt(staticLoft)}° static, ${fmt(deloft)}° of forward lean.` })
+  }
+
   const impactV = summary.impactV
   if (impactV && impactV.n >= MIN_SHOTS && (kind === 'driver' || kind === 'wood') && impactV.mean < -5) add({ key: 'low-strike', level: 'watch', title: `${name}: strikes low on the face`, detail: `Impact averages ${fmt(Math.abs(impactV.mean), 0)} mm below centre. Low strikes add spin and lose speed; tee it a little higher.`, articleId: 'strike' })
   const impactH = summary.impactH
@@ -149,7 +157,7 @@ function mergeBias(tips: DataTip[], summaries: ClubSummary[]) {
   return [...tips.filter(tip => !dropped.has(tip.id)), merged]
 }
 
-export function allTips(summaries: ClubSummary[]) {
+export function allTips(summaries: ClubSummary[], lofts: Record<string, number> = {}) {
   const order: Record<TipLevel, number> = { focus: 0, watch: 1, strength: 2 }
-  return mergeBias([...summaries.flatMap(clubTips), ...gappingTips(summaries)], summaries).sort((a, b) => order[a.level] - order[b.level])
+  return mergeBias([...summaries.flatMap(summary => clubTips(summary, summary.club ? lofts[summary.club] : undefined)), ...gappingTips(summaries)], summaries).sort((a, b) => order[a.level] - order[b.level])
 }
