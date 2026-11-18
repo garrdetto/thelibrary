@@ -1,4 +1,4 @@
-import type { RadarHolderRisk, RadarSafetyPlan, RadarScoreCap, RadarScoreCheck, RadarScoreGate, RadarScoreLedger, RadarScorePart, RadarScorePillar } from '../../src/lib/axiom-radar-types.js'
+import type { RadarEarlyStart, RadarHolderRisk, RadarSafetyPlan, RadarScoreCap, RadarScoreCheck, RadarScoreGate, RadarScoreLedger, RadarScorePart, RadarScorePillar } from '../../src/lib/axiom-radar-types.js'
 
 /** Step 1: any of these makes the score 0. Percentages of supply. */
 export const disqualifyAbove = { dev: 5, top10: 35, bundlers: 35, fresh: 10, snipers: 30, insiders: 30, linked: 30, proTraders: 75 }
@@ -31,21 +31,38 @@ export const movementWindows = [
   { key: 'm1', label: '1m', weight: 0.3, strong: 10 },
   { key: 'm5', label: '5m', weight: 0.4, strong: 30 },
 ] as const
-/** Points a rising coin earns for movement, and the most a falling one loses. */
-export const movementPoints = 10
+/**
+ * Points a rising coin earns for movement. Kept small: in the tracker's history a coin had already gained 60% by the time
+ * movement and market-cap growth were worth 10 points, and alerts raised that late lost money.
+ */
+export const movementPoints = 4
+/** The most a falling coin loses for movement. */
+export const fallingPoints = 10
 /** A coin under this market cap starts `floorPenalty` points down: a coin that has faded to a few thousand dollars is not a runner, whatever else it shows. */
 export const marketCapFloor = { usd: 10_000, penalty: 50 }
+/** Chart points for a price that has not left its range yet: within `close`% of its 3-minute low earns all, within `near`% half. */
+export const nearLow = { close: 15, near: 35, points: 6 }
 /**
- * Market-cap growth that gets runners noticed, added after the stretch: +1 for every 10% the market cap rose in the last minute
- * ($10K to $15K is +5, to $20K is +10) or every 20% in the last 5 minutes ($10K to $30K is +10), whichever is more, up to `max`.
+ * Signs that show before the price moves, added after the stretch: +1 for every `per` points of the early-start reading
+ * (crowd and trading for the coin's size, trades and viewers picking up, age, price near its low), up to `max`.
  */
-export const marketCapGrowth = { perMinute: 10, perFiveMinutes: 20, max: 20 }
+export const earlyBonus = { per: 5, max: 20 }
+/** A price already far above its 3-minute low costs 1 point for every `per`% beyond `above`%, up to `max`. */
+export const stretchPenalty = { above: 35, per: 10, max: 10 }
+/** Points lost while 5-minute trades or volume are under where they stood a minute ago. */
+export const fadingPenalty = 6
+/** The share of the 5-minute volume the buy and sell volumes must cover to be trusted; under it the buy share comes from trade counts. */
+export const flowMinShare = 0.25
 
-/** Growth points from the 1-minute and 5-minute change (market cap moves with price, the supply is fixed). */
-export function marketCapGrowthPoints(change: Pick<RunnerInput['priceChange'], 'm1' | 'm5'>) {
-  const fromMinute = change.m1 !== null && change.m1 > 0 ? change.m1 / marketCapGrowth.perMinute : 0
-  const fromFive = change.m5 !== null && change.m5 > 0 ? change.m5 / marketCapGrowth.perFiveMinutes : 0
-  return { points: Math.min(marketCapGrowth.max, Math.round(Math.max(fromMinute, fromFive))), window: fromMinute >= fromFive ? '1m' : '5m' }
+/** Early-start points from the early-start reading out of 100. */
+export function earlyBonusPoints(early: Pick<RadarEarlyStart, 'score'> | null | undefined) {
+  return early ? Math.min(earlyBonus.max, Math.round(early.score / earlyBonus.per)) : 0
+}
+
+/** Points lost for a price stretched above its 3-minute low. */
+export function stretchCostFor(stretchPct: number | null | undefined) {
+  if (stretchPct === null || stretchPct === undefined || stretchPct <= stretchPenalty.above) return 0
+  return Math.min(stretchPenalty.max, Math.ceil((stretchPct - stretchPenalty.above) / stretchPenalty.per))
 }
 
 /** The weighted movement from -1 (falling hard in every window) to +1. A window with no reading yet counts as no move, so a lone 5-second spike can earn only its 10% share. */
@@ -84,11 +101,11 @@ export type RunnerInput = {
   holders: number | null
   mintAuthority: boolean | null
   freezeAuthority: boolean | null
-  rugged: boolean
   devCreated: number | null
   devMigrated: number | null
   recycled: string | null
   buys5m: number | null
+  sells5m?: number | null
   volume5m: number | null
   buyers5m: number | null
   buyVolume5m: number | null
@@ -108,6 +125,8 @@ export type RunnerInput = {
   severeSelling?: string[]
   devSelling: boolean
   learned: Array<{ tag: string; label: string; points: number }>
+  /** The early-start reading; without it the early points, the near-low check and the stretched and fading cuts are skipped. */
+  early?: RadarEarlyStart | null
 }
 
 export type RunnerScore = {
@@ -246,8 +265,6 @@ export function safetyPlanFor(input: Pick<RunnerInput, 'top10' | 'bundlers' | 'i
   const bundleDrop = input.bundlers !== null ? meaningful(sellImpact(input.bundlers, input.marketCap, input.liquidity)) : null
   const topDrop = input.top10 !== null ? meaningful(sellImpact(input.top10 / 2, input.marketCap, input.liquidity)) : null
   const triggers: string[] = []
-  if (input.bundlers !== null && input.bundlers >= 1) triggers.push(`Get out if the bundler share drops 2 points or more within a minute (now ${pct(input.bundlers)})`)
-  if (input.top10 !== null) triggers.push(`Get out if the top 10 share falls to half of what it was within a few minutes while the price falls (now ${pct(input.top10)})`)
   if (input.insiders !== null && input.insiders >= 3) triggers.push(`Get out if insiders drop 3 points or more within a minute (now ${pct(input.insiders)})`)
   triggers.push('Get out if the dev sells any of their supply')
   const atRisk = (input.bundlers ?? 0) >= 5 || (input.top10 ?? 0) >= 20
@@ -281,8 +298,9 @@ const sum = (checks: RadarScoreCheck[]) => checks.reduce((total, item) => total 
  * The runner score out of 100, ranked on Axiom's own figures. Step 1 gates make it 0 (mint or freeze on, dev over 5%, top 10
  * over 35%, bundlers over 35%, fresh wallets over 10%, dead charts, bot climbs, a big holder sell-off right now); a serial
  * launcher is capped at 40 and a recycled name, copied links or small holder trims cost points. Then holder percentages (20), Axiom demand and growth: viewers, viewer and holder growth a
- * minute, buy share, holders, volume, fees (45), chart and liquidity (25, with movement over 5s, 30s, 1m and 5m weighted toward 5m) and hype (15); a falling move costs up to 10, raised by `scoreStretch`; a top 10 under 35% costs
- * nothing unless it is falling fast (the sell watch); a market cap under $10K costs 50 off the final score, market cap growth adds up to 20 (+1 per 10% in 1m or per 20% in 5m), and distance to migration never costs points; plus or minus what past alerts taught. `ledger` lists every
+ * minute, buy share, holders, volume, fees (45), chart and liquidity (25: movement over 5s, 30s, 1m and 5m weighted toward 5m earns 4, a price still near its 3-minute low 6) and hype (15); a falling move costs up to 10, raised by `scoreStretch`; a top 10 under 35% costs
+ * nothing; a market cap under $10K costs 50 off the final score, and distance to migration never costs points. The early-start signs (crowd and trading for the coin's size, trades and viewers picking up) add up to 20,
+ * a price stretched more than 35% above its 3-minute low costs up to 10 and fading trading costs 6: the points go to what shows before a move, not to a move already made; plus or minus what past alerts taught. `ledger` lists every
  * gate, rule, adjustment and cap with the reading it used.
  */
 export function scoreRunner(input: RunnerInput): RunnerScore {
@@ -316,7 +334,6 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   gate('Live chart', [buyers !== null ? `${plural(buyers, 'buyer')} in 5m` : null, input.volume5m !== null ? `${money(input.volume5m)} volume` : null].filter(Boolean).join(', ') || 'not read yet',
     `${deadChartBuyers}+ buyers and some volume in 5m`, input.volume5m === null && buyers === null ? null : dead !== null, dead ?? undefined)
   gate('Bot-driven climb', input.botReason ?? 'none seen', 'no bot pattern', input.botReason !== null, `Bot-driven climb: ${input.botReason}`)
-  gate('RugCheck', input.rugged ? 'marked rugged' : 'not marked rugged', 'not rugged', input.rugged, 'RugCheck marked it rugged')
   const severe = input.severeSelling ?? input.selling
   const mildSelling = input.selling.filter(reason => !severe.includes(reason))
   gate('Big holder sell-off now', severe.length ? severe.join('; ') : mildSelling.length ? 'small trims only (cost points)' : 'no sell-off seen', 'no dev sell or group dumping twice the alert size', severe.length > 0)
@@ -350,9 +367,17 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   const viewerGrowthPoints = tier(viewerGrowth, [[(viewerGrowth ?? 0) >= 6, 6], [(viewerGrowth ?? 0) >= 3, 4], [(viewerGrowth ?? 0) >= 1, 2]])
   const holderGrowth = input.holdersPerMin ?? null
   const holderGrowthPoints = tier(holderGrowth, [[(holderGrowth ?? 0) >= 30, 12], [(holderGrowth ?? 0) >= 15, 9], [(holderGrowth ?? 0) >= 8, 6], [(holderGrowth ?? 0) >= 3, 3], [(holderGrowth ?? 0) >= 1, 1]])
-  const flow = input.buyVolume5m !== null && input.sellVolume5m !== null && input.buyVolume5m + input.sellVolume5m > 0
-    ? input.buyVolume5m / (input.buyVolume5m + input.sellVolume5m)
-    : null
+  const flowVolume = input.buyVolume5m !== null && input.sellVolume5m !== null ? input.buyVolume5m + input.sellVolume5m : null
+  const flowThin = flowVolume !== null && input.volume5m !== null && input.volume5m > 0 && flowVolume < input.volume5m * flowMinShare
+  const volumeShare = flowVolume !== null && flowVolume > 0 && !flowThin ? (input.buyVolume5m as number) / flowVolume : null
+  const trades = input.buys5m !== null && input.sells5m !== null && input.sells5m !== undefined ? input.buys5m + input.sells5m : null
+  const countShare = trades !== null && trades > 0 ? (input.buys5m as number) / trades : null
+  const flow = volumeShare ?? countShare
+  const flowReading = volumeShare !== null
+    ? `${Math.round(volumeShare * 100)}% of ${money(flowVolume as number)} was buying`
+    : countShare !== null
+      ? `${Math.round(countShare * 100)}% of ${(trades as number).toLocaleString('en-US')} trades were buys${flowThin ? ` (buy and sell volume covered only ${money(flowVolume as number)} of ${money(input.volume5m as number)})` : ''}`
+      : 'not read yet'
   const buyPoints = tier(flow, [[(flow ?? 0) >= 0.6, 5], [(flow ?? 0) > 0.5, 3]])
   const holderPoints = tier(input.holders, [[(input.holders ?? 0) >= 300, 4], [(input.holders ?? 0) >= 100, 2]])
   const volumePoints = tier(input.volume5m, [[(input.volume5m ?? 0) >= 20_000, 3], [(input.volume5m ?? 0) >= 8_000, 2]])
@@ -366,7 +391,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     check('Watching on Axiom: 150+ 13, 100+ 11, 60+ 9, 35+ 7, 20+ 5, 10+ 2', viewers === null ? 'not read yet' : `${viewers.toLocaleString('en-US')} watching`, viewerPoints, 13, viewers !== null),
     check('Viewers gained a minute: +6 6, +3 4, +1 2', viewerGrowth === null ? 'not read yet' : `${signed(viewerGrowth)}/min`, viewerGrowthPoints, 6, viewerGrowth !== null),
     check('Holders gained a minute: +30 12, +15 9, +8 6, +3 3, +1 1', holderGrowth === null ? 'not read yet' : `${signed(holderGrowth)}/min`, holderGrowthPoints, 12, holderGrowth !== null),
-    check('Buys outpace sells (5m volume): 60%+ 5, over half 3', flow === null ? 'not read yet' : `${Math.round(flow * 100)}% of ${money((input.buyVolume5m as number) + (input.sellVolume5m as number))} was buying`, buyPoints, 5, flow !== null),
+    check('Buys outpace sells (5m volume, or trade counts when that volume is thin): 60%+ 5, over half 3', flowReading, buyPoints, 5, flow !== null),
     check('Holders: 300+ 4, 100+ 2', input.holders === null ? 'not read yet' : `${input.holders.toLocaleString('en-US')} holders`, holderPoints, 4, input.holders !== null),
     check('5-minute volume: $20K+ 3, $8K+ 2', input.volume5m === null ? 'not read yet' : money(input.volume5m), volumePoints, 3, input.volume5m !== null),
     check('Fees over 0.75 SOL', input.feesSol === null ? 'not read yet' : `${input.feesSol.toFixed(2)} SOL`, feePoints, 2, input.feesSol !== null),
@@ -382,8 +407,11 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   const rising = m5 !== null && m5 >= 10
   const movement = movementSignal(input.priceChange)
   const movementEarned = movement ? Math.max(0, Math.round(movement.signal * movementPoints)) : 0
-  const movementCost = movement ? Math.max(0, Math.round(-movement.signal * movementPoints)) : 0
+  const movementCost = movement ? Math.max(0, Math.round(-movement.signal * fallingPoints)) : 0
   if (movement && movement.signal >= 0.5) tags.push('moving-up')
+  const early = input.early ?? null
+  const stretch = early?.stretchPct ?? null
+  const lowPoints = stretch === null ? 0 : stretch <= nearLow.close ? nearLow.points : stretch <= nearLow.near ? nearLow.points / 2 : 0
   const shapePoints = Math.max(waves.points >= 15 ? 5 : waves.points ? 3 : 0, steps.points >= 10 ? 5 : steps.points ? 3 : 0)
   const shapeDetail = waves.points >= steps.points ? waves.detail : steps.detail
   const impact = sellImpact(1, input.marketCap, input.liquidity)
@@ -395,6 +423,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     check('Steps up or won back a 30-55% pullback (3 if mostly or recovering)', shapeDetail, shapePoints, 5, input.ticks.length > 0),
     check('Deep liquidity: selling 1% moves it under 25% (3 if under 40%)', impact === null ? `liquidity ${input.liquidity === null ? 'not read yet' : money(input.liquidity)}` : `selling 1% of supply moves it about ${impact}% (${money(input.liquidity as number)} liquidity)`, depth, 6, impact !== null),
     check('Holding within 20% of its 10-minute high', high !== null && latest !== null ? `${Math.round((latest / high) * 100)}% of its high` : 'no recent high yet', nearHigh ? 4 : 0, 4, high !== null),
+    check(`Still near its 3-minute low: within ${nearLow.close}% ${nearLow.points}, within ${nearLow.near}% ${nearLow.points / 2}`, stretch === null ? 'not read yet' : `${round1(stretch)}% above it`, lowPoints, nearLow.points, stretch !== null),
   ]
   const chart = sum(chartChecks)
 
@@ -438,7 +467,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     cuts.push(...mildSelling.map(reason => `${reason}: -${softPenalties.sellingEach}`))
     parts.push({ key: 'penalty', label: 'Holders trimming', points: -sellingCost, max: 0, detail: mildSelling.join('; '), available: true })
   }
-  adjustments.push({ label: `Falling across 5s, 30s, 1m and 5m (5m weighs most): up to -${movementPoints}`, reading: movement ? movement.readings.join(', ') : 'not read yet', points: -movementCost, max: 0, status: movement === null ? 'unknown' : movementCost ? 'missed' : 'earned' })
+  adjustments.push({ label: `Falling across 5s, 30s, 1m and 5m (5m weighs most): up to -${fallingPoints}`, reading: movement ? movement.readings.join(', ') : 'not read yet', points: -movementCost, max: 0, status: movement === null ? 'unknown' : movementCost ? 'missed' : 'earned' })
   if (movementCost) {
     cuts.push(`Falling (${movement?.readings.join(', ')}): -${movementCost}`)
     parts.push({ key: 'penalty', label: 'Price falling', points: -movementCost, max: 0, detail: movement?.readings.join(', ') ?? '', available: true })
@@ -450,12 +479,24 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     cuts.push(`Market cap ${money(input.marketCap as number)}, under ${money(marketCapFloor.usd)}: -${floorCost}`)
     parts.push({ key: 'penalty', label: `Under ${money(marketCapFloor.usd)} market cap`, points: -floorCost, max: 0, detail: money(input.marketCap as number), available: true })
   }
-  const growth = marketCapGrowthPoints(input.priceChange)
-  adjustments.push({ label: `Market cap growth: +1 per 10% in 1m or per 20% in 5m, up to +${marketCapGrowth.max}`, reading: `1m ${input.priceChange.m1 === null ? '?' : `${signed(input.priceChange.m1)}%`}, 5m ${input.priceChange.m5 === null ? '?' : `${signed(input.priceChange.m5)}%`}`, points: growth.points, max: marketCapGrowth.max, status: input.priceChange.m1 === null && input.priceChange.m5 === null ? 'unknown' : growth.points ? 'earned' : 'missed' })
-  if (growth.points) {
-    tags.push('mcap-growing')
-    thesis.push(`market cap up ${Math.round((growth.window === '1m' ? input.priceChange.m1 : input.priceChange.m5) as number)}% in ${growth.window}`)
-    parts.push({ key: 'growth', label: 'Market cap growth', points: growth.points, max: marketCapGrowth.max, detail: `up ${Math.round((growth.window === '1m' ? input.priceChange.m1 : input.priceChange.m5) as number)}% in ${growth.window}`, available: true })
+  const earlyPoints = earlyBonusPoints(early)
+  adjustments.push({ label: `Early-start signs: +1 for every ${earlyBonus.per} points of the early-start reading, up to +${earlyBonus.max}`, reading: early ? `${early.score} of 100${early.firing ? ', the whole pattern is on' : ''}` : 'not read yet', points: earlyPoints, max: earlyBonus.max, status: !early ? 'unknown' : earlyPoints >= earlyBonus.max ? 'earned' : earlyPoints ? 'partial' : 'missed' })
+  if (earlyPoints) parts.push({ key: 'growth', label: 'Early-start signs', points: earlyPoints, max: earlyBonus.max, detail: `early-start reading ${early?.score} of 100`, available: true })
+  if (early?.firing) {
+    tags.push('early-start')
+    thesis.push('early-start pattern on: crowd and trading building before the price has moved')
+  }
+  const stretchCost = stretchCostFor(stretch)
+  adjustments.push({ label: `Stretched: -1 for every ${stretchPenalty.per}% the price is beyond ${stretchPenalty.above}% above its 3-minute low, up to -${stretchPenalty.max}`, reading: stretch === null ? 'not read yet' : `${round1(stretch)}% above its 3-minute low`, points: -stretchCost, max: 0, status: stretch === null ? 'unknown' : stretchCost ? 'missed' : 'earned' })
+  if (stretchCost) {
+    cuts.push(`Already ${Math.round(stretch as number)}% above its 3-minute low: -${stretchCost}`)
+    parts.push({ key: 'penalty', label: 'Stretched above its low', points: -stretchCost, max: 0, detail: `${Math.round(stretch as number)}% above its 3-minute low`, available: true })
+  }
+  const fadingCost = early?.fading ? fadingPenalty : 0
+  adjustments.push({ label: `Trading fading (5-minute trades or volume under a minute ago): -${fadingPenalty}`, reading: early ? early.fading ?? 'not fading' : 'not read yet', points: -fadingCost, max: 0, status: !early ? 'unknown' : fadingCost ? 'missed' : 'earned' })
+  if (fadingCost) {
+    cuts.push(`${early?.fading}: -${fadingCost}`)
+    parts.push({ key: 'penalty', label: 'Trading fading', points: -fadingCost, max: 0, detail: early?.fading ?? '', available: true })
   }
   const learnedTotal = input.learned.reduce((total, item) => total + item.points, 0)
   const learned = Math.max(learnedLimits.minimum, Math.min(learnedLimits.maximum, learnedTotal))
@@ -465,7 +506,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     parts.push({ key: 'learned', label: 'Learned from past alerts', points: learned, max: learnedLimits.maximum, detail: input.learned.map(item => `${item.label} ${item.points > 0 ? '+' : ''}${item.points}`).join(', '), available: true })
     cuts.push(...input.learned.filter(item => item.points < 0).map(item => `${item.label}: ${item.points}`))
   }
-  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch + growth.points - recycledCost - sellingCost - movementCost)) - floorCost)
+  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch + earlyPoints - recycledCost - sellingCost - movementCost - stretchCost - fadingCost)) - floorCost)
   adjustments.push({ label: `Points raised by a quarter (x${scoreStretch}), deductions not raised`, reading: `${round1(base + learned)} points`, points: round1((base + learned) * (scoreStretch - 1)), max: 0, status: 'earned' })
   let score = beforeCaps
   if (disqualified.length) score = 0

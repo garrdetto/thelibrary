@@ -166,7 +166,7 @@ class SettingsTests(unittest.TestCase):
         groups = {group["id"] for group in dials.GROUPS}
         self.assertTrue(all(dial["key"].split(".")[0] in groups for dial in dials.DIALS))
         self.assertEqual(rules.normalize(rules.defaults()), rules.defaults())
-        self.assertLessEqual(len(dials.DIALS), 22)
+        self.assertLessEqual(len(dials.DIALS), 23)
         self.assertTrue(all(dial.get("help") for dial in dials.DIALS))
 
     def test_every_simple_dial_reaches_the_rules(self) -> None:

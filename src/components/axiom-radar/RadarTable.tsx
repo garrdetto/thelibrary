@@ -7,6 +7,9 @@ import { dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd, holder
 import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
 import { useRadarAccess } from './access'
 import { scoreModeLabel, useScoreMode } from './score-mode'
+import { EarlyTag } from './EarlyStart'
+
+const axiomListLabels = { trending: 'Trending', surge: 'Surge' } as const
 
 export type RadarSortKey = 'score' | 'quality' | 'viewers' | 'viewersPerMin' | 'holders' | 's5' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
 export type RadarSort = { key: RadarSortKey; direction: 'asc' | 'desc' }
@@ -238,7 +241,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
               <PinButton token={token} onTogglePin={onTogglePin}/>
               <TokenIcon token={token}/>
               <div className="radar-token-text">
-                <div className="radar-token-line"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/><span className="radar-age tabular">{formatAge(token.ageMinutes)}</span>{token.onPulse && <span className="radar-tag" title="On your Axiom Pulse">Pulse</span>}{token.runnerWallets > 0 && <span className="radar-tag" title="Smart wallets holding">🐋 {token.runnerWallets}</span>}{token.alerts.length > 0 && <span className="radar-alert-icon" title={token.alerts.join(' · ')}><TriangleAlert size={13}/></span>}</div>
+                <div className="radar-token-line"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/><span className="radar-age tabular">{formatAge(token.ageMinutes)}</span>{token.onPulse && <span className="radar-tag" title="On your Axiom Pulse">Pulse</span>}{token.axiomLists?.map(list => <span key={list} className="radar-tag" title={`On Axiom Discover's ${axiomListLabels[list]} list in your open tab`}>{axiomListLabels[list]}</span>)}<EarlyTag early={token.early}/>{token.runnerWallets > 0 && <span className="radar-tag" title="Smart wallets holding">🐋 {token.runnerWallets}</span>}{token.wallets && (token.wallets.known > 0 || (token.wallets.flippersBuying ?? 0) > 0) && <span className={`radar-tag${token.wallets.score >= 65 ? ' radar-delta up' : token.wallets.score < 35 ? ' radar-delta down' : ''}`} title={`Wallet Score: ${token.wallets.summary}`}>Wallets {token.wallets.score}{(token.wallets.flippersBuying ?? 0) > 0 ? ` · ${token.wallets.flippersBuying} flipper${token.wallets.flippersBuying === 1 ? '' : 's'}` : ''}</span>}{token.alerts.length > 0 && <span className="radar-alert-icon" title={token.alerts.join(' · ')}><TriangleAlert size={13}/></span>}</div>
                 <div className="radar-token-line radar-token-actions">
                   <span className="radar-token-name" title={token.name}>{token.name}</span>
                   <CopyMint mint={token.mint}/>

@@ -2,6 +2,7 @@ import { recordHeartbeat, type TrackerDatabase } from './db.js'
 import { learnerState } from './learner-state.js'
 import { poolShare, sharedAccounts } from './research-verdict.js'
 import { createLogger, errorMessage, fetchJson, sleep } from './runtime.js'
+import { noteSolanaLimit, paceSolana, rpcUrl } from './solana-rpc.js'
 import { radarSettings } from './settings-store.js'
 import { activeCandidates } from './state.js'
 
@@ -12,8 +13,6 @@ export const freshWindowMs = 24 * 60 * 60_000
 export const minimumFreshHolders = 5
 const holdersPerCoin = 20
 const pageSize = 250
-const publicGapMs = 1_100
-const privateGapMs = 150
 const importantEveryMs = 5_000
 const othersEveryMs = 5_000
 const winnerRetryMs = 10 * 60_000
@@ -53,26 +52,16 @@ export function freshShare(holders: HolderShare[], starts: Map<string, WalletSta
   return decided >= minimumFreshHolders ? Math.round(fresh * 100) / 100 : null
 }
 
-const publicNode = 'https://api.mainnet-beta.solana.com'
-
-function rpcUrl() {
-  const custom = process.env.SOLANA_RPC_URL?.trim()
-  if (custom) return custom
-  const key = process.env.HELIUS_API_KEY?.trim()
-  return key ? `https://mainnet.helius-rpc.com/?api-key=${key}` : publicNode
-}
-
-/** The free public node allows about one wallet-history request a second; a Helius key or private node is much faster. */
-const requestGapMs = () => rpcUrl() === publicNode ? publicGapMs : privateGapMs
-
 type SignaturePage = { result?: Array<{ signature: string; blockTime: number | null }>; error?: { message?: string } }
 
-let lastRequestAt = 0
 async function paced<T>(work: () => Promise<T>) {
-  const wait = lastRequestAt + requestGapMs() - Date.now()
-  if (wait > 0) await sleep(wait)
-  lastRequestAt = Date.now()
-  return work()
+  await paceSolana('getSignaturesForAddress')
+  try {
+    return await work()
+  } catch (error) {
+    noteSolanaLimit(errorMessage(error))
+    throw error
+  }
 }
 
 /** Reads up to `pageSize` of a wallet's latest transactions: a shorter history is complete and shows when the wallet began. */

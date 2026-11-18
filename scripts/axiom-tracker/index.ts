@@ -2,9 +2,11 @@ import { startAdvice } from './advice.js'
 import { startAxiomCollector } from './axiom-collector.js'
 import { startExplosions } from './bursts.js'
 import { startChartHistory } from './chart-history.js'
+import { startCoinArchive } from './coin-archive.js'
 import { startDexPaid } from './dex-paid.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
+import { startEarlyLog } from './early-log.js'
 import { startExtensionIntake } from './extension-intake.js'
 import { startFollowUp } from './follow-up.js'
 import { startFreshWallets } from './fresh-wallets.js'
@@ -18,6 +20,9 @@ import { startScoring } from './scoring.js'
 import { startSelfCheck } from './self-check.js'
 import { startSitePublisher } from './site-publisher.js'
 import { startWalletTracker } from './wallet-tracker.js'
+import { startWalletScores, walletBook } from './wallet-score.js'
+import { startWalletPnl } from './wallet-pnl.js'
+import { startFlipTraders } from './flip-traders.js'
 
 const logger = createLogger('orchestrator')
 const controller = new AbortController()
@@ -45,10 +50,14 @@ const tasks = [
   startLiveMarket(database, controller.signal),
   startAxiomCollector(database, controller.signal),
   startWalletTracker(database, controller.signal),
+  startWalletScores(database, controller.signal),
+  startWalletPnl(database, controller.signal, walletBook),
+  startFlipTraders(database, controller.signal),
   startScoring(database, controller.signal),
   startSitePublisher(database, controller.signal),
   startExtensionIntake(database, controller.signal),
   startLearner(database, controller.signal),
+  startCoinArchive(database, controller.signal),
   startExplosions(database, controller.signal),
   startFollowUp(database, controller.signal),
   startHolderRefresh(database, controller.signal),
@@ -57,6 +66,7 @@ const tasks = [
   startDexPaid(database, controller.signal),
   startChartHistory(database, controller.signal),
   startRunnerAlerts(database, controller.signal),
+  startEarlyLog(database, controller.signal),
   startAdvice(database, controller.signal),
   startSelfCheck(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {

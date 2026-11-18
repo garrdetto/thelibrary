@@ -1,11 +1,75 @@
 const defaultPort = 8791
+const tripWindow = 30
+const roundTrips = []
+let trackerSettings = null
 
-async function trackerPort() {
-  const { port } = await chrome.storage.local.get('port')
-  return Number(port) || defaultPort
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.port || changes.trackerUrl || changes.bridgeKey)) trackerSettings = null
+})
+
+/** Where the tracker is: `trackerUrl` (a server address) when set, otherwise the tracker on this computer at `port`. */
+async function tracker() {
+  if (trackerSettings) return trackerSettings
+  const { port, trackerUrl, bridgeKey } = await chrome.storage.local.get(['port', 'trackerUrl', 'bridgeKey'])
+  const base = String(trackerUrl ?? '').trim().replace(/\/+$/, '') || `http://127.0.0.1:${Number(port) || defaultPort}`
+  const key = String(bridgeKey ?? '').trim()
+  trackerSettings = { base, headers: key ? { Authorization: `Bearer ${key}` } : {}, remote: !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(base) }
+  return trackerSettings
+}
+
+async function trackerFetch(path, init = {}) {
+  const { base, headers } = await tracker()
+  return fetch(`${base}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } })
+}
+
+function medianTrip() {
+  if (!roundTrips.length) return null
+  const sorted = [...roundTrips].sort((first, second) => first - second)
+  return Math.round(sorted[Math.floor(sorted.length / 2)])
+}
+
+async function gzipped(text) {
+  return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()
+}
+
+/** Posts one report; to a server it goes gzip-compressed, and every post carries the median round trip of the last 30 so the tracker can show it. */
+async function postReport(report) {
+  const { remote } = await tracker()
+  const text = JSON.stringify(report)
+  const headers = { 'Content-Type': 'application/json' }
+  const trip = medianTrip()
+  if (trip !== null) headers['X-Bridge-Rtt'] = String(trip)
+  let body = text
+  if (remote && text.length > 1024) {
+    body = await gzipped(text)
+    headers['Content-Encoding'] = 'gzip'
+  }
+  const started = performance.now()
+  const response = await trackerFetch('/extension/report', { method: 'POST', headers, body })
+  roundTrips.push(performance.now() - started)
+  if (roundTrips.length > tripWindow) roundTrips.shift()
+  return response
 }
 
 const pinnedTabs = new Set()
+let pollList = { at: 0, mints: [] }
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== 'axiom-radar-poll-list' || !sender.tab?.url?.startsWith('https://axiom.trade/')) return
+  void (async () => {
+    if (Date.now() - pollList.at > 5000) {
+      try {
+        const response = await trackerFetch('/extension/status')
+        const { tracked = [] } = await response.json()
+        pollList = { at: Date.now(), mints: tracked.map(item => item.mint).filter(Boolean).slice(0, 60) }
+      } catch {
+        pollList = { at: Date.now(), mints: pollList.mints }
+      }
+    }
+    sendResponse({ mints: pollList.mints })
+  })()
+  return true
+})
 
 chrome.runtime.onInstalled.addListener(async () => {
   const tabs = await chrome.tabs.query({ url: 'https://axiom.trade/*' }).catch(() => [])
@@ -21,21 +85,17 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
   void (async () => {
     try {
-      const send = async report => fetch(`http://127.0.0.1:${await trackerPort()}/extension/report`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(report),
-      })
+      const send = postReport
       let response = await send(message.report)
-      if (response.status === 400 && (message.report?.stats || message.report?.pulse)) {
-        const { stats, pulse, ...plain } = message.report
+      if (response.status === 400 && (message.report?.stats || message.report?.pulse || message.report?.api || message.report?.streams || message.report?.lists || message.report?.probe || message.report?.digest || message.report?.discover || message.report?.tabs)) {
+        const { stats, pulse, api, streams, lists, probe, digest, discover, tabs, ...plain } = message.report
         response = await send(plain)
       }
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`)
-      await chrome.storage.local.set({ lastSentAt: Date.now(), lastMatched: result.matched ?? 0, lastError: null })
+      await chrome.storage.local.set({ lastSentAt: Date.now(), lastMatched: result.matched ?? 0, lastError: null, lastTripMs: medianTrip() })
     } catch (error) {
-      await chrome.storage.local.set({ lastError: `${error instanceof Error ? error.message : error} (is the tracker running with AXIOM_COLLECTOR=extension?)`, lastErrorAt: Date.now() })
+      await chrome.storage.local.set({ lastError: `${error instanceof Error ? error.message : error} (is the tracker running with AXIOM_COLLECTOR=extension, and are its address and key right?)`, lastErrorAt: Date.now() })
     }
   })()
 })
@@ -45,6 +105,8 @@ const cycleMinMs = 4_000
 const cycleMaxMs = 15_000
 const revisitAfterMs = 45_000
 const visitedAt = new Map()
+const tabsOpenedAt = new Map()
+const tabsEveryMs = 10 * 60_000
 let lastStepAt = 0
 let onShow = null
 
@@ -62,7 +124,7 @@ async function runWatchJob(tabId, job) {
   }
   if (onShow?.tabId === tabId) onShow = { ...onShow, awaitingFigures: false, gotFigures: true }
   const ok = Boolean(answer?.done && answer.ok)
-  await fetch(`http://127.0.0.1:${await trackerPort()}/extension/watchlist`, {
+  await trackerFetch('/extension/watchlist', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mint: job.mint, pairAddress: job.pairAddress, symbol: String(job.symbol ?? '').slice(0, 40), action: job.action, ok, ...(ok ? { reason: String(job.reason ?? '').slice(0, 200) } : { reason: String(answer?.reason ?? 'the star button did not load').slice(0, 200) }) }),
@@ -90,10 +152,26 @@ async function showInCycler(pulseTab, url) {
   return created.id
 }
 
+/** Asks the coin page to open its Holders and Top Traders tabs, retrying while the page loads; the page's turn lasts until it is done. */
+async function runTabsJob(tabId) {
+  const started = Date.now()
+  let answer = null
+  while (Date.now() - started < cycleMaxMs - 1_000) {
+    await new Promise(resolve => setTimeout(resolve, 1_500))
+    if (onShow?.tabId !== tabId) return
+    answer = await chrome.tabs.sendMessage(tabId, { type: 'axiom-radar-open-tabs' }).catch(() => null)
+    if (answer?.done) break
+  }
+  if (onShow?.tabId === tabId) onShow = { ...onShow, awaitingTabs: false }
+  const { listTabsOpened = 0 } = await chrome.storage.local.get('listTabsOpened')
+  await chrome.storage.local.set({ listTabsOpened: listTabsOpened + (answer?.ok ? 1 : 0), listTabsLast: { ok: Boolean(answer?.ok), reason: answer?.reason ?? null, at: Date.now() } })
+}
+
 /** How long the coin page on show keeps its turn: until its holder figures arrive (they load about 6 seconds in) or 15 seconds pass, and 6 seconds when only its viewer count is wanted. */
 function turnOver(now) {
   const shown = now - lastStepAt
   if (!onShow) return shown >= cycleStepMs
+  if (onShow.awaitingTabs) return shown >= cycleMaxMs + 5_000
   if (onShow.awaitingFigures) return shown >= cycleMaxMs
   return shown >= (onShow.gotFigures ? cycleMinMs : cycleStepMs)
 }
@@ -111,8 +189,8 @@ async function stepMissingViewers(pulseTab) {
   onShow = null
   const { cycleMissing = true, keepWatchlist = true } = await chrome.storage.local.get(['cycleMissing', 'keepWatchlist'])
   if (!cycleMissing && !keepWatchlist) return
-  const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/status`)
-  const { missing = [], stale = [], watchlist = null } = await response.json()
+  const response = await trackerFetch('/extension/status')
+  const { missing = [], stale = [], visit = [], watchlist = null } = await response.json()
   const job = keepWatchlist ? nextWatchJob(watchlist, now) : null
   if (job) {
     watchTriedAt.set(`${job.action}:${job.mint}`, now)
@@ -125,14 +203,18 @@ async function stepMissingViewers(pulseTab) {
   if (!cycleMissing) return
   const lastVisit = item => visitedAt.get(item.pairAddress) ?? 0
   const waiting = [...missing, ...stale].filter((item, index, all) => item.pairAddress && all.findIndex(other => other.pairAddress === item.pairAddress) === index)
-  const next = waiting.filter(item => now - lastVisit(item) > revisitAfterMs).sort((first, second) => lastVisit(first) - lastVisit(second))[0]
+  const next = waiting.filter(item => now - lastVisit(item) > revisitAfterMs).sort((first, second) => lastVisit(first) - lastVisit(second))[0] ?? visit.find(item => item.pairAddress && now - lastVisit(item) > revisitAfterMs)
   await chrome.storage.local.set({ missingViewers: missing.length })
   if (!next) return
   visitedAt.set(next.pairAddress, now)
   for (const [pairAddress, at] of visitedAt) if (now - at > 60 * 60_000) visitedAt.delete(pairAddress)
   const awaitingFigures = stale.some(item => item.pairAddress === next.pairAddress)
   const tabId = await showInCycler(pulseTab, `https://axiom.trade/meme/${next.pairAddress}`)
-  onShow = { tabId, awaitingFigures, gotFigures: false }
+  const wantTabs = now - (tabsOpenedAt.get(next.pairAddress) ?? 0) > tabsEveryMs
+  if (wantTabs) tabsOpenedAt.set(next.pairAddress, now)
+  for (const [pairAddress, at] of tabsOpenedAt) if (now - at > 60 * 60_000) tabsOpenedAt.delete(pairAddress)
+  onShow = { tabId, awaitingFigures, gotFigures: false, awaitingTabs: wantTabs }
+  if (wantTabs) void runTabsJob(tabId).catch(() => undefined)
 }
 
 chrome.runtime.onMessage.addListener((message, sender) => {

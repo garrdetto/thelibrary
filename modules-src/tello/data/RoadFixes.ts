@@ -6,12 +6,14 @@
  * - every street and highway is bent away from the buildings its full width and a sidewalk would run into, smoothly,
  *   the way a real road is laid round a house on the corner (`bendAroundBuildings`);
  * - the pavement field is brought in line with the roads that moved (`repaveMoved`);
- * - the stretches where a road runs right beside deep water or a steep drop, where a guardrail stands (`guardrailRuns`).
+ * - the stretches where a road runs right beside deep water or a steep drop, where a guardrail stands (`guardrailRuns`),
+ *   always along the top of Main Street's river wall (`RiverWall.ts`).
  *
  * Roads at their junction nodes, on bridges and downtown (`FROZEN`) stay where the map has them.
  */
 import type { BuildingData, MapDoc, MapGrids, RoadData } from './MapData'
 import { resample } from '../world/Poly'
+import { riverWalls } from './RiverWall'
 
 /** Downtown, where `Streets.ts` and the storefronts own the street lines, with a margin. */
 export const FROZEN = { x0: -57, x1: 312, z0: -147, z1: 57 }
@@ -415,6 +417,12 @@ export function guardrailRuns(doc: MapDoc, land: RailLand): RailRun[] {
     if (r.k > 3) continue
     ends.push(r.p[0], r.p[1], r.p[r.p.length - 2], r.p[r.p.length - 1])
   }
+  const walled: number[] = []
+  for (const run of riverWalls(doc).runs) for (let k = 0; k < run.nx.length; k++) walled.push(run.pts[k * 2], run.pts[k * 2 + 1], run.nx[k], run.nz[k])
+  const onWall = (x: number, z: number, nx: number, nz: number) => {
+    for (let k = 0; k < walled.length; k += 4) if (Math.abs(walled[k] - x) < 2.5 && Math.abs(walled[k + 1] - z) < 2.5 && walled[k + 2] * nx + walled[k + 3] * nz > 0.5) return true
+    return false
+  }
   doc.roads.forEach((road, index) => {
     if (road.k > 1) return
     const pts = resample(road.p, RAIL_STEP)
@@ -430,8 +438,16 @@ export function guardrailRuns(doc: MapDoc, land: RailLand): RailRun[] {
         const nx = (-dz / len) * side, nz = (dx / len) * side
         const x = pts[i * 2], z = pts[i * 2 + 1]
         line.push(x + nx * (half + RAIL_SETBACK), z + nz * (half + RAIL_SETBACK))
-        let bad = false
-        if (!isFrozen(x, z) && land.deckAt(x, z) === null) {
+        const walledHere = onWall(x, z, nx, nz)
+        // Along the river wall the rail opens only where a footbridge lands on it.
+        let bad = walledHere
+        if (walledHere) {
+          for (const along of [-1.5, 0, 1.5]) {
+            const px = x + nx * (half + 3) + nz * along, pz = z + nz * (half + 3) - nx * along
+            if (land.deckAt(px, pz) !== null) bad = false
+          }
+        }
+        if (!walledHere && !isFrozen(x, z) && land.deckAt(x, z) === null) {
           const road0 = land.groundAt(x, z)
           for (let d = half + 1.2; d <= half + RAIL_WATER_LOOK && !bad; d += 1.2) {
             const px = x + nx * d, pz = z + nz * d
@@ -440,7 +456,7 @@ export function guardrailRuns(doc: MapDoc, land: RailLand): RailRun[] {
           }
           if (bad && land.deckAt(x + nx * (half + 1), z + nz * (half + 1)) !== null) bad = false
         }
-        if (bad) {
+        if (bad && !walledHere) {
           for (let k = 0; k < ends.length; k += 2) {
             const ex = ends[k] - x, ez = ends[k + 1] - z
             if (Math.hypot(ex, ez) < half + 7 && ex * nx + ez * nz > half * 0.5) {

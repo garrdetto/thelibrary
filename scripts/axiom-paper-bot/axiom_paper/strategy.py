@@ -123,6 +123,13 @@ def trend_block(change: float | None, mode: str, settings: Settings) -> str | No
     return None
 
 
+def wallet_block(coin: Coin, minimum: float) -> str | None:
+    """Why the coin's holders rule it out: a Wallet Score under the minimum. A coin not scored yet passes."""
+    if minimum <= 0 or coin.wallet_score is None or coin.wallet_score >= minimum:
+        return None
+    return f"Wallet Score {coin.wallet_score:.0f} under {minimum:.0f}" + (f": {coin.wallet_summary}" if coin.wallet_summary else "")
+
+
 def entry_block(coin: Coin, settings: Settings, data_age_seconds: float, trend: float | None = None) -> str | None:
     """Why this coin is not bought, or None when it passes every rule. `trend` is the mode's one-minute change."""
     s = settings
@@ -172,6 +179,7 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float, trend: 
         _below(coin.buy_share_pct, s["entry.min_buy_share_pct"], "buy share", "%"),
         _below(coin.age_minutes, s["entry.min_age_minutes"], "age in minutes"),
         _below(float(coin.smart_holders), s["entry.min_smart_holders"], "smart holders"),
+        wallet_block(coin, s["entry.min_wallet_score"]),
         _learned(coin.runner_chance, s["learned.min_runner_chance_pct"], "runner chance", s),
         _learned(coin.explode_chance, s["learned.min_explode_chance_pct"], "could-explode chance", s),
         _learned(coin.maker_chance, s["learned.min_maker_chance_pct"], "big-winner chance", s),

@@ -1,5 +1,5 @@
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
-import { chunk, createLogger, errorMessage, fetchJson, isMainModule, sleep, solanaAddressPattern } from './runtime.js'
+import { chunk, createLogger, errorMessage, fetchJson, isMainModule, sleep, isSolanaAddress } from './runtime.js'
 import { activeCandidates, trackerState, type JupiterReading } from './state.js'
 
 const logger = createLogger('jupiter')
@@ -115,7 +115,7 @@ async function refreshMoverMints() {
   for (const path of ['toptrending/5m', 'toptraded/5m', 'toporganicscore/5m']) {
     try {
       const list = await jupiterFetch<JupiterToken[]>(`${path}?limit=50`, 8_000)
-      for (const token of Array.isArray(list) ? list : []) if (typeof token.id === 'string' && solanaAddressPattern.test(token.id)) mints.add(token.id)
+      for (const token of Array.isArray(list) ? list : []) if (isSolanaAddress(token.id)) mints.add(token.id)
     } catch (error) {
       logger.debug('Jupiter mover list failed', { path, error: errorMessage(error) })
     }

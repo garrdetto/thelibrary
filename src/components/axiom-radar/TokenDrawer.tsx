@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, shortAddress, solscanAccountUrl } from './format'
 import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, WindowChange, changeClass, windowSourceNote } from './RadarTable'
 import { ScoreLedger } from './ScoreLedger'
+import { EarlySigns } from './EarlyStart'
 import { DexScoreBreakdown } from './DexScoreBreakdown'
 import { useScoreMode } from './score-mode'
 import { fetchTokenDetail } from './useRadarFeed'
@@ -19,6 +20,10 @@ const windows = [['s5', '5 seconds'], ['s30', '30 seconds'], ['m1', '1 minute'],
 const clockWithSeconds = (value: number) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 type TokenDrawerProps = { token: RadarToken; chartWindow: ChartWindow; fast: boolean; onClose: () => void; onTogglePin: (mint: string) => void }
+
+const formatSol = (value: number) => `${value.toFixed(Math.abs(value) >= 10 ? 1 : 2)} SOL`
+
+const walletVerdict = { good: 'Winning', bad: 'Coins died', mixed: 'Mixed', new: 'No record' } as const
 
 export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: TokenDrawerProps) {
   const [span, setSpan] = useState<ChartWindow>(chartWindow)
@@ -78,7 +83,6 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div className="radar-drawer-links">
             <a href={axiomUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">Axiom<ExternalLink size={11}/></a>
             <a href={dexScreenerUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">DexScreener<ExternalLink size={11}/></a>
-            <a href={rugCheckUrl(live.mint)} target="_blank" rel="noopener noreferrer">RugCheck<ExternalLink size={11}/></a>
           </div>
         </div>
         <SignalBadge token={live}/>
@@ -107,6 +111,11 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       {scoreMode.dex && <section className="radar-drawer-section" aria-labelledby="radar-dex-title">
         <h3 id="radar-dex-title">DexScreener score {live.dex?.score ?? '—'} <small>movement over 5s, 30s, 1m and 5m (longer windows weigh more), backed by liquidity and volume</small></h3>
         <DexScoreBreakdown token={live}/>
+      </section>}
+
+      {scoreMode.runner && live.early && <section className="radar-drawer-section" aria-labelledby="radar-early-title">
+        <h3 id="radar-early-title">Early start {live.early.score} <small>signs that show before the price moves, out of 100</small></h3>
+        <EarlySigns early={live.early}/>
       </section>}
 
       {scoreMode.runner && live.scoreLedger && <section className="radar-drawer-section" aria-labelledby="radar-ledger-title">
@@ -153,7 +162,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
         {live.advice.rebuyReasons.length > 0 && <ul className="radar-learn-list">{live.advice.rebuyReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
       </section>}
 
-      {(live.outlook || live.explode || live.maker) && <section className="radar-drawer-section radar-drawer-learned">
+      {(live.outlook || live.explode || live.maker || live.tierMatch) && <section className="radar-drawer-section radar-drawer-learned">
         <h3>What the learner sees <small>from past coins like this one</small></h3>
         <dl className="radar-facts">
           <div><dt>Chance to double</dt><dd className="tabular">{chanceLabel(live.outlook?.runnerChance)}</dd></div>
@@ -162,14 +171,17 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div><dt>Chance to explode</dt><dd className="tabular">{live.explode ? chanceLabel(live.explode.chance) : '—'}</dd></div>
           <div><dt>Match to past winners</dt><dd className="tabular">{chanceLabel(live.maker?.chance)}</dd></div>
           <div><dt>Winner wallets in</dt><dd className="tabular">{live.maker?.winnerWallets ?? '—'}</dd></div>
+          <div><dt>Looks like tier</dt><dd className="tabular">{live.tierMatch ? `${live.tierMatch.tier} of 20 (expected ${live.tierMatch.expectedTier})` : '—'}</dd></div>
+          <div><dt>Chance of a bottom-5 tier</dt><dd className="tabular">{live.tierMatch ? chanceLabel(live.tierMatch.risk) : '—'}</dd></div>
         </dl>
+        {live.tierMatch && <p className="radar-learn-timing">Tier score {live.tierMatch.score} of 100, matched against {live.tierMatch.coins.toLocaleString()} archived coins ranked from best (tier 1) to worst (tier 20).</p>}
         {outlookLine(live) && <p className="radar-learn-timing">{outlookLine(live)}</p>}
         <ReasonChips reasons={live.outlook?.reasons ?? []}/>
       </section>}
 
       <section className="radar-drawer-section">
         <h3>Quality checklist <QualityBadge token={live}/></h3>
-        {live.quality.checks.length === 0 ? <p className="radar-muted">No checks yet. Holder data arrives when the coin shows on your Axiom Pulse, and RugCheck within a minute or two.</p>
+        {live.quality.checks.length === 0 ? <p className="radar-muted">No checks yet. Holder data arrives when the coin shows on your Axiom Pulse, and from the Solana node within a few seconds.</p>
           : <ul className="radar-checks">{live.quality.checks.map(check => <li key={check.label} className={check.status}>
             <span aria-hidden="true">{check.status === 'pass' ? '✓' : check.status === 'warn' ? '!' : '✗'}</span>
             <strong>{check.label}</strong>
@@ -238,11 +250,41 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
         </div>}
         {live.holderTraits?.checkedAt && <p className="radar-note">Holder numbers last checked {relativeSeconds(live.holderTraits.checkedAt, Date.now())}.</p>}
         <dl className="radar-facts">
-          <div><dt>RugCheck risk score</dt><dd className="tabular">{live.safety.rugScore ?? '—'}</dd></div>
           <div><dt>Mint authority</dt><dd className={live.safety.mintAuthority ? 'radar-bad' : ''}>{authorityLabel(live.safety.mintAuthority)}</dd></div>
           <div><dt>Freeze authority</dt><dd className={live.safety.freezeAuthority ? 'radar-bad' : ''}>{authorityLabel(live.safety.freezeAuthority)}</dd></div>
         </dl>
       </section>
+
+      {live.wallets && <section className="radar-drawer-section" aria-labelledby="radar-wallets-title">
+        <h3 id="radar-wallets-title">Wallet Score {live.wallets.score} <small>who holds it, how much, how their earlier coins ended and what they made trading them</small></h3>
+        <p className="radar-note">{live.wallets.summary}. 50 means no holder with a real stake has a record yet; holders under $100 or 0.3% of supply are left out.</p>
+        {live.wallets.top.length > 0 && <div className="radar-table-wrap">
+          <table className="radar-mini-table">
+            <thead><tr><th scope="col">Wallet</th><th scope="col">Holds</th><th scope="col">Earlier coins</th><th scope="col">Their trades</th><th scope="col">Record</th></tr></thead>
+            <tbody>{live.wallets.top.map(holder => <tr key={holder.wallet}>
+              <td><a href={solscanAccountUrl(holder.wallet)} target="_blank" rel="noopener noreferrer" className="mono">{shortAddress(holder.wallet)}</a>{holder.whale && <span className="radar-tag" title="$1,000 or more in this coin">whale</span>}</td>
+              <td className="tabular">{holder.pct.toFixed(1)}%{holder.usd !== null ? ` · ${formatUsd(holder.usd)}` : ''}</td>
+              <td className="tabular">{holder.wins} grew 3x · {holder.losses} died</td>
+              <td className="tabular">{holder.pricedCoins && holder.buyInSol != null && holder.profitSol != null ? <>{formatSol(holder.buyInSol)} in · <span className={holder.profitSol > 0 ? 'radar-delta up' : holder.profitSol < 0 ? 'radar-delta down' : ''}>{holder.profitSol > 0 ? '+' : ''}{formatSol(holder.profitSol)}</span>{live.wallets?.solUsd ? <small className="radar-muted"> ({formatUsd(holder.profitSol * live.wallets.solUsd)})</small> : null}<small className="radar-muted"> on {holder.pricedCoins}</small></> : '—'}</td>
+              <td className={holder.verdict === 'good' ? 'radar-delta up' : holder.verdict === 'bad' ? 'radar-delta down' : 'radar-muted'}>{walletVerdict[holder.verdict]}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+        {(live.wallets.flippers?.length ?? 0) > 0 && <>
+          <h4>Proven flippers buying now <small className="radar-muted">bought in the last 10 minutes; their earlier round trips made money</small></h4>
+          <div className="radar-table-wrap">
+            <table className="radar-mini-table">
+              <thead><tr><th scope="col">Wallet</th><th scope="col">Bought now</th><th scope="col">Earlier flips</th><th scope="col">Put in → made</th></tr></thead>
+              <tbody>{live.wallets.flippers?.map(flipper => <tr key={flipper.wallet}>
+                <td><a href={solscanAccountUrl(flipper.wallet)} target="_blank" rel="noopener noreferrer" className="mono">{shortAddress(flipper.wallet)}</a></td>
+                <td className="tabular">{formatUsd(flipper.buyUsd)} <small className="radar-muted">{relativeSeconds(flipper.at, Date.now())}</small></td>
+                <td className="tabular">{flipper.wins} of {flipper.flips} won{flipper.quick ? ` · ${flipper.quick} quick` : ''}</td>
+                <td className="tabular">{formatUsd(flipper.putInUsd)} → <span className={flipper.profitUsd > 0 ? 'radar-delta up' : 'radar-delta down'}>{flipper.profitUsd > 0 ? '+' : ''}{formatUsd(flipper.profitUsd)}</span></td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </>}
+      </section>}
 
       <section className="radar-drawer-section">
         <h3>Smart holders in this coin</h3>

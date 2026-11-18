@@ -18,6 +18,8 @@ from .learner import Learner
 from .learner import features as learner_bands
 from .ledger import Ledger
 from .pricegate import PriceGate
+from .review import Reviewer
+from .review import entry_facts as buy_facts
 from .models import Coin, Position, number
 from .money import both, signed, small_sol, usd
 from .prices import SOL_MINT, Quote, fetch_prices
@@ -25,6 +27,8 @@ from .site import SiteError
 
 COMMAND_WINDOW_MS = 10 * 60_000
 TREND_WINDOW_MS = 60_000
+VOLUME_WINDOW_MS = 60_000
+LIQUIDITY_WINDOW_MS = 120_000
 READINGS_KEPT_MS = 5 * 60_000
 REPORT_SECONDS = 15.0
 EQUITY_SECONDS = 60.0
@@ -81,6 +85,19 @@ class _Worker:
         return self.result
 
 
+LIQUIDITY_GLITCH_DROP = 0.2
+LIQUIDITY_GLITCH_PRICE = 0.5
+
+
+def liquidity_glitch(previous: float | None, liquidity: float, price_before: float, price_now: float) -> bool:
+    """A liquidity reading that falls below a fifth of the last one while the price has not even halved is a bad reading,
+    not a pull: pulling liquidity crashes the price. Taking it would price the sale as if the pool were empty
+    (2026-11-17, gamercat: liquidity read 422 then 0.06 at +6%, and the paper sale filled at -89%)."""
+    if not previous or previous <= 0 or price_before <= 0:
+        return False
+    return liquidity < previous * LIQUIDITY_GLITCH_DROP and price_now >= price_before * LIQUIDITY_GLITCH_PRICE
+
+
 class Engine:
     def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, fee_source: Callable[[], fees.FeeLevels | None] = fees.fetch_levels, clock: Callable[[], float] = time.time, background: bool = False, observer: bool = False, rule_overrides: dict[str, Any] | None = None):
         self.ledger = ledger
@@ -118,6 +135,7 @@ class Engine:
         self.feed_age_from = 0.0
         self.streaks: dict[str, int] = {}
         self.readings: dict[str, list[tuple[int, dict[str, float | None]]]] = {}
+        self.market_readings: dict[str, list[tuple[int, float | None, float | None]]] = {}
         self.candidates: list[dict[str, Any]] = []
         self.buy_block: str | None = "Waiting for the Radar"
         self.error: str | None = None
@@ -133,6 +151,8 @@ class Engine:
             ledger.reset(self.rules["account.starting_sol"], self.now())
         self.chart_notes: dict[str, str] = {}
         self.learner = Learner(ledger.db, cost=self._round_trip_cost())
+        self.reviewer = Reviewer(ledger.db)
+        self.reviewer.backfill(ledger.closed_positions(500))
         self.positions = ledger.open_positions()
         for position in self.positions:
             position.last_price_at = max(position.last_price_at, self.now())
@@ -415,16 +435,38 @@ class Engine:
         if self.values["learn.enabled"]:
             mode = self.rules["mode.pick_by"]
             values = {mint: strategy.mode_value(coin, mode) for mint, coin in self.coins.items()}
-            self.learner.watch(self.coins, values, self.rules[f"mode.{mode}_buy_at"], self.rules["exit.take_profit_pct"], self.rules["exit.stop_loss_pct"], self.rules["exit.max_hold_minutes"], read_at)
+            markets = {mint: self.market(mint) for mint in self.coins}
+            self.learner.watch(self.coins, values, self.rules[f"mode.{mode}_buy_at"], self.rules["exit.take_profit_pct"], self.rules["exit.stop_loss_pct"], self.rules["exit.max_hold_minutes"], read_at, markets)
 
     def _remember_readings(self, read_at: int) -> None:
         """Each coin's score and quality on recent pulls, so the bot can tell which way they are moving."""
         kept: dict[str, list[tuple[int, dict[str, float | None]]]] = {}
+        markets: dict[str, list[tuple[int, float | None, float | None]]] = {}
         for mint, coin in self.coins.items():
             history = [reading for reading in self.readings.get(mint, []) if read_at - reading[0] <= READINGS_KEPT_MS and reading[0] < read_at]
             history.append((read_at, {mode: strategy.mode_value(coin, mode) for mode in strategy.MODES}))
             kept[mint] = history
+            market = [reading for reading in self.market_readings.get(mint, []) if read_at - reading[0] <= READINGS_KEPT_MS and reading[0] < read_at]
+            market.append((read_at, coin.volume_5m, coin.liquidity))
+            markets[mint] = market
         self.readings = kept
+        self.market_readings = markets
+
+    def market(self, mint: str) -> dict[str, float | None]:
+        """The coin's 5-minute volume change over about the last minute and its liquidity change over about two minutes,
+        in percent, from the bot's own pulls. None until the bot has watched the coin long enough."""
+        history = self.market_readings.get(mint) or []
+
+        def change(index: int, window: int) -> float | None:
+            if len(history) < 2:
+                return None
+            latest_at, latest = history[-1][0], history[-1][index]
+            earlier = next((reading for reading in reversed(history) if reading[0] <= latest_at - window), None)
+            if earlier is None or latest is None or earlier[index] is None or (earlier[index] or 0) <= 0:
+                return None
+            return round((latest / (earlier[index] or 1) - 1) * 100, 1)
+
+        return {"volume_trend": change(1, VOLUME_WINDOW_MS), "liquidity_trend": change(2, LIQUIDITY_WINDOW_MS)}
 
     def trend(self, coin: Coin, mode: str) -> float | None:
         """How far the mode's number moved over about the last minute of pulls, or None with fewer than two readings."""
@@ -448,10 +490,11 @@ class Engine:
         if taken is None:
             self.ledger.save(position)
             return
+        before = position.last_price
         position.last_price = taken
         position.last_price_at = read_at
         position.peak_price = max(position.peak_price, taken)
-        if liquidity is not None:
+        if liquidity is not None and not liquidity_glitch(position.last_liquidity, liquidity, before, taken):
             position.last_liquidity = liquidity
         trail = [point for point in self.price_trail.get(position.id, []) if read_at - point[0] <= 90_000]
         trail.append((read_at, taken))
@@ -574,7 +617,9 @@ class Engine:
             lag = max(0.0, self.generated_at - coin.snapshot_at) / 1000 if coin.snapshot_at and self.generated_at else 0.0
             reason = strategy.entry_block(coin, s, feed_age + lag, self.trend(coin, mode)) or self._coin_limits(coin, now)
             if reason is None and learning:
-                reason = self.learner.check(coin, strategy.mode_value(coin, mode), now, bool(self.values["learn.timing"]))
+                reason = self.learner.check(coin, strategy.mode_value(coin, mode), now, bool(self.values["learn.timing"]), self.market(coin.mint))
+            if reason is None and self.values["learn.mistakes"]:
+                reason = self.reviewer.check(buy_facts(coin, self.market(coin.mint)), now)
             if reason is not None:
                 self.streaks.pop(coin.mint, None)
                 considered.append((coin, reason))
@@ -633,7 +678,7 @@ class Engine:
             qty=fill.qty, qty_open=fill.qty, cost=fill.net, proceeds=0.0, fees=fill.fee,
             entry_liquidity=liquidity, last_liquidity=liquidity, peak_price=spot, peak_viewers=coin.viewers,
             last_price=spot, last_price_at=now, target_done=False, score=coin.score, peak_mode=strategy.mode_value(coin, mode),
-            entry={**coin.entry_facts(), "mode": mode, "sizeLimit": limit, "impactPct": round(fill.impact_pct, 3), "bands": learner_bands(coin, strategy.mode_value(coin, mode), now)},
+            entry={**buy_facts(coin, self.market(coin.mint)), "mode": mode, "sizeLimit": limit, "impactPct": round(fill.impact_pct, 3), "bands": learner_bands(coin, strategy.mode_value(coin, mode), now, self.market(coin.mint))},
         )
         self.ledger.record_buy(position, fill, now)
         self.positions.append(position)
@@ -696,9 +741,10 @@ class Engine:
             self.weak_reads.pop(position.id, None)
             if self.values["learn.enabled"]:
                 self.learner.record_trade(position, now)
-                lesson = self.learner.describe_loss(position) if profit < 0 else None
-                if lesson:
-                    self.ledger.event(now, "learn", lesson)
+            review = self.reviewer.review(position)
+            lesson = review if review and profit < 0 else self.learner.describe_loss(position) if profit < 0 and self.values["learn.enabled"] else None
+            if lesson:
+                self.ledger.event(now, "learn", lesson)
         else:
             self.ledger.event(now, "sell", f"Sold {share * 100:.0f}% of {position.symbol} at {gain:+.0f}% for {both(fill.net, self.sol_usd)}. {reason}.")
         self._after_trade()
@@ -830,7 +876,7 @@ class Engine:
             "equity": [{"t": point["t"], "equity": round(point["equity"] * rate, 2), "sol": point["equity"]} for point in self.ledger.equity_curve()],
             "events": self.ledger.events(30),
             "candidates": self.candidates,
-            "learning": {**self.learner.summary(bool(self.values["learn.timing"]), bool(self.values["learn.enabled"])), "buyLevel": round(self.buy_level(), 1)},
+            "learning": {**self.learner.summary(bool(self.values["learn.timing"]), bool(self.values["learn.enabled"])), "buyLevel": round(self.buy_level(), 1), "mistakes": self.reviewer.summary(bool(self.values["learn.mistakes"]))},
             "strength": self.rules["risk.strength"],
             "settingsStamp": self.settings_stamp,
         }

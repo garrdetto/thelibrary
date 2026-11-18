@@ -45,7 +45,7 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
         </div>)}
       </div>
       <Toggle id="set-pulse" label="Always track coins on my Axiom Pulse" hint="Coins the bridge sees on Pulse skip the volume, trades, liquidity and buy-share requirements." checked={form.pulseBypassesMarket} onChange={pulseBypassesMarket => change({ ...form, pulseBypassesMarket })}/>
-      <Toggle id="set-safe" label="Hide coins RugCheck rates caution or risky" checked={form.safeOnly} onChange={safeOnly => change({ ...form, safeOnly })}/>
+      <Toggle id="set-safe" label="Hide coins with mint or freeze authority on, or a top 10 over 30%" checked={form.safeOnly} onChange={safeOnly => change({ ...form, safeOnly })}/>
       <NumberField id="set-max" label="Coins tracked at once" hint="Ranked by live viewers. More coins means slower price refreshes above 60." value={form.maxCoins} min={5} max={150} step={5} onChange={maxCoins => change({ ...form, maxCoins })}/>
     </section>
 

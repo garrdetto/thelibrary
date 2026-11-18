@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import type { Env } from '../env'
 import { HttpError, json, parseStored, readJson, requireSameOrigin } from '../http'
-import { requireUser } from '../auth'
+import { currentUser, requireUser } from '../auth'
+import { moduleGrants } from '../../lib/access'
 import { CATEGORY_LIMIT, CATEGORY_NAME_MAX, TOP_COUNT, categoryIdPattern, layoutPayload, moduleIds, normalizeModuleLayout } from '../../lib/module-layout'
 import type { ModuleLayout } from '../../lib/module-layout'
 
@@ -29,7 +30,13 @@ async function readLayout(env: Env): Promise<ModuleLayout> {
 }
 
 export async function moduleLayout(request: Request, env: Env) {
-  if (request.method === 'GET') return json({ layout: await readLayout(env) })
+  if (request.method === 'GET') {
+    const [layout, viewer] = await Promise.all([readLayout(env), currentUser(request, env)])
+    const shared = viewer && !viewer.isAdmin ? new Set(moduleGrants(viewer.grants)) : null
+    if (!shared?.size) return json({ layout })
+    const hidden = layout.hidden.filter(id => !shared.has(id))
+    return json({ layout: { ...layout, hidden } })
+  }
   if (request.method !== 'POST') return json({ error: 'Not found.' }, 404)
   requireSameOrigin(request)
   const user = await requireUser(request, env, 'Sign in as the administrator to arrange the library.')

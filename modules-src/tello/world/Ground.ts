@@ -15,6 +15,7 @@ import { FOX_LAKE_WOODS_FLOOR } from '../../foxlake/look'
 import { fbm } from '../../rackreel/world/Terrain'
 import { detailTexture } from '../../rackreel/world/World'
 import { COVER } from '../data/MapData'
+import { riverWallDrop } from '../data/RiverWall'
 import { smoothstep, type TelloLand } from '../region'
 
 export const GROUND_CHUNK = 64
@@ -216,7 +217,7 @@ function buildChunk(scene: Scene, land: TelloLand, material: StandardMaterial, c
       const z = land.toSceneZ(mz)
       seen[k] = land.seen(mx, mz) ? 1 : 0
       positions[k * 3] = x
-      positions[k * 3 + 1] = land.groundAt(mx, mz) - groundSink(land.clearAt(mx, mz))
+      positions[k * 3 + 1] = land.groundAt(mx, mz) - groundSink(land.clearAt(mx, mz)) - riverWallDrop(land.doc, (cj + j) * land.side + ci + i)
       positions[k * 3 + 2] = z
       uvs[k * 2] = x / 7
       uvs[k * 2 + 1] = z / 7

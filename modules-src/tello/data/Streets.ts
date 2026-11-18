@@ -10,12 +10,16 @@
  * - The West Montello Street bridge carries the street level over the Montello River (the bare-earth lidar dips where
  *   the deck was, and the river under it was filled in): the deck is set level with the street, widened over both
  *   sidewalks, the approaches are filled to it and the channel is dug out under it (`fixBridge`).
+ * - Every street with a sidewalk is level from side to side (`levelStreets` in `LevelStreets.ts`), and Main Street
+ *   gets its concrete retaining wall where it runs beside the river (`fixRiverWalls` in `RiverWall.ts`).
  */
 import { COVER, type BridgeData, type BuildingData, type MapDoc, type MapGrids, type RoadData } from './MapData'
 import { BUILDING_HEIGHTS, CORNER_GARAGE, EXTRA_BUILDINGS, REMOVED_BUILDINGS } from './Downtown'
 import { pointInRing, resample } from '../world/Poly'
 import { fixRoadLines, repaveMoved } from './RoadFixes'
 import { addForecourts } from './Forecourts'
+import { levelStreets } from './LevelStreets'
+import { fixRiverWalls } from './RiverWall'
 
 /** Lane and parking lane, metres: one lane each way plus a parking lane along each curb. */
 export const LANE = 3.3
@@ -410,6 +414,8 @@ export function fixStreets(doc: MapDoc, grids: MapGrids): void {
   addForecourts(doc, grids)
   repaveMoved(doc, grids, fixRoadLines(doc).moved)
   paveProfiles(doc, grids, townProfiles(doc))
+  levelStreets(doc, grids)
+  fixRiverWalls(doc, grids)
 }
 
 // ---------------------------------------------------------------- buildings

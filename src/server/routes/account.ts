@@ -1,11 +1,12 @@
 import { z } from 'zod'
 import type { Env } from '../env'
-import { HttpError, clientIp, json, readJson, requireSameOrigin } from '../http'
+import { HttpError, clientIp, json, parseStored, readJson, requireSameOrigin } from '../http'
 import {
   ADMIN_LEVEL, ADMIN_USERNAME, OWNER_LEVEL, isOwnerRow, clearCounter, countDaily, currentUser, describeWait, endSession, hashPin, lockedFor, overDailyLimit,
-  randomHex, recordFailure, requireUser, safeEqual, sha256, startSession, studioPages, toSessionUser,
+  randomHex, recordFailure, requireUser, safeEqual, sha256, startSession, toSessionUser,
 } from '../auth'
 import type { AccountSettings, UserRow } from '../auth'
+import { GRANT_LIMIT, MUSIC_GRANT, RADAR_GRANT, cleanGrants, grantPattern } from '../../lib/access'
 
 const USER_FAILURE_LIMIT = 5
 const NETWORK_FAILURE_LIMIT = 25
@@ -113,7 +114,7 @@ export async function poolAccount(request: Request, env: Env) {
 
 export async function workspaceAccess(request: Request, env: Env) {
   const user = await currentUser(request, env)
-  return json({ username: user?.username ?? null, isAdmin: user?.isAdmin ?? false, isOwner: user?.isOwner ?? false, pages: user?.pages ?? [], settings: user?.settings ?? {} })
+  return json({ username: user?.username ?? null, isAdmin: user?.isAdmin ?? false, isOwner: user?.isOwner ?? false, pages: user?.pages ?? [], radar: user?.radar ?? false, music: user?.grants.includes(MUSIC_GRANT) ?? false, settings: user?.settings ?? {} })
 }
 
 const settingsInput = z.object({ theme: z.string().max(40).optional(), lobbySound: z.boolean().optional() }).strict()
@@ -130,7 +131,7 @@ export async function accountSettings(request: Request, env: Env) {
 }
 
 const adminInput = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('update'), id: z.string().uuid(), username: usernameField, pages: z.array(z.enum(studioPages)).max(studioPages.length) }).strict(),
+  z.object({ action: z.literal('update'), id: z.string().uuid(), username: usernameField, pages: z.array(z.string().regex(grantPattern)).max(GRANT_LIMIT) }).strict(),
   z.object({ action: z.literal('set-admin'), id: z.string().uuid(), admin: z.boolean() }).strict(),
   z.object({ action: z.literal('reset-password'), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal('delete'), id: z.string().uuid() }).strict(),
@@ -152,7 +153,7 @@ export async function workspaceAdmin(request: Request, env: Env) {
     const rows = await env.DB.prepare('SELECT * FROM users ORDER BY username').all<UserRow>()
     return json({ users: rows.results.map(row => {
       const user = toSessionUser(row)
-      return { id: user.id, username: user.username, pages: user.pages, isAdmin: user.isAdmin, isOwner: user.isOwner, needsPassword: !user.isOwner && !row.pin_hash, createdAt: row.created_at }
+      return { id: user.id, username: user.username, pages: user.pages, grants: user.grants, radar: user.radar, isAdmin: user.isAdmin, isOwner: user.isOwner, needsPassword: !user.isOwner && !row.pin_hash, createdAt: row.created_at }
     }), viewerIsOwner: actor.isOwner })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
@@ -172,11 +173,15 @@ export async function workspaceAdmin(request: Request, env: Env) {
     if (input.username === ADMIN_USERNAME && !targetIsOwner || reservedNames.has(input.username)) return json({ error: 'That username is reserved.' }, 400)
     const clash = await env.DB.prepare('SELECT id FROM users WHERE username = ? AND id <> ?').bind(input.username, target.id).first<{ id: string }>()
     if (clash) return json({ error: 'That username is already taken.' }, 409)
+    const before = cleanGrants(parseStored<unknown>(target.pages, []))
+    const requested = cleanGrants(input.pages).filter(grant => grant !== RADAR_GRANT)
+    const keepRadar = actor.isOwner ? input.pages.includes(RADAR_GRANT) : before.includes(RADAR_GRANT)
+    const grants = keepRadar && !targetIsOwner ? [...requested, RADAR_GRANT] : requested
     if (targetIsOwner) {
-      await env.DB.prepare('UPDATE users SET username = ?, is_admin = ? WHERE id = ?').bind(input.username, OWNER_LEVEL, target.id).run()
+      await env.DB.prepare('UPDATE users SET username = ?, is_admin = ?, pages = ? WHERE id = ?').bind(input.username, OWNER_LEVEL, JSON.stringify(grants), target.id).run()
       return json({ ok: true })
     }
-    await env.DB.prepare('UPDATE users SET username = ?, pages = ? WHERE id = ?').bind(input.username, JSON.stringify(input.pages), target.id).run()
+    await env.DB.prepare('UPDATE users SET username = ?, pages = ? WHERE id = ?').bind(input.username, JSON.stringify(grants), target.id).run()
     return json({ ok: true })
   }
   if (input.action === 'set-admin') {

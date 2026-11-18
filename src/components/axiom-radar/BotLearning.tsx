@@ -1,5 +1,5 @@
 import { GraduationCap } from 'lucide-react'
-import type { BotLearning, BotLesson } from '@/lib/axiom-bot'
+import type { BotLearning, BotLesson, BotMistakes } from '@/lib/axiom-bot'
 
 function percent(value: number | null): string {
   return value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
@@ -13,6 +13,23 @@ function LessonRow({ lesson }: { lesson: BotLesson }) {
     <strong className={`tabular radar-delta ${tone}`}>{percent(lesson.avgPct)}</strong>
     <span className="tabular radar-muted">{lesson.winPct}% won · {lesson.seen} seen</span>
   </li>
+}
+
+/** The bot's look back at its own buys: which mistakes keep losing (and now block buys) and the latest reviews. */
+function BotMistakesCard({ mistakes }: { mistakes: BotMistakes }) {
+  return <>
+    <h4>Bad buys it learned from</h4>
+    {!mistakes.enabled && <p className="radar-muted">Learning from bad buys is off: trades are still reviewed but nothing is skipped.</p>}
+    {mistakes.lessons.length === 0
+      ? <p className="radar-muted">No trades reviewed yet. A mistake blocks buys once {mistakes.minTrades} trades have shown it and most of them lost.</p>
+      : <ul className="radar-bot-lessons">{mistakes.lessons.map(lesson => <li key={lesson.tag}>
+          <span>{lesson.active ? <span className="radar-bot-tag warn">skipping</span> : <span className="radar-bot-tag">watching</span>}</span>
+          <span>{lesson.label}</span>
+          <strong className={`tabular radar-delta ${lesson.avgPct > 0 ? 'up' : lesson.avgPct < 0 ? 'down' : ''}`}>{percent(lesson.avgPct)}</strong>
+          <span className="tabular radar-muted">{lesson.losses} of {lesson.trades} lost</span>
+        </li>)}</ul>}
+    {mistakes.recent.length > 0 && <><h4>Latest trades looked back on</h4><ul className="radar-bot-reviews">{mistakes.recent.slice(0, 5).map(review => <li key={`${review.mint}-${review.closedAt}`}>{review.text}</li>)}</ul></>}
+  </>
 }
 
 /** What the bot's notebook has learned: how many coins it has followed, how they did, and the bands that pay or lose. */
@@ -37,5 +54,6 @@ export function BotLearningCard({ learning }: { learning: BotLearning | null }) 
         {bad.length > 0 && <><h4>Skipped or waited out</h4><ul className="radar-bot-lessons">{bad.map(lesson => <LessonRow key={`${lesson.feature}-${lesson.band}`} lesson={lesson}/>)}</ul></>}
         {good.length > 0 && <><h4>Paid best</h4><ul className="radar-bot-lessons">{good.map(lesson => <LessonRow key={`${lesson.feature}-${lesson.band}`} lesson={lesson}/>)}</ul></>}
       </>}
+    {learning.mistakes && <BotMistakesCard mistakes={learning.mistakes}/>}
   </div>
 }

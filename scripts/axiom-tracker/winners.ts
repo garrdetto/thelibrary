@@ -3,7 +3,6 @@ import type { RadarToken } from '../../src/lib/axiom-radar-types.js'
 import type { TrackerDatabase } from './db.js'
 import { lifecycleSpecs, lifecycleStart, readFeatures, type LifecycleRow } from './learner.js'
 import { learnerState } from './learner-state.js'
-import { safetyLevel } from './model.js'
 import { analyzeShape, type PricePoint, type PriceShape } from './price-shape.js'
 import { judgeResearch, poolShare, sharedAccounts, type ResearchVerdict } from './research-verdict.js'
 import { parseTraits } from './rise-traits.js'
@@ -28,7 +27,7 @@ CREATE TABLE IF NOT EXISTS winner_wallets (
 CREATE INDEX IF NOT EXISTS winner_wallets_wallet ON winner_wallets (wallet);
 `
 
-type WinnerRow = LifecycleRow & { pair_address: string | null; rug_score: number | null; mint_auth: number | null; freeze_auth: number | null; top10_pct: number | null; fresh_pct: number | null; shape_json?: string | null }
+type WinnerRow = LifecycleRow & { pair_address: string | null; mint_auth: number | null; freeze_auth: number | null; top10_pct: number | null; fresh_pct: number | null; shape_json?: string | null }
 export type WinnersModel = {
   classifier: Classifier
   values: FeatureValues[]
@@ -51,10 +50,9 @@ function judge(row: WinnerRow): ResearchVerdict {
   const rise = parseTraits(row.rise_traits_json)
   const mintAuthority = row.mint_auth === null ? null : row.mint_auth === 1
   const freezeAuthority = row.freeze_auth === null ? null : row.freeze_auth === 1
-  const riskyRugCheck = typeof rise.rugScore === 'number' && safetyLevel({ rugScore: rise.rugScore, mintAuthority, freezeAuthority, top10Pct: null }) === 'risky'
   const early = row.features_json ? JSON.parse(row.features_json) as FeatureValues : {}
   const earlyHolders = typeof early.holders === 'number' && Number.isFinite(early.holders) ? early.holders : null
-  return judgeResearch({ rise, freshFallback: row.fresh_pct ?? null, mintAuthority, freezeAuthority, riskyRugCheck, shape: parseShape(row.shape_json), earlyHolders })
+  return judgeResearch({ rise, freshFallback: row.fresh_pct ?? null, mintAuthority, freezeAuthority, shape: parseShape(row.shape_json), earlyHolders })
 }
 
 function parseShape(json: string | null | undefined): PriceShape | null {
@@ -88,7 +86,7 @@ const money = (value: number) => value >= 1_000_000 ? `$${(value / 1_000_000).to
 
 export function loadWinnersModel(database: TrackerDatabase): WinnersModel {
   database.exec(winnersSchema)
-  const rows = database.prepare('SELECT l.*, t.pair_address, t.rug_score, t.mint_auth, t.freeze_auth, t.top10_pct, t.fresh_pct FROM coin_lifecycles l LEFT JOIN tokens t ON t.mint = l.mint ORDER BY l.first_seen_at ASC').all() as WinnerRow[]
+  const rows = database.prepare('SELECT l.*, t.pair_address, t.mint_auth, t.freeze_auth, t.top10_pct, t.fresh_pct FROM coin_lifecycles l LEFT JOIN tokens t ON t.mint = l.mint ORDER BY l.first_seen_at ASC').all() as WinnerRow[]
   const winners = rows.filter(isWinner).sort((first, second) => (second.peak_mcap ?? 0) - (first.peak_mcap ?? 0))
   storeShapes(database, winners, Date.now())
   const verdicts = new Map<string, ResearchVerdict>()
