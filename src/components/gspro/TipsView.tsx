@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BookOpen, CircleAlert, Eye, LoaderCircle, Search, Sparkles, ThumbsUp } from 'lucide-react'
 import { clubLabel } from '@/lib/gspro/clubs'
 import { tipArticles, tipCategories, type TipArticle } from '@/lib/gspro/library'
 import { summarizeByClub, type EnrichedShot } from '@/lib/gspro/stats'
 import { allTips, MIN_SHOTS, type DataTip } from '@/lib/gspro/tips'
 import type { GsproSession } from '@/lib/gspro/types'
+import { normalizeClub } from '@/lib/gspro/clubs'
 import { gsproApi, type CoachInput, type CoachResult } from './api'
 import { ScopePicker } from './ScopePicker'
 import { scopeLabel, type Scope } from './GsproApp'
@@ -45,7 +46,11 @@ function Article({ article, open, onToggle }: { article: TipArticle; open: boole
 
 export function TipsView({ scope, sessions, shots, error, onScope }: { scope: Scope; sessions: GsproSession[]; shots: EnrichedShot[] | null; error: string | null; onScope: (scope: Scope) => void }) {
   const summaries = useMemo(() => shots ? summarizeByClub(shots) : [], [shots])
-  const tips = useMemo(() => allTips(summaries), [summaries])
+  const [lofts, setLofts] = useState<Record<string, number>>({})
+  useEffect(() => {
+    gsproApi.bag().then(result => setLofts(Object.fromEntries(result.bag.map(club => [normalizeClub(club.name), club.loft]).filter((entry): entry is [string, number] => Boolean(entry[0]))))).catch(() => undefined)
+  }, [])
+  const tips = useMemo(() => allTips(summaries, lofts), [summaries, lofts])
   const [openArticle, setOpenArticle] = useState<string | null>(null)
   const [category, setCategory] = useState<string>('all')
   const [query, setQuery] = useState('')

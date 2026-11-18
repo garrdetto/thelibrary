@@ -79,3 +79,10 @@ export function clubLabel(code: string | null) {
 export function clubOrder(code: string | null) {
   return code ? byCode.get(code)?.order ?? 50 : 99
 }
+
+/** GSPro's club order as stored in its round file (`ClubIndex`); checked against ball speeds and putts in a saved round. */
+const gsproIndexOrder = ['DR', '2W', '3W', '4W', '5W', '7W', '9W', '2H', '3H', '4H', '5H', '6H', '7H', '2I', '3I', '4I', '5I', '6I', '7I', '8I', '9I', 'PW', 'GW', 'AW', 'SW', 'LW', 'PT']
+
+export function clubFromGsproIndex(index: number | null | undefined) {
+  return typeof index === 'number' ? gsproIndexOrder[index] ?? null : null
+}
