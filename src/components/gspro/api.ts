@@ -1,4 +1,5 @@
 import type { BridgeStatus, GsproSession, GsproShot, ShotInput } from '@/lib/gspro/types'
+import type { CourseRound, CourseShot } from '@/lib/gspro/course'
 
 async function call<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers } })
@@ -26,4 +27,8 @@ export const gsproApi = {
   renameSession: (id: string, label: string) => post<{ ok: true }>({ action: 'rename-session', id, label }),
   deleteSession: (id: string) => post<{ ok: true }>({ action: 'delete-session', id }),
   coach: (data: CoachInput) => post<CoachResult>({ action: 'coach', data }),
+  rounds: () => call<{ rounds: CourseRound[] }>('/api/gspro?rounds'),
+  round: (id: string) => call<{ shots: CourseShot[] }>(`/api/gspro?round=${encodeURIComponent(id)}`),
+  deleteRound: (id: string) => post<{ ok: true }>({ action: 'delete-round', id }),
+  bag: () => call<{ bag: { name: string; loft: number }[]; updatedAt: number | null }>('/api/gspro?bag'),
 }

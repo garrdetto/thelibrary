@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Gauge, RotateCcw, X } from 'lucide-react'
 import { clubLabel } from '@/lib/gspro/clubs'
-import { traceFlight, type FlightTrace, type TracePoint } from '@/lib/gspro/flight'
+import { traceFlight, type TracePoint } from '@/lib/gspro/flight'
 import { fmt, signed, type EnrichedShot } from '@/lib/gspro/stats'
 
-type Path = { trace: FlightTrace; points: TracePoint[]; end: number }
+type Path = { points: TracePoint[]; landingIndex: number; end: number; carry: number; hangTime: number; actual: boolean }
 
 /** The replay path, scaled so carry matches the launch monitor's own carry when it sent one. */
 function pathFor(shot: EnrichedShot): Path | null {
+  if (shot.actualPath && shot.actualPath.length > 1) {
+    const landingIndex = Math.min(shot.landingIndex ?? shot.actualPath.length - 1, shot.actualPath.length - 1)
+    const points = shot.actualPath
+    return { points, landingIndex, end: points[points.length - 1].t, carry: points[landingIndex].x, hangTime: points[landingIndex].t, actual: true }
+  }
   const trace = traceFlight(shot)
   if (!trace) return null
   const scale = shot.carry !== null && shot.carry > 1 && trace.carry > 1 ? shot.carry / trace.carry : 1
   const points = [...trace.air, ...trace.ground].map(point => ({ t: point.t, x: point.x * scale, y: point.y * scale, z: point.z * scale }))
-  return { trace, points, end: points[points.length - 1].t }
+  return { points, landingIndex: trace.air.length - 1, end: points[points.length - 1].t, carry: trace.carry * scale, hangTime: trace.hangTime, actual: false }
 }
 
 function until(points: TracePoint[], t: number) {
@@ -139,7 +144,7 @@ function DownTheLine({ path, t, reach }: { path: Path; t: number; reach: number 
         context.stroke()
       }
     }
-    const landing = path.points[path.trace.air.length - 1]
+    const landing = path.points[path.landingIndex]
     if (t >= landing.t) {
       const spot = project(landing.x, 0, landing.z)
       if (spot) {
@@ -173,7 +178,7 @@ function DownTheLine({ path, t, reach }: { path: Path; t: number; reach: number 
   }, [path, t, width, height, reach])
 
   return <div ref={box} className="gs-dtl">
-    <canvas ref={canvas} style={{ width: '100%', height }} role="img" aria-label={`Down-the-line view: ${fmt(path.trace.carry, 0)} yards carry`}/>
+    <canvas ref={canvas} style={{ width: '100%', height }} role="img" aria-label={`Down-the-line view: ${fmt(path.carry, 0)} yards carry`}/>
   </div>
 }
 
@@ -253,7 +258,7 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
     ['Offline', shot.offline === null ? '—' : `${fmt(Math.abs(shot.offline), 0)} yd ${shot.offline >= 0 ? 'R' : 'L'}`],
     ['Apex', `${fmt(shot.apex, 0)} ft`],
     ['Landing', `${fmt(shot.descent, 0)}°`],
-    ['Hang time', `${fmt(path?.trace.hangTime ?? null, 1)} s`],
+    ['Hang time', `${fmt(path?.hangTime ?? null, 1)} s`],
     ['Ball speed', `${fmt(shot.ballSpeed)} mph`],
     ['Launch', `${fmt(shot.launch)}°`],
     ['Direction', `${signed(shot.direction)}°`],
@@ -273,7 +278,7 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
     <div className="gs-replay-inner">
       <header className="gs-replay-head">
         <div>
-          <p className="gs-eyebrow">Shot replay · {index + 1} of {shots.length} · {new Date(shot.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{shot.excluded ? ' · excluded' : ''}</p>
+          <p className="gs-eyebrow">Shot replay · {index + 1} of {shots.length} · {new Date(shot.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{shot.excluded ? ' · excluded' : ''}{shot.context ? ` · ${shot.context}` : ''}</p>
           <h2 id="gs-replay-title">{clubLabel(shot.club)} <span>{shot.shape}</span></h2>
         </div>
         <div className="gs-row-actions">
@@ -287,7 +292,7 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
         <div className="gs-replay-controls">
           <button type="button" className="gs-button ghost" onClick={() => setRun(value => value + 1)}><RotateCcw size={15} aria-hidden/>Replay</button>
           <button type="button" className="gs-button ghost" aria-pressed={slow} onClick={() => setSlow(value => !value)}><Gauge size={15} aria-hidden/>{slow ? 'Slow motion on' : 'Slow motion'}</button>
-          <span className="gs-muted">{fmt(Math.min(t, path.end), 1)} s · {ghosts.length ? `${ghosts.length} other ${clubLabel(shot.club).toLowerCase()} shots in grey` : 'flight recreated from launch data'}</span>
+          <span className="gs-muted">{fmt(Math.min(t, path.end), 1)} s · {ghosts.length ? `${ghosts.length} other ${clubLabel(shot.club).toLowerCase()} shots in grey` : path.actual ? 'GSPro’s own flight' : 'flight recreated from launch data'}</span>
         </div>
         <div className="gs-replay-plots">
           <Plot kind="side" path={path} ghosts={ghosts} t={t} reach={reach}/>
@@ -297,7 +302,7 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
       <dl className="gs-replay-stats">
         {stats.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl>
-      <p className="gs-muted">The flight is recreated from ball speed, launch, direction, spin and spin axis in calm air at sea level{shot.carryEstimated ? '' : ', scaled to the carry your launch monitor reported'}. Bounce and roll are a rough fairway estimate.</p>
+      {path?.actual ? <p className="gs-muted">This is GSPro's own flight from your round, bounce and roll included, seen from behind the ball along your start line. Heights are relative to where you hit from.</p> : <p className="gs-muted">The flight is recreated from ball speed, launch, direction, spin and spin axis in calm air at sea level{shot.carryEstimated ? '' : ', scaled to the carry your launch monitor reported'}. Bounce and roll are a rough fairway estimate.</p>}
     </div>
   </dialog>
 }

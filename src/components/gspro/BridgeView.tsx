@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, Copy, Download, FileUp, KeyRound, LoaderCircle, Pencil, Trash2 } from 'lucide-react'
 import { importCsv, type CsvImport } from '@/lib/gspro/csv'
 import type { BridgeStatus, GsproSession, Handed } from '@/lib/gspro/types'
@@ -21,6 +21,17 @@ function CopyBlock({ text, label }: { text: string; label: string }) {
       {copied ? <Check size={15} aria-hidden/> : <Copy size={15} aria-hidden/>}
     </button>
   </div>
+}
+
+function Bag() {
+  const [bag, setBag] = useState<{ name: string; loft: number }[] | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  useEffect(() => { gsproApi.bag().then(result => { setBag(result.bag); setUpdatedAt(result.updatedAt) }).catch(() => setBag([])) }, [])
+  if (!bag?.length) return null
+  return <section className="gs-panel">
+    <header className="gs-panel-head"><div><h2>Your ProTee bag</h2><p>Static lofts read from ProTee Labs by the bridge{updatedAt ? ` on ${new Date(updatedAt).toLocaleDateString()}` : ''}. Tips compare them with the loft you deliver at impact when club data comes through the relay.</p></div></header>
+    <div className="gs-chips">{bag.map(club => <span key={club.name} className="gs-chip"><b>{club.name}</b> {club.loft}°</span>)}</div>
+  </section>
 }
 
 function Importer({ onImported }: { onImported: (id: string) => void }) {
@@ -138,13 +149,13 @@ export function BridgeView({ bridge, online, sessions, onBridge, onSessions, onI
   return <div className="gs-stack">
     <section className="gs-panel">
       <header className="gs-panel-head">
-        <div><h2>Live bridge</h2><p>A small program on your simulator PC sits between ProTee (or any Open Connect launch monitor) and GSPro. GSPro gets every shot exactly as before, and a copy streams here with the club GSPro has selected.</p></div>
+        <div><h2>Bridge</h2><p>A small program on your simulator PC. It uploads every shot you play on a GSPro course (from GSPro’s own round file, nothing to change in GSPro or ProTee Labs), reads your club lofts from ProTee Labs, and can also relay live launch-monitor data for connectors that let you choose a port.</p></div>
       </header>
       <dl className="gs-kpis">
         <div><dt>Status</dt><dd className={online ? 'gs-up' : ''}>{online ? 'Online' : bridge?.hasKey ? 'Offline' : 'Not set up'}</dd></div>
         <div><dt>Last heard</dt><dd>{ago(bridge?.lastSeenAt ?? null)}</dd></div>
-        <div><dt>GSPro</dt><dd>{online ? (bridge?.gsproConnected ? 'Connected' : 'Waiting') : '—'}</dd></div>
-        <div><dt>Launch monitor</dt><dd>{online ? (bridge?.monitorConnected ? 'Connected' : 'Waiting') : '—'}</dd></div>
+        <div><dt>GSPro rounds</dt><dd>{online ? (bridge?.roundFile ? 'Watching' : 'No round yet') : '—'}</dd></div>
+        <div><dt>Live relay</dt><dd>{online ? (bridge?.listen === 'off' ? 'Off' : bridge?.monitorConnected ? 'Receiving' : 'Waiting') : '—'}</dd></div>
       </dl>
       {online && bridge?.queued ? <p className="gs-notice">{bridge.queued} shots are waiting on the PC to upload.</p> : null}
       {error && <p className="gs-notice" role="alert">{error}</p>}
@@ -173,12 +184,13 @@ export function BridgeView({ bridge, online, sessions, onBridge, onSessions, onI
           <p>To check the connection without GSPro, add <code>--test</code>: a sample drive should appear on the Live tab.</p>
         </li>
         <li>
-          <h3>Point the launch monitor at the bridge</h3>
-          <p>In ProTee Labs (or your connector), change the GSPro connection from port <b>921</b> to <b>9211</b> on 127.0.0.1. The bridge forwards everything to GSPro on 921, so GSPro works exactly as before. If GSPro isn't on this PC, start the bridge with <code>--gspro &lt;address&gt;:921</code>.</p>
-          <p className="gs-muted">The bridge also keeps a CSV copy of every shot in a <code>.gspro-bridge</code> folder in your user profile, and holds shots there if the internet drops, sending them when it is back.</p>
+          <h3>Play</h3>
+          <p>Leave the bridge running and play a round in GSPro. Each shot appears on the On course tab a few seconds after the ball stops, and the round already saved in GSPro uploads the first time the bridge starts. GSPro and ProTee Labs need no changes.</p>
+          <p className="gs-muted">Range sessions and club data (path, face, attack angle) only reach the page through the live relay. ProTee Labs connects straight to GSPro’s port 921 and has no port setting, so with ProTee the relay stays idle; other connectors can point at 127.0.0.1 port 9211 and the bridge forwards everything to GSPro unchanged. Add <code>--no-relay</code> to turn it off. Shots wait in a <code>.gspro-bridge</code> folder in your user profile if the internet drops.</p>
         </li>
       </ol>
     </section>
+    <Bag/>
     <Importer onImported={onImported}/>
     <Sessions sessions={sessions} onChanged={onSessions} onDeleted={onDeleted}/>
   </div>
