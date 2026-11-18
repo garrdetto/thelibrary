@@ -53,13 +53,18 @@ export interface JunctionFill {
   kind: number
 }
 
-/** The triangles that close each junction's notches and cap each road end. */
+/**
+ * The triangles that close each junction's notches and cap each road end. A lane or gravel drive that stops on the
+ * edge of a bigger road (the bake's driveways end there, never over the road) gets no cap, which would reach into it.
+ */
 export function junctionFills(doc: MapDoc): JunctionFill[] {
   const out: JunctionFill[] = []
+  const edges = roadEdges(doc)
   for (const node of junctionNodes(doc)) {
     const arms = node.arms.map((a) => ({ ...a, angle: Math.atan2(a.dz, a.dx) })).sort((a, b) => a.angle - b.angle)
     const kind = Math.min(...arms.map((a) => a.road.k))
     const tris: number[] = []
+    if (arms.length === 1 && arms[0].road.k >= 2 && edges.meets(node.x, node.z, arms[0].road.k)) continue
     if (arms.length === 1) {
       const a = arms[0]
       const base = Math.atan2(-a.dz, -a.dx)
@@ -83,6 +88,41 @@ export function junctionFills(doc: MapDoc): JunctionFill[] {
     if (tris.length) out.push({ tris, kind })
   }
   return out
+}
+
+const EDGE_GRID = 64
+
+/** The streets and highways as segments in a grid, to tell whether a lane's end lies on one's edge. */
+function roadEdges(doc: MapDoc): { meets: (x: number, z: number, kind: number) => boolean } {
+  const cells = new Map<number, { ax: number; az: number; bx: number; bz: number; half: number; k: number }[]>()
+  const key = (gx: number, gz: number) => (gx + 32768) * 65536 + gz + 32768
+  for (const road of doc.roads) {
+    if (road.k > 1) continue
+    const p = road.p
+    for (let k = 0; k + 3 < p.length; k += 2) {
+      const seg = { ax: p[k], az: p[k + 1], bx: p[k + 2], bz: p[k + 3], half: road.w / 2, k: road.k }
+      const pad = seg.half + 1
+      for (let gx = Math.floor((Math.min(seg.ax, seg.bx) - pad) / EDGE_GRID); gx <= Math.floor((Math.max(seg.ax, seg.bx) + pad) / EDGE_GRID); gx++) {
+        for (let gz = Math.floor((Math.min(seg.az, seg.bz) - pad) / EDGE_GRID); gz <= Math.floor((Math.max(seg.az, seg.bz) + pad) / EDGE_GRID); gz++) {
+          const id = key(gx, gz)
+          let list = cells.get(id)
+          if (!list) cells.set(id, (list = []))
+          list.push(seg)
+        }
+      }
+    }
+  }
+  return {
+    meets(x, z, kind) {
+      for (const s of cells.get(key(Math.floor(x / EDGE_GRID), Math.floor(z / EDGE_GRID))) ?? []) {
+        if (s.k >= kind) continue
+        const dx = s.bx - s.ax, dz = s.bz - s.az
+        const t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / (dx * dx + dz * dz || 1)))
+        if (Math.hypot(x - s.ax - dx * t, z - s.az - dz * t) <= s.half + 0.35) return true
+      }
+      return false
+    },
+  }
 }
 
 /** Where arm `a`'s left edge meets arm `b`'s right edge, relative to the node, or null when it is too far off. */

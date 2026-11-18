@@ -240,7 +240,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
   for (const fill of junctionFills(land.doc)) {
     const t = fill.tris
     if (!land.seen(t[0], t[1], ROAD_SEEN)) continue
-    const b = batchOf(batches, `6|${Math.floor(t[0] / CELL)},${Math.floor(t[1] / CELL)}`)
+    const b = batchOf(batches, `${fill.kind >= 2 ? fill.kind : 6}|${Math.floor(t[0] / CELL)},${Math.floor(t[1] / CELL)}`)
     const lift = LIFT[fill.kind as RoadKind] + (LAYERS - 1) * LAYER_GAP + FILL_OVER
     for (let k = 0; k < t.length; k += 6) fineTriangle(b, land, h, lift, -Infinity, t[k], t[k + 1], t[k + 2], t[k + 3], t[k + 4], t[k + 5])
   }

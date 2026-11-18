@@ -10,7 +10,9 @@ Blender build of Montello's everyday detail parts: the house kit, the business k
                                           wall-pack, entry-canopy: fuel stations, the grocery, the depot, the school
                                           and the lots (world/Businesses.ts, world/School.ts, world/Lots.ts).
   assets-src/models/tello/fields-kit.glb  base, plate, rubber, backstop, dugout, bleacher, fence-panel, fence-post,
-                                          scoreboard: the baseball and softball fields (world/BallFields.ts).
+                                          scoreboard: the baseball and softball fields (world/BallFields.ts);
+                                          golf-flag, tee-marker, ball-washer, golf-bench, hole-sign: the golf course
+                                          (world/GolfCourse.ts).
 
 Every object is a root node named for the part; material names are the slots the page paints (trim, wall, stone, door,
 garage, shingle, metal, glass, lit, wood, brick, paint). Parts face -Y in Blender (the glTF +Z the page faces them out
@@ -507,6 +509,82 @@ def scoreboard():
     return finish(p)
 
 
+def golf_flag():
+    """The flagstick in its cup: a white cup liner flush with the green, a 2.3 m pin and a flag (`paint`, coloured per hole)."""
+    p = bm.Part('golf-flag')
+    cyl(p, 0, 0, -0.1, 0.012, 0.054, 'trim', seg=10)
+    cyl(p, 0, 0, 0.0, 2.3, 0.0095, 'trim', seg=6)
+    for k in range(5):
+        z = 0.25 + k * 0.4
+        cyl(p, 0, 0, z, z + 0.2, 0.0105, 'black', seg=6)
+    bx(p, 0.01, -0.004, 1.88, 0.52, 0.004, 2.24, 'paint', skip=('bottom',))
+    return finish(p)
+
+
+def tee_marker():
+    """A tee marker: a coloured ball (`paint`) on a short spike."""
+    p = bm.Part('tee-marker')
+    cyl(p, 0, 0, 0, 0.06, 0.012, 'metal', seg=6)
+    pts = []
+    r = 0.09
+    for i in range(5):
+        el = -math.pi / 2 + math.pi * i / 4
+        for j in range(8):
+            az = 2 * math.pi * j / 8
+            pts.append((math.cos(el) * math.cos(az) * r, math.cos(el) * math.sin(az) * r, 0.15 + math.sin(el) * r))
+    faces = []
+    for i in range(4):
+        for j in range(8):
+            a = i * 8 + j; b = i * 8 + (j + 1) % 8
+            faces.append([a, b, b + 8, a + 8])
+    for f in faces:
+        vs = [Vector(pts[k]) for k in f]
+        n = (vs[1] - vs[0]).cross(vs[2] - vs[0])
+        mid = sum(vs, Vector((0, 0, 0))) / 4
+        if n.dot(mid - Vector((0, 0, 0.15))) < 0:
+            vs.reverse()
+        p.face(vs, 'paint')
+    return finish(p, smooth=80)
+
+
+def ball_washer():
+    """A ball washer on its post with a towel hook and a small litter bin."""
+    p = bm.Part('ball-washer')
+    cyl(p, 0, 0, 0, 0.95, 0.035, 'metal', seg=6)
+    bx(p, -0.13, -0.09, 0.82, 0.13, 0.09, 1.08, 'paint', skip=('bottom',))
+    cyl(p, 0.0, 0.0, 1.08, 1.32, 0.012, 'metal', seg=6)
+    bx(p, -0.04, -0.04, 1.32, 0.04, 0.04, 1.36, 'black')
+    cyl(p, 0.42, 0.0, 0, 0.7, 0.2, 'paint', seg=10)
+    return finish(p)
+
+
+def golf_bench():
+    """A slatted bench on two concrete feet."""
+    p = bm.Part('golf-bench')
+    L = 1.8
+    for sx in (-L / 2 + 0.15, L / 2 - 0.25):
+        bx(p, sx, -0.25, 0, sx + 0.1, 0.25, 0.42, 'stone', skip=('bottom',))
+    for k in range(3):
+        y = -0.25 + k * 0.17
+        bx(p, -L / 2, y, 0.42, L / 2, y + 0.13, 0.47, 'wood', skip=('bottom',))
+    for k in range(2):
+        z = 0.6 + k * 0.17
+        bx(p, -L / 2, 0.24, z, L / 2, 0.29, z + 0.12, 'wood')
+    for sx in (-L / 2 + 0.18, L / 2 - 0.22):
+        bx(p, sx, 0.25, 0.42, sx + 0.05, 0.3, 0.92, 'metal')
+    return finish(p)
+
+
+def hole_sign():
+    """The hole sign beside each tee: two posts and a dark board (the page letters it); the board's face is at y = -0.06."""
+    p = bm.Part('hole-sign')
+    for sx in (-0.45, 0.45):
+        bx(p, sx - 0.05, -0.05, 0, sx + 0.05, 0.05, 1.0, 'wood', skip=('bottom',))
+    bx(p, -0.6, -0.05, 0.55, 0.6, 0.05, 1.45, 'black')
+    bx(p, -0.66, -0.07, 1.45, 0.66, 0.07, 1.52, 'wood')
+    return finish(p)
+
+
 def build_fields():
     bm.reset()
     base()
@@ -517,6 +595,11 @@ def build_fields():
     bleacher()
     fence_panel()
     scoreboard()
+    golf_flag()
+    tee_marker()
+    ball_washer()
+    golf_bench()
+    hole_sign()
     export('fields-kit.glb')
 
 

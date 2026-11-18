@@ -23,7 +23,7 @@ test('the Blender kits hold every part the town builders lay', () => {
   const need: Record<string, string[]> = {
     'house-kit': ['window-house', 'window-small', 'door-entry', 'door-garage', 'shutter', 'porch', 'stoop', 'chimney-cap', 'gutter', 'downspout', 'ac-unit'],
     'places-kit': ['pump', 'island', 'bollard', 'school-bus', 'lot-light', 'cart-corral', 'rtu', 'dock-door', 'wall-pack', 'entry-canopy'],
-    'fields-kit': ['base', 'plate', 'rubber', 'backstop', 'dugout', 'bleacher', 'fence-panel', 'scoreboard'],
+    'fields-kit': ['base', 'plate', 'rubber', 'backstop', 'dugout', 'bleacher', 'fence-panel', 'scoreboard', 'golf-flag', 'tee-marker', 'ball-washer', 'golf-bench', 'hole-sign'],
   }
   for (const [kit, parts] of Object.entries(need)) {
     const src = `assets-src/models/tello/${kit}.glb`

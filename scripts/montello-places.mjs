@@ -5,11 +5,14 @@
  *
  *   node scripts/montello-places.mjs          (rerun after re-baking the map; a test checks the file is current)
  */
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+/** Every lot already offered in Fox Lake, kept as it was (`keepIssued`). */
+const LOTS_FILE = existsSync(`${root}scripts/montello-lots.json`) ? `${root}scripts/montello-lots.json` : 'scripts/montello-lots.json'
+const ISSUED = JSON.parse(readFileSync(LOTS_FILE, 'utf8')).lots
 /** Fox Lake's town origin in the scene (modules-src/foxlake/region.ts TOWN_OFFSET); a test keeps them equal. */
 export const TOWN_OFFSET = { x: -4200, y: 0, z: -6600 }
 /** Where the middle of Montello's map lies in Fox Lake's scene (modules-src/foxlake/region.ts MONTELLO_AT); a test keeps them equal. */
@@ -38,7 +41,7 @@ export function montelloLots(doc, town, grids = null) {
   }
   const overlaps = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
   const footprints = doc.buildings.map((b) => box(b.p))
-  const streets = doc.roads.filter((r) => r.k <= 2)
+  const streets = doc.roads.filter((r) => r.k <= 2 && r.c !== 'driveway')
   const lots = []
   doc.buildings.forEach((b, i) => {
     if (b.k !== 'house') return
@@ -58,14 +61,38 @@ export function montelloLots(doc, town, grids = null) {
     lots.push({ r, i, y: b.f, north })
   })
   if (grids) lots.push(...vacantParcels(doc, grids, footprints, lots.map((l) => l.r)))
-  let houses = 0
-  let vacant = 0
-  return lots.map((l) => {
+  const fresh = lots.map((l) => {
     const [x, z] = town(l.r[0], l.r[3])
     // Town z runs south, so a street to the north (map) is at the lot's low town z: a '-z' front.
-    const lot = { id: l.vacant ? `V${++vacant}` : `M${++houses}`, x: Math.round(x), z: Math.round(z), w: l.r[2] - l.r[0], d: l.r[3] - l.r[1], front: l.north ? '-z' : '+z', y: Math.round((l.y - LAKE_LEVEL) * 100) / 100 }
-    return l.vacant ? lot : { ...lot, scan: l.i }
+    const lot = { x: Math.round(x), z: Math.round(z), w: l.r[2] - l.r[0], d: l.r[3] - l.r[1], front: l.north ? '-z' : '+z', y: Math.round((l.y - LAKE_LEVEL) * 100) / 100 }
+    return l.vacant ? { ...lot, vacant: true } : { ...lot, scan: l.i }
   })
+  return keepIssued(fresh, ISSUED)
+}
+
+/**
+ * Lots Fox Lake has already offered (`scripts/montello-lots.json`) keep their id, place, size and front through every
+ * re-bake, so nobody's lot moves or swaps; the bake only refreshes each one's ground height and, for a house, which
+ * baked building is its house (`scan`). A house lot whose house is gone keeps nothing to scan. Lots found for the first
+ * time follow, numbered after the highest id of their kind, wherever they overlap no issued lot.
+ */
+export function keepIssued(fresh, issued) {
+  const same = (a, b) => a.x === b.x && a.z === b.z && a.w === b.w && a.d === b.d
+  const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.z < b.z + b.d && b.z < a.z + a.d
+  const out = issued.map((old) => {
+    const now = fresh.find((l) => same(l, old))
+    const lot = { id: old.id, x: old.x, z: old.z, w: old.w, d: old.d, front: old.front, y: now ? now.y : old.y }
+    return old.id.startsWith('M') && now && now.scan !== undefined ? { ...lot, scan: now.scan } : lot
+  })
+  const next = { M: 0, V: 0 }
+  for (const l of issued) next[l.id[0]] = Math.max(next[l.id[0]], Number(l.id.slice(1)))
+  for (const l of fresh) {
+    if (out.some((o) => same(o, l) || overlaps(o, l))) continue
+    const kind = l.vacant ? 'V' : 'M'
+    const lot = { id: `${kind}${++next[kind]}`, x: l.x, z: l.z, w: l.w, d: l.d, front: l.front, y: l.y }
+    out.push(kind === 'M' ? { ...lot, scan: l.scan } : lot)
+  }
+  return out
 }
 
 /** Reads the baked grid file (the sections `parseGrids` in modules-src/tello/data/MapData.ts reads) for what the lot finder needs. */

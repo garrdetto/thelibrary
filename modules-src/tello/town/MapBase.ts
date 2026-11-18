@@ -87,6 +87,17 @@ export function paintMontelloBase(land: TelloLand, opts: { vectors: boolean; fad
   if (opts.vectors) {
     g.fillStyle = 'rgba(96,94,90,.85)'
     for (const lot of land.doc.lots) ring(g, lot.p, px, pz, true)
+    for (const course of land.doc.golf ?? []) {
+      g.fillStyle = '#7fb455'
+      for (const hole of course.holes) for (const fw of hole.fw) ring(g, fw, px, pz, true)
+      g.fillStyle = '#93cc62'
+      for (const hole of course.holes) {
+        ring(g, hole.green, px, pz, true)
+        ring(g, hole.box, px, pz, true)
+      }
+      g.fillStyle = '#e3d6ae'
+      for (const bunker of course.bunkers) ring(g, bunker, px, pz, true)
+    }
     g.lineCap = 'round'
     g.lineJoin = 'round'
     for (const pass of [0, 1]) {

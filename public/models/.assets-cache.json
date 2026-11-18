@@ -1310,13 +1310,13 @@
   "preset": "kit"
  },
  "tello/fields-kit.glb": {
-  "hash": "9a82ecb383a61a63c7a2393293a0977cf5494bce",
-  "before": 74744,
-  "after": 39376,
-  "primsBefore": 13,
-  "primsAfter": 13,
-  "matsBefore": 6,
-  "matsAfter": 6,
+  "hash": "7dc6cbe93d5b454087615535539b62e7663e5aa0",
+  "before": 122452,
+  "after": 69076,
+  "primsBefore": 26,
+  "primsAfter": 26,
+  "matsBefore": 7,
+  "matsAfter": 7,
   "preset": "kit"
  },
  "tello/places-kit.glb": {

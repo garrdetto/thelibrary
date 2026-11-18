@@ -67,6 +67,8 @@ export interface MapDoc {
   pitches?: { s: string; n: string; p: number[] }[]
   /** Boat launches. */
   slipways?: { n: string; x: number; z: number }[]
+  /** Golf courses laid out hole by hole (`tools/bake_golf.py`). */
+  golf?: GolfCourseData[]
   limits: Limits
   sources: string[]
   stats: Record<string, unknown>
@@ -78,6 +80,17 @@ export interface MapDoc {
    */
   prepared?: { streets: 1 }
 }
+
+/**
+ * A hole: `n` its number, `par`, `len` metres along `line` (x, z pairs from the tee to the green), `tee` (x, z and the
+ * heading toward the green, 0 = north), `box` the tee box, `green` its outline, `pin` the cup, `fw` the fairway outlines.
+ */
+export interface GolfHoleData { n: number; par: number; len: number; line: number[]; tee: [number, number, number]; box: number[]; green: number[]; pin: [number, number]; fw: number[][] }
+/** A course: `n` name, `p` outline, `c` the clubhouse, its holes in playing order and the sand bunkers' outlines. */
+export interface GolfCourseData { n: string; p: number[]; c: [number, number]; holes: GolfHoleData[]; bunkers: number[][] }
+
+/** Roads of this class are driveways the bake read off the aerial photo: never a building's street. */
+export const DRIVEWAY_CLASS = 'driveway'
 
 /** 0 meadow, 1 lawn, 2 woods, 3 marsh, 4 bare, 5 lot, 6 field, 7 water. */
 export const COVER = { meadow: 0, lawn: 1, woods: 2, marsh: 3, bare: 4, lot: 5, field: 6, water: 7 } as const
