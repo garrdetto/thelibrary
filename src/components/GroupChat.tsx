@@ -421,7 +421,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
 
   const alerting = unreadTotal > 0 && !open
 
-  return <div ref={rootRef} className={`group-chat${open ? ' is-open' : ''}`} onKeyDown={onRootKey} onKeyUp={event => event.stopPropagation()} onMouseDown={onRootMouseDown}>
+  return <div ref={rootRef} className={`group-chat ribbon-item${open ? ' is-open' : ''}`} onKeyDown={onRootKey} onKeyUp={event => event.stopPropagation()} onMouseDown={onRootMouseDown}>
     {open && <section className="group-chat-panel" role="dialog" aria-label="Messages">
       <header>
         {header}
