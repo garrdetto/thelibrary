@@ -74,18 +74,24 @@ function toSite(terrain: Terrain, kind: StandKind, c: Candidate): StandSite {
   return { kind, tree, root, heading: c.heading }
 }
 
+/** How many ladder stands and box blinds the lake country gets, and how far apart they stand. */
+export const LADDER_STANDS = 9
+export const BOX_BLINDS = 2
+export const STAND_SPACING = 65
+
 export function findStandSites(terrain: Terrain, near: Vector3, avoid: Vector3[]): StandSite[] {
   const sites: StandSite[] = []
   const taken = (x: number, z: number, spacing: number) => sites.some((s) => Math.hypot(s.tree.x - x, s.tree.z - z) < spacing) || avoid.some((p) => Math.hypot(p.x - x, p.z - z) < 30)
-  for (const c of candidates(terrain, near, [0.34, 0.75], 40, 300)) {
-    if (taken(c.x, c.z, 85)) continue
+  for (const c of candidates(terrain, near, [0.34, 0.75], 40, 440)) {
+    if (taken(c.x, c.z, STAND_SPACING)) continue
     sites.push(toSite(terrain, 'ladder', c))
-    if (sites.length >= 3) break
+    if (sites.length >= LADDER_STANDS) break
   }
-  for (const c of candidates(terrain, near, [0.08, 0.36], 60, 220)) {
-    if (taken(c.x, c.z, 90)) continue
+  let blinds = 0
+  for (const c of candidates(terrain, near, [0.08, 0.36], 60, 360)) {
+    if (taken(c.x, c.z, STAND_SPACING + 5)) continue
     sites.push(toSite(terrain, 'blind', c))
-    break
+    if (++blinds >= BOX_BLINDS) break
   }
   if (!sites.length) sites.push(toSite(terrain, 'ladder', { x: near.x + 50, z: near.z + 50, heading: 0, score: 0 }))
   return sites

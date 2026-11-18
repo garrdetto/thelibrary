@@ -115,6 +115,8 @@ export class VehicleController {
 
   /** A host world's solid things (buildings, walls) that land vehicles bump into. */
   obstacle: ((x: number, z: number, radius: number) => boolean) | null = null
+  /** The last tree the driven UTV or quad ran into this frame (speed in m/s, + forward); the game reads and clears it. */
+  treeHit: { vehicle: Vehicle; speed: number; trunk: { x: number; z: number } } | null = null
   /** A built floor under (x, z) above the terrain (Fox Outfitters' garage), or null. */
   floor: ((x: number, z: number) => number | null) | null = null
 
@@ -280,11 +282,11 @@ export class VehicleController {
     return { y: this.terrain.heightAt(wx, wz), nx: 0, ny: 1, nz: 0 }
   }
 
-  private trunkBlocked(x: number, z: number, radius: number): boolean {
+  private trunkAt(x: number, z: number, radius: number): { x: number; z: number } | null {
     for (const t of this.ctx.queryTrunks(x, z, radius)) {
-      if ((t.x - x) ** 2 + (t.z - z) ** 2 < (t.r + radius) ** 2) return true
+      if ((t.x - x) ** 2 + (t.z - z) ** 2 < (t.r + radius) ** 2) return t
     }
-    return false
+    return null
   }
 
   private updateAtv(v: Vehicle, dt: number, input: DriveInput): void {
@@ -305,7 +307,9 @@ export class VehicleController {
     let nz = v.position.z + fz * v.speed * dt
     const probeX = nx + fx * Math.sign(v.speed) * 1.1
     const probeZ = nz + fz * Math.sign(v.speed) * 1.1
-    const blocked = this.trunkBlocked(probeX, probeZ, 0.7) || this.terrain.depthAt(probeX, probeZ) > T.wadeDepth || !this.terrain.inBounds(probeX, probeZ) || (this.obstacle?.(probeX, probeZ, 0.9) ?? false)
+    const trunk = this.trunkAt(probeX, probeZ, 0.7)
+    if (trunk && v === this.active) this.treeHit = { vehicle: v, speed: v.speed, trunk: { x: trunk.x, z: trunk.z } }
+    const blocked = trunk !== null || this.terrain.depthAt(probeX, probeZ) > T.wadeDepth || !this.terrain.inBounds(probeX, probeZ) || (this.obstacle?.(probeX, probeZ, 0.9) ?? false)
     const climb = this.terrain.slopeAt(probeX, probeZ)
     const uphill = this.terrain.heightAt(probeX, probeZ) > this.terrain.heightAt(nx, nz)
     if (blocked || (climb > T.maxClimb && uphill && Math.abs(v.speed) > 0.2)) {

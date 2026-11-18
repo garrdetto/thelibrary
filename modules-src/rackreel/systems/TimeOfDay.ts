@@ -2,6 +2,8 @@
 
 export const HOUR_SECONDS = 75
 export const START_HOUR = 16
+/** Standalone Rack & Reel holds the clock here: it is always daytime except during Wild Man's night bowfishing tour. */
+export const DAYLIGHT_HOUR = 14
 export const LATITUDE_DEG = 46
 export const SUN_DECLINATION_DEG = -6
 export const CLOCK_OFFSET_HOURS = 1.1
