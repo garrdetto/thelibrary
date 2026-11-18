@@ -282,7 +282,7 @@ export function MusicPlayer() {
   const PlayIcon = playing ? (radio ? Square : Pause) : Play
   const playLabel = playing ? (radio ? 'Stop' : 'Pause') : 'Play'
   const volumeControl = <div className="music-volume">
-    <button type="button" className="music-icon" aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} onClick={() => { setMuted(!muted); writeSaved({ muted: !muted }) }}><VolumeIcon size={16}/></button>
+    <button type="button" className="music-icon" aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} onClick={() => { setMuted(!muted); writeSaved({ muted: !muted }) }}><VolumeIcon size={15}/></button>
     <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume} aria-label="Volume" style={{ '--music-progress': `${(muted ? 0 : volume) * 100}%` } as CSSProperties}
       onChange={event => { const value = Number(event.target.value); setVolume(value); setMuted(false); writeSaved({ volume: value, muted: false }) }}/>
   </div>
@@ -291,10 +291,10 @@ export function MusicPlayer() {
     <audio ref={audio} preload={radio ? 'none' : 'metadata'} onTimeUpdate={onTime} onLoadedMetadata={onMeta} onPlay={onPlay} onPause={onPause} onWaiting={() => setWaiting(true)} onPlaying={() => { setWaiting(false); retries.current = 0 }} onCanPlay={() => setWaiting(false)}
       onEnded={() => { if (radio) { onDropout(); return } wantPlay.current = true; go(1) }} onError={() => { if (!source) return; if (radio) onDropout(); else setError('This track could not be loaded.') }}/>
     {source && <>
-      <button type="button" className="music-play" aria-label={`${playLabel} ${title}`} onClick={toggle}><PlayIcon size={18}/></button>
+      <button type="button" className="music-play" aria-label={`${playLabel} ${title}`} onClick={toggle}><PlayIcon size={15}/></button>
       <div className="music-skip">
-        <button type="button" className="music-icon" aria-label={radio ? 'Previous station' : 'Previous track'} onClick={previous}><SkipBack size={16}/></button>
-        <button type="button" className="music-icon" aria-label={radio ? 'Next station' : 'Next track'} onClick={() => go(1)}><SkipForward size={16}/></button>
+        <button type="button" className="music-icon" aria-label={radio ? 'Previous station' : 'Previous track'} onClick={previous}><SkipBack size={14}/></button>
+        <button type="button" className="music-icon" aria-label={radio ? 'Next station' : 'Next track'} onClick={() => go(1)}><SkipForward size={14}/></button>
       </div>
       <button type="button" className="music-now" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
         aria-label={`${radio ? 'Change station' : 'Open the playlist'}. Now ${playing ? 'playing' : 'stopped'}: ${title}`}>
