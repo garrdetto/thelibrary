@@ -3,6 +3,7 @@ import { ARENA_MAX_HEALTH, ARENA_MODES, type ArenaMatch, type ArenaModeId } from
 import { connectArena, serverAddress, type ArenaConnection } from '../net/Connection'
 import { RemotePlayers, type TrackerContact } from '../net/RemotePlayers'
 import { clock } from '../ui/Banner'
+import { DuelTally } from './DuelTally'
 import type { ActiveMode, ModeContext } from './types'
 
 const TEAM_NAMES = ['Blue', 'Red'] as const
@@ -19,6 +20,8 @@ export class OnlineMode implements ActiveMode {
   private disposed = false
   private lastPhase = ''
   private goTimer = 0
+  private readonly tally = new DuelTally()
+  private lastLine = ''
 
   constructor(private readonly ctx: ModeContext, mode: ArenaModeId, code: string | null) {
     this.id = mode
@@ -32,7 +35,10 @@ export class OnlineMode implements ActiveMode {
     ctx.player.respawn(spawn.position, spawn.yaw)
     this.setAlive(true)
     ctx.weapons.setHooks({
-      shoot: request => this.connection?.shoot(request),
+      shoot: request => {
+        if (this.match?.phase === 'live') this.tally.shot()
+        this.connection?.shoot(request)
+      },
       team: () => this.myTeam,
       hit: (_target, headshot) => ctx.hud.hit(headshot),
       marker: (headshot, kill) => ctx.hud.hit(headshot, kill),
@@ -74,6 +80,7 @@ export class OnlineMode implements ActiveMode {
       },
       match: match => {
         if (this.lastPhase === 'countdown' && match.phase === 'live') this.goTimer = 1
+        this.trackDuel(match)
         this.lastPhase = match.phase
         this.match = match
         this.matchClock = match.remainingMs
@@ -102,11 +109,16 @@ export class OnlineMode implements ActiveMode {
       damage: damage => {
         const self = this.connection?.selfId()
         if (damage.target === self) ctx.hud.setHealth(damage.health)
-        else if (damage.attacker === self) ctx.hud.hit(damage.headshot, damage.health <= 0)
+        else if (damage.attacker === self) {
+          this.tally.hit()
+          ctx.hud.hit(damage.headshot, damage.health <= 0)
+        }
       },
       death: death => {
         const self = this.connection?.selfId()
+        if (death.by === self && death.id !== self) this.tally.kill()
         if (death.id === self) {
+          this.tally.death()
           this.setAlive(false)
           ctx.hud.setDead(true, this.nameOf(death.by))
         } else {
@@ -128,6 +140,15 @@ export class OnlineMode implements ActiveMode {
         }
       },
     })
+  }
+
+  private trackDuel(match: ArenaMatch): void {
+    if (this.id !== 'duel') return
+    if (match.phase === 'live' && this.lastPhase !== 'live') this.tally.start()
+    if (match.phase !== 'live' && this.tally.active) {
+      this.lastLine = this.tally.summary()
+      this.tally.finish(match.winner !== null && match.winner === this.myTeam)
+    }
   }
 
   private describe(): void {
@@ -170,7 +191,8 @@ export class OnlineMode implements ActiveMode {
       banner.show(spec.name, `${score}${code}`)
       const why = match.reason === 'left' ? ' · the other side left' : match.reason === 'time' ? ' · time' : ''
       const outcome = match.winner === null ? 'Draw' : mine === match.winner ? 'Victory' : 'Defeat'
-      banner.message(`${outcome}${why} · next match in ${Math.max(1, Math.ceil(this.matchClock / 1000))}`)
+      const line = this.id === 'duel' && this.lastLine ? ` · ${this.lastLine}` : ''
+      banner.message(`${outcome}${why}${line} · next match in ${Math.max(1, Math.ceil(this.matchClock / 1000))}`)
     }
   }
 
@@ -198,6 +220,7 @@ export class OnlineMode implements ActiveMode {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.tally.finish(false)
     this.connection?.close()
     this.remotes.clear()
     this.ctx.banner.hide()

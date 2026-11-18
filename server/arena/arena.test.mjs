@@ -85,9 +85,9 @@ test('/arena namespace on the shared socket.io server: join, 20 Hz state, shooti
 
     const death = once(red, ArenaEvent.death)
     const respawn = once(red, ArenaEvent.respawn)
-    for (let round = 0; round < 12; round++) {
+    for (let round = 0; round < 16; round++) {
       blue.emit(ArenaEvent.shoot, shot)
-      await wait(80)
+      await wait(130)
     }
     const dead = await death
     assert.equal(dead.id, redWelcome.id)
@@ -159,7 +159,7 @@ test('1v1 duels and 2v2 squads: matchmaking, private codes, countdown, score lim
     const over = new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.phase === 'over') resolve(match) }))
     const shot = { weapon: 'battle', origin: { x: 0, y: 1.7, z: 0 }, direction: { x: 0, y: 0, z: 1 }, end: { x: 0, y: 1.7, z: 9.6 }, hit: bWelcome.id }
     const rematch = new Promise(resolve => a.on(ArenaEvent.match, match => { if (match.phase === 'countdown') resolve(match) }))
-    for (let round = 0; round < 6; round++) {
+    for (let round = 0; round < 8; round++) {
       a.emit(ArenaEvent.shoot, shot)
       await wait(80)
     }
@@ -183,6 +183,14 @@ test('1v1 duels and 2v2 squads: matchmaking, private codes, countdown, score lim
     for (const socket of sockets) socket.close()
     await server.close()
   }
+})
+
+test('Battle Rifle against players: five body bursts or three head bursts', () => {
+  const rifle = WEAPONS.battle
+  const body = rifle.burst * rifle.damage
+  const head = rifle.burst * Math.round(rifle.damage * rifle.headMultiplier)
+  assert.equal(Math.ceil(ARENA_MAX_HEALTH / body), 5)
+  assert.equal(Math.ceil(ARENA_MAX_HEALTH / head), 3)
 })
 
 test('Rolling Siege: two body bursts or one head burst, and nobody outlasts two minutes', async () => {
