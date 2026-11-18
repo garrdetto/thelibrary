@@ -2,7 +2,7 @@
 // Track Test: a side panel that changes the handling while driving and pushes the tested settings live for this track.
 // `opts`: { cfg, trackId, trackName, toast(text), onApply(), startTest(), resetCar() }.
 // Once Track Test starts, no lap is saved to the records, whether or not the settings are live.
-import { HANDLING_SETTINGS, applyHandling, handlingBase, sameHandling, sanitizeHandling } from './shared/Handling';
+import { applyHandling, handlingBase, sameHandling, sanitizeHandling, settingsFor } from './shared/Handling';
 
 const ENDPOINT = '/api/shorttrack-handling';
 const pct = v => `${Math.round(v * 100)}%`;
@@ -33,7 +33,7 @@ const CSS = `
 
 export function initTrackTest(opts) {
   const { cfg, trackId, trackName } = opts;
-  const base = handlingBase(cfg);
+  const base = handlingBase(cfg), SETTINGS = settingsFor(trackId), clean = raw => sanitizeHandling(raw, trackId);
   let live = {}, draft = null, admin = false, busy = false, warned = false, testing = false;
   let panel = null, note = null, pushBtn = null, revertBtn = null, stockBtn = null, resetBtn = null;
   const rows = new Map();
@@ -46,7 +46,7 @@ export function initTrackTest(opts) {
     const r = await fetch(ENDPOINT, { credentials: 'same-origin', cache: 'no-store' });
     if (!r.ok) throw new Error(String(r.status));
     const data = await r.json();
-    return { tune: sanitizeHandling(data.tunes && data.tunes[trackId]), admin: data.admin === true };
+    return { tune: clean(data.tunes && data.tunes[trackId]), admin: data.admin === true };
   }
 
   function say(text, bad) { if (!note) return; note.textContent = text; note.classList.toggle('bad', !!bad); }
@@ -54,7 +54,7 @@ export function initTrackTest(opts) {
   function sync() {
     if (!panel) return;
     const tune = current();
-    for (const s of HANDLING_SETTINGS) {
+    for (const s of SETTINGS) {
       const row = rows.get(s.key), v = tune[s.key] ?? 1, lv = live[s.key] ?? 1;
       row.input.value = String(v);
       row.input.setAttribute('aria-valuetext', pct(v));
@@ -63,11 +63,11 @@ export function initTrackTest(opts) {
     }
     pushBtn.disabled = busy || !dirty();
     revertBtn.disabled = busy || !dirty();
-    stockBtn.disabled = busy || Object.keys(sanitizeHandling(tune)).length === 0;
+    stockBtn.disabled = busy || Object.keys(clean(tune)).length === 0;
     if (!busy) say((dirty() ? 'Testing unpublished settings.' : Object.keys(live).length ? 'Driving the live settings for this track.' : 'Driving stock handling.') + ' Test laps are not saved to the records.');
   }
 
-  function setDraft(tune) { draft = sanitizeHandling(tune); apply(draft); sync(); }
+  function setDraft(tune) { draft = clean(tune); apply(draft); sync(); }
 
   async function push() {
     if (busy || !dirty()) return;
@@ -76,7 +76,7 @@ export function initTrackTest(opts) {
       const r = await fetch(ENDPOINT, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', track: trackId, tune: draft }) });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { busy = false; sync(); say(data.error || 'Publishing failed. Try again.', true); return; }
-      live = sanitizeHandling(data.tune); draft = { ...live }; busy = false; sync();
+      live = clean(data.tune); draft = { ...live }; busy = false; sync();
       say(`Live on ${trackName}. Drivers get it from their next race.`);
       opts.toast && opts.toast(`Handling published to ${trackName}`);
     } catch {
@@ -96,7 +96,7 @@ export function initTrackTest(opts) {
     panel.innerHTML = `<header><b>TRACK TEST<small></small></b><button type="button" class="tt-min-btn" aria-expanded="true" title="Hide or show (T)">Hide</button></header><div class="tt-body"></div>`;
     panel.querySelector('header small').textContent = trackName;
     const body = panel.querySelector('.tt-body');
-    for (const s of HANDLING_SETTINGS) {
+    for (const s of SETTINGS) {
       const el = document.createElement('div');
       el.className = 'tt-row';
       const id = `tt-${s.key}`;

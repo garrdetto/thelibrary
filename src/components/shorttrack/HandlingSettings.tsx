@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ExternalLink, LoaderCircle, RotateCcw, Upload } from 'lucide-react'
 import { TRACKS } from '../../../modules-src/shorttrack/next/sim/config'
 import type { TrackId } from '../../../modules-src/shorttrack/next/sim/config'
-import { HANDLING_SETTINGS, HANDLING_TRACKS, sameHandling, sanitizeHandling } from '../../../modules-src/shorttrack/shared/Handling'
+import { HANDLING_TRACKS, sameHandling, sanitizeHandling, settingsFor } from '../../../modules-src/shorttrack/shared/Handling'
 import type { HandlingTune } from '../../../modules-src/shorttrack/shared/Handling'
 
 type Live = { tunes: Record<string, HandlingTune>; updated: Record<string, number> }
@@ -81,7 +81,7 @@ export default function HandlingSettings() {
       })}
     </div>
     <ul className="sth-list">
-      {HANDLING_SETTINGS.map(setting => {
+      {settingsFor(track).map(setting => {
         const value = draft[setting.key] ?? 1
         const id = `sth-${setting.key}`
         return <li key={setting.key} className={`sth-row${value !== 1 ? ' is-changed' : ''}`}>
@@ -94,7 +94,7 @@ export default function HandlingSettings() {
       })}
     </ul>
     <div className="sth-actions">
-      <button type="button" className="adm-btn adm-btn-primary" disabled={busy || !dirty} onClick={() => void send({ action: 'save', track, tune: sanitizeHandling(draft) }, `Published to ${name}.`)}>
+      <button type="button" className="adm-btn adm-btn-primary" disabled={busy || !dirty} onClick={() => void send({ action: 'save', track, tune: sanitizeHandling(draft, track) }, `Published to ${name}.`)}>
         {busy ? <LoaderCircle className="spin" size={16} aria-hidden/> : <Upload size={16} aria-hidden/>} Publish to {name}
       </button>
       <button type="button" className="adm-btn" disabled={busy || !dirty} onClick={() => setDraft(liveTune)}>Undo edits</button>

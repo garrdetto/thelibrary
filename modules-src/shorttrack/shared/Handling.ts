@@ -1,8 +1,10 @@
+import { TRACKS } from '../next/sim/config'
 import type { Config, TrackId } from '../next/sim/config'
 
 export const HANDLING_TRACKS: TrackId[] = ['prison', 'bullring', 'dells', 'dellswide', 'dirt']
 
 type CfgKey = 'grip' | 'aiGrip' | 'apronGrip' | 'power' | 'maxAccel' | 'brake' | 'engineBrake' | 'drag' | 'steerLow' | 'steerSpeed' | 'steerRampIn' | 'steerRampOut'
+  | 'dirtFrontGrip' | 'dirtRearGrip' | 'dirtWheelspin' | 'dirtRearC' | 'dirtFrontSigma'
 
 export type HandlingSetting = {
   key: string
@@ -11,6 +13,8 @@ export type HandlingSetting = {
   min: number
   max: number
   fields: CfgKey[]
+  /** Only on dirt tracks (Beaver Dam Raceway). */
+  dirt?: boolean
 }
 
 /** Handling settings, each a multiplier on the track's stock numbers (1 = stock). */
@@ -25,6 +29,11 @@ export const HANDLING_SETTINGS = [
   { key: 'steer', label: 'Steering lock', help: 'How far the front wheels turn.', min: 0.6, max: 1.6, fields: ['steerLow'] },
   { key: 'steerSpeed', label: 'Steering fall-off at speed', help: 'Higher means less steering at high speed; lower keeps more lock.', min: 0.4, max: 2, fields: ['steerSpeed'] },
   { key: 'steerResponse', label: 'Steering response', help: 'How quickly the wheel follows your input.', min: 0.4, max: 2.5, fields: ['steerRampIn', 'steerRampOut'] },
+  { key: 'rearGrip', label: 'Rear grip (slide)', help: 'Lower lets the tail come around sooner, so the car slides more. Small steps make a big difference. AI cars never go looser than stock.', min: 0.7, max: 1.3, fields: ['dirtRearGrip'], dirt: true },
+  { key: 'frontGrip', label: 'Front grip', help: 'Higher lets the front hold more than the rear, so the car rotates more; lower makes it push. AI cars never go above stock.', min: 0.7, max: 1.3, fields: ['dirtFrontGrip'], dirt: true },
+  { key: 'wheelspin', label: 'Throttle oversteer', help: 'How much the gas pushes the tail out when the rears spin. Lift to tuck it back in. AI cars never go above stock.', min: 0, max: 2.5, fields: ['dirtWheelspin'], dirt: true },
+  { key: 'rearFalloff', label: 'Rear let-go', help: 'How much grip the rears lose once they slide. Higher keeps a slide going but makes it snappier.', min: 0.85, max: 1.15, fields: ['dirtRearC'], dirt: true },
+  { key: 'frontBite', label: 'Front bite delay', help: 'Higher makes the front take longer to grab after you turn in, for a lazier turn-in.', min: 0.5, max: 2, fields: ['dirtFrontSigma'], dirt: true },
 ] as const satisfies readonly HandlingSetting[]
 
 export type HandlingKey = (typeof HANDLING_SETTINGS)[number]['key']
@@ -33,12 +42,18 @@ export type HandlingBase = Record<CfgKey, number>
 
 const round = (value: number) => Math.round(value * 100) / 100
 
-/** Keeps known settings in range, rounded to whole percent; drops stock (1) values. */
-export function sanitizeHandling(raw: unknown): HandlingTune {
+/** The settings that apply on a track: the dirt ones only on dirt. */
+export function settingsFor(track: TrackId): readonly (typeof HANDLING_SETTINGS)[number][] {
+  const dirt = TRACKS[track]?.surface === 'dirt'
+  return HANDLING_SETTINGS.filter(setting => dirt || !('dirt' in setting && setting.dirt))
+}
+
+/** Keeps known settings in range, rounded to whole percent; drops stock (1) values and, given a track, settings that don't apply there. */
+export function sanitizeHandling(raw: unknown, track?: TrackId): HandlingTune {
   const out: HandlingTune = {}
   if (!raw || typeof raw !== 'object') return out
   const source = raw as Record<string, unknown>
-  for (const setting of HANDLING_SETTINGS) {
+  for (const setting of track ? settingsFor(track) : HANDLING_SETTINGS) {
     const value = source[setting.key]
     if (typeof value !== 'number' || !Number.isFinite(value)) continue
     const clean = round(Math.min(setting.max, Math.max(setting.min, value)))

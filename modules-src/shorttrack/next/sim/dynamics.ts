@@ -1,4 +1,5 @@
 import type { Controls, SimCar } from './car'
+import { DIRT_STOCK } from './config'
 import { clamp } from './math'
 import type { Vec3 } from './track'
 import type { World } from './world'
@@ -50,12 +51,13 @@ const TIRE = { B: 10, C: 1.45, E: -0.4, sigma: 0.45, loadSens: 0.1 }
  * Dirt handling: the steering winds on more slowly and the fronts build their grip over a longer distance, the rears
  * hold less than the fronts and fall away past their peak, and throttle beyond what the rears can put down spins
  * them and costs them side grip, so the car rotates by sliding its tail. `grip` keeps the AI lap times on the
- * classic traces.
+ * classic traces. The grips, wheelspin, rear fall-off and front relaxation are `Config` fields (`dirt*`), so the
+ * admin's Track Test can change them (`shared/Handling.ts`).
  */
 export const DIRT_TUNE = {
-  front: { B: 5, C: 1.25, E: -1.2, sigma: 1.2, loadSens: 0.06 },
-  rear: { B: 7, C: 1.4, E: -0.5, sigma: 0.8, loadSens: 0.06 },
-  grip: 1.2, frontGrip: 1.05, rearGrip: 0.8, steer: 0.9, ramp: 0.6, wheelspin: 0.35,
+  front: { B: 5, C: 1.25, E: -1.2, loadSens: 0.06 },
+  rear: { B: 7, E: -0.5, sigma: 0.8, loadSens: 0.06 },
+  grip: 1.2, steer: 0.9, ramp: 0.6,
 }
 const AERO = { downforce: 0.0011, rearShare: 0.6 }
 /** Fitted so each track's AI lap times land on the classic ones (`tests/physics.test.ts`). */
@@ -71,9 +73,9 @@ export function newDyn(): Dyn {
   return { r: 0, pitch: 0, pitchV: 0, roll: 0, rollV: 0, alpha: [0, 0, 0, 0], fz: [0, 0, 0, 0], use: [0, 0, 0, 0], fb: 0, ax: 0, ay: 0, draft: 0, avOut: 0 }
 }
 
-const magic = (alpha: number, t: { B: number; C: number; E: number }): number => {
-  const ba = t.B * alpha
-  return Math.sin(t.C * Math.atan(ba - t.E * (ba - Math.atan(ba))))
+const magic = (alpha: number, B: number, C: number, E: number): number => {
+  const ba = B * alpha
+  return Math.sin(C * Math.atan(ba - E * (ba - Math.atan(ba))))
 }
 
 const n = { x: 0, y: 1, z: 0 } as Vec3
@@ -160,19 +162,28 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
 
   // tires: slip angles with relaxation and the magic-formula side force first; then drive and brakes take what grip
   // is left on each tire (traction control and ABS), and anything over the friction ellipse is scaled back
+  // AI drivers feather the throttle and keep the rear planted: never looser than the stock dirt numbers
+  const aiCar = c.ai && !c.isPlayer
+  const rearGrip = DIRT ? (aiCar ? Math.max(CFG.dirtRearGrip, DIRT_STOCK.dirtRearGrip) : CFG.dirtRearGrip) : NEXT_TUNE.rearGrip
+  const frontGrip = aiCar ? Math.min(CFG.dirtFrontGrip, DIRT_STOCK.dirtFrontGrip) : CFG.dirtFrontGrip
+  const rearC = aiCar ? Math.min(CFG.dirtRearC, DIRT_STOCK.dirtRearC) : CFG.dirtRearC
+  const wheelspin = Math.min(0.95, aiCar ? Math.min(CFG.dirtWheelspin, DIRT_STOCK.dirtWheelspin) : CFG.dirtWheelspin)
   const pos: [number, number][] = [[GEO.a, -GEO.track / 2], [GEO.a, GEO.track / 2], [-GEO.b, -GEO.track / 2], [-GEO.b, GEO.track / 2]]
   const brakeShare = [NEXT_TUNE.brakeFront / 2, NEXT_TUNE.brakeFront / 2, (1 - NEXT_TUNE.brakeFront) / 2, (1 - NEXT_TUNE.brakeFront) / 2]
   const caps = [0, 0, 0, 0], fys = [0, 0, 0, 0], uws = [0, 0, 0, 0], vws = [0, 0, 0, 0], css = [1, 1, 1, 1], sns = [0, 0, 0, 0]
   for (let i = 0; i < 4; i++) {
-    const [px, py] = pos[i], steerI = i < 2 ? delta : 0, ti = DIRT ? (i < 2 ? DIRT_TUNE.front : DIRT_TUNE.rear) : TIRE
+    const [px, py] = pos[i], steerI = i < 2 ? delta : 0, front = i < 2
+    const tB = DIRT ? (front ? DIRT_TUNE.front.B : DIRT_TUNE.rear.B) : TIRE.B, tC = DIRT ? (front ? DIRT_TUNE.front.C : rearC) : TIRE.C
+    const tE = DIRT ? (front ? DIRT_TUNE.front.E : DIRT_TUNE.rear.E) : TIRE.E, sigma = DIRT ? (front ? CFG.dirtFrontSigma : DIRT_TUNE.rear.sigma) : TIRE.sigma
+    const loadSens = DIRT ? (front ? DIRT_TUNE.front.loadSens : DIRT_TUNE.rear.loadSens) : TIRE.loadSens
     const ui = u - d.r * py, vi = v + d.r * px
     const cs = Math.cos(steerI), sn = Math.sin(steerI)
     const uw = ui * cs + vi * sn, vw = -ui * sn + vi * cs
     const target = Math.atan2(vw, Math.max(Math.abs(uw), 3))
-    d.alpha[i] += (target - d.alpha[i]) * Math.min(1, (Math.max(Math.abs(uw), 1) * dt) / ti.sigma)
-    const mu = muSurface * gripF * Math.max(0.6, 1 - ti.loadSens * (fz[i] / Math.max(fz0, 1e-3) - 1))
-    caps[i] = mu * fz[i] * (i >= 2 ? (DIRT ? DIRT_TUNE.rearGrip : NEXT_TUNE.rearGrip) : DIRT ? DIRT_TUNE.frontGrip : 1)
-    fys[i] = -caps[i] * magic(d.alpha[i], ti)
+    d.alpha[i] += (target - d.alpha[i]) * Math.min(1, (Math.max(Math.abs(uw), 1) * dt) / sigma)
+    const mu = muSurface * gripF * Math.max(0.6, 1 - loadSens * (fz[i] / Math.max(fz0, 1e-3) - 1))
+    caps[i] = mu * fz[i] * (front ? (DIRT ? frontGrip : 1) : rearGrip)
+    fys[i] = -caps[i] * magic(d.alpha[i], tB, tC, tE)
     uws[i] = uw
     vws[i] = vw
     css[i] = cs
@@ -182,7 +193,7 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
   if (DIRT && drive > 0) {
     const excess = drive - 0.97 * (spare(2) + spare(3))
     if (excess > 0) {
-      const loss = 1 - DIRT_TUNE.wheelspin * Math.min(1, excess / Math.max(1e-6, caps[2] + caps[3]))
+      const loss = 1 - wheelspin * Math.min(1, excess / Math.max(1e-6, caps[2] + caps[3]))
       fys[2] *= loss
       fys[3] *= loss
     }
