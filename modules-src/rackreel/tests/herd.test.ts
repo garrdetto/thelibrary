@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { PANIC_DISTANCE, SAFE_DISTANCE, coverMatters, detectRadius, fleeSpeed, react } from '../systems/Herd'
+import { BUCK_SHARE, COURT_CHANCE, HIP, MOUNT_PITCH, PANIC_DISTANCE, SAFE_DISTANCE, coverMatters, detectRadius, fleeSpeed, hipLift, mountOffset, nextIdle, react } from '../systems/Herd'
 import type { DeerMood } from '../systems/Herd'
 import { LEGENDARY_CHANCE, LootTableManager, RARITY, mulberry32 } from '../systems/LootTableManager'
 
@@ -70,4 +70,29 @@ test('cover is only worked out where it can change what an animal does', () => {
   assert.ok(skipped > needed && needed > 0)
   assert.equal(coverMatters('graze', { ...calm, distance: 30 }), true)
   assert.equal(coverMatters('graze', { ...calm, distance: 30, noise: 0.03 }), false)
+})
+
+test('calm animals wander, stand looking round or keep feeding, and bucks near a doe sometimes court her', () => {
+  assert.equal(nextIdle(0.1, 0.9, false), 'walk')
+  assert.equal(nextIdle(0.6, 0.9, false), 'look')
+  assert.equal(nextIdle(0.9, 0.9, false), 'graze')
+  assert.equal(nextIdle(0.6, COURT_CHANCE - 0.01, true), 'court')
+  assert.equal(nextIdle(0.6, COURT_CHANCE - 0.01, false), 'look')
+  assert.equal(nextIdle(0.6, COURT_CHANCE + 0.01, true), 'look')
+})
+
+test('there are 30 % more lone bucks than before', () => {
+  assert.ok(Math.abs(BUCK_SHARE - 0.4 * 1.3) < 1e-9)
+})
+
+test('a mounted buck rears on his hips: they stay put while his front rises', () => {
+  const lift = hipLift(MOUNT_PITCH)
+  const c = Math.cos(MOUNT_PITCH)
+  const s = Math.sin(MOUNT_PITCH)
+  const hipY = HIP.y * c - HIP.z * s + lift.y
+  const hipZ = HIP.y * s + HIP.z * c + lift.z
+  assert.ok(Math.abs(hipY - HIP.y) < 1e-9 && Math.abs(hipZ - HIP.z) < 1e-9)
+  const chestY = 1.0 * c - 0.5 * s + lift.y
+  assert.ok(chestY > 1.3)
+  assert.ok(mountOffset(1, 0.87) > 0.3 && mountOffset(1, 0.87) < 0.8)
 })

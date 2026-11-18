@@ -242,7 +242,7 @@ export function findLandmarks(terrain: Terrain): Landmarks {
   const spawn = at(shoreDist + 7)
   spawn.y = terrain.heightAt(spawn.x, spawn.z)
   const side = new Vector3(dir.z, 0, -dir.x)
-  const boat = end.add(side.scale(2.6)).add(dir.scale(1.5))
+  const boat = end.add(side.scale(2.9)).add(dir.scale(1.5))
   const utv = at(shoreDist + 14).add(side.scale(-6))
   utv.y = terrain.heightAt(utv.x, utv.z)
   return { dock: { start, end, heading }, spawn, spawnHeading: heading, boat, boatHeading: heading, utv, utvHeading: heading + Math.PI / 2 }

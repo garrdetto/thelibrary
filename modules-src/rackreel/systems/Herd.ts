@@ -10,12 +10,51 @@ export const HERD_TURNOVER_SECONDS = 300
 export const LEAVE_SECONDS = 25
 export const LEAVE_GONE = 170
 export const BEAR_SHARE = 0.12
-export const BUCK_SHARE = 0.4
+/** Share of new groups that are a lone buck: 0.52 is 30 % more bucks than the old 0.4. */
+export const BUCK_SHARE = 0.52
 export const PANIC_DISTANCE = 18
 export const SAFE_DISTANCE = 150
 export const ALARM_RADIUS = 45
 
 export type DeerMood = 'graze' | 'walk' | 'alert' | 'flee' | 'wounded' | 'down'
+
+/**
+ * What a calm animal is doing on top of its mood: `look` stands with its head up scanning round, `court` is a buck
+ * walking up behind a doe, `mount` is the buck mounted on her and `stand` is the doe holding still for him.
+ */
+export type IdleAct = 'none' | 'look' | 'court' | 'mount' | 'stand'
+export const IDLE_ACTS: readonly IdleAct[] = ['none', 'look', 'court', 'mount', 'stand']
+/** A buck only goes courting a calm doe this close. */
+export const COURT_RANGE = 45
+/** Chance a calm buck with a doe in range goes to her when he next stirs. */
+export const COURT_CHANCE = 0.3
+/** How long a mount lasts, in seconds (from, to). */
+export const MOUNT_SECONDS: readonly [number, number] = [3.5, 7]
+/** The buck rears this far nose-up while mounted, pivoting on his hips. */
+export const MOUNT_PITCH = -0.55
+export const HIP = { y: 1.0, z: -0.45 }
+
+export type IdleChoice = 'walk' | 'look' | 'graze' | 'court'
+
+/** What a calm deer or bear does next once it has grazed a while: wander off, stand looking round, keep feeding, or (a buck with a doe nearby) go courting. */
+export function nextIdle(roll: number, courtRoll: number, canCourt: boolean): IdleChoice {
+  if (canCourt && courtRoll < COURT_CHANCE) return 'court'
+  if (roll < 0.45) return 'walk'
+  if (roll < 0.75) return 'look'
+  return 'graze'
+}
+
+/** How far behind the doe's own position the buck stands to mount her, so his hips are just behind her tail. */
+export function mountOffset(buckScale: number, doeScale: number): number {
+  return 0.8 * doeScale + 0.25 + HIP.z * buckScale
+}
+
+/** How far the buck's root moves (up, forward, model frame, before scale) when he rears to `pitch`, so his hips stay where they were. */
+export function hipLift(pitch: number): { y: number; z: number } {
+  const c = Math.cos(pitch)
+  const s = Math.sin(pitch)
+  return { y: HIP.y - (HIP.y * c - HIP.z * s), z: HIP.z - (HIP.y * s + HIP.z * c) }
+}
 
 export interface Senses {
   distance: number
