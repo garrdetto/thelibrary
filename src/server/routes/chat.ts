@@ -20,6 +20,7 @@ const post = z.discriminatedUnion('action', [
   z.object({ action: z.literal('invite'), to: z.array(username).min(1).max(MAX_MEMBERS), module: activity, label: z.string().trim().min(1).max(40), code: z.string().regex(/^[A-Z0-9]{4,8}$/).optional() }),
   z.object({ action: z.literal('delete'), id: z.number().int().positive() }),
   z.object({ action: z.literal('read'), thread: threadKey.nullable(), id: z.number().int().positive() }),
+  z.object({ action: z.literal('clear'), thread: threadKey.nullable() }),
 ])
 
 type Row = { id: number; username: string; body: string; created_at: number; thread: string | null; meta: string | null }
@@ -45,6 +46,30 @@ async function ensureReads(env: Env) {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS chat_reads_thread_idx ON chat_reads (thread_key, updated_at)'),
   ])
   readsReady = true
+}
+
+const REMOVALS_WINDOW = 24 * 60 * 60 * 1000
+let removalsReady = false
+async function ensureRemovals(env: Env) {
+  if (removalsReady) return
+  await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS chat_removals (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_key TEXT NOT NULL, message_id INTEGER, up_to INTEGER, created_at INTEGER NOT NULL)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS chat_removals_time_idx ON chat_removals (created_at)'),
+  ])
+  removalsReady = true
+}
+
+async function recordRemoval(env: Env, thread: string | null, messageId: number | null, upTo: number | null, now: number) {
+  await ensureRemovals(env)
+  await env.DB.prepare('INSERT INTO chat_removals (thread_key, message_id, up_to, created_at) VALUES (?, ?, ?, ?)').bind(thread ?? '', messageId, upTo, now).run()
+  if (Math.random() < 0.05) await env.DB.prepare('DELETE FROM chat_removals WHERE created_at < ?').bind(now - REMOVALS_WINDOW).run()
+}
+
+async function removalsFor(env: Env, me: string, now: number) {
+  await ensureRemovals(env)
+  const rows = await env.DB.prepare(`SELECT thread_key, message_id, up_to FROM chat_removals
+    WHERE created_at > ? AND (thread_key = '' OR instr(',' || thread_key || ',', ',' || ? || ',') > 0) ORDER BY id DESC LIMIT 500`).bind(now - REMOVALS_WINDOW, me).all<{ thread_key: string; message_id: number | null; up_to: number | null }>()
+  return rows.results.map(row => ({ thread: row.thread_key || null, id: row.message_id, upTo: row.up_to }))
 }
 
 async function readsFor(env: Env, userId: string, me: string, now: number) {
@@ -90,7 +115,8 @@ export async function groupChat(request: Request, env: Env) {
     }
     const presence = await touchPresence(env, user, doing.success ? doing.data : 'home', url.searchParams.get('active') === '1', now)
     const reads = await readsFor(env, user.id, me, now)
-    return json({ messages: rows.map(shape), me, isAdmin: user.isAdmin, online: presence.online, recent: presence.recent, reads, now })
+    const removed = await removalsFor(env, me, now)
+    return json({ messages: rows.map(shape), me, isAdmin: user.isAdmin, online: presence.online, recent: presence.recent, reads, removed, now })
   }
   if (request.method !== 'POST') throw new HttpError(405, 'This request is not allowed.')
   requireSameOrigin(request)
@@ -100,7 +126,19 @@ export async function groupChat(request: Request, env: Env) {
     if (!row) return json({ ok: true })
     if (!user.isAdmin && row.username !== me) throw new HttpError(403, 'You can only remove your own messages.')
     await env.DB.prepare('DELETE FROM chat_messages WHERE id = ?').bind(input.id).run()
+    await recordRemoval(env, row.thread, input.id, null, now)
     return json({ ok: true })
+  }
+  if (input.action === 'clear') {
+    if (input.thread === null && !user.isAdmin) throw new HttpError(403, 'Only an administrator can clear the Everyone chat.')
+    if (input.thread !== null && !input.thread.split(',').includes(me)) throw new HttpError(403, 'You are not in that chat.')
+    const top = await env.DB.prepare(input.thread === null ? 'SELECT MAX(id) AS top FROM chat_messages WHERE thread IS NULL' : 'SELECT MAX(id) AS top FROM chat_messages WHERE thread = ?')
+      .bind(...(input.thread === null ? [] : [input.thread])).first<{ top: number | null }>()
+    if (!top?.top) return json({ ok: true })
+    if (input.thread === null) await env.DB.prepare('DELETE FROM chat_messages WHERE thread IS NULL AND id <= ?').bind(top.top).run()
+    else await env.DB.prepare('DELETE FROM chat_messages WHERE thread = ? AND id <= ?').bind(input.thread, top.top).run()
+    await recordRemoval(env, input.thread, null, top.top, now)
+    return json({ ok: true, upTo: top.top })
   }
   if (input.action === 'read') {
     const key = input.thread ?? ''
