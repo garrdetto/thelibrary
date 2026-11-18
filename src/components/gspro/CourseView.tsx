@@ -6,6 +6,7 @@ import { enrichShot, fmt, type EnrichedShot } from '@/lib/gspro/stats'
 import type { GsproShot } from '@/lib/gspro/types'
 import { gsproApi } from './api'
 import { useReplay } from './ReplayContext'
+import { CourseShotTable } from './CourseShotTable'
 
 const PLAYER_KEY = 'gs-course-player'
 
@@ -106,6 +107,7 @@ export function CourseView({ onSetup }: { onSetup: () => void }) {
 
   const players = useMemo(() => shots ? roundPlayers(shots) : [], [shots])
   const report = useMemo(() => shots && player ? roundReport(shots, player) : null, [shots, player])
+  const allShots = useMemo(() => report ? report.holes.flatMap(hole => hole.shots) : [], [report])
   const replayList = useMemo(() => report ? report.holes.flatMap(hole => hole.shots).map(toReplayShot) : [], [report])
 
   if (error) return <p className="gs-notice" role="alert">{error}</p>
@@ -173,6 +175,11 @@ export function CourseView({ onSetup }: { onSetup: () => void }) {
           </table></div> : <p className="gs-muted">No putts recorded in this round.</p>}
         </section>
       </div>
+
+      <section className="gs-panel">
+        <header className="gs-panel-head"><div><h2>Every shot</h2><p>Sort by any column, group by club or pick one club. Click a shot to replay GSPro’s flight.</p></div></header>
+        <CourseShotTable shots={allShots} toReplay={toReplayShot}/>
+      </section>
 
       <section className="gs-panel">
         <header className="gs-panel-head"><div><h2>Shot by shot</h2><p>Click any shot to replay GSPro's own flight for it.</p></div></header>

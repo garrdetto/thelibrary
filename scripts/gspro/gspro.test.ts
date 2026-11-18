@@ -102,3 +102,27 @@ test('the replay trace matches the estimate and ends at the total', () => {
   near(Math.hypot(rest.x - landing.x, rest.z - landing.z), estimate.total - estimate.carry, 0.01, 'roll length')
   assert.ok([...trace.air, ...trace.ground].every((point, index, all) => index === 0 || point.t >= all[index - 1].t))
 })
+
+test('shots sort by any value, missing values last, and group by club in bag order', async () => {
+  const { sortShots, sortRows } = await import('../../src/lib/gspro/sorting')
+  const make = (id: number, club: string | null, createdAt: number, carry: number | null) => ({ ...enrichShot({
+    id, sessionId: 's', createdAt, source: 'test', club, handed: 'RH', ballSpeed: 100, launch: 15, direction: 0, totalSpin: 5000, spinAxis: 0, carry,
+    clubSpeed: null, attackAngle: null, path: null, face: null, dynamicLoft: null, lie: null, impactH: null, impactV: null, excluded: false,
+  }), carryYards: carry })
+  const shots = [make(1, '7I', 10, 150), make(2, 'DR', 20, 240), make(3, '7I', 30, 160), make(4, 'PW', 40, null), make(5, 'DR', 50, 230)]
+  assert.deepEqual(sortShots(shots, { key: 'time', direction: 'desc', byClub: false, club: 'all' }).map(shot => shot.id), [5, 4, 3, 2, 1])
+  assert.deepEqual(sortShots(shots, { key: 'carry', direction: 'desc', byClub: false, club: 'all' }).map(shot => shot.id), [2, 5, 3, 1, 4])
+  assert.deepEqual(sortShots(shots, { key: 'carry', direction: 'asc', byClub: false, club: 'all' }).map(shot => shot.id), [1, 3, 5, 2, 4])
+  assert.deepEqual(sortShots(shots, { key: 'time', direction: 'asc', byClub: true, club: 'all' }).map(shot => shot.id), [2, 5, 1, 3, 4])
+  assert.deepEqual(sortShots(shots, { key: 'club', direction: 'asc', byClub: false, club: 'all' }).map(shot => shot.id), [2, 5, 1, 3, 4])
+  assert.deepEqual(sortShots(shots, { key: 'time', direction: 'desc', byClub: false, club: '7I' }).map(shot => shot.id), [3, 1])
+  assert.deepEqual(sortRows(['b', 'a', null, 'c'], value => value, 'asc'), ['a', 'b', 'c', null])
+})
+
+test('the Windows startup launcher runs the bridge minimised from its own folder', async () => {
+  const { startupScript } = await import('../../public/gspro/gspro-bridge.mjs')
+  const script = startupScript(String.raw`C:\Program Files\nodejs\node.exe`, String.raw`C:\Users\me\Documents\gspro-bridge.mjs`)
+  assert.match(script, /^@echo off\r\n/)
+  assert.ok(script.includes(String.raw`cd /d "C:\Users\me\Documents"`))
+  assert.ok(script.includes(String.raw`start "GSPro Bridge" /min "C:\Program Files\nodejs\node.exe" "C:\Users\me\Documents\gspro-bridge.mjs"`))
+})

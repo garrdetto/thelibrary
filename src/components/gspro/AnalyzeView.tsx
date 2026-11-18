@@ -107,10 +107,10 @@ export function AnalyzeView({ scope, sessions, shots, error, onScope, onShot }: 
       </section>
       <section className="gs-panel">
         <header className="gs-panel-head">
-          <div><h2>Every shot</h2><p>Fix a club or exclude a mis-hit; the averages update straight away.</p></div>
+          <div><h2>Every shot</h2><p>Sort by any column, group by club or pick one club. Fix a club or exclude a mis-hit and the averages update straight away.</p></div>
           <button type="button" className="gs-button ghost" aria-expanded={showShots} onClick={() => setShowShots(value => !value)}>{showShots ? 'Hide shots' : `Show ${shots.length} shots`}</button>
         </header>
-        {showShots && <ShotTable shots={[...shots].reverse()} onShot={onShot} dated/>}
+        {showShots && <ShotTable id="analyze" shots={shots} onShot={onShot} dated/>}
       </section>
     </>}
   </div>
