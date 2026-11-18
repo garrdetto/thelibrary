@@ -9,6 +9,7 @@ import type { SiteTheme } from '@/lib/site-themes'
 import { usePoolLobby } from '@/components/PoolLobby'
 import { InvitePopups } from '@/components/SitePresence'
 import { GroupChat } from '@/components/GroupChat'
+import { RIBBON_END, RIBBON_START, RibbonSlot } from '@/components/ribbon/SiteRibbon'
 import type { ChatInvite, ChatModule, InviteKind } from '@/components/GroupChat'
 import { ModuleHub } from '@/components/ModuleHub'
 import { LapRecordBoard } from '@/components/LapRecordBoard'
@@ -491,7 +492,7 @@ function Studio() {
       </nav>
       <div className="sidebar-bottom"><div className="creative-note"><span className="tiny-star">✳</span><strong>Learn by doing.</strong><p>Strategy, physics, math<br/>and precision modules.</p></div><button className="help-link" onClick={() => setHelpOpen(true)}><Info size={16}/> About the library <ArrowRight size={14}/></button><div className="workspace-profile"><span className="profile-icon"><Feather size={18}/></span><div>{access.username ?? 'Guest'}<small>{access.username ? 'Progress saves to your account' : 'Sign in to save progress'}</small></div></div></div>
     </aside>
-    {access.radar && <a className="radar-tab" href="/axiom-radar"><Radar size={15} strokeWidth={1.8} aria-hidden="true"/><span>Axiom Radar</span><ArrowRight size={13} aria-hidden="true"/></a>}
+    {access.radar && <RibbonSlot slot={RIBBON_START}><a className="radar-tab ribbon-item" href="/axiom-radar"><Radar size={15} strokeWidth={1.8} aria-hidden="true"/><span>Axiom Radar</span><ArrowRight size={13} aria-hidden="true"/></a></RibbonSlot>}
 
     <main className="main-panel"><RecordResetProvider>
       {accountReady && !access.username && <SignInRibbon/>}
@@ -539,7 +540,7 @@ function Studio() {
       </div>
     </RecordResetProvider></main>
     <InvitePopups lobby={lobby} onJoinRace={joinRaceInvite}/>
-    {accountReady && <GroupChat username={access.username} onSignIn={() => switchView('home')} module={chatModule} activityLabels={activityLabels} requestRoom={requestRoom} onPoolInvite={name => lobby.invite(name)} onJoinInvite={joinChatInvite}/>}
+    {accountReady && <RibbonSlot slot={RIBBON_END}><GroupChat username={access.username} onSignIn={() => switchView('home')} module={chatModule} activityLabels={activityLabels} requestRoom={requestRoom} onPoolInvite={name => lobby.invite(name)} onJoinInvite={joinChatInvite}/></RibbonSlot>}
     {helpOpen && <div className="modal-backdrop" onClick={() => setHelpOpen(false)}><section className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onClick={(event) => event.stopPropagation()}><button autoFocus className="modal-close" aria-label="Close about" onClick={() => setHelpOpen(false)}><X size={20}/></button><BrandMark/><h2 id="about-title">Welcome to the library.</h2><p>the library is a collection of hands-on learning modules covering strategy, physics, math and precision. Open any module from the library page or the sidebar; most run right in your browser with nothing to install.</p><p>Sign in with a username and a 3-digit password to keep your progress, records and settings on any device. Some modules support live head-to-head sessions with anyone who is online, or a private room code you can share.</p><p>Members with studio access also get AI chat, image creation, a lyric studio and a voice generator. AI requests run on the server; chat uses model knowledge, not live web search or your documents.</p><button className="primary-button" onClick={() => setHelpOpen(false)}>Back to the library <ArrowRight size={16}/></button></section></div>}
   </div>
 }

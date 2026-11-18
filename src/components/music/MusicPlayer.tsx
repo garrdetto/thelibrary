@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ChevronDown, ListMusic, Music2, Pause, Play, Radio, Repeat, Shuffle, SkipBack, SkipForward, Square, Volume1, Volume2, VolumeX } from 'lucide-react'
+import { ChevronUp, ListMusic, Pause, Play, Radio, Shuffle, SkipBack, SkipForward, Square, Volume1, Volume2, VolumeX } from 'lucide-react'
 import { MUSIC_ACCESS_EVENT, formatTrackTime, musicFileUrl } from '@/lib/music'
 import type { MusicTrack } from '@/lib/music'
 import { findStation, radioStations } from '@/lib/radio-stations'
@@ -9,6 +9,7 @@ import { RadioPicker } from './RadioPicker'
 const STORE_KEY = 'tl-music'
 const CHANNEL = 'tl-music'
 const RETRIES = 2
+const POPUP_ROOT = '.music-player'
 
 type Mode = 'playlist' | 'radio'
 type Saved = { trackId?: string; time?: number; paused?: boolean; volume?: number; muted?: boolean; shuffle?: boolean; open?: boolean; mode?: Mode; station?: string }
@@ -32,7 +33,6 @@ export function MusicPlayer() {
   const [index, setIndex] = useState(0)
   const [mode, setMode] = useState<Mode>('playlist')
   const [stationId, setStationId] = useState(radioStations[0].id)
-  const [picking, setPicking] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [time, setTime] = useState(0)
@@ -80,7 +80,6 @@ export function MusicPlayer() {
     setVolume(typeof saved.volume === 'number' ? Math.min(1, Math.max(0, saved.volume)) : 0.7)
     setMuted(Boolean(saved.muted))
     setShuffle(Boolean(saved.shuffle))
-    setOpen(Boolean(saved.open))
     if (saved.mode === 'radio') setMode('radio')
     if (findStation(saved.station)) setStationId(saved.station!)
     wantPlay.current = saved.paused !== true
@@ -200,7 +199,6 @@ export function MusicPlayer() {
     if (next === mode) return
     wantPlay.current = true
     setMode(next)
-    setPicking(next === 'radio' && !readSaved().station)
   }
 
   useEffect(() => {
@@ -263,78 +261,74 @@ export function MusicPlayer() {
     }
   }
 
-  function setOpenSaved(next: boolean) {
-    setOpen(next)
-    if (!next) setPicking(false)
-    writeSaved({ open: next })
-  }
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    const outside = (event: PointerEvent) => { if (!(event.target as Element | null)?.closest?.(POPUP_ROOT)) close() }
+    const blurred = () => window.setTimeout(() => { if (document.activeElement?.tagName === 'IFRAME') close() }, 0)
+    document.addEventListener('pointerdown', outside, true)
+    window.addEventListener('blur', blurred)
+    return () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('blur', blurred) }
+  }, [open])
 
   function onKey(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape' && open) { setOpenSaved(false); event.stopPropagation() }
+    if (event.key === 'Escape' && open) { setOpen(false); event.stopPropagation() }
   }
 
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
-  const progress = radio ? (playing ? 100 : 0) : duration > 0 ? Math.min(100, (time / duration) * 100) : 0
+  const progress = radio ? 0 : duration > 0 ? Math.min(100, (time / duration) * 100) : 0
   const title = radio ? station.name : current?.title ?? ''
-  const subtitle = radio ? `${station.dial} · ${station.city}` : current?.artist || `Track ${index + 1} of ${tracks.length}`
+  const detail = error || (!playing && blocked ? 'Press play to start' : waiting && playing ? (radio ? 'Tuning in…' : 'Loading…') : radio ? `${station.dial} · ${station.city}` : current?.artist || `Track ${index + 1} of ${tracks.length}`)
   const PlayIcon = playing ? (radio ? Square : Pause) : Play
   const playLabel = playing ? (radio ? 'Stop' : 'Pause') : 'Play'
+  const volumeControl = <div className="music-volume">
+    <button type="button" className="music-icon" aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} onClick={() => { setMuted(!muted); writeSaved({ muted: !muted }) }}><VolumeIcon size={15}/></button>
+    <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume} aria-label="Volume" style={{ '--music-progress': `${(muted ? 0 : volume) * 100}%` } as CSSProperties}
+      onChange={event => { const value = Number(event.target.value); setVolume(value); setMuted(false); writeSaved({ volume: value, muted: false }) }}/>
+  </div>
 
-  return <div className={`music-player${open ? ' is-open' : ''}`} onKeyDown={onKey} hidden={!source}>
+  return <div className={`music-player${source ? ' ribbon-item' : ''}${open ? ' is-open' : ''}`} onKeyDown={onKey} hidden={!source}>
     <audio ref={audio} preload={radio ? 'none' : 'metadata'} onTimeUpdate={onTime} onLoadedMetadata={onMeta} onPlay={onPlay} onPause={onPause} onWaiting={() => setWaiting(true)} onPlaying={() => { setWaiting(false); retries.current = 0 }} onCanPlay={() => setWaiting(false)}
       onEnded={() => { if (radio) { onDropout(); return } wantPlay.current = true; go(1) }} onError={() => { if (!source) return; if (radio) onDropout(); else setError('This track could not be loaded.') }}/>
-    {source && (open ? <section className="music-card" aria-label="Music player">
-      <header className="music-card-head">
-        <span className={`music-bars${playing ? ' is-playing' : ''}`} aria-hidden="true"><i/><i/><i/></span>
-        <div className="music-now">
-          <strong title={title}>{title}</strong>
-          <small>{radio && <span className={`music-live${playing ? ' is-on' : ''}`}>Live</span>}{subtitle}</small>
-        </div>
-        <button type="button" className="music-icon" onClick={() => setOpenSaved(false)} aria-label="Minimize the music player"><ChevronDown size={18}/></button>
-      </header>
-      {tracks.length > 0 && <div className="music-source" role="group" aria-label="What to play">
-        <button type="button" aria-pressed={!radio} className={!radio ? 'is-active' : ''} onClick={() => switchMode('playlist')}><ListMusic size={15} aria-hidden/> My music</button>
-        <button type="button" aria-pressed={radio} className={radio ? 'is-active' : ''} onClick={() => switchMode('radio')}><Radio size={15} aria-hidden/> Radio</button>
-      </div>}
-      {radio ? <button type="button" className="radio-current" aria-haspopup="dialog" aria-expanded={picking} onClick={() => setPicking(!picking)}>
-        <Radio size={16} aria-hidden/><span><strong>{picking ? 'Choose a station' : 'Change station'}</strong><small>{station.format} · {radioStations.length} Wisconsin stations</small></span><span className="radio-change"><ChevronDown size={16} aria-hidden/></span>
-      </button> : <div className="music-seek">
-        <input type="range" min={0} max={duration || 0} step={0.1} value={Math.min(time, duration || 0)} aria-label="Seek" aria-valuetext={`${formatTrackTime(time)} of ${formatTrackTime(duration)}`}
-          style={{ '--music-progress': `${progress}%` } as CSSProperties}
-          onChange={event => { const value = Number(event.target.value); setTime(value); if (audio.current) audio.current.currentTime = value }}/>
-        <div className="music-times"><span>{formatTrackTime(time)}</span><span>{formatTrackTime(duration)}</span></div>
-      </div>}
-      <div className="music-controls">
-        {radio ? <span className="music-icon is-static" aria-hidden="true"/> : <button type="button" className={`music-icon${shuffle ? ' is-on' : ''}`} aria-pressed={shuffle} aria-label="Shuffle" onClick={() => { setShuffle(!shuffle); writeSaved({ shuffle: !shuffle }) }}><Shuffle size={16}/></button>}
-        <button type="button" className="music-icon" aria-label={radio ? 'Previous station' : 'Previous track'} onClick={previous}><SkipBack size={18}/></button>
-        <button type="button" className="music-play" aria-label={playLabel} onClick={toggle}><PlayIcon size={20}/></button>
-        <button type="button" className="music-icon" aria-label={radio ? 'Next station' : 'Next track'} onClick={() => go(1)}><SkipForward size={18}/></button>
-        {radio ? <span className="music-icon is-static" aria-hidden="true"/> : <span className="music-icon is-static" title="The playlist repeats" aria-hidden="true"><Repeat size={16}/></span>}
+    {source && <>
+      <button type="button" className="music-play" aria-label={`${playLabel} ${title}`} onClick={toggle}><PlayIcon size={15}/></button>
+      <div className="music-skip">
+        <button type="button" className="music-icon" aria-label={radio ? 'Previous station' : 'Previous track'} onClick={previous}><SkipBack size={14}/></button>
+        <button type="button" className="music-icon" aria-label={radio ? 'Next station' : 'Next track'} onClick={() => go(1)}><SkipForward size={14}/></button>
       </div>
-      <div className="music-volume">
-        <button type="button" className="music-icon" aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} onClick={() => { setMuted(!muted); writeSaved({ muted: !muted }) }}><VolumeIcon size={16}/></button>
-        <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume} aria-label="Volume" style={{ '--music-progress': `${(muted ? 0 : volume) * 100}%` } as CSSProperties}
-          onChange={event => { const value = Number(event.target.value); setVolume(value); setMuted(false); writeSaved({ volume: value, muted: false }) }}/>
-      </div>
-      {radio && picking && <RadioPicker current={station.id} onClose={() => setPicking(false)} onPick={next => { wantPlay.current = true; setStationId(next.id); setPicking(false) }}/>}
-      {!radio && tracks.length > 1 && <ol className="music-queue" aria-label="Playlist">
-        {tracks.map((track, position) => <li key={track.id}>
-          <button type="button" aria-current={position === index ? 'true' : undefined} onClick={() => { resumeAt.current = null; wantPlay.current = true; if (position === index) tryPlay(); else setIndex(position) }}>
-            <span>{track.title}</span>{track.artist && <small>{track.artist}</small>}
-          </button>
-        </li>)}
-      </ol>}
-      {waiting && playing && <p className="music-hint" role="status">{radio ? 'Tuning in…' : 'Loading…'}</p>}
-      {error && <p className="music-error" role="alert">{error}</p>}
-      {!playing && blocked && !error && <p className="music-hint">Your browser is waiting for a click before it plays sound.</p>}
-    </section> : <div className="music-pill">
-      <button type="button" className="music-pill-play" aria-label={`${playLabel} ${title}`} onClick={toggle}><PlayIcon size={16}/></button>
-      <button type="button" className="music-pill-open" onClick={() => setOpenSaved(true)} aria-label={`Open the music player, now ${playing ? 'playing' : 'stopped'}: ${title}`}>
+      <button type="button" className="music-now" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
+        aria-label={`${radio ? 'Change station' : 'Open the playlist'}. Now ${playing ? 'playing' : 'stopped'}: ${title}`}>
         <span className={`music-bars${playing ? ' is-playing' : ''}`} aria-hidden="true"><i/><i/><i/></span>
-        <span className="music-pill-title">{waiting && playing ? (radio ? 'Tuning in…' : 'Loading…') : title}</span>
-        {radio ? <Radio size={14} aria-hidden="true"/> : <Music2 size={14} aria-hidden="true"/>}
+        <span className="music-now-text">
+          <strong>{title}</strong>
+          <small className={error ? 'is-error' : ''}>{radio && <span className={`music-live${playing ? ' is-on' : ''}`}>Live</span>}{detail}</small>
+        </span>
+        <span className="music-change">{radio ? 'Stations' : 'Playlist'}<ChevronUp size={14} aria-hidden/></span>
+        {!radio && <span className="music-mini-progress" style={{ width: `${progress}%` }} aria-hidden="true"/>}
       </button>
-      {!radio && <span className="music-pill-progress" style={{ width: `${progress}%` }} aria-hidden="true"/>}
-    </div>)}
+      <div className="music-wide">{volumeControl}</div>
+      {open && <section className="music-panel" role="dialog" aria-label={radio ? 'Radio stations' : 'Playlist'}>
+        {tracks.length > 0 && <div className="music-source" role="group" aria-label="What to play">
+          <button type="button" aria-pressed={!radio} className={!radio ? 'is-active' : ''} onClick={() => switchMode('playlist')}><ListMusic size={15} aria-hidden/> My music</button>
+          <button type="button" aria-pressed={radio} className={radio ? 'is-active' : ''} onClick={() => switchMode('radio')}><Radio size={15} aria-hidden/> Radio</button>
+        </div>}
+        {radio ? <RadioPicker current={station.id} onClose={() => setOpen(false)} onPick={next => { wantPlay.current = true; setStationId(next.id) }}/> : <>
+          <div className="music-seek">
+            <input type="range" min={0} max={duration || 0} step={0.1} value={Math.min(time, duration || 0)} aria-label="Seek" aria-valuetext={`${formatTrackTime(time)} of ${formatTrackTime(duration)}`}
+              style={{ '--music-progress': `${progress}%` } as CSSProperties}
+              onChange={event => { const value = Number(event.target.value); setTime(value); if (audio.current) audio.current.currentTime = value }}/>
+            <div className="music-times"><span>{formatTrackTime(time)}</span><button type="button" className={`music-icon${shuffle ? ' is-on' : ''}`} aria-pressed={shuffle} aria-label="Shuffle" onClick={() => { setShuffle(!shuffle); writeSaved({ shuffle: !shuffle }) }}><Shuffle size={15}/></button><span>{formatTrackTime(duration)}</span></div>
+          </div>
+          <ol className="music-queue" aria-label="Playlist">
+            {tracks.map((track, position) => <li key={track.id}>
+              <button type="button" aria-current={position === index ? 'true' : undefined} onClick={() => { resumeAt.current = null; wantPlay.current = true; if (position === index) tryPlay(); else setIndex(position) }}>
+                <span>{track.title}</span>{track.artist && <small>{track.artist}</small>}
+              </button>
+            </li>)}
+          </ol>
+        </>}
+        <div className="music-narrow">{volumeControl}</div>
+      </section>}
+    </>}
   </div>
 }

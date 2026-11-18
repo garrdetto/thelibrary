@@ -10,7 +10,7 @@ export function RadioPicker({ current, onPick, onClose }: { current: string; onP
 
   useEffect(() => {
     search.current?.focus()
-    list.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: 'center' })
+    list.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [])
 
   const groups = useMemo(() => {
