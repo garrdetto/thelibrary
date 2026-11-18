@@ -89,7 +89,14 @@ export type Config = {
   steerRampIn: number; steerRampOut: number; steerDamp: number; carScale: number; spinThreshold: number; spinRate: number
   wallRest: number; carRest: number; carBounce: number; damageScale: number
   paceSpeed: number; aiPaceSpeed: number; cautionSpeed: number; cautionTime: number; aiDecel: number; maxCars: number
+  /** Dirt only (the next vehicle model): front and rear tire grip, how much throttle wheelspin costs the rears in side
+   * grip, how far the rears fall away past their peak (magic-formula C) and the fronts' relaxation length (m). */
+  dirtFrontGrip: number; dirtRearGrip: number; dirtWheelspin: number; dirtRearC: number; dirtFrontSigma: number
 }
+
+/** Stock dirt tire numbers for the next model. AI cars never run a looser rear or a grippier front than these (`dynamics.ts`), so a
+ * looser Track Test setting changes how the drivers' cars slide without spinning the AI field. */
+export const DIRT_STOCK = { dirtFrontGrip: 1.05, dirtRearGrip: 0.8, dirtWheelspin: 0.35, dirtRearC: 1.4, dirtFrontSigma: 1.2 }
 
 export function makeConfig(track: TrackDef): Config {
   const c: Config = {
@@ -101,6 +108,7 @@ export function makeConfig(track: TrackDef): Config {
     carScale: 1.15, spinThreshold: 1.6, spinRate: 0.8,
     wallRest: 0.22, carRest: 0.15, carBounce: 0.7, damageScale: 0.7,
     paceSpeed: 31.0, aiPaceSpeed: 30.50, cautionSpeed: 29, cautionTime: 25, aiDecel: 5.5, maxCars: 20,
+    ...DIRT_STOCK,
   }
   for (const k of ['L', 'R', 'W', 'APRON', 'turnBank', 'straightBank', 'bankIn', 'bankOut'] as const) c[k] = track[k]
   const dirt = track.surface === 'dirt'

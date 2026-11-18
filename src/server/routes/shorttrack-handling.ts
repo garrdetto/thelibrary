@@ -4,6 +4,7 @@ import { json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
 import { HANDLING_TRACKS, sanitizeHandling } from '../../../modules-src/shorttrack/shared/Handling'
 import type { HandlingTune } from '../../../modules-src/shorttrack/shared/Handling'
+import type { TrackId } from '../../../modules-src/shorttrack/next/sim/config'
 
 const trackId = z.enum(HANDLING_TRACKS as [string, ...string[]])
 const input = z.union([
@@ -28,7 +29,7 @@ async function liveTunes(env: Env) {
     if (!(HANDLING_TRACKS as string[]).includes(row.track)) continue
     let parsed: unknown = null
     try { parsed = JSON.parse(row.tune) } catch { parsed = null }
-    tunes[row.track] = sanitizeHandling(parsed)
+    tunes[row.track] = sanitizeHandling(parsed, row.track as TrackId)
     updated[row.track] = row.updated_at
   }
   return { tunes, updated }
@@ -56,7 +57,7 @@ export async function shorttrackHandling(request: Request, env: Env) {
     await env.DB.prepare('DELETE FROM shorttrack_handling WHERE track = ?').bind(body.track).run()
     return json({ track: body.track, tune: {}, updatedAt: null })
   }
-  const tune = sanitizeHandling(body.tune)
+  const tune = sanitizeHandling(body.tune, body.track as TrackId)
   const now = Date.now()
   if (Object.keys(tune).length === 0) await env.DB.prepare('DELETE FROM shorttrack_handling WHERE track = ?').bind(body.track).run()
   else await env.DB.prepare('INSERT INTO shorttrack_handling (track, tune, updated_by, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(track) DO UPDATE SET tune = excluded.tune, updated_by = excluded.updated_by, updated_at = excluded.updated_at')

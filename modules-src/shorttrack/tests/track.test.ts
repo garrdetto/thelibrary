@@ -34,7 +34,8 @@ for (const [id, expected] of Object.entries(fixture)) {
   test(`${id}: geometry matches the classic module exactly`, () => {
     const def = TRACKS[id as TrackId]
     const cfg = makeConfig(def)
-    assert.deepEqual(JSON.parse(JSON.stringify(cfg)), expected.cfg)
+    const classicCfg = Object.fromEntries(Object.entries(cfg).filter(([key]) => !key.startsWith('dirt')))
+    assert.deepEqual(classicCfg, expected.cfg)
     const g = new Track(def, cfg)
     const dirt = g.dirt
     const { S, LAT, MU, XZ } = expected.inputs
