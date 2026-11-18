@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LayoutDashboard, LayoutGrid, ListMusic, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, UserRoundX, Users } from 'lucide-react'
+import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LandPlot, LayoutDashboard, LayoutGrid, ListMusic, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, UserRoundX, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
@@ -39,6 +39,7 @@ const sections = [
   { id: 'music', area: 'site', group: 'Accounts', label: 'Music player', icon: ListMusic, title: 'Music player', blurb: 'Upload MP3s and choose who hears them. People you switch on get a player in the corner that keeps playing as they move around the site.' },
   { id: 'image-editor', area: 'site', group: 'Tools', label: 'Image editor', icon: ImageUp, title: 'Image editor', blurb: 'Upload images in bulk, select text to remove, rewrite or fill with Gemini, and save them as numbered files: name1, name2 and on until you change the name.' },
   { id: 'clipart', area: 'site', group: 'Tools', label: 'Clipart generator', icon: Brush, title: 'HD clipart generator', blurb: 'Turn batches of photographs into realistic HD clipart with free Cloudflare Workers AI image-to-image engines (or Gemini), with full style control, a reference image, before-and-after preview and ZIP export.' },
+  { id: 'gspro', area: 'site', group: 'Tools', label: 'GSPro Analyzer', icon: LandPlot, title: 'GSPro Analyzer', blurb: 'Stream every GSPro shot live from your simulator PC, save it, and break it down by club with dispersion, gapping and tips. Opens on its own page.' },
   { id: 'axiom-radar', area: 'site', group: 'Tools', label: 'Axiom Radar', icon: Radar, title: 'Axiom Radar', blurb: 'Coins ranked by live Axiom viewers with price moves, holder quality, smart holders and buy and watch signals. Opens on its own page.' },
   { id: 'world-editor', area: 'modules', group: 'Life Sim', label: 'World editor', icon: Mountain, title: 'Life Sim world editor', blurb: 'Reshape Montello: raise, lower, flatten and smooth the land, fill or drain water and fix the rivers, build and redraw roads with sidewalks and smooth curves, change or remove buildings, draw and trim parking lots, plant or clear trees, and put up guardrails, streetlights and brick walls. Publish when it looks right.' },
   { id: 'vehicles', area: 'modules', group: 'Life Sim', label: 'Vehicles', icon: Car, title: 'Life Sim vehicles', blurb: 'Build and publish vehicles for Life Sim’s dealership. They are for Life Sim only; tune their top speed and handling in Life Sim’s developer panel (F8).' },
@@ -92,6 +93,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection, canR
 
   function open(next: Section, focus = false) {
     if (next === 'axiom-radar') { window.location.assign('/axiom-radar'); return }
+    if (next === 'gspro') { window.location.assign('/gspro'); return }
     if (leave(next)) return
     setSection(next)
     setPerson(null)
@@ -153,6 +155,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection, canR
         {section === 'music' && <Suspense fallback={<Loading text="Opening the music player…"/>}><MusicLibrary onOpenPerson={id => { open('people'); choosePerson(id) }}/></Suspense>}
         {section === 'changes' && <SiteChanges/>}
         {section === 'axiom-radar' && <p className="race-loading"><a href="/axiom-radar">Open the Axiom Radar</a> It runs on its own page.</p>}
+        {section === 'gspro' && <p className="race-loading"><a href="/gspro">Open the GSPro Analyzer</a> It runs on its own page.</p>}
         {section === 'image-editor' && <Suspense fallback={<Loading text="Opening the image editor…"/>}><ImageEditor/></Suspense>}
         {section === 'clipart' && <Suspense fallback={<Loading text="Opening the clipart generator…"/>}><ClipartGenerator/></Suspense>}
         {section === 'world-editor' && <Suspense fallback={<Loading text="Opening the world editor…"/>}><WorldEditor/></Suspense>}

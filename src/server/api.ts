@@ -41,6 +41,7 @@ import { voice } from './routes/voice'
 import { axiomRadar } from './routes/axiom-radar'
 import { axiomBot } from './routes/axiom-bot'
 import { music } from './routes/music'
+import { gspro } from './routes/gspro'
 
 const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
   '/api/pool-account': poolAccount,
@@ -90,6 +91,8 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/songmaker': songmaker,
   '/api/voice': voice,
   '/api/music': music,
+  '/api/gspro': gspro,
+  '/api/gspro/ingest': gspro,
   '/api/admin/axiom/data': axiomRadar,
   '/api/admin/axiom/stream': axiomRadar,
   '/api/admin/axiom/ingest': axiomRadar,
