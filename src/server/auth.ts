@@ -1,10 +1,11 @@
 import type { Env } from './env'
 import { HttpError, parseStored } from './http'
+import { RADAR_GRANT, cleanGrants, studioGrants } from '../lib/access'
 
 export const ADMIN_USERNAME = 'stoegbauer'
 export const OWNER_LEVEL = 2
 export const ADMIN_LEVEL = 1
-export const studioPages = ['chat', 'image', 'lyrics', 'voice'] as const
+export const studioPages = studioGrants
 export type StudioPage = (typeof studioPages)[number]
 export type AccountSettings = { theme?: string; lobbySound?: boolean }
 
@@ -25,6 +26,8 @@ export type SessionUser = {
   isAdmin: boolean
   isOwner: boolean
   pages: StudioPage[]
+  grants: string[]
+  radar: boolean
   settings: AccountSettings
 }
 
@@ -69,13 +72,16 @@ export function isOwnerRow(row: Pick<UserRow, 'is_admin' | 'username'>) {
 export function toSessionUser(row: UserRow): SessionUser {
   const isOwner = isOwnerRow(row)
   const isAdmin = isOwner || row.is_admin === ADMIN_LEVEL
-  const granted = parseStored<string[]>(row.pages, [])
+  const granted = cleanGrants(parseStored<unknown>(row.pages, []))
+  const grants = granted.filter(grant => !(studioPages as readonly string[]).includes(grant))
   return {
     id: row.id,
     username: row.username,
     isAdmin,
     isOwner,
     pages: isAdmin ? [...studioPages] : studioPages.filter(page => granted.includes(page)),
+    grants,
+    radar: isOwner || grants.includes(RADAR_GRANT),
     settings: parseStored<AccountSettings>(row.settings, {}),
   }
 }

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LandPlot, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, UserRoundX, Users } from 'lucide-react'
+import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LandPlot, LayoutDashboard, LayoutGrid, ListMusic, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, UserRoundX, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
@@ -18,6 +18,7 @@ const ClipartGenerator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise
 const ImageEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/ImageEditor'))
 const WorldEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./world/WorldEditor'))
 const LifeSimResetCharacter = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./lifesim/ResetCharacter'))
+const MusicLibrary = lazy<ComponentType<{ onOpenPerson: (id: string) => void }>>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/MusicLibrary'))
 const BushLeagueAssets = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./bushleague/BushLeagueAssets'))
 
 const areas = [
@@ -34,7 +35,8 @@ const sections = [
   { id: 'image', area: 'site', group: 'Studios', label: 'Image Studio', icon: Image, title: 'Image Studio', blurb: 'Create and edit pictures from a description with Gemini.' },
   { id: 'lyrics', area: 'site', group: 'Studios', label: 'Lyric Studio', icon: Music2, title: 'Lyric Studio', blurb: 'Write, fine-tune and revamp song lyrics with Gemini.' },
   { id: 'voice', area: 'site', group: 'Studios', label: 'Voice Generator', icon: AudioLines, title: 'Voice Generator', blurb: 'Design, remix and delete ElevenLabs voices, then hear them read your own text.' },
-  { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
+  { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Click anyone to choose what they can use and see: studios, the music player, Axiom Radar and modules you have hidden from everyone else. Passwords are never shown; reset one if someone forgets theirs.' },
+  { id: 'music', area: 'site', group: 'Accounts', label: 'Music player', icon: ListMusic, title: 'Music player', blurb: 'Upload MP3s and choose who hears them. People you switch on get a player in the corner, with your tracks and live Wisconsin radio, that keeps playing as they move around the site.' },
   { id: 'image-editor', area: 'site', group: 'Tools', label: 'Image editor', icon: ImageUp, title: 'Image editor', blurb: 'Upload images in bulk, select text to remove, rewrite or fill with Gemini, and save them as numbered files: name1, name2 and on until you change the name.' },
   { id: 'clipart', area: 'site', group: 'Tools', label: 'Clipart generator', icon: Brush, title: 'HD clipart generator', blurb: 'Turn batches of photographs into realistic HD clipart with free Cloudflare Workers AI image-to-image engines (or Gemini), with full style control, a reference image, before-and-after preview and ZIP export.' },
   { id: 'gspro', area: 'site', group: 'Tools', label: 'GSPro Analyzer', icon: LandPlot, title: 'GSPro Analyzer', blurb: 'Stream every GSPro shot live from your simulator PC, save it, and break it down by club with dispersion, gapping and tips. Opens on its own page.' },
@@ -55,7 +57,7 @@ const isStudio = (id: string): id is StudioId => studioIds.includes(id)
 
 function sectionFromHash(): Section {
   if (typeof window === 'undefined') return 'overview'
-  const id = window.location.hash.replace(/^#admin\/?/, '')
+  const id = window.location.hash.replace(/^#admin\/?/, '').split('/')[0]
   if (id === 'modules') return 'maplestreet'
   return sections.some(item => item.id === id && !isStudio(item.id)) ? id as Section : 'overview'
 }
@@ -64,14 +66,20 @@ function Loading({ text }: { text: string }) {
   return <p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> {text}</p>
 }
 
-export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { studio?: StudioId; children?: ReactNode; onOpenStudio?: (id: StudioId) => void; onOpenSection?: (id: string) => void }) {
+export function AdminPanel({ studio, children, onOpenStudio, onOpenSection, canRadar = false }: { studio?: StudioId; children?: ReactNode; onOpenStudio?: (id: StudioId) => void; onOpenSection?: (id: string) => void; canRadar?: boolean }) {
   const [chosen, setSection] = useState<Section>(studio ?? 'overview')
-  useEffect(() => { if (!studio) setSection(sectionFromHash()) }, [studio])
+  const [person, setPerson] = useState<string | null>(null)
+  useEffect(() => {
+    if (studio) return
+    const from = sectionFromHash()
+    setSection(from === 'axiom-radar' && !canRadar ? 'overview' : from)
+    if (from === 'people') setPerson(window.location.hash.split('/')[2] ?? null)
+  }, [studio, canRadar])
   const section: Section = studio ?? chosen
 
   const current = sections.find(item => item.id === section)!
   const area: Area = current.area
-  const visible = sections.filter(item => item.area === area)
+  const visible = sections.filter(item => item.area === area && (item.id !== 'axiom-radar' || canRadar))
   const groups = [...new Set(visible.map(item => item.group))]
 
   function leave(next: Section) {
@@ -88,9 +96,15 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
     if (next === 'gspro') { window.location.assign('/gspro'); return }
     if (leave(next)) return
     setSection(next)
+    setPerson(null)
     if (window.location.hash.startsWith('#admin') || window.location.hash === '') window.history.replaceState(null, '', `#admin/${next}`)
     if (focus) requestAnimationFrame(() => document.getElementById(`admin-tab-${next}`)?.focus())
     else document.querySelector('.adm-main')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
+
+  function choosePerson(id: string | null) {
+    setPerson(id)
+    if (window.location.hash.startsWith('#admin') || window.location.hash === '') window.history.replaceState(null, '', id ? `#admin/people/${id}` : '#admin/people')
   }
 
   function openArea(next: Area) {
@@ -137,7 +151,8 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
         {section === 'overview' && <AdminOverview onOpen={next => open(next)}/>}
         {section === 'library' && <LibraryArrange/>}
         {studio && children}
-        {section === 'people' && <WorkspaceAdmin/>}
+        {section === 'people' && <WorkspaceAdmin person={person} onPerson={choosePerson}/>}
+        {section === 'music' && <Suspense fallback={<Loading text="Opening the music player…"/>}><MusicLibrary onOpenPerson={id => { open('people'); choosePerson(id) }}/></Suspense>}
         {section === 'changes' && <SiteChanges/>}
         {section === 'axiom-radar' && <p className="race-loading"><a href="/axiom-radar">Open the Axiom Radar</a> It runs on its own page.</p>}
         {section === 'gspro' && <p className="race-loading"><a href="/gspro">Open the GSPro Analyzer</a> It runs on its own page.</p>}

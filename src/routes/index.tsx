@@ -73,7 +73,7 @@ function BrandMark({ small = false }: { small?: boolean }) {
 function Studio() {
   const moduleLayout = useModuleLayout()
   const [view, setView] = useState<View>('home')
-  const [access, setAccess] = useState<{ username: string | null; isAdmin: boolean; pages: string[]; settings: { theme?: string } }>({ username: null, isAdmin: false, pages: [], settings: {} })
+  const [access, setAccess] = useState<{ username: string | null; isAdmin: boolean; pages: string[]; radar?: boolean; settings: { theme?: string } }>({ username: null, isAdmin: false, pages: [], settings: {} })
   const [accountReady, setAccountReady] = useState(false)
   const [playRoom, setPlayRoom] = useState<string | null>(null)
   const [devPlay, setDevPlay] = useState(false)
@@ -473,7 +473,7 @@ function Studio() {
   }
   function wrapStudio(page: ReactNode) {
     if (!adminStudio || !studioView) return page
-    return <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel studio={view} onOpenStudio={id => switchView(id)} onOpenSection={openAdminSection}>{page}</AdminPanel></Suspense>
+    return <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel canRadar={Boolean(access.radar)} studio={view} onOpenStudio={id => switchView(id)} onOpenSection={openAdminSection}>{page}</AdminPanel></Suspense>
   }
   const activeLabel = view === 'home' ? 'Module Library' : view === 'admin' || adminStudio ? 'Admin' : activePlay ? activePlay.label : learningModules.find(item => item.id === view)?.title ?? navigation.find((item) => item.id === view)?.label
 
@@ -491,7 +491,7 @@ function Studio() {
       </nav>
       <div className="sidebar-bottom"><div className="creative-note"><span className="tiny-star">✳</span><strong>Learn by doing.</strong><p>Strategy, physics, math<br/>and precision modules.</p></div><button className="help-link" onClick={() => setHelpOpen(true)}><Info size={16}/> About the library <ArrowRight size={14}/></button><div className="workspace-profile"><span className="profile-icon"><Feather size={18}/></span><div>{access.username ?? 'Guest'}<small>{access.username ? 'Progress saves to your account' : 'Sign in to save progress'}</small></div></div></div>
     </aside>
-    <a className="radar-tab" href="/axiom-radar"><Radar size={15} strokeWidth={1.8} aria-hidden="true"/><span>Axiom Radar</span><ArrowRight size={13} aria-hidden="true"/></a>
+    {access.radar && <a className="radar-tab" href="/axiom-radar"><Radar size={15} strokeWidth={1.8} aria-hidden="true"/><span>Axiom Radar</span><ArrowRight size={13} aria-hidden="true"/></a>}
 
     <main className="main-panel"><RecordResetProvider>
       {accountReady && !access.username && <SignInRibbon/>}
@@ -510,7 +510,7 @@ function Studio() {
         {activePlay?.id === 'angler' && <AnglerRecordBoard/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {activePlay && !isScoredModule(activePlay.id) && hasScoreBoard(activePlay.id) && <ModuleScoreTabs key={activePlay.id} moduleId={activePlay.id} username={access.username}/>}
-        {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel onOpenStudio={id => switchView(id)}/></Suspense>}
+        {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel canRadar={Boolean(access.radar)} onOpenStudio={id => switchView(id)}/></Suspense>}
         {view === 'pool' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Racking the balls…</p>}><PoolTable lobby={lobby}/></Suspense>}
         {view === 'park' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame username={access.username} accountReady={accountReady}/></Suspense>}
         {view === 'park2' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame key="park2" username={access.username} accountReady={accountReady} edition={2}/></Suspense>}

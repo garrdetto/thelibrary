@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowRight, Car, FerrisWheel, Flag, KeyRound, LayoutGrid, Package, ShieldCheck, Sparkles, Users } from 'lucide-react'
+import { ArrowRight, Car, FerrisWheel, Flag, KeyRound, LayoutGrid, ListMusic, Package, ShieldCheck, Sparkles, Users } from 'lucide-react'
 import { isModuleAvailable, learningModules } from '@/lib/modules'
 import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
@@ -8,7 +8,7 @@ import { useModuleLayout } from '@/lib/use-module-layout'
 type Account = { pages: string[]; isAdmin: boolean; needsPassword: boolean }
 type Asset = { status?: string; active?: boolean }
 type Counts = { published: number; drafts: number }
-type Section = 'library' | 'people' | 'changes' | 'maplestreet' | 'vehicles' | 'park-rides' | 'shorttrack-cars'
+type Section = 'library' | 'people' | 'music' | 'changes' | 'maplestreet' | 'vehicles' | 'park-rides' | 'shorttrack-cars'
 
 function countAssets(list: Asset[]): Counts {
   return {
@@ -85,7 +85,8 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
       <div>
         <button type="button" onClick={() => onOpen('changes')}><Sparkles size={16} aria-hidden/> Ask Claude to change the site</button>
         <button type="button" onClick={() => onOpen('people')}><KeyRound size={16} aria-hidden/> Reset a password</button>
-        <button type="button" onClick={() => onOpen('people')}><ShieldCheck size={16} aria-hidden/> Grant studio access</button>
+        <button type="button" onClick={() => onOpen('people')}><ShieldCheck size={16} aria-hidden/> Give someone access</button>
+        <button type="button" onClick={() => onOpen('music')}><ListMusic size={16} aria-hidden/> Upload music</button>
         <a href="/modules/maplestreet.html?dev=1" target="_blank" rel="noopener"><Car size={16} aria-hidden/> Open the Fox Plains developer instance</a>
       </div>
     </section>
