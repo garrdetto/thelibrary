@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Gauge, RotateCcw, X } from 'lucide-react'
 import { clubLabel } from '@/lib/gspro/clubs'
 import { traceFlight, type TracePoint } from '@/lib/gspro/flight'
 import { fmt, signed, type EnrichedShot } from '@/lib/gspro/stats'
+import { HOLD_AFTER, SWING_LEAD } from './range/timing'
+import type { CameraMode } from './range/RangeScene'
+
+const RangeView = lazy(() => import('./range/RangeView'))
+
+const cameraModes: { id: CameraMode; label: string }[] = [
+  { id: 'broadcast', label: 'Broadcast' },
+  { id: 'tee', label: 'From the tee' },
+  { id: 'chase', label: 'Chase' },
+]
 
 type Path = { points: TracePoint[]; landingIndex: number; end: number; carry: number; hangTime: number; actual: boolean }
 
@@ -219,8 +229,10 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
   const dialog = useRef<HTMLDialogElement | null>(null)
   const [index, setIndex] = useState(startIndex)
   const [slow, setSlow] = useState(false)
-  const [t, setT] = useState(0)
+  const [clock, setClock] = useState(0)
   const [run, setRun] = useState(0)
+  const [mode, setMode] = useState<CameraMode>('broadcast')
+  const t = Math.max(0, clock)
   const shot = shots[index]
   const path = useMemo(() => pathFor(shot), [shot])
   const ghosts = useMemo(() => shots.filter(other => other.id !== shot.id && other.club === shot.club && !other.excluded).slice(-20).map(pathFor).filter((item): item is Path => item !== null), [shots, shot])
@@ -236,16 +248,17 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
 
   useEffect(() => {
     if (!path) return
-    if (run === 0 && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setT(path.end); return }
+    const finish = path.end + HOLD_AFTER
+    if (run === 0 && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setClock(finish); return }
     let frame = 0
     const started = performance.now()
     const rate = slow ? 0.35 : 1
     const tick = (now: number) => {
-      const elapsed = ((now - started) / 1000) * rate
-      setT(Math.min(path.end, elapsed))
-      if (elapsed < path.end) frame = requestAnimationFrame(tick)
+      const elapsed = ((now - started) / 1000) * rate - SWING_LEAD
+      setClock(Math.min(finish, elapsed))
+      if (elapsed < finish) frame = requestAnimationFrame(tick)
     }
-    setT(0)
+    setClock(-SWING_LEAD)
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [path, slow, run])
@@ -288,10 +301,15 @@ export function ShotReplay({ shots, index: startIndex, onClose }: { shots: Enric
         </div>
       </header>
       {path ? <>
-        <DownTheLine path={path} t={t} reach={reach}/>
+        <Suspense fallback={<DownTheLine path={path} t={t} reach={reach}/>}>
+          <RangeView points={path.points} landingIndex={path.landingIndex} handed={shot.handed} ballSpeed={shot.ballSpeed} launch={shot.launch} spin={shot.totalSpin} club={clubLabel(shot.club)} clock={clock} mode={mode} fallback={<DownTheLine path={path} t={t} reach={reach}/>}/>
+        </Suspense>
         <div className="gs-replay-controls">
           <button type="button" className="gs-button ghost" onClick={() => setRun(value => value + 1)}><RotateCcw size={15} aria-hidden/>Replay</button>
           <button type="button" className="gs-button ghost" aria-pressed={slow} onClick={() => setSlow(value => !value)}><Gauge size={15} aria-hidden/>{slow ? 'Slow motion on' : 'Slow motion'}</button>
+          <div className="gs-segments" role="group" aria-label="Camera">
+            {cameraModes.map(item => <button key={item.id} type="button" aria-pressed={mode === item.id} className={mode === item.id ? 'is-active' : ''} onClick={() => setMode(item.id)}>{item.label}</button>)}
+          </div>
           <span className="gs-muted">{fmt(Math.min(t, path.end), 1)} s · {ghosts.length ? `${ghosts.length} other ${clubLabel(shot.club).toLowerCase()} shots in grey` : path.actual ? 'GSPro’s own flight' : 'flight recreated from launch data'}</span>
         </div>
         <div className="gs-replay-plots">
