@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { BUCK_SHARE, COURT_CHANCE, HIP, MOUNT_PITCH, PANIC_DISTANCE, SAFE_DISTANCE, coverMatters, detectRadius, fleeSpeed, hipLift, mountOffset, nextIdle, react } from '../systems/Herd'
+import { BUCK_SHARE, COURT_CHANCE, HERD_SIZE, HIP, MOUNT_PITCH, PANIC_DISTANCE, SAFE_DISTANCE, coverMatters, detectRadius, fleeSpeed, hipLift, mountOffset, nextIdle, react } from '../systems/Herd'
 import type { DeerMood } from '../systems/Herd'
 import { LEGENDARY_CHANCE, LootTableManager, RARITY, mulberry32 } from '../systems/LootTableManager'
 
@@ -83,6 +83,10 @@ test('calm animals wander, stand looking round or keep feeding, and bucks near a
 
 test('there are 30 % more lone bucks than before', () => {
   assert.ok(Math.abs(BUCK_SHARE - 0.4 * 1.3) < 1e-9)
+})
+
+test('the herd holds 50 % more deer than before', () => {
+  assert.equal(HERD_SIZE, 8 * 1.5)
 })
 
 test('a mounted buck rears on his hips: they stay put while his front rises', () => {
