@@ -85,6 +85,19 @@ class _Worker:
         return self.result
 
 
+LIQUIDITY_GLITCH_DROP = 0.2
+LIQUIDITY_GLITCH_PRICE = 0.5
+
+
+def liquidity_glitch(previous: float | None, liquidity: float, price_before: float, price_now: float) -> bool:
+    """A liquidity reading that falls below a fifth of the last one while the price has not even halved is a bad reading,
+    not a pull: pulling liquidity crashes the price. Taking it would price the sale as if the pool were empty
+    (2026-11-17, gamercat: liquidity read 422 then 0.06 at +6%, and the paper sale filled at -89%)."""
+    if not previous or previous <= 0 or price_before <= 0:
+        return False
+    return liquidity < previous * LIQUIDITY_GLITCH_DROP and price_now >= price_before * LIQUIDITY_GLITCH_PRICE
+
+
 class Engine:
     def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, fee_source: Callable[[], fees.FeeLevels | None] = fees.fetch_levels, clock: Callable[[], float] = time.time, background: bool = False, observer: bool = False, rule_overrides: dict[str, Any] | None = None):
         self.ledger = ledger
@@ -477,10 +490,11 @@ class Engine:
         if taken is None:
             self.ledger.save(position)
             return
+        before = position.last_price
         position.last_price = taken
         position.last_price_at = read_at
         position.peak_price = max(position.peak_price, taken)
-        if liquidity is not None:
+        if liquidity is not None and not liquidity_glitch(position.last_liquidity, liquidity, before, taken):
             position.last_liquidity = liquidity
         trail = [point for point in self.price_trail.get(position.id, []) if read_at - point[0] <= 90_000]
         trail.append((read_at, taken))

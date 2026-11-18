@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AxiomRadarRouteImport } from './routes/axiom-radar'
+import { Route as GsproRouteImport } from './routes/gspro'
 import { Route as AdminAxiomRadarRouteImport } from './routes/admin.axiom-radar'
+import { Route as AdminGsproRouteImport } from './routes/admin.gspro'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +25,65 @@ const AxiomRadarRoute = AxiomRadarRouteImport.update({
   path: '/axiom-radar',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GsproRoute = GsproRouteImport.update({
+  id: '/gspro',
+  path: '/gspro',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminAxiomRadarRoute = AdminAxiomRadarRouteImport.update({
   id: '/admin/axiom-radar',
   path: '/admin/axiom-radar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminGsproRoute = AdminGsproRouteImport.update({
+  id: '/admin/gspro',
+  path: '/admin/gspro',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/axiom-radar': typeof AxiomRadarRoute
+  '/gspro': typeof GsproRoute
   '/admin/axiom-radar': typeof AdminAxiomRadarRoute
+  '/admin/gspro': typeof AdminGsproRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/axiom-radar': typeof AxiomRadarRoute
+  '/gspro': typeof GsproRoute
   '/admin/axiom-radar': typeof AdminAxiomRadarRoute
+  '/admin/gspro': typeof AdminGsproRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/axiom-radar': typeof AxiomRadarRoute
+  '/gspro': typeof GsproRoute
   '/admin/axiom-radar': typeof AdminAxiomRadarRoute
+  '/admin/gspro': typeof AdminGsproRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/axiom-radar' | '/admin/axiom-radar'
+  fullPaths:
+    '/' | '/axiom-radar' | '/gspro' | '/admin/axiom-radar' | '/admin/gspro'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/axiom-radar' | '/admin/axiom-radar'
-  id: '__root__' | '/' | '/axiom-radar' | '/admin/axiom-radar'
+  to: '/' | '/axiom-radar' | '/gspro' | '/admin/axiom-radar' | '/admin/gspro'
+  id:
+    | '__root__'
+    | '/'
+    | '/axiom-radar'
+    | '/gspro'
+    | '/admin/axiom-radar'
+    | '/admin/gspro'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AxiomRadarRoute: typeof AxiomRadarRoute
+  GsproRoute: typeof GsproRoute
   AdminAxiomRadarRoute: typeof AdminAxiomRadarRoute
+  AdminGsproRoute: typeof AdminGsproRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +102,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AxiomRadarRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gspro': {
+      id: '/gspro'
+      path: '/gspro'
+      fullPath: '/gspro'
+      preLoaderRoute: typeof GsproRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/axiom-radar': {
       id: '/admin/axiom-radar'
       path: '/admin/axiom-radar'
       fullPath: '/admin/axiom-radar'
       preLoaderRoute: typeof AdminAxiomRadarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/gspro': {
+      id: '/admin/gspro'
+      path: '/admin/gspro'
+      fullPath: '/admin/gspro'
+      preLoaderRoute: typeof AdminGsproRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -88,7 +129,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AxiomRadarRoute: AxiomRadarRoute,
+  GsproRoute: GsproRoute,
   AdminAxiomRadarRoute: AdminAxiomRadarRoute,
+  AdminGsproRoute: AdminGsproRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

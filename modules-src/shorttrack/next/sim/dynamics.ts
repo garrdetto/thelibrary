@@ -13,7 +13,7 @@ import type { World } from './world'
  * - banking from the true surface normal: the normal load and the inward pull come from the in-plane force
  *   balance, which at the limit reproduces the classic `aMaxAt` exactly;
  * - aero drag and rear-biased downforce, drafting and side-draft;
- * - a dirt surface with a lower, broader tire peak and longer relaxation;
+ * - a dirt surface with separate front and rear tires, a slower steering wind-on and wheelspin, so the tail slides;
  * - damage feeding back into grip (sides), power and aero (nose and tail).
  * Every quantity is per unit mass, like the classic model, so the engine and drag numbers carry over.
  */
@@ -45,9 +45,17 @@ export type Dyn = {
 }
 
 const GEO = { a: 1.38, b: 1.42, track: 1.66, h: 0.45, iz: 2.3 }
-const TIRE = {
-  asphalt: { B: 10, C: 1.45, E: -0.4, sigma: 0.45, loadSens: 0.1 },
-  dirt: { B: 6, C: 1.25, E: -1.2, sigma: 0.8, loadSens: 0.06 },
+const TIRE = { B: 10, C: 1.45, E: -0.4, sigma: 0.45, loadSens: 0.1 }
+/**
+ * Dirt handling: the steering winds on more slowly and the fronts build their grip over a longer distance, the rears
+ * hold less than the fronts and fall away past their peak, and throttle beyond what the rears can put down spins
+ * them and costs them side grip, so the car rotates by sliding its tail. `grip` keeps the AI lap times on the
+ * classic traces.
+ */
+export const DIRT_TUNE = {
+  front: { B: 5, C: 1.25, E: -1.2, sigma: 1.2, loadSens: 0.06 },
+  rear: { B: 7, C: 1.4, E: -0.5, sigma: 0.8, loadSens: 0.06 },
+  grip: 1.2, frontGrip: 1.05, rearGrip: 0.8, steer: 0.9, ramp: 0.6, wheelspin: 0.35,
 }
 const AERO = { downforce: 0.0011, rearShare: 0.6 }
 /** Fitted so each track's AI lap times land on the classic ones (`tests/physics.test.ts`). */
@@ -87,13 +95,13 @@ function airflow(w: World, c: SimCar): { drag: number; side: number; draft: numb
 }
 
 export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap: number | null): void {
-  const CFG = w.cfg, T = w.track, DIRT = T.dirt, tire = DIRT ? TIRE.dirt : TIRE.asphalt
+  const CFG = w.cfg, T = w.track, DIRT = T.dirt
   const d = (c.dyn ??= newDyn())
   // the classic contact kicks were tuned for its own quickly-decaying spin; here they become real yaw rate
   d.r += (c.av - d.avOut) * NEXT_TUNE.kick
   const tgt = clamp(ctl.steer, -1, 1)
   const growing = Math.abs(tgt) > Math.abs(c.steer) && (Math.sign(tgt) === Math.sign(c.steer) || c.steer === 0)
-  c.steerV = (c.steerV || 0) + ((tgt - c.steer) * (growing ? CFG.steerRampIn : CFG.steerRampOut) - (c.steerV || 0)) * Math.min(1, dt * CFG.steerDamp)
+  c.steerV = (c.steerV || 0) + ((tgt - c.steer) * (growing ? CFG.steerRampIn * (DIRT ? DIRT_TUNE.ramp : 1) : CFG.steerRampOut) - (c.steerV || 0)) * Math.min(1, dt * CFG.steerDamp)
   c.steer = clamp(c.steer + c.steerV * dt, -1, 1)
   c.thr = ctl.thr ? 1 : 0
   c.brk = ctl.brk ? 1 : 0
@@ -102,7 +110,7 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
   // body axes: x forward (sh, ch); y toward where positive yaw turns the nose (ch, -sh)
   const u = c.vx * sh + c.vz * ch, v = c.vx * ch - c.vz * sh, speed = Math.hypot(c.vx, c.vz)
   const dmg = c.dmg, tp = c.tp, apron = tp.lat < -T.HW
-  const steerMax = (CFG.steerLow / (1 + Math.abs(u) * CFG.steerSpeed)) * NEXT_TUNE.steer
+  const steerMax = (CFG.steerLow / (1 + Math.abs(u) * CFG.steerSpeed)) * NEXT_TUNE.steer * (DIRT ? DIRT_TUNE.steer : 1)
   const pull = clamp((dmg.l - dmg.rt) * 0.0012, -0.15, 0.15) * Math.min(1, Math.abs(u) / 10)
   const delta = clamp(c.steer + pull, -1, 1) * steerMax
 
@@ -111,7 +119,7 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
   const nh = Math.hypot(n.x, n.z), cosT = Math.max(0.5, n.y), sinT = Math.min(0.87, nh), tanT = sinT / cosT
   const bx = nh > 1e-6 ? n.x / nh : 0, bz = nh > 1e-6 ? n.z / nh : 0
   // normal load per unit mass from the in-plane balance (last step's force toward the bottom), plus downforce
-  const muSurface = (apron ? CFG.apronGrip : CFG.grip) * NEXT_TUNE.grip * (TRACK_GRIP[w.def.rec] ?? 1) * (c.gripB || 1)
+  const muSurface = (apron ? CFG.apronGrip : CFG.grip) * NEXT_TUNE.grip * (TRACK_GRIP[w.def.rec] ?? 1) * (DIRT ? DIRT_TUNE.grip : 1) * (c.gripB || 1)
   const gripF = Math.max(0.8, 1 - 0.0012 * (dmg.l + dmg.rt) - 0.0006 * (dmg.f + dmg.r))
   const N = Math.max(0.2 * CFG.g, (CFG.g + d.fb * sinT) / cosT)
   const aeroF = Math.max(0.4, 1 - 0.004 * dmg.f), aeroR = Math.max(0.4, 1 - 0.004 * dmg.r)
@@ -156,21 +164,29 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
   const brakeShare = [NEXT_TUNE.brakeFront / 2, NEXT_TUNE.brakeFront / 2, (1 - NEXT_TUNE.brakeFront) / 2, (1 - NEXT_TUNE.brakeFront) / 2]
   const caps = [0, 0, 0, 0], fys = [0, 0, 0, 0], uws = [0, 0, 0, 0], vws = [0, 0, 0, 0], css = [1, 1, 1, 1], sns = [0, 0, 0, 0]
   for (let i = 0; i < 4; i++) {
-    const [px, py] = pos[i], steerI = i < 2 ? delta : 0
+    const [px, py] = pos[i], steerI = i < 2 ? delta : 0, ti = DIRT ? (i < 2 ? DIRT_TUNE.front : DIRT_TUNE.rear) : TIRE
     const ui = u - d.r * py, vi = v + d.r * px
     const cs = Math.cos(steerI), sn = Math.sin(steerI)
     const uw = ui * cs + vi * sn, vw = -ui * sn + vi * cs
     const target = Math.atan2(vw, Math.max(Math.abs(uw), 3))
-    d.alpha[i] += (target - d.alpha[i]) * Math.min(1, (Math.max(Math.abs(uw), 1) * dt) / tire.sigma)
-    const mu = muSurface * gripF * Math.max(0.6, 1 - tire.loadSens * (fz[i] / Math.max(fz0, 1e-3) - 1))
-    caps[i] = mu * fz[i] * (i >= 2 ? NEXT_TUNE.rearGrip : 1)
-    fys[i] = -caps[i] * magic(d.alpha[i], tire)
+    d.alpha[i] += (target - d.alpha[i]) * Math.min(1, (Math.max(Math.abs(uw), 1) * dt) / ti.sigma)
+    const mu = muSurface * gripF * Math.max(0.6, 1 - ti.loadSens * (fz[i] / Math.max(fz0, 1e-3) - 1))
+    caps[i] = mu * fz[i] * (i >= 2 ? (DIRT ? DIRT_TUNE.rearGrip : NEXT_TUNE.rearGrip) : DIRT ? DIRT_TUNE.frontGrip : 1)
+    fys[i] = -caps[i] * magic(d.alpha[i], ti)
     uws[i] = uw
     vws[i] = vw
     css[i] = cs
     sns[i] = sn
   }
   const spare = (i: number) => Math.sqrt(Math.max(0, caps[i] * caps[i] - fys[i] * fys[i]))
+  if (DIRT && drive > 0) {
+    const excess = drive - 0.97 * (spare(2) + spare(3))
+    if (excess > 0) {
+      const loss = 1 - DIRT_TUNE.wheelspin * Math.min(1, excess / Math.max(1e-6, caps[2] + caps[3]))
+      fys[2] *= loss
+      fys[3] *= loss
+    }
+  }
   const driveAvail = 0.97 * (spare(2) + spare(3))
   const driveUsed = drive > 0 ? Math.min(drive, driveAvail) : drive
   let Fx = 0, Fy = 0, Mz = 0, slip = 0

@@ -143,6 +143,7 @@
     const name = scriptName(url)
     noteShape('worker', `${name} started`, () => ({}))
     worker.addEventListener('message', event => {
+      kickPoll()
       const data = event.data
       if (data?.type !== 'OUTPUT_BATCH' || !Array.isArray(data.messages)) {
         noteShape('worker', `${name} ${typeof data?.type === 'string' ? data.type.slice(0, 60) : typeof data}`, () => data)
@@ -268,6 +269,9 @@
   let pollBusy = false
   let pollFailures = 0
   let pollPausedUntil = 0
+  let pollKickedAt = 0
+  const pollStats = { sent: 0, ok: 0, failed: 0, status: 0 }
+  const sharePollStats = () => window.postMessage({ source: 'axiom-radar-bridge-poll-stats', ...pollStats, mints: pollMints.length, hidden: document.hidden }, window.location.origin)
   const learnHost = url => {
     try {
       const parsed = new URL(url, location.href)
@@ -285,17 +289,21 @@
     const due = pollMints.map(mint => ({ mint, plan: pollPlan.get(mint) ?? { dueAt: 0, newest: 0 } })).filter(item => item.plan.dueAt <= now).sort((first, second) => first.plan.dueAt - second.plan.dueAt)[0]
     if (!due) return
     pollBusy = true
+    pollStats.sent += 1
     const url = `https://${apiHost.value}/transactions-feed?tokenAddress=${due.mint}&sortDirection=desc`
     try {
       const response = await nativeFetch.call(window, url, { credentials: 'include' })
       const body = await response.text()
+      pollStats.status = response.status
       if (!response.ok) {
+        pollStats.failed += 1
         pollFailures += 1
         pollPausedUntil = Date.now() + Math.min(120000, 5000 * 2 ** Math.min(pollFailures, 5))
         pollPlan.set(due.mint, { dueAt: Date.now() + 30000, newest: due.plan.newest })
         return
       }
       pollFailures = 0
+      pollStats.ok += 1
       let rows = []
       try { rows = JSON.parse(body) } catch { }
       const times = Array.isArray(rows) ? rows.map(row => Date.parse(row?.createdAt)).filter(Number.isFinite) : []
@@ -305,12 +313,21 @@
       pollPlan.set(due.mint, { dueAt: Date.now() + wait, newest: Math.max(due.plan.newest, ...times, 0) })
       if (fresh || !due.plan.newest) shareApi(url, response.status, body, true)
     } catch {
+      pollStats.failed += 1
+      pollStats.status = -1
       pollPlan.set(due.mint, { dueAt: Date.now() + 30000, newest: due.plan.newest })
     } finally {
       pollBusy = false
+      sharePollStats()
     }
   }
-  setInterval(() => { void pollOnce() }, pollGapMs)
+  const kickPoll = () => {
+    const now = Date.now()
+    if (now - pollKickedAt < pollGapMs) return
+    pollKickedAt = now
+    void pollOnce()
+  }
+  setInterval(kickPoll, pollGapMs)
   const NativeXhr = window.XMLHttpRequest
   if (NativeXhr && !NativeXhr.prototype.axiomRadarWrapped) {
     const nativeOpen = NativeXhr.prototype.open
@@ -380,7 +397,7 @@
   }
   function RadarWebSocket(...args) {
     const socket = new Native(...args)
-    socket.addEventListener('message', event => handle(socket.url, event.data))
+    socket.addEventListener('message', event => { kickPoll(); handle(socket.url, event.data) })
     return socket
   }
   RadarWebSocket.prototype = Native.prototype

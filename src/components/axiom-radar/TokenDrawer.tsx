@@ -162,7 +162,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
         {live.advice.rebuyReasons.length > 0 && <ul className="radar-learn-list">{live.advice.rebuyReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
       </section>}
 
-      {(live.outlook || live.explode || live.maker) && <section className="radar-drawer-section radar-drawer-learned">
+      {(live.outlook || live.explode || live.maker || live.tierMatch) && <section className="radar-drawer-section radar-drawer-learned">
         <h3>What the learner sees <small>from past coins like this one</small></h3>
         <dl className="radar-facts">
           <div><dt>Chance to double</dt><dd className="tabular">{chanceLabel(live.outlook?.runnerChance)}</dd></div>
@@ -171,7 +171,10 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div><dt>Chance to explode</dt><dd className="tabular">{live.explode ? chanceLabel(live.explode.chance) : '—'}</dd></div>
           <div><dt>Match to past winners</dt><dd className="tabular">{chanceLabel(live.maker?.chance)}</dd></div>
           <div><dt>Winner wallets in</dt><dd className="tabular">{live.maker?.winnerWallets ?? '—'}</dd></div>
+          <div><dt>Looks like tier</dt><dd className="tabular">{live.tierMatch ? `${live.tierMatch.tier} of 20 (expected ${live.tierMatch.expectedTier})` : '—'}</dd></div>
+          <div><dt>Chance of a bottom-5 tier</dt><dd className="tabular">{live.tierMatch ? chanceLabel(live.tierMatch.risk) : '—'}</dd></div>
         </dl>
+        {live.tierMatch && <p className="radar-learn-timing">Tier score {live.tierMatch.score} of 100, matched against {live.tierMatch.coins.toLocaleString()} archived coins ranked from best (tier 1) to worst (tier 20).</p>}
         {outlookLine(live) && <p className="radar-learn-timing">{outlookLine(live)}</p>}
         <ReasonChips reasons={live.outlook?.reasons ?? []}/>
       </section>}

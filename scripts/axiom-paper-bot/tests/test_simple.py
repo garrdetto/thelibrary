@@ -303,3 +303,23 @@ class EngineLearningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiquidityGlitchTests(unittest.TestCase):
+    def test_a_near_empty_pool_reading_while_the_price_holds_is_ignored(self) -> None:
+        bot = SimpleHarness(**{"buy.dex_check": False, "sell.stop_loss_pct": 20})
+        bot.pull(token(priceUsd=1.0, liquidityUsd=60_000))
+        self.assertEqual(len(bot.engine.positions), 1)
+        held = bot.engine.positions[0]
+        bot.pull(token(priceUsd=1.03, liquidityUsd=0.06))
+        self.assertGreater(held.last_liquidity, 50_000)
+        sold = bot.engine.ledger.db.execute("SELECT proceeds, cost FROM positions WHERE status = 'closed'").fetchall()
+        for proceeds, cost in sold:
+            self.assertGreater(proceeds / cost, 0.9, "a glitch must not price a sale as if the pool were empty")
+
+    def test_a_real_pull_that_crashes_the_price_still_counts(self) -> None:
+        from axiom_paper.engine import liquidity_glitch
+        self.assertTrue(liquidity_glitch(422.0, 0.06, 1.0, 1.06))
+        self.assertFalse(liquidity_glitch(422.0, 0.06, 1.0, 0.2), "the price crashed too: a real pull")
+        self.assertFalse(liquidity_glitch(422.0, 300.0, 1.0, 1.0), "an ordinary drop")
+        self.assertFalse(liquidity_glitch(None, 0.06, 1.0, 1.0))

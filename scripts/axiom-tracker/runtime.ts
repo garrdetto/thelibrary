@@ -128,3 +128,15 @@ export function chunk<T>(items: T[], size: number) {
 }
 
 export const solanaAddressPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
+const base58Digits = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+/** True only for base58 text that decodes to exactly 32 bytes, the size of every Solana address. */
+export function isSolanaAddress(value: unknown): value is string {
+  if (typeof value !== 'string' || !solanaAddressPattern.test(value)) return false
+  let number = 0n
+  for (const character of value) number = number * 58n + BigInt(base58Digits.indexOf(character))
+  let size = 0
+  while (number > 0n) { size += 1; number >>= 8n }
+  for (const character of value) { if (character !== '1') break; size += 1 }
+  return size === 32
+}

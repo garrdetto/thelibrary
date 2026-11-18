@@ -1,8 +1,54 @@
 const defaultPort = 8791
+const tripWindow = 30
+const roundTrips = []
+let trackerSettings = null
 
-async function trackerPort() {
-  const { port } = await chrome.storage.local.get('port')
-  return Number(port) || defaultPort
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.port || changes.trackerUrl || changes.bridgeKey)) trackerSettings = null
+})
+
+/** Where the tracker is: `trackerUrl` (a server address) when set, otherwise the tracker on this computer at `port`. */
+async function tracker() {
+  if (trackerSettings) return trackerSettings
+  const { port, trackerUrl, bridgeKey } = await chrome.storage.local.get(['port', 'trackerUrl', 'bridgeKey'])
+  const base = String(trackerUrl ?? '').trim().replace(/\/+$/, '') || `http://127.0.0.1:${Number(port) || defaultPort}`
+  const key = String(bridgeKey ?? '').trim()
+  trackerSettings = { base, headers: key ? { Authorization: `Bearer ${key}` } : {}, remote: !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(base) }
+  return trackerSettings
+}
+
+async function trackerFetch(path, init = {}) {
+  const { base, headers } = await tracker()
+  return fetch(`${base}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } })
+}
+
+function medianTrip() {
+  if (!roundTrips.length) return null
+  const sorted = [...roundTrips].sort((first, second) => first - second)
+  return Math.round(sorted[Math.floor(sorted.length / 2)])
+}
+
+async function gzipped(text) {
+  return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()
+}
+
+/** Posts one report; to a server it goes gzip-compressed, and every post carries the median round trip of the last 30 so the tracker can show it. */
+async function postReport(report) {
+  const { remote } = await tracker()
+  const text = JSON.stringify(report)
+  const headers = { 'Content-Type': 'application/json' }
+  const trip = medianTrip()
+  if (trip !== null) headers['X-Bridge-Rtt'] = String(trip)
+  let body = text
+  if (remote && text.length > 1024) {
+    body = await gzipped(text)
+    headers['Content-Encoding'] = 'gzip'
+  }
+  const started = performance.now()
+  const response = await trackerFetch('/extension/report', { method: 'POST', headers, body })
+  roundTrips.push(performance.now() - started)
+  if (roundTrips.length > tripWindow) roundTrips.shift()
+  return response
 }
 
 const pinnedTabs = new Set()
@@ -13,7 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void (async () => {
     if (Date.now() - pollList.at > 5000) {
       try {
-        const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/status`)
+        const response = await trackerFetch('/extension/status')
         const { tracked = [] } = await response.json()
         pollList = { at: Date.now(), mints: tracked.map(item => item.mint).filter(Boolean).slice(0, 60) }
       } catch {
@@ -39,11 +85,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
   void (async () => {
     try {
-      const send = async report => fetch(`http://127.0.0.1:${await trackerPort()}/extension/report`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(report),
-      })
+      const send = postReport
       let response = await send(message.report)
       if (response.status === 400 && (message.report?.stats || message.report?.pulse || message.report?.api || message.report?.streams || message.report?.lists || message.report?.probe || message.report?.digest || message.report?.discover || message.report?.tabs)) {
         const { stats, pulse, api, streams, lists, probe, digest, discover, tabs, ...plain } = message.report
@@ -51,9 +93,9 @@ chrome.runtime.onMessage.addListener((message, sender) => {
       }
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`)
-      await chrome.storage.local.set({ lastSentAt: Date.now(), lastMatched: result.matched ?? 0, lastError: null })
+      await chrome.storage.local.set({ lastSentAt: Date.now(), lastMatched: result.matched ?? 0, lastError: null, lastTripMs: medianTrip() })
     } catch (error) {
-      await chrome.storage.local.set({ lastError: `${error instanceof Error ? error.message : error} (is the tracker running with AXIOM_COLLECTOR=extension?)`, lastErrorAt: Date.now() })
+      await chrome.storage.local.set({ lastError: `${error instanceof Error ? error.message : error} (is the tracker running with AXIOM_COLLECTOR=extension, and are its address and key right?)`, lastErrorAt: Date.now() })
     }
   })()
 })
@@ -82,7 +124,7 @@ async function runWatchJob(tabId, job) {
   }
   if (onShow?.tabId === tabId) onShow = { ...onShow, awaitingFigures: false, gotFigures: true }
   const ok = Boolean(answer?.done && answer.ok)
-  await fetch(`http://127.0.0.1:${await trackerPort()}/extension/watchlist`, {
+  await trackerFetch('/extension/watchlist', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mint: job.mint, pairAddress: job.pairAddress, symbol: String(job.symbol ?? '').slice(0, 40), action: job.action, ok, ...(ok ? { reason: String(job.reason ?? '').slice(0, 200) } : { reason: String(answer?.reason ?? 'the star button did not load').slice(0, 200) }) }),
@@ -147,7 +189,7 @@ async function stepMissingViewers(pulseTab) {
   onShow = null
   const { cycleMissing = true, keepWatchlist = true } = await chrome.storage.local.get(['cycleMissing', 'keepWatchlist'])
   if (!cycleMissing && !keepWatchlist) return
-  const response = await fetch(`http://127.0.0.1:${await trackerPort()}/extension/status`)
+  const response = await trackerFetch('/extension/status')
   const { missing = [], stale = [], visit = [], watchlist = null } = await response.json()
   const job = keepWatchlist ? nextWatchJob(watchlist, now) : null
   if (job) {

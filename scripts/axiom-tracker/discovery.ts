@@ -1,7 +1,7 @@
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { bestPairByMint, fetchDiscoverySources, fetchPairsForMints, readMarket, socialsOf, type DexPair } from './dexscreener.js'
 import { jupiterMoverMints } from './jupiter.js'
-import { createLogger, isMainModule, runLoop, trackerConfig } from './runtime.js'
+import { createLogger, isMainModule, isSolanaAddress, runLoop, trackerConfig } from './runtime.js'
 import { activeBotClimb, trackerState } from './state.js'
 import { radarSettings } from './settings-store.js'
 import { applyPulseMarket, noteDexMarket, pairFromPulse } from './pulse-market.js'
@@ -69,6 +69,7 @@ function upsertTokens(database: TrackerDatabase, pairs: DexPair[], boosted: Set<
   `)
   database.transaction(() => {
     for (const pair of pairs) {
+      if (!isSolanaAddress(pair.baseToken.address) || !isSolanaAddress(pair.pairAddress)) continue
       statement.run({
         mint: pair.baseToken.address,
         pairAddress: pair.pairAddress,

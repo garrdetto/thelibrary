@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { abandonIfHung, fetchJson } from './runtime.js'
+import { abandonIfHung, fetchJson, isSolanaAddress } from './runtime.js'
 
 const never = () => new Promise<never>(() => { })
 
@@ -70,4 +70,12 @@ test('the slim payload keeps score ledgers only for the top-scored coins', async
   const slim = slimPayload({ tokens: [coin('a', 10), coin('b', 90), coin('c', 50)] } as never, 2)
   const ledgers = Object.fromEntries(slim.tokens.map(token => [token.mint, Boolean(token.scoreLedger)]))
   assert.deepEqual(ledgers, { a: false, b: true, c: true })
+})
+
+test('isSolanaAddress accepts only base58 text that decodes to 32 bytes', () => {
+  assert.equal(isSolanaAddress('4KhoLL3YTPUYGeTta8nieEqdJ7CuPzvCjiNYeK8Vpump'), true)
+  assert.equal(isSolanaAddress('So11111111111111111111111111111111111111112'), true)
+  assert.equal(isSolanaAddress('x2ZFJXb1hGSGaMaG96fYSFhE9jkZuPgJp2gYR'), false)
+  assert.equal(isSolanaAddress('not an address'), false)
+  assert.equal(isSolanaAddress(null), false)
 })
