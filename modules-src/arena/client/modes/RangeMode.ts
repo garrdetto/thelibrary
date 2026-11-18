@@ -17,7 +17,7 @@ import type { ActiveMode, ModeContext } from './types'
 
 const BOARD = 'arena-range'
 const RUN_SECONDS = 60
-const TARGET_HEALTH = 36
+const TARGET_HEALTH = 21
 const MAX_UP = 3
 const RISE = 0.22
 

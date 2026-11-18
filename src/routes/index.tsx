@@ -16,6 +16,7 @@ import { LapRecordBoard } from '@/components/LapRecordBoard'
 import { FairwayRecordBoard } from '@/components/FairwayRecordBoard'
 import { RackReelRecordBoard } from '@/components/RackReelRecordBoard'
 import { DartsRecordBoard } from '@/components/DartsRecordBoard'
+import { ArenaDuelBoard } from '@/components/ArenaDuelBoard'
 import { AnglerRecordBoard } from '@/components/AnglerRecordBoard'
 import { ModuleScoreboard } from '@/components/ModuleScoreboard'
 import { ModuleScoreTabs } from '@/components/ModuleScoreTabs'
@@ -508,6 +509,7 @@ function Studio() {
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
         {activePlay?.id === 'rackreel' && <RackReelRecordBoard/>}
         {activePlay?.id === 'darts' && <DartsRecordBoard/>}
+        {activePlay?.id === 'arena' && <ArenaDuelBoard/>}
         {activePlay?.id === 'angler' && <AnglerRecordBoard/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {activePlay && !isScoredModule(activePlay.id) && hasScoreBoard(activePlay.id) && <ModuleScoreTabs key={activePlay.id} moduleId={activePlay.id} username={access.username}/>}

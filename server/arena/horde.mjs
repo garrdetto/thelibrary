@@ -2,7 +2,7 @@ import { WEAPONS } from './weapons.mjs'
 
 export const HORDE = Object.freeze({
   ammo: 2000,
-  raiderHealth: 64,
+  raiderHealth: 40,
   batDamage: 20,
   reach: 1.55,
   windup: 0.42,

@@ -22,7 +22,7 @@ export const WEAPONS = Object.freeze({
     id: 'battle',
     name: 'Battle Rifle',
     mode: 'burst',
-    damage: 12,
+    damage: 7,
     headMultiplier: 2,
     roundInterval: 0.07,
     burst: 3,
