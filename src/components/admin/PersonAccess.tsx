@@ -116,7 +116,7 @@ export function PersonAccess({ account, viewerIsOwner, busy, onBack, onSave, onS
         <Toggle checked={account.isOwner || has(RADAR_GRANT)} disabled={account.isOwner || !viewerIsOwner} label={account.isOwner || has(RADAR_GRANT) ? 'Can open the Axiom Radar' : 'No access'} onChange={value => set(RADAR_GRANT, value)}/>
       </Group>
 
-      <Group icon={<ListMusic size={16}/>} title="Music player" help="A player in the bottom-left corner that keeps playing as they move around the site. It starts on its own once their browser allows sound, usually after their first click.">
+      <Group icon={<ListMusic size={16}/>} title="Music player" help="A player in the bottom-left corner that keeps playing as they move around the site: your uploaded tracks plus live Wisconsin radio stations. It starts on its own once their browser allows sound, usually after their first click.">
         <Toggle checked={has(MUSIC_GRANT)} label={has(MUSIC_GRANT) ? 'Music player on' : 'Music player off'} detail={has(MUSIC_GRANT) ? (chooseTracks && pickedTracks.length ? `${pickedTracks.length} chosen track${pickedTracks.length === 1 ? '' : 's'}` : 'Every track, in playlist order') : undefined} onChange={value => set(MUSIC_GRANT, value)}/>
         {has(MUSIC_GRANT) && <div className="adm-music-choice">
           <div className="adm-segment" role="group" aria-label="Which tracks">

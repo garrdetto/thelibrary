@@ -2349,3 +2349,37 @@ body:has(.radar-tab) .music-player{bottom:56px}
 .adm-listeners small{font-size:13.5px;color:var(--lib-muted)}
 .adm-track-tools button:focus-visible,.adm-track-play:focus-visible,.adm-listeners button:focus-visible{outline:2px solid var(--lib-accent);outline-offset:2px}
 @media (max-width:760px){.adm-music-cols{grid-template-columns:1fr}.adm-person-badges{display:none}}
+.music-source{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:var(--lib-chip)}
+.music-source button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:32px;border:0;border-radius:9px;background:transparent;color:var(--lib-muted);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.music-source button:hover{color:var(--lib-text)}
+.music-source button.is-active{background:var(--lib-panel);color:var(--lib-strong);box-shadow:0 1px 4px -1px var(--lib-shadow,rgba(0,0,0,.35))}
+.music-source button.is-active svg{color:var(--lib-accent)}
+.music-live{display:inline-block;margin-right:6px;padding:1px 6px;border-radius:5px;background:var(--lib-chip);color:var(--lib-muted);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;vertical-align:1px}
+.music-live.is-on{background:#e5484d;color:#fff}
+.radio-current{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid var(--lib-line);border-radius:12px;background:var(--lib-panel2,var(--lib-chip));color:var(--lib-text);font:inherit;text-align:left;cursor:pointer}
+.radio-current:hover{border-color:color-mix(in srgb,var(--lib-accent) 50%,var(--lib-line))}
+.radio-current>svg{flex:none;color:var(--lib-accent)}
+.radio-current>span:first-of-type{display:grid;flex:1;min-width:0}
+.radio-current strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14.5px;color:var(--lib-strong)}
+.radio-current small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--lib-muted)}
+.radio-change{display:inline-flex;align-items:center;gap:3px;flex:none;font-size:12.5px;font-weight:700;color:var(--lib-accent)}
+.radio-current[aria-expanded=true] .radio-change svg{transform:rotate(180deg)}
+.radio-picker{display:grid;gap:8px;padding:8px;border:1px solid var(--lib-line);border-radius:12px;background:var(--lib-bg)}
+.radio-picker-head{display:flex;align-items:center;gap:6px}
+.radio-search{display:flex;align-items:center;gap:6px;flex:1;min-width:0;padding:0 10px;border:1px solid var(--lib-line);border-radius:9px;background:var(--lib-input,var(--lib-panel));color:var(--lib-muted)}
+.radio-search:focus-within{border-color:var(--lib-accent)}
+.radio-search input{flex:1;min-width:0;min-height:34px;border:0;background:transparent;color:var(--lib-text);font:inherit;font-size:14px;outline:none}
+.radio-list{display:grid;gap:8px;max-height:min(300px,40dvh);overflow:auto;overscroll-behavior:contain}
+.radio-list h3{position:sticky;top:0;z-index:1;margin:0;padding:4px 6px;background:var(--lib-bg);font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--lib-dim)}
+.radio-list ul{display:grid;gap:2px;margin:0;padding:0;list-style:none}
+.radio-list button{display:flex;align-items:center;gap:10px;width:100%;padding:6px;border:0;border-radius:9px;background:transparent;color:var(--lib-text);font:inherit;text-align:left;cursor:pointer}
+.radio-list button:hover{background:var(--lib-chip)}
+.radio-list button[aria-current]{background:var(--adm-accent-soft,color-mix(in srgb,var(--lib-accent) 14%,transparent))}
+.radio-list button[aria-current] .radio-dial{background:var(--lib-accent);color:var(--lib-on-accent)}
+.radio-dial{display:grid;place-items:center;flex:none;width:52px;min-height:36px;padding:2px;border-radius:8px;background:var(--lib-chip);font-size:13px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums;color:var(--lib-strong);text-align:center}
+.radio-dial small{font-size:9.5px;font-weight:700;opacity:.75}
+.radio-name{display:grid;min-width:0}
+.radio-name strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:650}
+.radio-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--lib-muted)}
+.radio-current:focus-visible,.radio-list button:focus-visible,.music-source button:focus-visible{outline:2px solid var(--lib-accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.radio-current[aria-expanded=true] .radio-change svg{transform:none}}
