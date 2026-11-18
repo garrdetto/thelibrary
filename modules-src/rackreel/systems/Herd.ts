@@ -1,4 +1,5 @@
-export const HERD_SIZE = 8
+/** Animals kept on the property at once: 12 is 50 % more deer than the old 8. */
+export const HERD_SIZE = 12
 export const HERD_SPAWN_MIN = 90
 export const HERD_SPAWN_MAX = 260
 export const HERD_DESPAWN = 380
