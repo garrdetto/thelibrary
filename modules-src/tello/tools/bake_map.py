@@ -1644,6 +1644,12 @@ EXTRA_PLACES = [
     {'name': 'Napralla Tire', 'xz': (1661.5, 346.5), 'r': 12, 'k': 'shop', 't': 'shop:tyres', 'tags': {'shop': 'tyres'}},
 ]
 
+# Front doors read off the photos where the nearest street is the wrong one: Foxtails' entry vestibule faces 16th Road
+# (its east wall), though Fern Drive passes nearer its back. `d` is x, z and the heading out, `b` the spot behind it.
+PLACE_DOORS = {
+    "Foxtails Gentlemen's Club": {'d': [1695.2, 432.3, 1.461], 's': '16th Road', 'b': [1677.0, 430.0]},
+}
+
 # Parking lots the open data lacks, outlined by eye on the NAIP aerial photo (map metres, accurate to a few metres):
 # the school complex, St John's Lutheran School, Freitag's Food Center and Foxtails (its lot between the club and 16th Road).
 EXTRA_LOTS = [
@@ -1979,6 +1985,9 @@ def main():
     link = link_road(roads)
     exits = road_exits(roads, play, link)
     doors(pois, buildings, roads)
+    for p in pois:
+        if p['n'] in PLACE_DOORS and 'd' in p:
+            p.update({k: list(v) if isinstance(v, list) else v for k, v in PLACE_DOORS[p['n']].items()})
     homes = home_doors(buildings, roads)
     step('places')
 
