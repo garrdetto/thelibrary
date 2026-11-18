@@ -129,7 +129,7 @@ export function courseShotsFromRound(rows, seenAt) {
 
 /** The Windows Startup-folder launcher: starts the bridge minimised, with its saved settings, when you sign in. */
 export function startupScript(nodePath, scriptPath) {
-  return ['@echo off', `cd /d "${path.dirname(scriptPath)}"`, `start "GSPro Bridge" /min "${nodePath}" "${scriptPath}"`, ''].join('\r\n')
+  return ['@echo off', `cd /d "${path.win32.dirname(scriptPath)}"`, `start "GSPro Bridge" /min "${nodePath}" "${scriptPath}"`, ''].join('\r\n')
 }
 
 /** Club names and static lofts from ProTee Labs' Configs/Bags file (the profile with the most clubs). */
