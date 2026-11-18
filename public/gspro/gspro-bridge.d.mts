@@ -7,3 +7,4 @@ export declare function jsonSplitter(onMessage: (message: Record<string, unknown
 export declare function roundKeyOf(rows: unknown[]): string
 export declare function courseShotsFromRound(rows: unknown[], seenAt: number): CourseShotInput[]
 export declare function parseBag(text: string): { name: string; loft: number }[]
+export declare function startupScript(nodePath: string, scriptPath: string): string

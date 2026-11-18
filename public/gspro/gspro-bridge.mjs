@@ -10,6 +10,7 @@
 //   node gspro-bridge.mjs --site https://your-site --key gsb_... --save   (first run, remembers the settings)
 //   node gspro-bridge.mjs                                                  (later runs)
 //   node gspro-bridge.mjs --test                                           (sends one sample shot to the page)
+//   node gspro-bridge.mjs --install-startup                                (start by itself when you sign in to Windows)
 
 import net from 'node:net'
 import fs from 'node:fs'
@@ -19,7 +20,7 @@ import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { StringDecoder } from 'node:string_decoder'
 
-export const VERSION = '1.1.0'
+export const VERSION = '1.2.0'
 
 export function parseArgs(argv) {
   const args = {}
@@ -126,6 +127,11 @@ export function courseShotsFromRound(rows, seenAt) {
   })
 }
 
+/** The Windows Startup-folder launcher: starts the bridge minimised, with its saved settings, when you sign in. */
+export function startupScript(nodePath, scriptPath) {
+  return ['@echo off', `cd /d "${path.dirname(scriptPath)}"`, `start "GSPro Bridge" /min "${nodePath}" "${scriptPath}"`, ''].join('\r\n')
+}
+
 /** Club names and static lofts from ProTee Labs' Configs/Bags file (the profile with the most clubs). */
 export function parseBag(text) {
   const line = String(text).split(/\r?\n/).find(item => item.startsWith('ClubProfiles='))
@@ -183,7 +189,15 @@ async function main() {
   --handed RH|LH       used until GSPro reports the player's hand
   --no-csv             do not keep a local CSV copy of relayed shots
   --save               remember these settings in ${configFile}
-  --test               send one sample shot and exit`)
+  --test               send one sample shot and exit
+  --install-startup    start the bridge automatically when you sign in to Windows
+  --uninstall-startup  stop starting it automatically`)
+    return
+  }
+
+  const startupFile = path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'GSPro Bridge.cmd')
+  if (args['uninstall-startup']) {
+    try { fs.unlinkSync(startupFile); console.log('The bridge will no longer start automatically.') } catch { console.log('The bridge was not set to start automatically.') }
     return
   }
 
@@ -191,9 +205,20 @@ async function main() {
     console.error('Set --site https://... and --key gsb_... (copy both from the Bridge tab of the GSPro Analyzer page). Add --save to remember them.')
     process.exit(1)
   }
-  if (args.save) {
+  if (args.save || args['install-startup']) {
     writeJson(configFile, config)
     console.log(`Saved settings to ${configFile}`)
+  }
+  if (args['install-startup']) {
+    if (process.platform !== 'win32') {
+      console.log(`Starting automatically is set up for Windows only. Add this to your system's login items: node "${fileURLToPath(import.meta.url)}"`)
+      return
+    }
+    fs.mkdirSync(path.dirname(startupFile), { recursive: true })
+    fs.writeFileSync(startupFile, startupScript(process.execPath, fileURLToPath(import.meta.url)))
+    console.log(`The bridge will now start by itself, minimised, each time you sign in to Windows (${startupFile}).`)
+    console.log('Run node gspro-bridge.mjs now to start it today. Remove it any time with --uninstall-startup.')
+    return
   }
 
   const log = (...parts) => console.log(`[${new Date().toLocaleTimeString()}]`, ...parts)

@@ -182,6 +182,8 @@ export function BridgeView({ bridge, online, sessions, onBridge, onSessions, onI
           <p>In a terminal in that folder, run this once. <code>--save</code> remembers the site and key, so afterwards <code>node gspro-bridge.mjs</code> is enough.</p>
           <CopyBlock text={firstRun} label="first run command"/>
           <p>To check the connection without GSPro, add <code>--test</code>: a sample drive should appear on the Live tab.</p>
+          <p><b>Upload automatically:</b> run this once and the bridge starts by itself, minimised, every time you sign in to Windows, so every round uploads without you thinking about it. Undo it with <code>--uninstall-startup</code>.</p>
+          <CopyBlock text="node gspro-bridge.mjs --install-startup" label="start automatically command"/>
         </li>
         <li>
           <h3>Play</h3>

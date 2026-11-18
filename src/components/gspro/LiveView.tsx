@@ -89,7 +89,7 @@ export function LiveView({ shots, openSession, bridge, online, onShot, onNewSess
           <b>{clubLabel(summary.club)}</b> {summary.shots} · {fmt(summary.carry?.mean ?? null, 0)} yd · {fmt(summary.ballSpeed?.mean ?? null, 0)} mph
         </span>)}
       </div>}
-      <ShotTable shots={[...(openSession?.open ? sessionShots : enriched)].reverse().slice(0, 60)} onShot={onShot}/>
+      <ShotTable id="live" shots={[...(openSession?.open ? sessionShots : enriched)].reverse().slice(0, 200)} onShot={onShot}/>
     </section>
   </div>
 }
