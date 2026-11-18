@@ -17,6 +17,8 @@ export class OnlineMode implements ActiveMode {
   private myTeam: 0 | 1 | null = null
   private code: string | null
   private disposed = false
+  private lastPhase = ''
+  private goTimer = 0
 
   constructor(private readonly ctx: ModeContext, mode: ArenaModeId, code: string | null) {
     this.id = mode
@@ -71,6 +73,8 @@ export class OnlineMode implements ActiveMode {
         ctx.setStatus(`${ARENA_MODES[welcome.room.mode].name} · ${TEAM_NAMES[welcome.team]} team${welcome.room.code ? ` · Code ${welcome.room.code}` : ''}`)
       },
       match: match => {
+        if (this.lastPhase === 'countdown' && match.phase === 'live') this.goTimer = 1
+        this.lastPhase = match.phase
         this.match = match
         this.matchClock = match.remainingMs
       },
@@ -133,7 +137,14 @@ export class OnlineMode implements ActiveMode {
     const code = this.code ? ` · Code ${this.code}` : ''
     if (!match) {
       banner.show(spec.name, `Connecting${code}`)
+      banner.countdown('')
       return
+    }
+    if (match.phase === 'countdown') {
+      const seconds = Math.ceil(this.matchClock / 1000)
+      banner.countdown(seconds > 3 ? 'Starting in…' : String(Math.max(1, seconds)))
+    } else {
+      banner.countdown(match.phase === 'live' && this.goTimer > 0 ? 'Go!' : '')
     }
     if (!spec.scoreLimit) {
       banner.show(spec.name, `${match.players} of ${match.capacity} players${code}`)
@@ -147,11 +158,11 @@ export class OnlineMode implements ActiveMode {
       const need = match.capacity - match.players
       banner.show(spec.name, `${score}${code}`)
       banner.message(this.code
-        ? `Waiting for ${need} more · share code ${this.code}`
+        ? `Practicing while you wait for ${need} more · code ${this.code}`
         : `Finding ${need === 1 ? (this.id === 'duel' ? 'an opponent' : 'one more player') : `${need} more players`}… warm up while you wait`)
     } else if (match.phase === 'countdown') {
       banner.show(spec.name, `${score}${code}`)
-      banner.message(`Match starts in ${Math.max(1, Math.ceil(this.matchClock / 1000))}`)
+      banner.message('')
     } else if (match.phase === 'live') {
       banner.show(spec.name, `${score} · ${clock(this.matchClock)}${code}`)
       banner.message('')
@@ -165,6 +176,7 @@ export class OnlineMode implements ActiveMode {
 
   update(dt: number): void {
     this.matchClock = Math.max(0, this.matchClock - dt * 1000)
+    this.goTimer = Math.max(0, this.goTimer - dt)
     this.remotes.update(dt)
     this.describe()
     const pose = this.ctx.player.pose()

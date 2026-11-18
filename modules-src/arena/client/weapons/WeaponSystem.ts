@@ -92,6 +92,7 @@ export class WeaponSystem {
   private reservePool: AmmoPool | null = null
   private readonly baseFov: number
   private readonly baseSensibility: number
+  private lookScale = 1
   private readonly ray = new Ray(Vector3.Zero(), Vector3.Forward(), 1)
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
@@ -116,6 +117,11 @@ export class WeaponSystem {
     return this.view.load()
   }
 
+  setSensitivity(scale: number): void {
+    this.lookScale = Math.min(5, Math.max(0.1, scale))
+    this.camera.angularSensibility = (this.baseSensibility / this.lookScale) * this.zoom
+  }
+
   setHooks(hooks: WeaponHooks): void {
     this.hooks = hooks
   }
@@ -126,15 +132,16 @@ export class WeaponSystem {
 
   private bindInput(): void {
     this.canvas.addEventListener('contextmenu', event => event.preventDefault())
-    this.canvas.addEventListener('pointerdown', event => {
-      if (!this.locked) return
-      if (event.button === 0) this.trigger = true
-      else if (event.button === 2) this.aim = true
-    })
-    window.addEventListener('pointerup', event => {
-      if (event.button === 0) this.trigger = false
-      else if (event.button === 2) this.aim = false
-    })
+    const syncButtons = (event: PointerEvent | MouseEvent) => {
+      if (!this.locked) { this.trigger = false; this.aim = false; return }
+      this.trigger = (event.buttons & 1) !== 0
+      this.aim = (event.buttons & 2) !== 0
+    }
+    this.canvas.addEventListener('pointerdown', syncButtons)
+    this.canvas.addEventListener('mousedown', syncButtons)
+    window.addEventListener('pointermove', syncButtons)
+    window.addEventListener('pointerup', syncButtons)
+    window.addEventListener('mouseup', syncButtons)
     window.addEventListener('blur', () => { this.trigger = false; this.aim = false })
     document.addEventListener('pointerlockchange', () => {
       if (!this.locked) { this.trigger = false; this.aim = false }
@@ -245,7 +252,7 @@ export class WeaponSystem {
     if (want && this.zoomBlend > 0.99) this.zoomBlend = 1
     const zoom = this.zoom
     this.camera.fov = zoomedFov(this.baseFov, zoom)
-    this.camera.angularSensibility = this.baseSensibility * zoom
+    this.camera.angularSensibility = (this.baseSensibility / this.lookScale) * zoom
     const scoped = this.scoped
     this.view.holder.setEnabled(this.enabled && !scoped)
     document.body.classList.toggle('scoped', scoped)

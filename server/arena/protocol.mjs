@@ -11,8 +11,8 @@ export const ARENA_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/
 
 export const ARENA_MODES = Object.freeze({
   open: Object.freeze({ id: 'open', name: 'Open Battle', capacity: ARENA_MAX_PLAYERS, scoreLimit: 0, timeLimitMs: 0 }),
-  duel: Object.freeze({ id: 'duel', name: '1v1 Duel', capacity: 2, scoreLimit: 10, timeLimitMs: 300000 }),
-  squads: Object.freeze({ id: 'squads', name: '2v2 Squads', capacity: 4, scoreLimit: 15, timeLimitMs: 420000 }),
+  duel: Object.freeze({ id: 'duel', name: '1v1 Duel', capacity: 2, scoreLimit: 5, timeLimitMs: 300000 }),
+  squads: Object.freeze({ id: 'squads', name: '2v2 Squads', capacity: 4, scoreLimit: 5, timeLimitMs: 420000 }),
 })
 
 export const ArenaEvent = Object.freeze({
