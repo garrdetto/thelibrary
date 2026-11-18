@@ -1,0 +1,8 @@
+*
+!scripts/axiom-tracker/**
+!src/lib/axiom-radar-learner.ts
+!src/lib/axiom-radar-settings.ts
+!src/lib/axiom-radar-types.ts
+scripts/axiom-tracker/node_modules
+scripts/axiom-tracker/data
+scripts/axiom-tracker/.env

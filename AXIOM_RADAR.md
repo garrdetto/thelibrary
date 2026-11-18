@@ -59,7 +59,7 @@ Axiom sits behind Cloudflare, which challenges browsers that are driven by autom
 
 ### Recommended: the Axiom Radar Bridge extension in your own Chrome
 
-1. Set `AXIOM_COLLECTOR=extension` in `.env` and restart the worker. The automated browser is not started. The tracker listens on `127.0.0.1:8791` (`AXIOM_EXTENSION_PORT`) and accepts reports only from a Chrome extension.
+1. Set `AXIOM_COLLECTOR=extension` in `.env` and restart the worker. The automated browser is not started. The tracker listens on `127.0.0.1:8791` (`AXIOM_EXTENSION_PORT`) and accepts reports only from a Chrome extension. To run the tracker on a server instead, see section 7.
 2. In Chrome, open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked**, and select the `extensions/axiom-radar-bridge` folder.
 3. Open https://axiom.trade yourself (you pass Cloudflare as a person) and keep the Pulse page or token pages open. After the bridge's files change, click its reload arrow on `chrome://extensions`. Every second the extension sends what each visible Pulse card shows (viewers, holders, dev record, holder percentages, fees, trades) to the tracker. On Pulse it only reads; its one background tab opens coin pages (see Coin page data) and, from version 1.8, clicks a coin's star to keep the Radar's picks on your Axiom watchlist (see Axiom watchlist).
 
@@ -153,6 +153,36 @@ Inside the tracker, `self-check.ts` looks every 30 seconds at the loops the Rada
 On the Radar's tracker status list, **watchdog** says when Windows last checked and the last time it had to step in, or that the task is not installed; **self-check** says every core loop is reporting.
 
 The learning needs nothing from outside either: runner alerts are followed for 4 hours and the pattern weights and alert threshold are worked out again whenever an outcome changes, the warning signs are re-tested every 15 minutes, and the research verdicts are rebuilt from the tracker's own database. All of it is arithmetic on your own data, kept in `data/axiom-tracker.db`, so it carries on across restarts.
+
+## 7. Run the tracker on a server instead of this PC
+
+The tracker can run on an always-on server, so it keeps discovering, scoring, learning and uploading to the site while your PC is off or busy. Axiom itself still has to be open in your own Chrome: Cloudflare lets you through as a person but not a server. The bridge (1.17 or later) sends what it reads to the server over the internet. While your Chrome is closed, the server keeps going on market data (DexScreener, Jupiter, GeckoTerminal, the Solana node), and the Axiom-only figures (viewers, Pulse cards, Axiom's holder percentages, Discover) come back as soon as Axiom is open again.
+
+**The server.** `scripts/axiom-tracker/server/` holds a `Dockerfile` that runs only the tracker (Node 22, `better-sqlite3`, `zod`, `tsx`; build context is the repository root) and a `railway.json` for Railway. On Railway:
+
+1. Create a service from this repository and set its config file path to `scripts/axiom-tracker/server/railway.json` (leave the root directory empty). The repository's own `railway.json` belongs to the multiplayer service; leave it alone.
+2. Add a volume mounted at `/data`. The database, settings and the tracker's other files live there (`/app/data` points at it).
+3. Set the variables: `AXIOM_BRIDGE_KEY` (a long random string, 24 characters or more), `AXIOM_RADAR_TOKEN` and `AXIOM_SITE_ORIGIN` (the same values as in your `.env`), and `HELIUS_API_KEY` or `SOLANA_RPC_URL` if you use them. `AXIOM_COLLECTOR=extension` and the database paths are already set in the image.
+4. Under Networking, generate a public domain. With a key set, the tracker listens on all addresses at Railway's `PORT` (or `AXIOM_EXTENSION_PORT`); `/health` answers without a key for Railway's health check.
+
+Any Linux server with Docker works the same way: `docker build -f scripts/axiom-tracker/server/Dockerfile -t axiom-tracker .`, then run it with `--restart unless-stopped`, `-v axiom-data:/data`, `-p 8791:8791`, the variables above, and HTTPS in front (Caddy or a Cloudflare Tunnel).
+
+**Only one tracker at a time.** Two trackers would both upload to the site and overwrite each other. Before the server's tracker starts, take the PC's out: `pnpm axiom:autostart:remove` (or the watchdog starts it again), `pm2 delete axiom-worker`, then `pm2 save` so a restart does not bring it back. The paper bot can keep running on the PC; it reads the site, not the tracker.
+
+**The bridge.** Open its popup, put the server's `https://` address in **Tracker address** and the `AXIOM_BRIDGE_KEY` in **Server key**, press **Save** and let Chrome allow sending to that address. The popup then says when it last sent and its round trip. A port number in the address field goes back to the tracker on this computer.
+
+**Security.** With `AXIOM_BRIDGE_KEY` set, every `/extension/*` call needs `Authorization: Bearer <key>` (compared in constant time); the "only from this computer" rule is turned off, because a server cannot tell. `/live/stream` and `/live/data` answer the key too, as a Bearer header or a `?key=` query for scripts. Without a key, or with one under 24 characters, the tracker listens only on `127.0.0.1` exactly as before.
+
+**Keeping it fast.**
+
+- Pick the server region nearest you. Axiom's live data comes from its US central servers, and the site sits on Cloudflare everywhere, so a US region near the Midwest keeps both legs short.
+- The **extension-intake** chip on the Radar shows two timings: *bridge round trip* (Chrome to the server and back, median and slowest 5% of the last 30 reports) and *reports handled in* (how long the server takes to take one in). A round trip under about 80 ms is good; much more than that points at the region or your home connection. If *reports handled in* climbs past a few hundred milliseconds, the server needs more CPU: the tracker uses around a third of a core, so give it at least one full core and 1 GB of memory, and turn off any sleep or scale-to-zero option.
+- Reports bigger than 1 KB go to a server gzip-compressed (a full Pulse report shrinks to a fraction), and Chrome keeps the connection open between reports (the tracker holds idle connections for 65 seconds), so there is no new connection per report.
+- Everything after intake is unchanged: the tracker's loops run every 5 seconds and the site upload every second while the Radar page is open. Uploads from a data centre to Cloudflare are usually quicker than from home.
+- The Radar page's direct 1-second feed from `127.0.0.1` only works on the PC running the tracker. With the tracker on a server, the page uses the site relay, as it does today on any other device.
+- Keep doing what keeps the bridge quick: Pulse in a visible window, the Discover tabs open, and the bridge popup's background tab switched on.
+
+To carry the learning over, copy `data/axiom-tracker.db` (stop the PC tracker first) onto the server's volume before the first start. A fresh database also works; the tracker relearns from what it sees.
 
 ## The page
 
