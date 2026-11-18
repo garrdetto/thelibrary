@@ -27,7 +27,7 @@ import { RodFx } from '../systems/FishingFx'
 import { LootTableManager, SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
 import type { Specimen } from '../systems/LootTableManager'
 import { REEL_TUNING, SWAY_TUNING, SkillCheckManager } from '../systems/SkillCheckManager'
-import { VehicleController } from '../systems/VehicleController'
+import { ATV_TUNING, VehicleController } from '../systems/VehicleController'
 import type { Vehicle } from '../systems/VehicleController'
 import { Wildlife } from '../systems/Wildlife'
 import type { Animal } from '../systems/Wildlife'
@@ -40,6 +40,7 @@ import { texturedMaterial } from '../world/TexturedMaterial'
 import type { CreatureSurface } from '../world/CreatureTextures'
 import type { FoliageKind } from '../world/FoliageTextures'
 import { Terrain, bayCoord, channelDistance } from '../world/Terrain'
+import { EJECT_SPEED_SHARE, Ejection, ejectHeading } from './Ejection'
 import { STAND_CLIMB_SECONDS, STAND_LAYOUTS, findStandSites, standSiteAt, standToWorld } from '../world/TreeStand'
 import type { StandSite } from '../world/TreeStand'
 import { buildDock, buildGround, buildSky, buildWater, findLandmarks, siteLandmarks } from '../world/World'
@@ -75,14 +76,14 @@ import { VehicleCamera } from '../systems/VehicleCamera'
 import type { RemoteBoat } from './Online'
 import { Bowfishing } from './Bowfishing'
 import { BOWBOAT, deckHeight } from './BowBoat'
-import { Clock, hourFromSearch } from '../systems/TimeOfDay'
+import { Clock, DAYLIGHT_HOUR, hourFromSearch } from '../systems/TimeOfDay'
 import { Lighting, type LightingLook } from '../world/Lighting'
 import type { ControlRow } from '../ui/Controls'
 import { buildHighway } from '../world/Highway'
 import { Weeds } from '../world/Weeds'
 
 type Tool = 'rod' | 'rifle' | 'none'
-export type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand' | 'crew' | 'bowfish'
+export type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand' | 'crew' | 'bowfish' | 'thrown'
 
 /** What a host world (Fox Lake) can reach in the running game. */
 export interface GameHost {
@@ -311,6 +312,8 @@ export class Game {
   private lastRightAt = 0
   private ads = 0
   private crouch = false
+  /** Thrown through the UTV's windshield by a tree (mode `thrown`). */
+  private thrown: Ejection | null = null
   private playing = false
   private headingOut = false
   private pauseMenu!: PauseMenu
@@ -375,6 +378,11 @@ export class Game {
   private dockMesh: AbstractMesh | null = null
   private dockEnd = new Vector3()
   private readonly clock = new Clock(hourFromSearch(location.search) ?? undefined)
+  /** Standalone Rack & Reel stays in daylight except on a night bowfishing tour (`?hour=` lets the clock run for testing). */
+  private get holdsDaylight(): boolean {
+    return !this.ext && !this.options.bowfishAnyHour && !this.testHour
+  }
+  private readonly testHour = hourFromSearch(location.search) !== null
   private lighting!: Lighting
   private weeds!: Weeds
   private bowfish!: Bowfishing
@@ -905,8 +913,11 @@ export class Game {
         if (greeting) this.hud.toast(greeting)
         return
       }
-      const d = this.stand.tree.subtract(this.foot)
-      this.hud.toast(`${this.stands.filter((st) => st.kind === 'ladder').length} ladder stands and a box blind are marked on the map; the nearest is ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
+      const nearest = this.stands.reduce((a, b) => (Vector3.DistanceSquared(a.tree, this.foot) <= Vector3.DistanceSquared(b.tree, this.foot) ? a : b))
+      const d = nearest.tree.subtract(this.foot)
+      const ladders = this.stands.filter((st) => st.kind === 'ladder').length
+      const blinds = this.stands.length - ladders
+      this.hud.toast(`${ladders} ladder stands and ${blinds === 1 ? 'a box blind' : `${blinds} box blinds`} are marked on the map; the nearest is ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
     }
     document.getElementById('start-btn')!.addEventListener('click', () => void start())
     document.getElementById('book-btn')!.addEventListener('click', () => this.showRecords(() => undefined))
@@ -1218,7 +1229,7 @@ export class Game {
   private setTool(tool: Tool): void {
     this.scopeLock = false
     if (this.fishing.busy && tool !== 'rod') this.fishing.cancel()
-    if ((this.vehicles.active || this.mode === 'crew') && tool === 'rifle') {
+    if ((this.vehicles.active || this.mode === 'crew' || this.mode === 'thrown') && tool === 'rifle') {
       this.hud.toast('Unload and step out before using the rifle.', 'warn')
       return
     }
@@ -1233,7 +1244,7 @@ export class Game {
   }
 
   private interact(): void {
-    if (this.mode === 'climb' || this.mode === 'bowfish') return
+    if (this.mode === 'climb' || this.mode === 'bowfish' || this.mode === 'thrown') return
     if (this.mode === 'foot' && this.ext?.interact?.()) return
     if (this.mode === 'foot' && this.bowfish.nearCamp(this.foot)) {
       if (this.fishing.busy) this.fishing.cancel()
@@ -1299,6 +1310,48 @@ export class Game {
       this.climbT = 0
       this.crouch = false
     }
+  }
+
+  /** A tree hit in the UTV at half its top speed or more sends the driver through the windshield. */
+  private checkTreeCrash(): void {
+    const hit = this.vehicles.treeHit
+    this.vehicles.treeHit = null
+    if (!hit || hit.vehicle !== this.utvVehicle || this.mode !== 'vehicle' || this.vehicles.active !== hit.vehicle) return
+    if (hit.speed < ATV_TUNING.maxForward * hit.vehicle.power * EJECT_SPEED_SHARE) return
+    const v = hit.vehicle
+    const seat = this.vehicles.localToWorld(v, v.seat)
+    const heading = ejectHeading(v.heading, v.position, hit.trunk)
+    if (this.fishing.busy) this.fishing.cancel()
+    this.vehicles.release()
+    this.avatar.root.parent = null
+    this.deckSeat = null
+    this.crouch = false
+    this.velocity.setAll(0)
+    this.facing = heading
+    this.thrown = new Ejection(seat, heading, hit.speed, {
+      groundAt: (x, z) => Math.max(this.terrain.heightAt(x, z), this.ext?.floorAt?.(x, z) ?? -10),
+      blocked: (x, z) => this.terrain.depthAt(x, z) > 0.5 || !this.terrain.inBounds(x, z) || this.ctx.queryTrunks(x, z, 0.35).some((t) => Math.hypot(t.x - x, t.z - z) < t.r + 0.35),
+    })
+    this.mode = 'thrown'
+    this.audio.whoosh()
+    this.hud.toast('You hit a tree and went right through the windshield!', 'warn')
+  }
+
+  /** Flying, rolling and getting back up after a tree crash; on foot again once standing. */
+  private tumble(dt: number): void {
+    this.moveSpeed = 0
+    const t = this.thrown
+    if (t) t.step(dt)
+    if (t) {
+      const g = t.ground
+      this.foot.set(g.x, g.y, g.z)
+    }
+    if (t && !t.done) return
+    this.thrown = null
+    this.mode = 'foot'
+    this.foot.y = this.terrain.heightAt(this.foot.x, this.foot.z)
+    this.velocity.setAll(0)
+    this.restoreCarried()
   }
 
   private nearLadder(): StandSite | null {
@@ -1830,7 +1883,12 @@ export class Game {
     const engine = this.ctx.engine
     const dt = Math.min(0.05, engine.getDeltaTime() / 1000)
     this.time += dt
-    if (this.playing && !this.ext?.drivesClock) this.clock.advance(dt)
+    if (this.holdsDaylight && !this.bowfish?.nightTour) {
+      if (this.clock.hour !== DAYLIGHT_HOUR) {
+        this.clock.set(DAYLIGHT_HOUR)
+        this.lighting.update(true)
+      }
+    } else if (this.playing && !this.ext?.drivesClock) this.clock.advance(dt)
     this.ext?.update?.(dt)
     this.lighting.update()
     this.hud.setClock(this.clock.label)
@@ -1864,6 +1922,7 @@ export class Game {
     input.brake = this.keys.has('Space')
     input.down = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
     this.vehicles.update(dt, input)
+    this.checkTreeCrash()
     const driven = this.mode === 'vehicle' && !this.onDeck ? this.vehicles.active : null
     if (driven && !driven.anchored) cam.rotation.y = this.driveCam.follow(cam.rotation.y, driven.heading, dt)
     else this.driveCam.release()
@@ -1899,6 +1958,7 @@ export class Game {
       this.walk(dt, active, sprint)
       this.checkDrowning()
     } else if (this.mode === 'climb') this.climb(dt)
+    else if (this.mode === 'thrown') this.tumble(dt)
     else if (this.mode === 'vehicle' && v) this.moveSpeed = Math.abs(v.speed)
     else if (this.mode !== 'crew') this.moveSpeed = 0
     if (bowfishing && this.fishing.busy) this.fishing.cancel()
@@ -2107,6 +2167,12 @@ export class Game {
       this.foot.copyFrom(Vector3.TransformCoordinates(seat, parent.computeWorldMatrix(true))).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
     } else if (this.mode === 'vehicle' || this.mode === 'crew') {
       stance = 'sit'
+    } else if (this.mode === 'thrown' && this.thrown) {
+      const t = this.thrown
+      root.rotationQuaternion = null
+      root.rotation.set(t.pitch, t.facing, 0)
+      const lean = Math.sin(t.pitch) * HIP_HEIGHT
+      root.position.set(t.hip.x - Math.sin(t.facing) * lean, t.hip.y - Math.cos(t.pitch) * HIP_HEIGHT, t.hip.z - Math.cos(t.facing) * lean)
     } else {
       root.rotationQuaternion = null
       root.rotation.set(0, this.facing, 0)
@@ -2127,7 +2193,7 @@ export class Game {
     const v = this.vehicles.active
     const st = this.fishing.state
     let hands: AvatarHands = 'free'
-    if (stance === 'climb') hands = 'free'
+    if (stance === 'climb' || this.mode === 'thrown') hands = 'free'
     else if (this.mode === 'vehicle' && v && this.deckSeat === null && (v.kind === 'ATV' || !this.fishing.busy && (Math.abs(v.speed) > 1.2 || this.tool !== 'rod'))) hands = 'wheel'
     else if (this.mode === 'crew' && !this.fishing.busy && (this.crewBoat?.speed ?? 0) > 1.2) hands = 'free'
     else if (this.tool === 'rifle') hands = this.aimHeld && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
@@ -2141,7 +2207,7 @@ export class Game {
       stance,
       hands,
       speed: this.mode === 'foot' ? this.moveSpeed : 0,
-      crouch: this.crouch && this.mode === 'foot',
+      crouch: (this.crouch && this.mode === 'foot') || (this.mode === 'thrown' && (this.thrown?.tucked ?? false)),
       castPower: st === 'charging' ? this.fishing.power : 0,
       aimPitch: this.ctx.camera.rotation.x,
       climbPhase: this.climbT * 9,
@@ -2156,8 +2222,8 @@ export class Game {
     const v = this.vehicles.active
     const inStand = this.mode === 'stand' || this.mode === 'climb'
     const crewSlow = this.mode !== 'crew' || this.fishing.busy || (this.crewBoat?.speed ?? 0) < 1.2
-    const showRod = this.mode !== 'bowfish' && this.tool === 'rod' && !inStand && crewSlow && (!v || (v.kind === 'BOAT' && (this.fishing.busy || Math.abs(v.speed) < 1.2)))
-    const showRifle = this.tool === 'rifle' && this.mode !== 'bowfish' && this.mode !== 'vehicle' && this.mode !== 'crew' && this.mode !== 'climb' && this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson)
+    const showRod = this.mode !== 'bowfish' && this.mode !== 'thrown' && this.tool === 'rod' && !inStand && crewSlow && (!v || (v.kind === 'BOAT' && (this.fishing.busy || Math.abs(v.speed) < 1.2)))
+    const showRifle = this.tool === 'rifle' && this.mode !== 'bowfish' && this.mode !== 'thrown' && this.mode !== 'vehicle' && this.mode !== 'crew' && this.mode !== 'climb' && this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson)
     this.rodRig.root.setEnabled(showRod)
     this.rifleRig.root.setEnabled(showRifle)
     if (showRifle) placeRifle(this.rifleRig.root, this.avatar, this.handsNow === 'aim', this.ctx.camera.rotation.x, this.recoil)

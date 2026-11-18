@@ -484,6 +484,11 @@ export class Bowfishing {
     }
   }
 
+  /** A bowfishing tour is under way for this player: aboard, or a party member's trip is out. */
+  get nightTour(): boolean {
+    return this.aboard || this.trip !== null
+  }
+
   /** Respawn: ends the trip on the spot, wherever the boat is. */
   abandon(): void {
     if (this.aboard) this.endTrip()
