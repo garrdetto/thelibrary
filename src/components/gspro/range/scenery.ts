@@ -131,8 +131,8 @@ export function buildScenery(scene: THREE.Scene, renderer: THREE.WebGLRenderer) 
   const divider = m(new THREE.MeshStandardMaterial({ color: 0x5b4a36, roughness: 1 }))
   const white = m(new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 1 }))
   const blue = m(new THREE.MeshStandardMaterial({ color: 0x2b5fb3, roughness: 0.9, side: THREE.DoubleSide }))
-  const pad = new THREE.Mesh(g(new THREE.BoxGeometry(3.6, 0.02, 70)), concrete)
-  pad.position.set(-0.2, 0.005, 0.2)
+  const pad = new THREE.Mesh(g(new THREE.BoxGeometry(70, 0.02, 4)), concrete)
+  pad.position.set(-0.4, 0.005, 0.4)
   pad.receiveShadow = true
   group.add(pad)
   const bayMat = g(new THREE.BoxGeometry(1.6, 0.03, 2))
@@ -141,24 +141,24 @@ export function buildScenery(scene: THREE.Scene, renderer: THREE.WebGLRenderer) 
   const ballGeometry = g(new THREE.SphereGeometry(0.0233 * 1.9, 8, 6))
   for (let bay = -10; bay <= 10; bay++) {
     if (bay === 0) continue
-    const z = bay * 3.2
+    const x = bay * 3.6
     const mat = new THREE.Mesh(bayMat, matGreen)
-    mat.position.set(-0.35, 0.03, z + 0.1)
+    mat.position.set(x - 0.35, 0.03, 0.1)
     mat.receiveShadow = true
     const pole = new THREE.Mesh(post, divider)
-    pole.position.set(-1.6, 0.6, z + 1.6)
+    pole.position.set(x - 1.8, 0.6, 0.1)
     pole.castShadow = true
     const bucket = new THREE.Mesh(bucketGeometry, blue)
-    bucket.position.set(-1.55, 0.17, z + 0.95)
+    bucket.position.set(x - 1.55, 0.17, 0.95)
     group.add(mat, pole, bucket)
     for (let index = 0; index < 6; index++) {
       const spare = new THREE.Mesh(ballGeometry, white)
-      spare.position.set(-1.55 + (hash(bay, index) - 0.5) * 0.18, 0.3, z + 0.95 + (hash(index, bay) - 0.5) * 0.18)
+      spare.position.set(x - 1.55 + (hash(bay, index) - 0.5) * 0.18, 0.3, 0.95 + (hash(index, bay) - 0.5) * 0.18)
       group.add(spare)
     }
   }
   const nearPole = new THREE.Mesh(post, divider)
-  nearPole.position.set(-1.6, 0.6, 1.7)
+  nearPole.position.set(1.8, 0.6, 0.1)
   group.add(nearPole)
 
   const steel = m(new THREE.MeshStandardMaterial({ color: 0x6d7378, roughness: 0.6, metalness: 0.4 }))
@@ -192,15 +192,7 @@ export function buildScenery(scene: THREE.Scene, renderer: THREE.WebGLRenderer) 
   roofMesh.castShadow = true
   const windows = new THREE.Mesh(g(new THREE.BoxGeometry(12, 1.8, 0.1)), glass)
   windows.position.set(-14, 2.4, 21.45)
-  const canopy = new THREE.Mesh(g(new THREE.BoxGeometry(5, 0.2, 70)), roof)
-  canopy.position.set(-2.6, 3.4, 0.2)
-  group.add(house, roofMesh, windows, canopy)
-  for (let z = -33; z <= 33; z += 6) {
-    const column = new THREE.Mesh(post, divider)
-    column.scale.set(1.6, 2.85, 1.6)
-    column.position.set(-4.8, 1.7, z)
-    group.add(column)
-  }
+  group.add(house, roofMesh, windows)
 
   const broadTrunk = g(new THREE.CylinderGeometry(0.35, 0.55, 5, 6))
   const crown = g(new THREE.IcosahedronGeometry(4.2, 1))

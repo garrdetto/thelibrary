@@ -104,9 +104,11 @@ export function createRiggedGolfer(assets: GolfAssets, handed: 'RH' | 'LH', club
     if (object instanceof THREE.SkinnedMesh) { skinned.push(object); object.castShadow = true; object.frustumCulled = false }
     else if (object instanceof THREE.Mesh) object.visible = false
   })
+  root.updateMatrixWorld(true)
   const box = new THREE.Box3()
-  for (const mesh of skinned) box.expandByObject(mesh)
-  const scale = GOLFER_HEIGHT / Math.max(0.5, box.max.y - box.min.y)
+  for (const mesh of skinned) box.expandByObject(mesh, true)
+  const measured = box.max.y - box.min.y
+  const scale = GOLFER_HEIGHT / (measured > 1.2 && measured < 2.5 ? measured : 1.83)
   root.scale.setScalar(scale)
   root.rotation.y = Math.PI / 2
   outer.add(root)
