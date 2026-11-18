@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { AudioLines, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LandPlot, LayoutDashboard, LayoutGrid, ListMusic, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, UserRoundX, Users } from 'lucide-react'
+import { AudioLines, Bot, Brush, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LandPlot, LayoutDashboard, LayoutGrid, ListMusic, LoaderCircle, MessageCircle, Mountain, Music2, Package, Radar, Settings2, ShieldCheck, Sparkles, Target, Trophy, UserRoundX, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
@@ -18,6 +18,7 @@ const ClipartGenerator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise
 const ImageEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/ImageEditor'))
 const WorldEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./world/WorldEditor'))
 const LifeSimResetCharacter = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./lifesim/ResetCharacter'))
+const AxiomBot = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/AxiomBot'))
 const MusicLibrary = lazy<ComponentType<{ onOpenPerson: (id: string) => void }>>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/MusicLibrary'))
 const BushLeagueAssets = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./bushleague/BushLeagueAssets'))
 
@@ -41,6 +42,7 @@ const sections = [
   { id: 'clipart', area: 'site', group: 'Tools', label: 'Clipart generator', icon: Brush, title: 'HD clipart generator', blurb: 'Turn batches of photographs into realistic HD clipart with free Cloudflare Workers AI image-to-image engines (or Gemini), with full style control, a reference image, before-and-after preview and ZIP export.' },
   { id: 'gspro', area: 'site', group: 'Tools', label: 'GSPro Analyzer', icon: LandPlot, title: 'GSPro Analyzer', blurb: 'Stream every GSPro shot live from your simulator PC, save it, and break it down by club with dispersion, gapping and tips. Opens on its own page.' },
   { id: 'axiom-radar', area: 'site', group: 'Tools', label: 'Axiom Radar', icon: Radar, title: 'Axiom Radar', blurb: 'Coins ranked by live Axiom viewers with price moves, holder quality, smart holders and buy and watch signals. Opens on its own page.' },
+  { id: 'axiom-bot', area: 'site', group: 'Tools', label: 'Axiom Bot', icon: Bot, title: 'Axiom Bot', blurb: 'Start, stop and watch the Solana sniper and copy-trade bot: mode, buy size, slippage and a Dry Run safety switch, with its wallet balance and a live feed of every detection, quote, simulation and trade.' },
   { id: 'world-editor', area: 'modules', group: 'Life Sim', label: 'World editor', icon: Mountain, title: 'Life Sim world editor', blurb: 'Reshape Montello: raise, lower, flatten and smooth the land, fill or drain water and fix the rivers, build and redraw roads with sidewalks and smooth curves, change or remove buildings, draw and trim parking lots, plant or clear trees, and put up guardrails, streetlights and brick walls. Publish when it looks right.' },
   { id: 'vehicles', area: 'modules', group: 'Life Sim', label: 'Vehicles', icon: Car, title: 'Life Sim vehicles', blurb: 'Build and publish vehicles for Life Sim’s dealership. They are for Life Sim only; tune their top speed and handling in Life Sim’s developer panel (F8).' },
   { id: 'lifesim-reset', area: 'modules', group: 'Life Sim', label: 'Reset character', icon: UserRoundX, title: 'Reset a Life Sim character', blurb: 'Send yourself or any player back to the character creator. Cash, gear and clothes are kept.' },
@@ -155,6 +157,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection, canR
         {section === 'music' && <Suspense fallback={<Loading text="Opening the music player…"/>}><MusicLibrary onOpenPerson={id => { open('people'); choosePerson(id) }}/></Suspense>}
         {section === 'changes' && <SiteChanges/>}
         {section === 'axiom-radar' && <p className="race-loading"><a href="/axiom-radar">Open the Axiom Radar</a> It runs on its own page.</p>}
+        {section === 'axiom-bot' && <Suspense fallback={<Loading text="Opening the Axiom Bot…"/>}><AxiomBot/></Suspense>}
         {section === 'gspro' && <p className="race-loading"><a href="/gspro">Open the GSPro Analyzer</a> It runs on its own page.</p>}
         {section === 'image-editor' && <Suspense fallback={<Loading text="Opening the image editor…"/>}><ImageEditor/></Suspense>}
         {section === 'clipart' && <Suspense fallback={<Loading text="Opening the clipart generator…"/>}><ClipartGenerator/></Suspense>}
