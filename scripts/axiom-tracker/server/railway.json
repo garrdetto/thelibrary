@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "scripts/axiom-tracker/server/Dockerfile",
+    "watchPatterns": ["scripts/axiom-tracker/**", "src/lib/axiom-radar-*.ts"]
+  },
+  "deploy": {
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 60,
+    "restartPolicyType": "ALWAYS",
+    "numReplicas": 1
+  }
+}
