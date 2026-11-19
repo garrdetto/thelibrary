@@ -7,7 +7,7 @@ import { IMAGE_MODEL, base64ToBytes, bytesToBase64, gemini } from '../gemini'
 import { alternate, askStudio, asStudioImage, blockedResponse, geminiFailure, studioReady } from '../studio-ai'
 import { SVG_HEADERS, SVG_MIME } from '../svg-art'
 import type { StudioBlock } from '../studio-ai'
-import { NO_CODE_MESSAGE, NO_CODE_RULE, looksLikeCode } from '../code-guard'
+import { CHAT_CODE_RULE, NO_CODE_MESSAGE, NO_CODE_RULE, looksLikeCode, looksLikeProgram } from '../code-guard'
 import { clichesIn, echoedIdeas, keptLineShare, normalizeLine, readSong, repeatsSong, researchStyle, songSchema, songwriterInstruction, sungLines, validSong } from '../lyrics'
 import type { Creation, Message, SongSettings, StudioMode } from '../../lib/studio-types'
 
@@ -132,8 +132,8 @@ async function saveCreation(env: Env, user: SessionUser, item: NewCreation) {
   return row
 }
 
-const CHAT_SYSTEM = `You are myWorkHelper, the AI Chat in a creative studio. You are a friendly, thoughtful conversation partner for everyday questions, ideas, writing help, planning and advice. Be practical, clear and honest, and use readable markdown (headings, lists, bold) but never code blocks or inline code.
-${NO_CODE_RULE}
+const CHAT_SYSTEM = `You are myWorkHelper, the AI Chat in a creative studio. You are a friendly, knowledgeable conversation partner for any question, idea, writing help, planning, advice or troubleshooting. Be practical, clear and honest, and use readable markdown (headings, lists, bold).
+${CHAT_CODE_RULE}
 You run in a cloud-hosted studio. You do not browse the live web or access cloud files or the user's documents; never pretend you do. You cannot make images or full songs here: for pictures suggest the Image Studio tab, and for song lyrics suggest the Lyric Studio tab. Never claim to have generated an image in this chat.`
 
 const STYLE_SYSTEM = `You write the "Style of Music" prompt for Suno AI, describing how a finished song should sound. Base it on the lyrics, settings, any styleResearch and the optional user direction. Cover, in this order: genre and subgenre with era; vocal type (gender, tone, texture, delivery such as rap flow, belting, falsetto, raspy, autotuned); vocal pitch and range; key instruments and production (drums, bass, guitars, synths, mixing); tempo as approximate BPM and energy; mood and vibe; any notable dynamics such as a beat drop, half-time bridge or gang vocals. Write it as comma-separated descriptive tags and short phrases, 250 to 600 characters, no sentences, no line breaks, no quotes. Never name any real artist, band, or song, since Suno rejects them; describe their sound instead. Never include lyrics.
@@ -172,7 +172,8 @@ export async function studio(request: Request, env: Env) {
   const user = await studioUser(request, env)
   const body = studioInput.parse(JSON.parse(await readText(request, 520000)))
   if (!user.pages.includes(body.kind)) return json({ error: 'Access to this studio is required.' }, 403)
-  rejectCode(body.kind, body.prompt, body.settings?.instructions, body.settings?.customGenre, body.settings?.artist, body.selection?.replacement)
+  // Chat prompts may quote a console error or an element copied from DevTools, so the chat model applies its own rule.
+  if (body.kind !== 'chat') rejectCode(body.kind, body.prompt, body.settings?.instructions, body.settings?.customGenre, body.settings?.artist, body.selection?.replacement)
   let previous: CreationRow | null = null
   if (body.previousId) {
     previous = await findCreation(env, user, body.previousId)
@@ -263,7 +264,7 @@ export async function studio(request: Request, env: Env) {
     const content = result.text
     if (!content && result.refused) return json({ error: 'The assistant can’t help with that one. Try asking another way.' }, 422)
     if (!content) return json({ error: 'The assistant returned no text. Please try another prompt.' }, 422)
-    if (looksLikeCode(content)) return json({ error: NO_CODE_MESSAGE.chat }, 422)
+    if (looksLikeProgram(content)) return json({ error: NO_CODE_MESSAGE.chat }, 422)
     messages.push({ role: 'assistant', content })
     const row = await saveCreation(env, user, { kind: 'chat', title: previous?.title || body.prompt.slice(0, 55), prompt: body.prompt, content, messages })
     return json({ item: publicCreation(row) })
