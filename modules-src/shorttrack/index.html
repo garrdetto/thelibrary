@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Short Track Showdown</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
 :root{--panel:rgba(10,14,22,.80);--line:rgba(255,255,255,.12);--txt:#eef2f7;--dim:#9aa7b8;--acc:#ffcc00}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
-#wrap{position:relative;width:100%;height:100vh;overflow:hidden;background:#000;user-select:none}
+#wrap{position:relative;width:100%;height:100vh;height:100dvh;overflow:hidden;background:#000;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 canvas#c{display:block;width:100%;height:100%}
 .hidden{display:none!important}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(6px)}
@@ -127,6 +127,29 @@ input[type=color]{padding:2px;height:38px}
 .gai input{flex:1;min-width:0;margin:0}.gpick #gAiGo{flex:0 0 auto;padding:0 12px;font-weight:800;background:var(--acc);color:#111;border-color:var(--acc)}
 .scr p.gnote.bad{color:#ff8a80}
 .gnumprev{display:block;width:100%;height:64px;border-radius:8px;border:1px solid var(--line)}
+/* touch controls (phones and tablets): steer with the left thumb, gas and reverse with the right */
+#touch{display:none}
+#wrap.touch #touch{display:block}
+#wrap.touch #keys,#wrap.touch #board{display:none}
+.tpad{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:12px;padding:8px;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent}
+.tpad.steer{left:calc(6px + env(safe-area-inset-left))}
+.tpad.pedal{right:calc(6px + env(safe-area-inset-right));flex-direction:column}
+.tpad i{display:grid;place-items:center;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,.38);background:rgba(10,14,22,.42);color:rgba(255,255,255,.9);font:900 30px/1 system-ui;font-style:normal;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:background .08s,transform .08s}
+.tpad.pedal i{width:82px;height:72px;border-radius:22px}
+.tpad i.on{background:rgba(255,204,0,.6);border-color:#ffcc00;color:#111;transform:scale(.94)}
+.tpad.pedal i.rev.on{background:rgba(229,56,59,.6);border-color:#e5383b;color:#fff}
+.tbtns{position:absolute;top:calc(58px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));display:flex;gap:8px;pointer-events:auto}
+.tbtns button{min-width:46px;height:40px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--txt);font:800 13px system-ui;letter-spacing:.5px;touch-action:manipulation}
+#wrap.touch #br{top:calc(106px + env(safe-area-inset-top));bottom:auto;right:calc(12px + env(safe-area-inset-right));width:150px;padding:6px 10px}
+#wrap.touch #spd{font-size:28px}
+#wrap.touch .rpm{margin:5px 0}
+#wrap.touch #dmgCar{width:20px;height:38px;border-radius:6px 6px 4px 4px}
+#wrap.touch #dmgCar .f{top:2px;left:2px;right:2px;height:8px}#wrap.touch #dmgCar .r{bottom:2px;left:2px;right:2px;height:7px}
+#wrap.touch #dmgCar .l{left:2px;top:12px;bottom:11px;width:6px}#wrap.touch #dmgCar .rt{right:2px;top:12px;bottom:11px;width:6px}
+#wrap.touch #tl{left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top))}
+#wrap.touch #flag{right:calc(12px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top))}
+#wrap.touch #spotter{bottom:calc(110px + env(safe-area-inset-bottom))}
+@media (max-height:420px){.tpad i{width:68px;height:68px;font-size:26px}.tpad.pedal i{width:76px;height:62px}#wrap.touch #tl{padding:6px 10px;min-width:0}#wrap.touch #posBig{font-size:28px}}
 @media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}
   #scrGarage{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%;padding:16px}.gcols{grid-template-columns:1fr}}
 </style>
@@ -143,6 +166,11 @@ input[type=color]{padding:2px;height:38px}
     <div id="dmgWrap"><div id="dmgCar"><b class="f"></b><b class="l"></b><b class="rt"></b><b class="r"></b></div><div id="dmgTxt">Car OK</div></div></div>
   <div id="spotter"></div>
   <div id="bigmsg"></div>
+  <div id="touch">
+    <div class="tpad steer" id="padSteer" aria-hidden="true"><i data-tk="left">&#9664;</i><i data-tk="right">&#9654;</i></div>
+    <div class="tpad pedal" id="padPedal" aria-hidden="true"><i data-tk="gas">&#9650;</i><i data-tk="rev" class="rev">&#9660;</i></div>
+    <div class="tbtns"><button type="button" id="tCam" aria-label="Change camera">CAM</button><button type="button" id="tPause" aria-label="Pause">&#10074;&#10074;</button></div>
+  </div>
   <div id="keys">&uarr; gas &middot; &darr; brake &middot; &larr; &rarr; steer &middot; C camera &middot; R reset &middot; M mute &middot; Esc menu</div>
 </div>
 <div id="menus">
@@ -155,7 +183,7 @@ input[type=color]{padding:2px;height:38px}
       <button class="tile" data-act="flow:multi"><b>MULTIPLAYER</b><span>Host or join an online room</span></button>
       <button class="tile" data-act="garage"><b>GARAGE</b><span>Pick, paint and number your truck or car</span></button>
     </div>
-    <div class="subrow"><button class="btn slim" data-act="records">Lap records</button><button class="btn slim" data-act="fs">Fullscreen</button></div>
+    <div class="subrow"><button class="btn slim" data-act="records">Lap records</button><button class="btn slim" data-act="fs">Fullscreen</button><button class="btn slim tl-full-only" data-tl-exit-full>Exit full screen</button></div>
     <label class="f">Graphics quality</label>
     <select id="quality"><option value="low">Low</option><option value="med">Medium</option><option value="high">High</option></select>
   </div>
@@ -236,6 +264,7 @@ input[type=color]{padding:2px;height:38px}
     <div class="nav"><button class="btn navb" data-act="menu">&larr; BACK</button><span></span></div></div>
   <div id="scrPause" class="scr panel hidden"><h2>Paused</h2><p id="pauseNote"></p>
     <button class="btn hidden" id="endAttackBtn" data-act="endattack">End session &amp; see results</button>
+    <button class="btn tl-full-only" data-tl-exit-full>Exit full screen</button>
     <div class="nav"><button class="btn navb" data-act="leave">&larr; QUIT</button><button class="btn pri navb" data-act="resume">RESUME &rarr;</button></div></div>
   <div id="scrResults" class="scr panel hidden"><h2>Results</h2><table id="resTable"></table>
     <p id="againWait" class="hidden" style="margin-top:10px">Waiting for the host&hellip;</p>

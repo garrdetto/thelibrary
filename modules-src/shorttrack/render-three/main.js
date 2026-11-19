@@ -10,6 +10,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from '../shorttrack-numbers.js';
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from '../prison-speedway.js';
 import { batchStatic } from '../../_shared/static-batch.js';
+import { initEmbedFull } from '../../_shared/embed-full.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-schemes.js';
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
 import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage, vehicleCountsForRecords } from '../custom-cars.js';
@@ -1679,8 +1680,29 @@ addEventListener('wheel',e=>{for(let el=e.target;el&&el!==document.body;el=el.pa
     if(down?el.scrollTop+el.clientHeight<el.scrollHeight-1:el.scrollTop>0)return;}}
   e.preventDefault();},{passive:false});
 addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+// Touch controls: two thumb pads appear on touch screens. Left pad steers (left or right half), right pad drives
+// (top half gas, bottom half brake then reverse, the same as the down arrow). A thumb can slide between the two halves.
+const TOUCH={left:false,right:false,gas:false,rev:false},touchPtrs=new Map();
+function touchOn(){wrap.classList.add('touch');}
+if(matchMedia('(pointer: coarse)').matches)touchOn();
+addEventListener('pointerdown',e=>{if(e.pointerType==='touch')touchOn();},{capture:true,passive:true});
+function touchSync(){for(const k in TOUCH)TOUCH[k]=false;for(const v of touchPtrs.values())TOUCH[v.key]=true;
+  for(const el of document.querySelectorAll('#touch [data-tk]'))el.classList.toggle('on',TOUCH[el.dataset.tk]);}
+function touchKey(pad,e){const r=pad.getBoundingClientRect();
+  return pad.id==='padSteer'?(e.clientX<r.left+r.width/2?'left':'right'):(e.clientY<r.top+r.height/2?'gas':'rev');}
+for(const pad of [$('padSteer'),$('padPedal')]){
+  pad.addEventListener('pointerdown',e=>{e.preventDefault();audioInit();try{pad.setPointerCapture(e.pointerId);}catch{}touchPtrs.set(e.pointerId,{pad,key:touchKey(pad,e)});touchSync();});
+  pad.addEventListener('pointermove',e=>{const p=touchPtrs.get(e.pointerId);if(!p)return;const k=touchKey(pad,e);if(k!==p.key){p.key=k;touchSync();}});
+  const end=e=>{if(touchPtrs.delete(e.pointerId))touchSync();};
+  for(const t of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(t,end);
+  pad.addEventListener('contextmenu',e=>e.preventDefault());
+}
+addEventListener('blur',()=>{touchPtrs.clear();touchSync();});
+$('tPause').addEventListener('click',()=>{if(mode==='race'||mode==='paused'){touchPtrs.clear();touchSync();togglePause();}});
+$('tCam').addEventListener('click',()=>{camMode=camMode==='chase'?'far':camMode==='far'?'hood':'chase';});
+initEmbedFull();
 addEventListener('resize',resize);
-function playerCtl(){return {thr:!!(keys.ArrowUp||keys.KeyW),brk:!!(keys.ArrowDown||keys.KeyS),steer:((keys.ArrowLeft||keys.KeyA)?1:0)-((keys.ArrowRight||keys.KeyD)?1:0)};}
+function playerCtl(){return {thr:!!(keys.ArrowUp||keys.KeyW||TOUCH.gas),brk:!!(keys.ArrowDown||keys.KeyS||TOUCH.rev),steer:((keys.ArrowLeft||keys.KeyA||TOUCH.left)?1:0)-((keys.ArrowRight||keys.KeyD||TOUCH.right)?1:0)};}
 
 // ===================== MAIN LOOP =====================
 // ?autopilot=1 hands the player's car to the AI (scripts/shorttrack-play.mjs drives real laps with it)
