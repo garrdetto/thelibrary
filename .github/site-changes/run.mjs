@@ -58,22 +58,48 @@ function redact(text) {
   return clean.replace(/x-access-token:[^@\s"]+@/g, '')
 }
 
-async function report(body) {
+// Sends a status update to the site. Empty values are dropped and long text is
+// trimmed to what the site accepts. If the site still rejects a final report, a
+// minimal one is sent, because a lost final report leaves the job "running" in the
+// admin panel and blocks the conversation even after the change went live.
+const REPORT_LIMITS = { reply: 20000, progress: 400 }
+
+function cleanReport(body) {
+  const clean = {}
+  for (const [key, value] of Object.entries(body)) {
+    if (value === null || value === undefined || value === '') continue
+    clean[key] = typeof value === 'string' && REPORT_LIMITS[key] ? value.slice(0, REPORT_LIMITS[key]) : value
+  }
+  return clean
+}
+
+async function postReport(body) {
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const response = await fetch(CALLBACK_URL, {
         method: 'POST',
         headers: { Authorization: `Bearer ${SITE_CHANGES_SECRET}`, 'Content-Type': 'application/json' },
-        body: redact(JSON.stringify({ action: 'report', id: JOB_ID, runUrl: RUN_URL, ...body })),
+        body: redact(JSON.stringify(cleanReport({ action: 'report', id: JOB_ID, runUrl: RUN_URL, ...body }))),
       })
-      if (response.ok) return true
-      console.log(`Status report returned ${response.status}`)
-      if (response.status < 500) return false
+      if (response.ok) return 'ok'
+      console.log(`Status report returned ${response.status}: ${(await response.text().catch(() => '')).slice(0, 300)}`)
+      if (response.status < 500) return 'rejected'
     } catch (error) {
       console.log(`Status report failed: ${error.message}`)
     }
     await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)))
   }
+  return 'unreachable'
+}
+
+async function report(body) {
+  const outcome = await postReport(body)
+  if (outcome === 'ok') return true
+  if (body.status === 'running') return false
+  console.log(`::warning::The site did not accept the final "${body.status}" report (${outcome}); sending a minimal one.`)
+  const minimal = { status: body.status, reply: body.reply, prUrl: body.prUrl, commit: /^[0-9a-f]{7,40}$/.test(String(body.commit ?? '')) ? body.commit : undefined }
+  if (await postReport(minimal) === 'ok') return true
+  console.log('::error::The site never accepted the final report. The admin panel will settle this job from GitHub within a few minutes.')
   return false
 }
 
@@ -351,7 +377,15 @@ async function mergeWhenGreen(prUrl) {
   while (true) {
     await new Promise(resolve => setTimeout(resolve, 20000))
     const info = pullRequest(prUrl)
-    if (info?.state === 'MERGED') return { merged: true, commit: info.mergeCommit?.oid ?? null }
+    if (info?.state === 'MERGED') {
+      // GitHub can report MERGED a few seconds before it fills in the merge commit.
+      let commit = info.mergeCommit?.oid ?? null
+      for (let wait = 0; !commit && wait < 6; wait++) {
+        await new Promise(resolve => setTimeout(resolve, 5000))
+        commit = pullRequest(prUrl)?.mergeCommit?.oid ?? null
+      }
+      return { merged: true, commit }
+    }
     if (info?.state === 'CLOSED') return { merged: false, note: 'The pull request was closed before it merged, so nothing went live.' }
     if (Date.now() >= deadline) break
     if (!info || auto.ok) continue

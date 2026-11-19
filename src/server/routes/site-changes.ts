@@ -64,18 +64,21 @@ const adminInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('delete-thread'), thread: z.string().uuid() }).strict(),
 ])
 
+// Runner reports are trimmed and nulls tolerated rather than rejected: a rejected
+// final report used to leave a job "running" forever even after its change went live.
+const clipped = (max: number) => z.string().transform(value => value.slice(0, max))
 const reportInput = z.object({
   action: z.literal('report'),
   id: z.string().uuid(),
   status: z.enum(['running', 'merged', 'review', 'answered', 'failed']),
-  progress: z.string().max(400).optional(),
-  reply: z.string().max(20000).optional(),
-  costUsd: z.number().min(0).max(10000).optional(),
-  billing: z.enum(['api', 'subscription']).optional(),
-  commit: z.string().regex(/^[0-9a-f]{7,40}$/).optional(),
-  prUrl: z.string().url().max(300).optional(),
-  runUrl: z.string().url().max(300).optional(),
-}).strict()
+  progress: clipped(400).nullish(),
+  reply: clipped(20000).nullish(),
+  costUsd: z.number().min(0).max(10000).nullish(),
+  billing: z.enum(['api', 'subscription']).nullish(),
+  commit: z.string().regex(/^[0-9a-f]{7,40}$/).nullish().catch(null),
+  prUrl: z.string().url().max(300).nullish().catch(null),
+  runUrl: z.string().url().max(300).nullish().catch(null),
+})
 
 let tablesReady = false
 async function ensureTables(env: Env) {
@@ -278,7 +281,110 @@ async function runnerOverview(env: Env) {
   return { choice, laptop: await laptopStatus(env), label: laptopLabel(env) }
 }
 
+// Jobs whose workflow run ended without a final report (a rejected report, a run
+// GitHub cancelled while it was still pending, a laptop that went to sleep) would
+// otherwise stay queued/running forever and block the conversation. Each active job
+// is checked against GitHub at most once a minute and closed out to match reality.
+const RECONCILE_EVERY = 60 * 1000
+const QUIET_BEFORE_CHECK = 3 * 60 * 1000
+const NEVER_STARTED = 30 * 60 * 1000
+const NEVER_STARTED_LAPTOP = 6 * 60 * 60 * 1000
+const NO_UPDATE_LIMIT = 3 * 60 * 60 * 1000
+const lastChecked = new Map<string, number>()
+
+async function github<T>(env: Env, path: string): Promise<T | null> {
+  if (!env.SITE_CHANGES_GITHUB_TOKEN) return null
+  try {
+    const response = await fetch(`https://api.github.com/repos/${env.SITE_CHANGES_REPO ?? DEFAULT_REPO}${path}`, {
+      headers: {
+        Authorization: `Bearer ${env.SITE_CHANGES_GITHUB_TOKEN}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'thelibrary-site-changes',
+      },
+    })
+    return response.ok ? await response.json() as T : null
+  } catch {
+    return null
+  }
+}
+
+type WorkflowRun = { id: number; status: string; conclusion: string | null; html_url: string; display_title?: string }
+
+async function findRun(env: Env, row: Row): Promise<WorkflowRun | null> {
+  const fromUrl = row.run_url?.match(/\/actions\/runs\/(\d+)/)?.[1]
+  if (fromUrl) return github<WorkflowRun>(env, `/actions/runs/${fromUrl}`)
+  const since = new Date(row.created_at - 60 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+  const list = await github<{ workflow_runs?: WorkflowRun[] }>(env, `/actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&per_page=50&created=${encodeURIComponent(`>=${since}`)}`)
+  return list?.workflow_runs?.find(run => run.display_title === `Site change ${row.id}`) ?? null
+}
+
+async function settle(env: Env, row: Row, status: string, reply: string, extra: { commit?: string | null; runUrl?: string | null } = {}) {
+  const text = [row.reply?.trim(), reply].filter(Boolean).join('\n\n').slice(0, 20000)
+  await env.DB.prepare(`UPDATE site_changes SET status = ?, progress = NULL, reply = ?, commit_sha = COALESCE(?, commit_sha), run_url = COALESCE(?, run_url), updated_at = ? WHERE id = ? AND status IN (${ACTIVE.map(() => '?').join(',')})`)
+    .bind(status, text, extra.commit ?? null, extra.runUrl ?? null, Date.now(), row.id, ...ACTIVE).run()
+}
+
+async function reconcileRow(env: Env, row: Row) {
+  const now = Date.now()
+  if (now - row.updated_at < QUIET_BEFORE_CHECK) return
+  if (now - (lastChecked.get(row.id) ?? 0) < RECONCILE_EVERY) return
+  lastChecked.set(row.id, now)
+
+  const prNumber = row.pr_url?.match(/\/pull\/(\d+)/)?.[1]
+  if (prNumber) {
+    const pr = await github<{ merged?: boolean; merge_commit_sha?: string | null; state?: string }>(env, `/pulls/${prNumber}`)
+    if (pr?.merged) {
+      await settle(env, row, 'merged', 'The pull request merged, so this change is live. (The run finished without reporting back, so this was confirmed from GitHub.)', { commit: pr.merge_commit_sha })
+      if (row.mode === 'revert' && row.target) {
+        await env.DB.prepare("UPDATE site_changes SET status = 'reverted', updated_at = ? WHERE commit_sha = ? AND mode = 'change'").bind(Date.now(), row.target).run()
+      }
+      return
+    }
+  }
+
+  const run = await findRun(env, row)
+  if (run && run.status === 'completed') {
+    if (prNumber) {
+      const pr = await github<{ state?: string }>(env, `/pulls/${prNumber}`)
+      if (pr?.state === 'open') {
+        await settle(env, row, 'review', 'The run finished and the pull request is still open. Nothing is live until it merges.', { runUrl: run.html_url })
+        return
+      }
+      if (!pr) {
+        // The token can't read pull requests, so don't guess: point at the pull request.
+        await settle(env, row, 'review', 'The run finished without reporting back. Open the pull request to see whether it merged.', { runUrl: run.html_url })
+        return
+      }
+    }
+    const why = run.conclusion === 'cancelled'
+      ? 'GitHub cancelled this run (usually because another request was queued behind it), so nothing was published. Press Try again to run it.'
+      : 'The run finished without reporting back, and nothing was published. The run log on GitHub has the details.'
+    await settle(env, row, 'failed', why, { runUrl: run.html_url })
+    return
+  }
+  if (!run) {
+    const limit = row.runner === 'laptop' ? NEVER_STARTED_LAPTOP : NEVER_STARTED
+    if (row.status === 'queued' && now - row.created_at > limit) {
+      await settle(env, row, 'failed', 'GitHub never started a run for this request, so nothing was published. Press Try again to run it.')
+      return
+    }
+  }
+  if (now - row.updated_at > NO_UPDATE_LIMIT) {
+    await settle(env, row, 'failed', 'No progress was reported for three hours, so this stopped waiting. If a run is still going, cancel it from the Actions tab on GitHub.')
+  }
+}
+
+async function reconcile(env: Env, threadId?: string) {
+  const query = threadId
+    ? env.DB.prepare(`SELECT * FROM site_changes WHERE thread_id = ? AND status IN (${ACTIVE.map(() => '?').join(',')})`).bind(threadId, ...ACTIVE)
+    : env.DB.prepare(`SELECT * FROM site_changes WHERE status IN (${ACTIVE.map(() => '?').join(',')}) LIMIT 20`).bind(...ACTIVE)
+  const rows = (await query.all<Row>()).results
+  await Promise.all(rows.map(row => reconcileRow(env, row).catch(error => console.error('Site change reconcile failed', row.id, error))))
+}
+
 async function threadBusy(env: Env, threadId: string) {
+  await reconcile(env, threadId)
   const active = await env.DB.prepare(`SELECT id FROM site_changes WHERE thread_id = ? AND status IN (${ACTIVE.map(() => '?').join(',')}) LIMIT 1`).bind(threadId, ...ACTIVE).first()
   return Boolean(active)
 }
@@ -303,13 +409,13 @@ async function report(env: Env, body: unknown) {
   const row = await env.DB.prepare('SELECT * FROM site_changes WHERE id = ?').bind(input.id).first<Row>()
   if (!row) return json({ error: 'Job not found.' }, 404)
   const fields: [string, unknown][] = [['status', input.status]]
-  if (input.progress !== undefined) fields.push(['progress', input.progress])
-  if (input.reply !== undefined) fields.push(['reply', input.reply])
-  if (input.costUsd !== undefined) fields.push(['cost_usd', input.costUsd])
-  if (input.billing !== undefined) fields.push(['billing', input.billing])
-  if (input.commit !== undefined) fields.push(['commit_sha', input.commit])
-  if (input.prUrl !== undefined) fields.push(['pr_url', input.prUrl])
-  if (input.runUrl !== undefined) fields.push(['run_url', input.runUrl])
+  if (input.progress != null) fields.push(['progress', input.progress])
+  if (input.reply != null) fields.push(['reply', input.reply])
+  if (input.costUsd != null) fields.push(['cost_usd', input.costUsd])
+  if (input.billing != null) fields.push(['billing', input.billing])
+  if (input.commit != null) fields.push(['commit_sha', input.commit])
+  if (input.prUrl != null) fields.push(['pr_url', input.prUrl])
+  if (input.runUrl != null) fields.push(['run_url', input.runUrl])
   if (input.status !== 'running') fields.push(['progress', null])
   fields.push(['updated_at', Date.now()])
   const unique = new Map(fields)
@@ -349,9 +455,11 @@ export async function siteChanges(request: Request, env: Env) {
     const thread = url.searchParams.get('thread')
     if (thread) {
       if (!z.string().uuid().safeParse(thread).success) return json({ error: 'Conversation not found.' }, 404)
+      await reconcile(env, thread)
       const rows = await env.DB.prepare('SELECT * FROM site_changes WHERE thread_id = ? ORDER BY created_at').bind(thread).all<Row>()
       return json({ messages: rows.results.map(shape) })
     }
+    await reconcile(env)
     return json({ configured: configuration(env), threads: await threads(env), credits: await credits(env), runner: await runnerOverview(env) })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)

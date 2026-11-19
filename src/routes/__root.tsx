@@ -10,7 +10,15 @@ const siteDescription = 'Hands-on learning modules in strategy, physics, math an
 
 export const Route = createRootRoute({
   head: () => ({
-    links: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    // Fonts load from the document head, in parallel with the stylesheet. An @import inside
+    // styles.css made the browser wait for the whole stylesheet before it even asked for them.
+    // DM Sans and Manrope are variable fonts, so one weight range covers every weight used.
+    links: [
+      { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
+      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..800&family=Manrope:wght@400..800&family=Rajdhani:wght@600;700&display=swap' },
+    ],
     meta: [
       {
         charSet: 'utf-8',
