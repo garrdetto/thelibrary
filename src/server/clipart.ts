@@ -85,7 +85,7 @@ async function streamBytes(stream: ReadableStream<Uint8Array>) {
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
-async function aiOutputBytes(output: unknown): Promise<Uint8Array> {
+export async function aiOutputBytes(output: unknown): Promise<Uint8Array> {
   if (output instanceof ReadableStream) return streamBytes(output)
   if (output instanceof Uint8Array) return output
   if (output instanceof ArrayBuffer) return new Uint8Array(output)

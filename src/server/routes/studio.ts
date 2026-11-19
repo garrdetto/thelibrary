@@ -6,6 +6,7 @@ import type { SessionUser, StudioPage } from '../auth'
 import { IMAGE_MODEL, base64ToBytes, bytesToBase64, gemini } from '../gemini'
 import { alternate, askStudio, asStudioImage, blockedResponse, geminiFailure, studioReady } from '../studio-ai'
 import { SVG_HEADERS, SVG_MIME } from '../svg-art'
+import { FluxRefused, fluxAvailable, fluxImage } from '../studio-image'
 import type { StudioBlock } from '../studio-ai'
 import { CHAT_CODE_RULE, NO_CODE_MESSAGE, NO_CODE_RULE, looksLikeCode, looksLikeProgram } from '../code-guard'
 import { clichesIn, echoedIdeas, keptLineShare, normalizeLine, readSong, repeatsSong, researchStyle, songSchema, songwriterInstruction, sungLines, validSong } from '../lyrics'
@@ -238,9 +239,10 @@ export async function studio(request: Request, env: Env) {
     const imagePrompt = (plan.imagePrompt || '').trim().slice(0, 4000)
     if (!imagePrompt || looksLikeCode(imagePrompt)) return json({ error: NO_CODE_MESSAGE.image }, 422)
     const noCode = 'Do not draw any code, programming text or terminal windows.'
-    let result: Awaited<ReturnType<typeof painter.models.generateContent>>
+    let painted: { bytes: Uint8Array; mime: string } | null = null
+    let geminiError: unknown = null
     try {
-      result = await painter.models.generateContent({
+      const result = await painter.models.generateContent({
         model: IMAGE_MODEL,
         contents: pixelSource && sourceType ? [{ role: 'user', parts: [
           { text: `${imagePrompt}\nPreserve every element of this image that the instruction does not mention. ${noCode}` },
@@ -248,11 +250,33 @@ export async function studio(request: Request, env: Env) {
         ] }] : `${imagePrompt}\n${noCode}`,
         config: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: body.aspect } },
       })
-    } catch (error) { geminiFailure(error) }
-    const image = (result.candidates?.[0]?.content?.parts ?? []).find(part => part.inlineData?.mimeType?.startsWith('image/'))?.inlineData
-    if (!image?.data) return json({ error: blockedResponse(result) ? 'That picture can not be made here. Try a different description.' : 'No image was returned. Try a simpler description or a different subject.' }, 422)
-    const imageMime = image.mimeType || 'image/png'
-    await env.FILES.put(imageKey(user, id), base64ToBytes(image.data), { metadata: { mime: imageMime } })
+      const image = (result.candidates?.[0]?.content?.parts ?? []).find(part => part.inlineData?.mimeType?.startsWith('image/'))?.inlineData
+      if (image?.data) painted = { bytes: base64ToBytes(image.data), mime: image.mimeType || 'image/png' }
+      else if (blockedResponse(result)) return json({ error: 'That picture can not be made here. Try a different description.' }, 422)
+    } catch (error) {
+      geminiError = error
+      console.error('Gemini image failed, trying Workers AI', error instanceof Error ? error.message.slice(0, 300) : '')
+    }
+    if (!painted && fluxAvailable(env)) {
+      const fluxSource = source && sourceType && sourceType !== 'image/gif' ? { bytes: new Uint8Array(source), mime: sourceType } : null
+      const fluxPrompt = `${imagePrompt}\n${noCode}`
+      try {
+        try {
+          painted = await fluxImage(env, fluxPrompt, body.aspect, fluxSource)
+        } catch (error) {
+          if (!fluxSource || error instanceof HttpError || error instanceof FluxRefused) throw error
+          painted = await fluxImage(env, `${previous?.content.slice(0, 1500) ?? ''}\nChange: ${fluxPrompt}`, body.aspect)
+        }
+      } catch (error) {
+        if (error instanceof FluxRefused) return json({ error: error.message }, 422)
+        if (error instanceof HttpError) throw error
+        return json({ error: 'No image was returned. Try a simpler description or a different subject.' }, 422)
+      }
+    }
+    if (!painted && geminiError) geminiFailure(geminiError)
+    if (!painted) return json({ error: 'No image was returned. Try a simpler description or a different subject.' }, 422)
+    const imageMime = painted.mime
+    await env.FILES.put(imageKey(user, id), painted.bytes, { metadata: { mime: imageMime } })
     const title = (plan.title || body.prompt).trim().slice(0, 55)
     const row = await saveCreation(env, user, { id, kind: 'image', title, prompt: body.prompt, content: imagePrompt, imageMime, parentId: body.action === 'revise' ? previous?.id : null })
     return json({ item: publicCreation(row) })
