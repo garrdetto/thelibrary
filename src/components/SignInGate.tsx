@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { ArrowRight, Cloud, KeyRound, LoaderCircle, Lock, Trophy, Users } from 'lucide-react'
+import { ArrowRight, Cloud, LoaderCircle, Lock, Trophy, Users } from 'lucide-react'
 
 const highlights = [
   { icon: Trophy, title: 'Your records, kept', text: 'Scores, saves and settings follow your account on any device.' },
@@ -11,7 +11,6 @@ const highlights = [
 export function SignInGate({ brand }: { brand: ReactNode }) {
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
-  const [accessCode, setAccessCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -20,7 +19,7 @@ export function SignInGate({ brand }: { brand: ReactNode }) {
     if (busy) return
     setBusy(true); setError('')
     try {
-      const response = await fetch('/api/pool-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', username: name.trim(), password, ...(accessCode.trim() ? { accessCode: accessCode.trim() } : {}) }) })
+      const response = await fetch('/api/pool-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', username: name.trim(), password }) })
       const result = await response.json().catch(() => ({})) as { error?: string }
       if (!response.ok) throw new Error(result.error ?? 'Sign-in is temporarily unavailable. Please try again shortly.')
       window.location.reload()
@@ -42,11 +41,10 @@ export function SignInGate({ brand }: { brand: ReactNode }) {
       </section>
       <section className="signin-gate-form" aria-labelledby="signin-gate-title">
         <h2 id="signin-gate-title">Sign in or create an account</h2>
-        <p>Choose any username. A new username creates your account with the access code; an existing one signs you back in.</p>
+        <p>Choose any username. A new username creates your account; an existing one signs you back in.</p>
         <form onSubmit={event => void submit(event)} aria-busy={busy}>
           <label>Username<input name="username" autoComplete="username" autoFocus minLength={3} maxLength={20} pattern="[a-zA-Z0-9_\-]{3,20}" title="3–20 letters, numbers, underscores or hyphens" value={name} onChange={event => setName(event.target.value)} disabled={busy} required/></label>
           <label>Password<input name="password" type="password" autoComplete="current-password" minLength={3} maxLength={128} title="3 or more characters" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} required/></label>
-          <label><span className="signin-gate-label">Access code <small>Needed to create a new account</small></span><span className="signin-gate-code"><KeyRound size={15} aria-hidden="true"/><input name="access-code" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={64} value={accessCode} onChange={event => setAccessCode(event.target.value)} disabled={busy}/></span></label>
           <button type="submit" disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17}/> Signing in…</> : <>Continue <ArrowRight size={17}/></>}</button>
           {error && <p className="signin-gate-error" role="alert">{error}</p>}
         </form>
