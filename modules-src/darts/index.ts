@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu'
 import { App, HubBridge, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
 import { config } from './config'
+import { initEmbedFull } from '../_shared/embed-full.js'
 import { DartsSocket, roomInfo } from './net/Socket'
 import { applyBoardColors, isBoardStyle, type BoardStyle } from './render/BoardTexture'
 import { loadDartsSettings } from './net/Settings'
@@ -40,6 +41,8 @@ import { Bracket } from './ui/Bracket'
 import { TeamSetup, TournamentSetup, type TeamLineup } from './ui/Lineups'
 import { Overlay, playerColor } from './ui/Overlay'
 import { RecordBook } from './ui/RecordBook'
+
+initEmbedFull()
 
 declare global {
   interface Window {

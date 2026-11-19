@@ -9,6 +9,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/routes/index.tsx`: navigation, studio tabs (chat, image, lyrics, voice), saved lyric styles, theme picker; mounts pool, account, admin, and lazy-loads racing.
 - `src/styles.css`: all styling, CSS tokens, site themes, responsive layouts, reduced-motion and focus states.
 - `src/lib/site-themes.ts`: site theme list. `public/`: favicon and images.
+- `src/lib/use-mobile-full-play.ts`: mobile full screen for the play frame. On phones and touch tablets (`MOBILE_FULL_QUERY`) the modules in `MOBILE_FULL_MODULES` (Short Track Showdown, Darts) cover the whole screen (`.play-frame.is-mobile-full`); the module side is `modules-src/_shared/embed-full.js` (`tl-full-hello` → `{type:'tl-full', on}` → `tl-full-ack`; its `.tl-full-only` "Exit full screen" buttons post `tl-exit-full`, and the frame bar then offers "Full screen" to go back). Until the module acknowledges, the site shows its own close button. Short Track Showdown also shows thumb controls on touch screens (left pad steer left/right, right pad gas and brake/reverse, plus CAM and pause buttons).
 
 ### Worker backend (`src/server.ts`, `src/server/`)
 - `src/server.ts`: Worker entry. `/api/*` goes to `src/server/api.ts`; everything else to TanStack Start.

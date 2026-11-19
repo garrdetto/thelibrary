@@ -17,7 +17,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #120d0b; color: var(--d-text); overflow: hidden; font-family: var(--d-font); }
 #stage { position: absolute; inset: 0; }
-#stage canvas { cursor: crosshair; }
+#stage canvas { cursor: crosshair; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 [hidden] { display: none !important; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -26,7 +26,7 @@ button { cursor: pointer; }
 .d-hud { position: absolute; inset: 0; pointer-events: none; }
 .d-hud > * { pointer-events: auto; }
 
-.d-topbar { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; justify-content: space-between; pointer-events: none; }
+.d-topbar { position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); display: flex; gap: 8px; align-items: center; justify-content: space-between; pointer-events: none; }
 .d-topbar > * { pointer-events: auto; }
 .d-chip { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: 999px; padding: 6px 12px; font-size: 13px; color: var(--d-soft); backdrop-filter: blur(6px); }
 .d-btn { background: var(--d-panel); border: 1px solid var(--d-line); border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 14px; color: var(--d-text); transition: background .15s, transform .1s; }

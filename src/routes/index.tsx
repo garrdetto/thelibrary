@@ -2,7 +2,7 @@ import { SignInGate } from '@/components/SignInGate'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, Coins, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck } from 'lucide-react'
+import { ArrowDown, Coins, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Minimize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { usePoolLobby } from '@/components/PoolLobby'
@@ -23,6 +23,7 @@ import { AdminRecordResetButton, RecordResetProvider } from '@/components/AdminR
 import { hasScoreBoard, isScoredModule } from '@/lib/module-scores'
 import { embeddedModules, isEmbeddedModuleId, isModuleAvailable, learningModules } from '@/lib/modules'
 import { useModuleLayout } from '@/lib/use-module-layout'
+import { useMobileFullPlay } from '@/lib/use-mobile-full-play'
 import { ModuleNav } from '@/components/ModuleNav'
 import { ScoreNotices } from '@/components/ScoreNotices'
 import type { ModuleId } from '@/lib/modules'
@@ -460,6 +461,7 @@ function Studio() {
 
   const activePlay = playLinks.find(item => item.id === view)
   const devPlayActive = devPlay && access.isAdmin && activePlay?.id === 'maplestreet'
+  const mobileFull = useMobileFullPlay(activePlay?.id, playFrame)
   const playSrc = activePlay ? `${activePlay.src}?${new URLSearchParams({ ...(access.username ? { name: access.username } : {}), ...(devPlayActive ? { dev: '1', solo: '1', panel: '1' } : playRoom ? { room: playRoom } : {}) })}`.replace(/\?$/, '') : ''
   function openDevPanel() {
     if (activePlay?.id === 'foxlake') { playFrame.current?.contentWindow?.postMessage({ type: 'tl-dev-panel' }, window.location.origin); return }
@@ -504,7 +506,7 @@ function Studio() {
 
         {view === 'home' && access.username && <ScoreNotices username={access.username} onOpen={id => switchView(id)}/>}
         {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
-        {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}{access.isAdmin && activePlay.id === 'foxlake' && <button type="button" className="play-dev-button" onClick={openDevPanel} title="Opens Life Sim's developer panel (F8 inside the world does the same)"><Wrench size={14}/> Developer Panel</button>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
+        {activePlay && <section className={`play-frame${mobileFull.full ? ' is-mobile-full' : ''}`} aria-label={activePlay.label}>{mobileFull.full && !mobileFull.ack && <button type="button" className="play-full-exit" onClick={mobileFull.exit} aria-label="Exit full screen"><Minimize2 size={18}/></button>}<div className="play-frame-bar"><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}{access.isAdmin && activePlay.id === 'foxlake' && <button type="button" className="play-dev-button" onClick={openDevPanel} title="Opens Life Sim's developer panel (F8 inside the world does the same)"><Wrench size={14}/> Developer Panel</button>}{mobileFull.available && !mobileFull.full && <button type="button" className="play-dev-button" onClick={mobileFull.enter}><Maximize2 size={14}/> Full screen</button>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison-v2" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks} archive={shortTrackArchive}/>}
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
         {activePlay?.id === 'rackreel' && <RackReelRecordBoard/>}
