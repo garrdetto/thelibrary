@@ -9,7 +9,7 @@ import { extractViewerCounts, parseFrame } from './axiom-collector.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { createLogger, errorMessage, isMainModule, isSolanaAddress, trackerConfig } from './runtime.js'
 import { activeCandidates, trackerState } from './state.js'
-import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
+import { buildTokenDetail, sharedRadarPayload } from './radar-query.js'
 import { compactPayload } from './site-publisher.js'
 import { parsePulseCard } from './pulse-cards.js'
 import { notePulseFlow, pulseIdentity } from './pulse-market.js'
@@ -123,7 +123,7 @@ function serveLive(database: TrackerDatabase, request: IncomingMessage, response
     response.writeHead(200, { ...liveHeaders(origin), 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive' })
     response.write('retry: 1000\n\n')
     const push = () => {
-      try { response.write(`data: ${JSON.stringify({ ...compactPayload(buildRadarPayload(database)), source: 'local' })}\n\n`) } catch (error) { logger.warn('Live stream payload failed', { error: errorMessage(error) }) }
+      try { response.write(`data: ${JSON.stringify({ ...compactPayload(sharedRadarPayload(database)), source: 'local' })}\n\n`) } catch (error) { logger.warn('Live stream payload failed', { error: errorMessage(error) }) }
     }
     push()
     const timer = setInterval(push, liveIntervalMs)
@@ -132,7 +132,7 @@ function serveLive(database: TrackerDatabase, request: IncomingMessage, response
   }
   if (url.pathname === '/live/data') {
     const mint = url.searchParams.get('mint')
-    const body = mint === null ? { ...compactPayload(buildRadarPayload(database)), source: 'local' } : isSolanaAddress(mint) ? buildTokenDetail(database, mint) : null
+    const body = mint === null ? { ...compactPayload(sharedRadarPayload(database)), source: 'local' } : isSolanaAddress(mint) ? buildTokenDetail(database, mint) : null
     response.writeHead(body ? 200 : 404, { ...liveHeaders(origin), 'Content-Type': 'application/json; charset=utf-8' })
     response.end(JSON.stringify(body ?? { error: 'Not found.' }))
     return

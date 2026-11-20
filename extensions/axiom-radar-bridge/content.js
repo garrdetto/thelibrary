@@ -519,6 +519,17 @@ function stopReporting() {
   reportTimer = null
   reportObserver?.disconnect()
   reportObserver = null
+  reloadOrphanedPulse()
+}
+
+/** When the extension restarts, this tab's copy of the script is cut off and the tracker stops getting Pulse coins. The Pulse tab reloads itself (at most once a minute) so the new copy takes over. */
+function reloadOrphanedPulse() {
+  if (!location.pathname.startsWith('/pulse')) return
+  let last = 0
+  try { last = Number(sessionStorage.getItem('axiom-radar-reloaded-at')) || 0 } catch { }
+  if (Date.now() - last < 60_000) return
+  try { sessionStorage.setItem('axiom-radar-reloaded-at', String(Date.now())) } catch { }
+  setTimeout(() => location.reload(), 2_000)
 }
 
 function extensionAlive() {
@@ -571,7 +582,10 @@ function refreshPollList() {
 setInterval(refreshPollList, 5000)
 refreshPollList()
 
-const reportIfDue = () => { if (Date.now() - lastReportAt >= reportIntervalMs) report() }
+const reportIfDue = () => {
+  if (Date.now() - lastReportAt < reportIntervalMs) return
+  try { report() } catch (error) { if (/context invalidated/i.test(String(error?.message ?? error))) stopReporting() }
+}
 reportTimer = setInterval(reportIfDue, reportIntervalMs)
 reportObserver = new MutationObserver(reportIfDue)
 reportObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true })

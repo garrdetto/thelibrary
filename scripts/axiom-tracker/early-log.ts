@@ -12,7 +12,7 @@ export const earlyLogRules = {
   followMs: 15 * 60_000,
   goneAfterMs: 3 * 60_000,
   refireMs: 30 * 60_000,
-  cycleMs: 2_000,
+  cycleMs: 1_000,
   readingEveryMs: 1_000,
   readingMaxAgeMinutes: 24 * 60,
   keepReadingsMs: 24 * 60 * 60_000,
