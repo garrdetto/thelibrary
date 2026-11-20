@@ -5,7 +5,8 @@ import { SlotEngine, type EngineState } from '../../modules-src/sunvault/engine/
 import { STARTING_BALANCE_CENTS } from '../../modules-src/sunvault/engine/paytable'
 
 export const VAULT_BOARDS = { win: 'sunvault-win', multiple: 'sunvault-multiple', total: 'sunvault-total' } as const
-export type VaultBoard = (typeof VAULT_BOARDS)[keyof typeof VAULT_BOARDS]
+export type BoardSet = { win: string; multiple: string; total: string }
+type VaultBoard = string
 
 const TABLE = `CREATE TABLE IF NOT EXISTS sunvault_profiles (
   user_id TEXT PRIMARY KEY,
@@ -82,12 +83,12 @@ function topQuery(env: Env, board: VaultBoard) {
   return () => env.DB.prepare(`SELECT id, user_id FROM module_scores WHERE module = ? ORDER BY value DESC, created_at ASC, id ASC LIMIT ${NOTICE_PLACES}`).bind(board)
 }
 
-export async function recordRound(env: Env, user: { id: string; username: string }, roundWin: number, roundBet: number): Promise<VaultBoard[]> {
+export async function recordRound(env: Env, user: { id: string; username: string }, roundWin: number, roundBet: number, boards: BoardSet = VAULT_BOARDS): Promise<VaultBoard[]> {
   if (roundWin <= 0 || roundBet <= 0) return []
   const now = Date.now()
   const placed: VaultBoard[] = []
   const multiple = Math.round((roundWin * 100) / roundBet)
-  const ranked: readonly (readonly [VaultBoard, number])[] = [[VAULT_BOARDS.win, roundWin], [VAULT_BOARDS.multiple, multiple]]
+  const ranked: readonly (readonly [VaultBoard, number])[] = [[boards.win, roundWin], [boards.multiple, multiple]]
   for (const [board, value] of ranked) {
     const cutoff = await tenthPlace(env, board)
     if (cutoff !== null && value <= cutoff) continue
@@ -98,10 +99,10 @@ export async function recordRound(env: Env, user: { id: string; username: string
     )
     placed.push(board)
   }
-  await saveWithKnockouts(env, { game: VAULT_BOARDS.total, scorer: user, top: topQuery(env, VAULT_BOARDS.total) }, () =>
+  await saveWithKnockouts(env, { game: boards.total, scorer: user, top: topQuery(env, boards.total) }, () =>
     env.DB.prepare(`INSERT INTO module_scores (id, user_id, username, module, value, created_at) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET value = module_scores.value + excluded.value, created_at = excluded.created_at, username = excluded.username`)
-      .bind(`${user.id}:total`, user.id, user.username, VAULT_BOARDS.total, roundWin, now)
+      .bind(`${user.id}:${boards.total === VAULT_BOARDS.total ? 'total' : boards.total}`, user.id, user.username, boards.total, roundWin, now)
       .run(),
   )
   return placed

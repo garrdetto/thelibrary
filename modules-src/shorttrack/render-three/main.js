@@ -1136,13 +1136,13 @@ function recRows(list,mine){return '<tr><th>#</th><th>Driver</th><th>Lap</th><th
 const fmtLap=ms=>{const t=ms/1000,m=Math.floor(t/60);return (m?m+':'+String((t%60).toFixed(3)).padStart(6,'0'):(t).toFixed(3));};
 async function showRecords(boxId,mode){
   const box=$(boxId);if(!box)return;box.dataset.mode=mode;
-  box.innerHTML='<div class="rectabs" role="tablist">'+Object.keys(MODE_NAMES).map(m=>`<button role="tab" aria-selected="${m===mode}" class="${m===mode?'on':''}" data-rec="${m}">${MODE_NAMES[m]}</button>`).join('')+'</div><table class="rec"></table><p>Loading...</p>';
+  box.innerHTML='<div class="rectabs" role="tablist">'+Object.keys(MODE_NAMES).map(m=>`<button role="tab" aria-selected="${m===mode}" class="${m===mode?'on':''}" data-rec="${m}">${MODE_NAMES[m]}</button>`).join('')+'</div><div class="recscroll"><table class="rec"></table></div><p>Loading...</p>';
   const res=await fetchRecords(mode);if(box.dataset.mode!==mode)return;
   box.querySelector('table').innerHTML=res.records?recRows(res.records,REC.me):'';
-  box.querySelector('p').textContent=res.error||`Top 20 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
+  box.querySelector('p').textContent=res.error||`Every ${MODE_NAMES[mode]} lap \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
-  if(ms<TRACK.minLap||WORLD.model!=='next'||TT.blocksLaps())return;
+  if(ms<=0||WORLD.model!=='next'||TT.blocksLaps())return;
   if(!vehicleCountsForRecords(myLv.veh)){if(!REC.offWarned){REC.offWarned=true;toast(`Laps in the ${VEHICLES[myLv.veh]?.name||'this vehicle'} don’t count toward records`);}return;}
   const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
   fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:REC_TRACK,vehicle:myLv.veh})})
@@ -1151,7 +1151,7 @@ function submitLap(ms){
       if(!r.ok){console.warn('lap submit',r.status);return;}
       const attack=mode==='time-attack';
       if(attack&&(!best||ms<best.milliseconds))bigMsg('NEW TRACK RECORD',`${MODE_NAMES[mode]} \u00b7 ${fmtLap(ms)}`,3);
-      else if(attack&&((REC.lists[mode]||[]).length<20||ms<REC.lists[mode][REC.lists[mode].length-1].milliseconds))toast(`Top 20 lap: ${fmtLap(ms)}`);
+      else if(attack&&((REC.lists[mode]||[]).length<20||ms<REC.lists[mode][19].milliseconds))toast(`Top 20 lap: ${fmtLap(ms)}`);
       fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:REC_TRACK,mode},location.origin);}catch(e){}
     }).catch(()=>{});
 }
@@ -1465,7 +1465,7 @@ function hudUpdate(){
   E.times.textContent=`Last ${fmt(me.lastLap)} · Best ${fmt(me.bestLap)}`+(me.lapDirty&&me.cross>=2&&race.ph!=='pace'?' · lap not counted':'');
   const ah=st[i-1],bh=st[i+1],ref=Math.max(15,Math.abs(me.vf));
   E.gaps.innerHTML=(ah?`&#9650; ${gapStr(ah.prog-me.prog,ref)} to #${esc(ah.lv.number)}`:'Leading')+'<br>'+(bh?`&#9660; ${gapStr(me.prog-bh.prog,ref)} to #${esc(bh.lv.number)}`:'');
-  if(race.ph==='attack'){const L2=REC.lists['time-attack'];E.board.innerHTML=`<div class="row"><b>Top 20 laps \u00b7 ${esc(TRACK.name)}</b></div>`+(L2?L2.length?L2.map((r,k)=>`<div class="row"><span class="p">${k+1}</span><span class="nm">${esc(r.username)}</span><span class="gp">${fmtLap(r.milliseconds)}</span></div>`).join(''):'<div class="row">No laps yet</div>':(()=>{const s=REC.state['time-attack'];return '<div class="row">'+(s==='loading'||s==null?'Loading laps...':s==='signedout'&&!REC.me?'Sign in on the library to save laps':'Lap records unavailable')+'</div>';})());}
+  if(race.ph==='attack'){const L2=REC.lists['time-attack'];E.board.innerHTML=`<div class="row"><b>Top 20 laps \u00b7 ${esc(TRACK.name)}</b></div>`+(L2?L2.length?L2.slice(0,20).map((r,k)=>`<div class="row"><span class="p">${k+1}</span><span class="nm">${esc(r.username)}</span><span class="gp">${fmtLap(r.milliseconds)}</span></div>`).join(''):'<div class="row">No laps yet</div>':(()=>{const s=REC.state['time-attack'];return '<div class="row">'+(s==='loading'||s==null?'Loading laps...':s==='signedout'&&!REC.me?'Sign in on the library to save laps':'Lap records unavailable')+'</div>';})());}
   else E.board.innerHTML=st.map((c,k)=>`<div class="row${c===me?' me':''}"><span class="p">${k+1}</span><span class="num" style="background:${c.lv.primary};color:${c.lv.numColor};${chipFont(c.lv)}">${esc(c.lv.number)}</span><span class="nm">${esc(c.lv.name)}</span><span class="gp">${k===0?'Leader':gapStr(st[0].prog-c.prog,30)}</span></div>`).join('');
   const [txt,bg,fg]=flagState();E.flag.textContent=txt;E.flag.style.background=bg==='checker'?'repeating-conic-gradient(#111 0 25%,#eee 0 50%) 0 0/14px 14px':bg;E.flag.style.color=fg;
   if(txt==='WHITE FLAG'&&!race.white){race.white=true;bigMsg('WHITE FLAG','One to go',2);flagMat.color.set(0xffffff);}

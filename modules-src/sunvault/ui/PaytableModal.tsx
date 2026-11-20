@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { JACKPOT_MULTIPLIERS, JACKPOT_TIERS, LINE_PAYS, PAYLINES, PICK_ODDS, SCATTER_PAYS, SYMBOLS, Sym, ZONE_MULTIPLIERS } from '../engine/paytable'
+import { HAYWIRE_MULTIPLIERS, HAYWIRE_NAMES, HAYWIRE_ODDS, JACKPOT_MULTIPLIERS, JACKPOT_TIERS, LINE_PAYS, PAYLINES, PICK_ODDS, SCATTER_PAYS, SYMBOLS, Sym, ZONE_MULTIPLIERS } from '../engine/paytable'
 import { formatMoney } from '../format'
 import { DAILY_BASE_CENTS, DAILY_STEP_CENTS, dailyAmount } from '../engine/daily'
 
@@ -118,6 +118,18 @@ export function PaytableModal({ open, bet, atlasUrl, onClose }: PaytableModalPro
           <p className="mt-1 text-sm text-sand-200">
             Any paid spin can open the Jackpot Pick at random (about 1 in {Math.round(1 / PICK_ODDS)} spins). Uncover tiles on a 3×3 board; the first jackpot to show three times is won. Every pick ends in a jackpot.
           </p>
+        </section>
+
+        <section className="mt-5 rounded-xl border border-ember-400/40 bg-night-700/40 p-3">
+          <h3 className="font-display text-sm font-bold uppercase tracking-[0.2em] text-ember-400">Haywire</h3>
+          <p className="mt-1 text-sm text-sand-200">
+            About 1 in {Math.round(1 / HAYWIRE_ODDS)} paid spins, the vault goes haywire: the reels glitch and one of three effects changes the spin before it pays. Haywire never happens during free spins or Vault Respins.
+          </p>
+          <ul className="mt-2 grid gap-2 text-sm text-sand-200 sm:grid-cols-3">
+            <li className="rounded-lg bg-night-900/70 p-2"><b className="block text-gold-200">{HAYWIRE_NAMES.wilds}</b>3 to 5 line symbols on reels 2 to 4 turn into Pyramid Wilds.</li>
+            <li className="rounded-lg bg-night-900/70 p-2"><b className="block text-gold-200">{HAYWIRE_NAMES.coins}</b>A Sphinx lands on reel 5 with cash Sun Coins until 3 to 5 coins show, and it collects them. It never opens Vault Respins.</li>
+            <li className="rounded-lg bg-night-900/70 p-2"><b className="block text-gold-200">{HAYWIRE_NAMES.double}</b>Everything the spin pays is multiplied by {HAYWIRE_MULTIPLIERS.items.map((item) => `×${item}`).join(', ').replace(/, (×\d+)$/, ' or $1')}.</li>
+          </ul>
         </section>
 
         <section className="mt-5 rounded-xl border border-gold-700/40 bg-night-700/40 p-3">

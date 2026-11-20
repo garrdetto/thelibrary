@@ -1,5 +1,6 @@
 import type { D1PreparedStatement, Env } from './env.js'
 import { learningModules } from '../lib/modules.js'
+import { isScoredModule, scoreBoardParent } from '../lib/module-scores.js'
 
 export const NOTICE_PLACES = 3
 
@@ -14,8 +15,13 @@ export type KnockoutBoard = {
 
 const extraTitles: Record<string, string> = { wpm: 'Words Per Minute', memory: 'Memory Match', simon: 'Echo Sequence', mathrush: 'Math Rush' }
 
+export function noticeModule(game: string) {
+  return isScoredModule(game) ? scoreBoardParent(game) : game
+}
+
 export function gameTitle(game: string) {
-  return learningModules.find(item => item.id === game)?.title ?? extraTitles[game] ?? game
+  const module = noticeModule(game)
+  return learningModules.find(item => item.id === module)?.title ?? extraTitles[module] ?? module
 }
 
 let tableReady: Promise<unknown> | null = null

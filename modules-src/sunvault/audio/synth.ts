@@ -302,6 +302,24 @@ export class SlotAudio {
     this.tone(98, 0, 1.4, { wave: 'sine', gain: 0.25 })
   }
 
+  haywire(seconds: number): void {
+    const steps = Math.max(4, Math.round(seconds / 0.08))
+    for (let k = 0; k < steps; k++) {
+      const at = k * 0.08 + Math.random() * 0.03
+      this.tone(220 + Math.random() * 1800, at, 0.05, { wave: 'square', gain: 0.045, glideTo: 80 + Math.random() * 400 })
+      if (k % 2 === 0) this.burst(at, 0.05, { type: 'highpass', freq: 2500 + Math.random() * 3500, q: 0.7, gain: 0.1 })
+    }
+    this.tone(70, 0, seconds, { wave: 'sawtooth', gain: 0.05, glideTo: 35, attack: 0.04 })
+  }
+
+  haywireHit(): void {
+    this.tone(1600, 0, 0.35, { wave: 'sawtooth', gain: 0.1, glideTo: 90 })
+    this.tone(1210, 0.02, 0.3, { wave: 'square', gain: 0.05, glideTo: 70, detune: 25 })
+    this.burst(0, 0.25, { type: 'bandpass', freq: 5000, sweepTo: 400, q: 2, gain: 0.22 })
+    this.tone(880, 0.32, 0.08, { wave: 'square', gain: 0.05 })
+    this.tone(1320, 0.4, 0.14, { wave: 'square', gain: 0.05 })
+  }
+
   tally(): void {
     this.tone(1760 + Math.random() * 200, 0, 0.05, { wave: 'square', gain: 0.025 })
   }

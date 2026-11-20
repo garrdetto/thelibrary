@@ -83,7 +83,7 @@ export function LapRecordBoard<Mode extends string>({ track: defaultTrack, track
         <div>
           <span className="lap-board-eyebrow">All-time record book</span>
           <h2 id={titleId}>{trackName} fastest laps</h2>
-          <p>The 20 fastest laps ever recorded on this track. Each track and mode keeps its own book.</p>
+          <p>Every lap ever recorded on this track, fastest first. Each track and mode keeps its own book.</p>
           {trackOptions && trackOptions.length > 1 && <label className="lap-board-track"><span>Track</span><select value={track} onChange={event => setTrack(event.target.value)}>{trackOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>}
         </div>
         {onRetry && <button type="button" className="lap-board-retry" onClick={onRetry}>Refresh / retry saving</button>}
