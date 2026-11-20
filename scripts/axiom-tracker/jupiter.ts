@@ -1,6 +1,7 @@
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { chunk, createLogger, errorMessage, fetchJson, isMainModule, sleep, isSolanaAddress } from './runtime.js'
 import { activeCandidates, trackerState, type JupiterReading } from './state.js'
+import { axiomOnly } from './sources.js'
 
 const logger = createLogger('jupiter')
 const jupiterApi = 'https://lite-api.jup.ag/tokens/v2'
@@ -128,6 +129,7 @@ async function refreshMoverMints() {
  * Returns the newest lists at once and refreshes them in the background, so discovery never waits on Jupiter's request queue.
  */
 export async function jupiterMoverMints(now = Date.now()) {
+  if (axiomOnly) return [] as string[]
   if (!moverList.loading && now - moverList.at >= moverListMs) {
     moverList.at = now
     moverList.loading = true

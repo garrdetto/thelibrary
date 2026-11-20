@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import VERSION
+from . import sources
 from . import settings as dials
 from .dashboard import Keys, PlainLog, Screen, build, enable_ansi
 from .engine import Engine
@@ -94,7 +95,7 @@ def run(args: argparse.Namespace) -> int:
         print("The bot is already running on this account. Stop the other copy first.", file=sys.stderr)
         return 2
     ledger = Ledger(args.db)
-    engine = Engine(ledger, site, args.settings, background=not args.once)
+    engine = Engine(ledger, site, args.settings, background=not args.once, axiom_only=sources.AXIOM_ONLY)
     try:
         if args.once:
             engine.step()

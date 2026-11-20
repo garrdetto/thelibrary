@@ -3,6 +3,7 @@ import { bestPairByMint, fetchTokenPairs, readMarket } from './dexscreener.js'
 import { chunk, createLogger, errorMessage, sleep } from './runtime.js'
 import { activeCandidates, freshViewerCount, trackerState } from './state.js'
 import { applyPulseMarket, noteDexMarket } from './pulse-market.js'
+import { axiomOnly } from './sources.js'
 
 const logger = createLogger('live-market')
 const tickIntervalMs = 1_000
@@ -44,7 +45,7 @@ async function fetchMarketsFast(mints: string[]) {
 }
 
 export function startLiveMarket(database: TrackerDatabase, signal: AbortSignal) {
-  logger.info('Refreshing prices every second for tracked coins')
+  logger.info(axiomOnly ? 'Recording Axiom Pulse prices every second for tracked coins' : 'Refreshing prices every second for tracked coins')
   const now = Date.now()
   const rows = database.prepare('SELECT mint, price_usd, viewers, liquidity_usd, market_cap, buys_5m, timestamp FROM snapshots WHERE timestamp >= ? ORDER BY timestamp ASC').all(now - tickHistoryMs) as Array<{ mint: string; price_usd: number | null; viewers: number | null; liquidity_usd: number | null; market_cap: number | null; buys_5m: number | null; timestamp: number }>
   for (const row of rows) {
@@ -60,7 +61,7 @@ export function startLiveMarket(database: TrackerDatabase, signal: AbortSignal) 
       const started = Date.now()
       try {
         const mints = activeCandidates(database).map(candidate => candidate.mint)
-        if (mints.length) {
+        if (mints.length && !axiomOnly) {
           const markets = await fetchMarketsFast(mints)
           for (const [mint, market] of markets) {
             trackerState.market.set(mint, market)

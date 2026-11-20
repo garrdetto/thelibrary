@@ -1,4 +1,5 @@
 import { fetchJson, sleep } from './runtime.js'
+import { axiomOnly, SourceOffError } from './sources.js'
 
 export const publicNode = 'https://api.mainnet-beta.solana.com'
 
@@ -49,6 +50,7 @@ export function noteSolanaLimit(message: string) {
 }
 
 export async function solanaRpc<T>(method: string, params: unknown[], background = false): Promise<T> {
+  if (axiomOnly) throw new SourceOffError(rpcUrl())
   await paceSolana(method, background)
   try {
     const response = await fetchJson<{ result?: T; error?: { message?: string } }>(rpcUrl(), {

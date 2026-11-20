@@ -1,4 +1,5 @@
 import { chunk, errorMessage, fetchJson, sleep } from './runtime.js'
+import { axiomOnly } from './sources.js'
 import { geckoAnswered, geckoCalled, geckoLimited, geckoReady } from './gecko-limit.js'
 
 const dexScreenerApi = 'https://api.dexscreener.com'
@@ -67,6 +68,7 @@ async function geckoMints(path: string) {
 let geckoPage = 0
 
 export async function fetchDiscoverySources() {
+  if (axiomOnly) return { mints: [] as string[], boosted: new Set<string>(), failures: 0 }
   const sources = await Promise.allSettled([
     listingMints('/token-profiles/latest/v1'),
     listingMints('/token-boosts/latest/v1'),
@@ -107,6 +109,7 @@ async function tokenLookupTurn() {
 
 /** One DexScreener token lookup (up to 30 mints), paced with every other lookup and remembered for `recentPairsFor`. */
 export async function fetchTokenPairs(mints: string[], options?: { retries?: number; timeoutMs?: number }) {
+  if (axiomOnly) return [] as DexPair[]
   await tokenLookupTurn()
   let result: DexPair[]
   try {
