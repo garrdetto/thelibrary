@@ -159,11 +159,20 @@ fn reelFragment(input: ReelOut) -> @location(0) vec4f {
   let cellScreen = max(1.0, w.rect.z);
   let lod = clamp(log2(256.0 / cellScreen), 0.0, 3.0);
   let blur = w.params.w * globals.flags.x;
+  let glitch = globals.flags.w;
+  var gx = input.local.x;
+  if (glitch > 0.001) {
+    let band = floor(input.local.y * 14.0) + floor(globals.time * 24.0) * 7.0;
+    let tear = hash(vec2f(band, f32(input.index) * 3.1));
+    if (tear > 0.6) {
+      gx = gx + (tear - 0.8) * 0.6 * glitch;
+    }
+  }
   var symbol = vec4f(0.0);
   var weight = 0.0;
   for (var k = 0; k < 9; k++) {
     let step = f32(k) / 8.0;
-    let tap = sampleStrip(w, p + blur * step, input.local.x, lod);
+    let tap = sampleStrip(w, p + blur * step, gx, lod);
     let wk = 1.0 - step * 0.6;
     symbol += tap * wk;
     weight += wk;
@@ -184,6 +193,18 @@ fn reelFragment(input: ReelOut) -> @location(0) vec4f {
   }
 
   var rgb = bg * (1.0 - symbol.a) + symbol.rgb;
+  if (glitch > 0.001) {
+    let split = 0.045 * glitch;
+    let left = sampleStrip(w, p + blur * 0.5, gx - split, lod);
+    let right = sampleStrip(w, p + blur * 0.5, gx + split, lod);
+    let red = bg.r * (1.0 - left.a) + left.r;
+    let blue = bg.b * (1.0 - right.a) + right.b;
+    rgb = vec3f(mix(rgb.r, red, glitch), rgb.g, mix(rgb.b, blue, glitch));
+    let scan = step(0.5, fract(input.position.y * 0.5));
+    rgb *= 1.0 - 0.28 * glitch * scan;
+    let noiseRow = hash(vec2f(floor(input.position.y * 0.2), floor(globals.time * 30.0)));
+    rgb += vec3f(0.35, 0.08, 0.5) * glitch * step(0.965, noiseRow);
+  }
 
   let center = p - blur * 0.25;
   let cell = slotCell(w, i32(floor(center)));

@@ -90,7 +90,7 @@ const jackpot = (tier: Exclude<JackpotTier, 'grand'>): CoinPrize => ({ kind: 'ja
 
 export const REEL_COIN_PRIZES: WeightedTable<CoinPrize> = {
   items: [cash(0.5), cash(1), cash(2), cash(3), cash(5), cash(10), jackpot('mini'), jackpot('minor')],
-  weights: [560, 280, 100, 30, 16, 8, 5, 1],
+  weights: [600, 270, 90, 28, 15, 7, 5, 1],
 }
 
 export const RESPIN_COIN_PRIZES: WeightedTable<CoinPrize> = {
@@ -100,9 +100,21 @@ export const RESPIN_COIN_PRIZES: WeightedTable<CoinPrize> = {
 
 export const EXPANSION_SIZES: WeightedTable<1 | 2 | 3> = { items: [1, 2, 3], weights: [70, 22, 8] }
 
-export const PICK_ODDS = 1 / 600
+export const PICK_ODDS = 1 / 900
 export const PICK_TIERS: WeightedTable<JackpotTier> = { items: ['mini', 'minor', 'major', 'grand'], weights: [750, 200, 45, 5] }
 export const PICK_TILES = 9
+
+export type HaywireKind = 'wilds' | 'coins' | 'double'
+export const HAYWIRE_ODDS = 1 / 100
+export const HAYWIRE_EFFECTS: WeightedTable<HaywireKind> = { items: ['wilds', 'coins', 'double'], weights: [25, 35, 40] }
+export const HAYWIRE_NAMES: Readonly<Record<HaywireKind, string>> = { wilds: 'Wild Surge', coins: 'Coin Storm', double: 'Double Trouble' }
+export const HAYWIRE_WILD_COUNTS: WeightedTable<number> = { items: [3, 4, 5], weights: [75, 20, 5] }
+export const HAYWIRE_COIN_COUNTS: WeightedTable<number> = { items: [3, 4, 5], weights: [50, 32, 18] }
+export const HAYWIRE_COIN_PRIZES: WeightedTable<CoinPrize> = {
+  items: [cash(0.5), cash(1), cash(2), cash(3)],
+  weights: [550, 300, 110, 40],
+}
+export const HAYWIRE_MULTIPLIERS: WeightedTable<number> = { items: [2, 3, 5], weights: [75, 20, 5] }
 
 export const RESPIN_CELL_ODDS = { coin: 0.05, sphinx: 0.006 }
 export const ZONE_MULTIPLIERS = [1, 2, 3] as const

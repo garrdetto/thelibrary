@@ -9,6 +9,12 @@ import {
   expansionRect,
   FREE_SPINS_AWARD,
   FREE_STRIPS,
+  HAYWIRE_COIN_COUNTS,
+  HAYWIRE_COIN_PRIZES,
+  HAYWIRE_EFFECTS,
+  HAYWIRE_MULTIPLIERS,
+  HAYWIRE_ODDS,
+  HAYWIRE_WILD_COUNTS,
   JACKPOT_MULTIPLIERS,
   LINE_PAYS,
   PAYLINES,
@@ -26,6 +32,7 @@ import {
   ZONE_RECTS,
   zoneContains,
   type CoinPrize,
+  type HaywireKind,
   type JackpotTier,
   type WeightedTable,
   type ZoneRect,
@@ -34,7 +41,7 @@ import { createRng, cryptoSeed, type Rng } from './rng'
 
 export type Mode = 'base' | 'free' | 'respin'
 export type CellRef = readonly [reel: number, row: number]
-export type ForceOutcome = 'respin' | 'collect' | 'bigwin' | 'free' | 'grand' | 'pick'
+export type ForceOutcome = 'respin' | 'collect' | 'bigwin' | 'free' | 'grand' | 'pick' | 'haywire'
 
 export interface Cell {
   sym: Sym
@@ -97,6 +104,12 @@ export interface FeatureEnd {
   closesFree: number | null
 }
 
+export interface Haywire {
+  kind: HaywireKind
+  cells: CellRef[]
+  multiplier: number
+}
+
 export interface Anticipation {
   reel: number
   reason: 'scatter' | 'coin'
@@ -110,6 +123,7 @@ export interface Stats {
   freeTriggers: number
   respinTriggers: number
   collects: number
+  haywires: number
   biggestWin: number
   jackpots: Record<JackpotTier, number>
 }
@@ -148,6 +162,7 @@ export interface SpinResult {
   zoneAfter: number
   respin: RespinStep | null
   featureEnd: FeatureEnd | null
+  haywire: Haywire | null
   forced: ForceOutcome | null
   state: EngineSnapshot
 }
@@ -193,6 +208,7 @@ const emptyStats = (): Stats => ({
   freeTriggers: 0,
   respinTriggers: 0,
   collects: 0,
+  haywires: 0,
   biggestWin: 0,
   jackpots: { mini: 0, minor: 0, major: 0, grand: 0 },
 })
@@ -453,6 +469,43 @@ export class SlotEngine {
     if (force === 'grand') this.forceFill = true
   }
 
+  private goHaywire(grid: Grid, bet: number): Haywire {
+    const kind = this.rng.pick(HAYWIRE_EFFECTS.items, HAYWIRE_EFFECTS.weights)
+    if (kind === 'double') return { kind, cells: [], multiplier: this.rng.pick(HAYWIRE_MULTIPLIERS.items, HAYWIRE_MULTIPLIERS.weights) }
+    if (kind === 'wilds') {
+      const count = this.rng.pick(HAYWIRE_WILD_COUNTS.items, HAYWIRE_WILD_COUNTS.weights)
+      const cells = this.randomCells(count, (reel, row) => reel < 1 || reel > 3 || !isPaying(grid[reel][row].sym))
+      for (const [reel, row] of cells) grid[reel][row] = { sym: Sym.Wild, prize: null, value: 0 }
+      return { kind, cells, multiplier: 1 }
+    }
+    const cells: CellRef[] = []
+    const lastReel = REELS - 1
+    let sphinxRow = grid[lastReel].findIndex((cell) => cell.sym === Sym.Sphinx)
+    if (sphinxRow < 0) {
+      const rows = [0, 1, 2].filter((row) => grid[lastReel][row].sym !== Sym.Scatter)
+      const plain = rows.filter((row) => grid[lastReel][row].sym !== Sym.Coin)
+      const choices = plain.length > 0 ? plain : rows.length > 0 ? rows : [0, 1, 2]
+      sphinxRow = choices[this.rng.int(choices.length)]
+      grid[lastReel][sphinxRow] = { sym: Sym.Sphinx, prize: null, value: 0 }
+      cells.push([lastReel, sphinxRow])
+    }
+    const target = this.rng.pick(HAYWIRE_COIN_COUNTS.items, HAYWIRE_COIN_COUNTS.weights)
+    const existing = findCells(grid, Sym.Coin).length
+    const adding = Math.min(RESPIN_TRIGGER - 1 - existing, Math.max(1, target - existing))
+    if (adding > 0) {
+      for (const [reel, row] of this.randomCells(adding, (reel, row) => !isPaying(grid[reel][row].sym))) {
+        grid[reel][row] = this.makeCell(Sym.Coin, bet, HAYWIRE_COIN_PRIZES)
+        cells.push([reel, row])
+      }
+    }
+    return { kind, cells, multiplier: 1 }
+  }
+
+  private trimCoins(grid: Grid, keep: number): void {
+    const coins = findCells(grid, Sym.Coin)
+    for (const [reel, row] of coins.slice(keep)) grid[reel][row] = { sym: (Sym.Ten + this.rng.int(5)) as Sym, prize: null, value: 0 }
+  }
+
   private collectsFor(mode: Mode, grid: Grid): CollectEvent[] {
     const coins = findCells(grid, Sym.Coin)
     if (coins.length === 0) return []
@@ -484,7 +537,14 @@ export class SlotEngine {
 
   private playReelSpin(mode: 'base' | 'free', bet: number, force: ForceOutcome | null): SpinResult {
     const grid = this.drawReels(mode, bet)
-    if (force) this.applyForce(grid, force, mode, bet)
+    let haywire: Haywire | null = null
+    if (mode === 'base' && force === 'haywire') {
+      this.trimCoins(grid, RESPIN_TRIGGER - 1)
+      haywire = this.goHaywire(grid, bet)
+    } else if (mode === 'base' && !force && this.rng.next() < HAYWIRE_ODDS && findCells(grid, Sym.Coin).length < RESPIN_TRIGGER) {
+      haywire = this.goHaywire(grid, bet)
+    }
+    if (force && force !== 'haywire') this.applyForce(grid, force, mode, bet)
     const zoneBefore = this.zoneLevel
     const lineWins = evaluateLines(grid, bet)
     const scatter = evaluateScatter(grid, bet)
@@ -498,7 +558,7 @@ export class SlotEngine {
     const collectTotal = collects.reduce((sum, event) => sum + event.amount, 0)
     const pick = mode === 'base' && (force === 'pick' || this.rng.next() < PICK_ODDS) ? this.drawPick(bet) : null
     if (pick) jackpots.push({ tier: pick.tier, amount: pick.amount, cell: null })
-    const stepWin = lineTotal + scatter.win + collectTotal + (pick?.amount ?? 0)
+    const stepWin = (lineTotal + scatter.win + collectTotal + (pick?.amount ?? 0)) * (haywire?.multiplier ?? 1)
 
     let trigger: SpinResult['trigger'] = null
     let freeSpinsAwarded = 0
@@ -511,6 +571,7 @@ export class SlotEngine {
     this.credit(stepWin)
     for (const award of jackpots) this.stats.jackpots[award.tier]++
     if (collects.length > 0) this.stats.collects++
+    if (haywire) this.stats.haywires++
 
     if (mode === 'free') {
       this.freeTotal += stepWin
@@ -557,6 +618,7 @@ export class SlotEngine {
       zoneAfter: this.zoneLevel,
       respin: respinTriggered ? { respinsLeft: this.respinsLeft, reset: true, filled: coinCount + findCells(grid, Sym.Sphinx).length, newCells: [], held: this.held.map((reel) => [...reel]) } : null,
       featureEnd,
+      haywire,
       forced: force,
       state: this.snapshot(),
     }
@@ -715,6 +777,7 @@ export class SlotEngine {
       zoneAfter: this.zoneLevel,
       respin: { respinsLeft: Math.max(0, this.respinsLeft), reset, filled, newCells, held: heldBefore.map((reel, r) => reel.map((wasHeld, row) => wasHeld || newCells.some(([nr, nrow]) => nr === r && nrow === row))) },
       featureEnd,
+      haywire: null,
       forced: force,
       state: this.snapshot(),
     }

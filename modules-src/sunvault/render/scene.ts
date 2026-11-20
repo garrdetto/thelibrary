@@ -161,6 +161,10 @@ export class Scene {
   private zone: ZoneState = { visible: false, level: 0, from: { x: 0, y: 0, w: 0, h: 0 }, to: { x: 0, y: 0, w: 0, h: 0 }, start: 0, appear: 0 }
   private shake = 0
   private expansions: Expansion[] = []
+  private glitchUntil = 0
+  private glitchLevel = 0
+  private glitchClock = 0
+  private glitchJitter: Point[] = []
 
   constructor() {
     this.buildReelStrips()
@@ -454,6 +458,34 @@ export class Scene {
     this.celebrateUntil = Math.max(this.celebrateUntil, this.time + duration)
   }
 
+  glitch(seconds: number): void {
+    this.glitchUntil = Math.max(this.glitchUntil, this.time + seconds)
+  }
+
+  stopGlitch(): void {
+    this.glitchUntil = 0
+  }
+
+  private updateGlitch(dt: number): void {
+    if (this.time >= this.glitchUntil) {
+      this.glitchLevel = Math.max(0, this.glitchLevel - dt * 5)
+      if (this.glitchLevel === 0) this.glitchJitter.length = 0
+      return
+    }
+    this.glitchClock -= dt
+    if (this.glitchClock > 0) return
+    this.glitchClock = 0.03 + Math.random() * 0.06
+    const spike = Math.random() < 0.3
+    this.glitchLevel = spike ? 0.85 + Math.random() * 0.15 : 0.2 + Math.random() * 0.35
+    if (spike) this.shake = Math.max(this.shake, 0.16)
+    const { cell } = this.layout
+    this.glitchJitter = this.strips.map(() => (Math.random() < 0.55 ? { x: (Math.random() - 0.5) * cell * 0.08 * this.glitchLevel, y: (Math.random() - 0.5) * cell * 0.22 * this.glitchLevel } : { x: 0, y: 0 }))
+    if (spike) {
+      const { gridX, gridY, gridW, gridH } = this.layout
+      this.particles.sparks(gridX + Math.random() * gridW, gridY + Math.random() * gridH, 8, VIOLET, 360)
+    }
+  }
+
   stopCelebration(): void {
     this.celebrateUntil = 0
     this.celebrateLevel = 0
@@ -524,6 +556,7 @@ export class Scene {
     const target = THEME_TINT[this.theme]
     for (let k = 0; k < 3; k++) this.tint[k] += (target[k] - this.tint[k]) * Math.min(1, dt * 2.5)
     this.shake = Math.max(0, this.shake - dt)
+    this.updateGlitch(dt)
     this.updateFlights(dt)
     this.highlights = this.highlights.filter((highlight) => highlight.until > this.time)
     this.floats = this.floats.filter((float) => this.time - float.start < float.duration)
@@ -546,7 +579,7 @@ export class Scene {
     this.drawAnticipation()
     this.drawFlights()
     this.drawFloats()
-    return { time: this.time, dt, back: this.back, under: this.under, windows: this.windows, over: this.over, top: this.top, spawns: this.particles.drain() }
+    return { time: this.time, dt, back: this.back, under: this.under, windows: this.windows, over: this.over, top: this.top, spawns: this.particles.drain(), glitch: this.glitchLevel }
   }
 
   private updateFlights(dt: number): void {
@@ -635,7 +668,8 @@ export class Scene {
     const { width, height } = this.layout
     const size = Math.max(width, height) * (1.06 + Math.sin(this.time * 0.07) * 0.015)
     const sx = Math.sin(this.time * 0.11) * width * 0.008
-    this.back.quad(width / 2 + sx, height / 2, size / 2, size / 2, [0, 0, 1, 1], { color: [this.tint[0], this.tint[1], this.tint[2], 1] })
+    const flicker = this.glitchLevel > 0.8 ? [1.25, 0.7, 1.35] : [1, 1, 1]
+    this.back.quad(width / 2 + sx, height / 2, size / 2, size / 2, [0, 0, 1, 1], { color: [this.tint[0] * flicker[0], this.tint[1] * flicker[1], this.tint[2] * flicker[2], 1] })
   }
 
   private shakeOffset(): Point {
@@ -677,9 +711,10 @@ export class Scene {
     this.windows.length = 0
     this.strips.slice(0, MAX_WINDOWS).forEach((strip, index) => {
       const frac = strip.slots(this.slots, index * 8)
+      const jitter = this.glitchJitter[index] ?? { x: 0, y: 0 }
       this.windows.push({
-        x: strip.rect.x + offset.x,
-        y: strip.rect.y + offset.y,
+        x: strip.rect.x + offset.x + jitter.x,
+        y: strip.rect.y + offset.y + jitter.y,
         w: strip.rect.w,
         h: strip.rect.h,
         rows: strip.rows,

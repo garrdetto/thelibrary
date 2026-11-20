@@ -3,7 +3,7 @@ import { Trophy, X } from 'lucide-react'
 import { isModuleAvailable, learningModules } from '@/lib/modules'
 import type { ModuleId } from '@/lib/modules'
 
-type Notice = { game: string; title: string; detail: string | null; by: string; place: number; date: string }
+type Notice = { game: string; module?: string; title: string; detail: string | null; by: string; place: number; date: string }
 
 const ordinal = (place: number) => place === 1 ? '1st' : place === 2 ? '2nd' : place === 3 ? '3rd' : `${place}th`
 
@@ -40,7 +40,7 @@ export function ScoreNotices({ username, onOpen }: { username: string; onOpen: (
   if (!notices.length && !error) return null
   return <section className="score-notices" aria-label="Leaderboard notifications" aria-live="polite">
     {notices.map(notice => {
-      const module = learningModules.find(item => item.id === notice.game && isModuleAvailable(item.id))
+      const module = learningModules.find(item => item.id === (notice.module ?? notice.game) && isModuleAvailable(item.id))
       return <div key={notice.game} className="score-notice" role="status">
         <Trophy size={17} aria-hidden="true"/>
         <p><strong>{notice.by}</strong> has knocked you out of {ordinal(notice.place)} place on {module ? <button type="button" className="score-notice-link" onClick={() => onOpen(module.id)}>{notice.title}</button> : notice.title}!{notice.detail && <small>{notice.detail}</small>}</p>

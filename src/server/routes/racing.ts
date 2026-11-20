@@ -11,13 +11,9 @@ import { displayScheme, presets } from '../../lib/racing'
 import { carCountsForRecords, carIdOf } from '../../../modules-src/shorttrack/shared/CustomCars'
 import { getCar } from '../shorttrack-cars'
 
-const minimumLapMilliseconds = {
-  circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dellswide: 7000, prison: 7500, dirt: 8000,
-  'shorttrack-v2': 12000, 'dells-v2': 8000, 'dellswide-v2': 7000, 'prison-v2': 7500, 'dirt-v2': 8000,
-}
 const trackNames: Record<z.infer<typeof trackIds>, string> = {
-  circuit: 'Max Secure Circuit', oval: 'Oval Speedway', shorttrack: 'Showdown Bullring', dells: 'Dells Short Track', dellswide: 'Dells Wide Oval', prison: 'Prison Speedway', dirt: 'Dells Dirt Oval',
-  'shorttrack-v2': 'Showdown Bullring', 'dells-v2': 'Dells Short Track', 'dellswide-v2': 'Dells Wide Oval', 'prison-v2': 'Prison Speedway', 'dirt-v2': 'Dells Dirt Oval',
+  circuit: 'Max Secure Circuit', oval: 'Oval Speedway', shorttrack: 'Madison International Raceway', dells: 'Fox Speedway', dellswide: 'Dells Raceway Park', prison: 'Prison Speedway', dirt: 'Beaver Dam Raceway',
+  'shorttrack-v2': 'Madison International Raceway', 'dells-v2': 'Fox Speedway', 'dellswide-v2': 'Dells Raceway Park', 'prison-v2': 'Prison Speedway', 'dirt-v2': 'Beaver Dam Raceway',
 }
 const modeNames: Record<z.infer<typeof raceModes>, string> = { practice: 'Time trial', multiplayer: 'Online', 'time-attack': 'Time Attack', race: 'Solo Race' }
 const closedTracks =new Set(['shorttrack', 'dells', 'dellswide', 'prison', 'dirt'])
@@ -30,7 +26,7 @@ const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ticket') }),
   z.object({ action: z.literal('reset-records'), password: z.string().min(1).max(128).optional(), mode: raceModes, track: trackIds }),
-  z.object({ action: z.literal('lap'), run: z.string().uuid(), lap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), milliseconds: z.number().int().min(4000).max(600000), mode: raceModes, track: trackIds, vehicle: z.string().max(64).optional() }),
+  z.object({ action: z.literal('lap'), run: z.string().uuid(), lap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), milliseconds: z.number().int().min(1).max(600000), mode: raceModes, track: trackIds, vehicle: z.string().max(64).optional() }),
   z.object({ action: z.literal('preset'), name: z.string().max(40), bodyStyle: bodyStyles.optional() }),
   z.object({ action: z.literal('body'), bodyStyle: bodyStyles }),
   z.object({ action: z.literal('paint'), vehicle: vehicleIds, body: hex, stripe: hex, pattern: z.enum(['plain', 'stripes', 'flames', 'chevrons', 'checker', 'lightning']) }),
@@ -54,7 +50,7 @@ export async function racing(request: Request, env: Env) {
   if (request.method === 'GET' && url.searchParams.has('records')) {
     const mode = raceModes.parse(url.searchParams.get('mode') ?? 'practice')
     const track = trackIds.parse(url.searchParams.get('track') ?? 'circuit')
-    const rows = await env.DB.prepare('SELECT username, milliseconds, created_at, mode, track FROM racing_laps WHERE track = ? AND mode = ? ORDER BY milliseconds ASC, created_at ASC, id ASC LIMIT 20')
+    const rows = await env.DB.prepare('SELECT username, milliseconds, created_at, mode, track FROM racing_laps WHERE track = ? AND mode = ? ORDER BY milliseconds ASC, created_at ASC, id ASC LIMIT 1000')
       .bind(track, mode).all<{ username: string; milliseconds: number; created_at: number; mode: string; track: string }>()
     return json({ records: rows.results.map(row => ({ username: row.username, milliseconds: row.milliseconds, date: new Date(row.created_at).toISOString(), mode: row.mode, track: row.track })) })
   }
@@ -80,7 +76,6 @@ export async function racing(request: Request, env: Env) {
   }
   if (input.action === 'lap') {
     if (closedTracks.has(input.track)) return json({ error: 'The classic Short Track Showdown boards are closed. Reload the module to race on the current boards.' }, 400)
-    if (input.milliseconds < minimumLapMilliseconds[input.track]) return json({ error: 'That lap time is faster than the track allows.' }, 400)
     const customId = input.vehicle ? carIdOf(input.vehicle) : null
     if (customId) {
       const car = await getCar(env, customId)

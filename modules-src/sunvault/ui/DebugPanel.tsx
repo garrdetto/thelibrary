@@ -31,6 +31,7 @@ const FORCES: readonly { outcome: ForceOutcome; label: string; hint: string }[] 
   { outcome: 'free', label: 'Force Free Spins', hint: 'Three temple scatters' },
   { outcome: 'grand', label: 'Force Grand', hint: '14 coins, then the last space fills' },
   { outcome: 'pick', label: 'Force Jackpot Pick', hint: 'Match-3 jackpot board' },
+  { outcome: 'haywire', label: 'Force Haywire', hint: 'Wild Surge, Coin Storm or Double Trouble (base spins)' },
 ]
 
 const pct = (value: number) => `${(value * 100).toFixed(2)}%`
@@ -145,6 +146,7 @@ export function DebugPanel(props: DebugPanelProps) {
             <dt className="text-sand-300">Return</dt><dd>{pct(sessionRtp)}</dd>
             <dt className="text-sand-300">Free spins</dt><dd>{stats.freeTriggers}</dd>
             <dt className="text-sand-300">Vault respins</dt><dd>{stats.respinTriggers}</dd>
+            <dt className="text-sand-300">Haywire</dt><dd>{stats.haywires ?? 0}</dd>
             <dt className="text-sand-300">Jackpots</dt><dd>{stats.jackpots.mini}/{stats.jackpots.minor}/{stats.jackpots.major}/{stats.jackpots.grand}</dd>
           </dl>
           {props.onAddCredits && <button type="button" onClick={props.onAddCredits} className="mt-2 w-full rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300">
@@ -175,8 +177,11 @@ export function DebugPanel(props: DebugPanelProps) {
               <dt className="text-sand-300">Collects</dt><dd>{pct(report.sources.collect)}</dd>
               <dt className="text-sand-300">Free spins</dt><dd>{pct(report.sources.free)}</dd>
               <dt className="text-sand-300">Respins</dt><dd>{pct(report.sources.respin)}</dd>
+              <dt className="text-sand-300">Haywire ×</dt><dd>{pct(report.sources.haywire)}</dd>
               <dt className="text-sand-300">Free every</dt><dd>{every(report.freeEvery)}</dd>
               <dt className="text-sand-300">Respins every</dt><dd>{every(report.respinEvery)}</dd>
+              <dt className="text-sand-300">Haywire every</dt><dd>{every(report.haywireEvery)}</dd>
+              <dt className="text-sand-300">Surge/Storm/Double</dt><dd>{report.haywires.wilds}/{report.haywires.coins}/{report.haywires.double}</dd>
               <dt className="text-sand-300">Grands</dt><dd>{report.jackpots.grand}</dd>
               <dt className="text-sand-300">Best win</dt><dd>{Math.round(report.biggestWinMultiple)}× bet</dd>
             </dl>

@@ -2,7 +2,7 @@ import { SignInGate } from '@/components/SignInGate'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, Coins, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Minimize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck } from 'lucide-react'
+import { ArrowDown, Coins, Sprout, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Minimize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { usePoolLobby } from '@/components/PoolLobby'
@@ -46,7 +46,7 @@ const navigation = [
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
   { id: 'voice', label: 'Voice generator', icon: AudioLines },
 ] as const
-const moduleIcons: Record<ModuleId, typeof Trophy> = { arena: Target, park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxlake: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers, greible: SpellCheck, sunvault: Coins }
+const moduleIcons: Record<ModuleId, typeof Trophy> = { arena: Target, park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxlake: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers, greible: SpellCheck, sunvault: Coins, beanstalk: Sprout }
 const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { arena: 'room', sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxlake: 'room', fairway: 'room', party: 'room', angler: 'room', rackreel: 'room', pingpong: 'room', darts: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
@@ -56,7 +56,7 @@ const studioViews: readonly string[] = ['chat', 'image', 'lyrics', 'voice']
 const isPlayId = isEmbeddedModuleId
 const shortTrackModes = ['time-attack', 'race', 'multiplayer'] as const
 const shortTrackModeNames = { 'time-attack': 'Time Attack', race: 'Solo Race', multiplayer: 'Online' }
-const shortTrackTracks = [{ id: 'prison-v2', name: 'Prison Speedway (0.29 mi)' }, { id: 'shorttrack-v2', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells-v2', name: 'Dells Short Track (0.3 mi)' }, { id: 'dellswide-v2', name: 'Dells Wide Oval (0.27 mi)' }, { id: 'dirt-v2', name: 'Dells Dirt Oval (0.3 mi)' }] as const
+const shortTrackTracks = [{ id: 'prison-v2', name: 'Prison Speedway (0.29 mi)' }, { id: 'shorttrack-v2', name: 'Madison International Raceway (0.5 mi)' }, { id: 'dells-v2', name: 'Fox Speedway (0.3 mi)' }, { id: 'dellswide-v2', name: 'Dells Raceway Park (0.27 mi)' }, { id: 'dirt-v2', name: 'Beaver Dam Raceway (0.3 mi)' }] as const
 const shortTrackArchive = { label: 'Classic', note: 'Laps set on the classic vehicle physics. This book is read-only.', trackOf: (track: string) => track.replace(/-v2$/, '') }
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']

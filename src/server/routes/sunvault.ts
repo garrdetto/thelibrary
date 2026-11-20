@@ -7,7 +7,7 @@ import { SlotEngine, SpinError, type SpinResult } from '../../../modules-src/sun
 import { BET_LEVELS_CENTS } from '../../../modules-src/sunvault/engine/paytable'
 import { dailyStatus } from '../../../modules-src/sunvault/engine/daily'
 
-const forces = z.enum(['respin', 'collect', 'bigwin', 'free', 'grand', 'pick'])
+const forces = z.enum(['respin', 'collect', 'bigwin', 'free', 'grand', 'pick', 'haywire'])
 
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('spin'), bet: z.number().int().refine((bet) => BET_LEVELS_CENTS.includes(bet)), force: forces.optional() }),

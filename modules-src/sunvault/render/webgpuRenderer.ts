@@ -62,6 +62,7 @@ export interface FrameData {
   over: SpriteBatch
   top: SpriteBatch
   spawns: readonly ParticleSpawn[]
+  glitch: number
 }
 
 export interface RendererInfo {
@@ -319,7 +320,7 @@ export class WebGPURenderer {
     g[4] = this.options.motionBlur ? 1 : 0
     g[5] = this.options.barrel ? 1 : 0
     g[6] = this.options.shimmer ? 1 : 0
-    g[7] = 0
+    g[7] = Math.max(0, Math.min(1, frame.glitch))
     let mask = 0
     for (const cell of SHIMMER_CELLS) mask |= 1 << cell
     this.globalsU[8] = mask >>> 0

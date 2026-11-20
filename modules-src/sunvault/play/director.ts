@@ -1,8 +1,8 @@
-import { REELS, ROWS, Sym, ZONE_MULTIPLIERS, type JackpotTier } from '../engine/paytable'
+import { HAYWIRE_NAMES, REELS, ROWS, Sym, ZONE_MULTIPLIERS, type JackpotTier } from '../engine/paytable'
 import type { CellRef, CollectEvent, JackpotAward, JackpotPick, SpinResult } from '../engine/slotEngine'
 import { formatShort } from '../format'
 import type { SlotAudio } from '../audio/synth'
-import { GOLD, JADE, VIOLET } from '../render/particles'
+import { EMBER, GOLD, JADE, VIOLET } from '../render/particles'
 import { visualCell, type Scene } from '../render/scene'
 
 export type BannerTone = 'gold' | 'violet' | 'jade' | 'ember'
@@ -23,6 +23,15 @@ export interface DirectorHooks {
   onRespins: (left: number, reset: boolean) => void
   onAnticipation: (active: boolean) => void
   onPick: (pick: JackpotPick) => Promise<void>
+  onGlitch?: (active: boolean) => void
+}
+
+const calmMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+const HAYWIRE_LINES: Record<'wilds' | 'coins' | 'double', string> = {
+  wilds: 'Pyramid Wilds surge onto reels 2 to 4.',
+  coins: 'A Sphinx and a storm of Sun Coins hit the reels.',
+  double: 'Everything this spin pays is multiplied.',
 }
 
 const BIG_WIN_LEVELS: readonly { at: number; title: string; tone: BannerTone }[] = [
@@ -80,6 +89,18 @@ export class Director {
     const { scene, audio } = this
     let coinsSeen = 0
     audio.spinStart(turbo)
+    const glitching = Boolean(result.haywire) && !calmMotion()
+    let landed = false
+    if (result.haywire) {
+      const seconds = turbo ? 0.8 : 1.3
+      void scene.wait(turbo ? 0.12 : 0.28).then(() => {
+        if (landed) return
+        audio.haywire(seconds)
+        if (!glitching) return
+        scene.glitch(seconds)
+        this.hooks.onGlitch?.(true)
+      })
+    }
     await scene.spinReels(result, {
       turbo,
       onReelStop: (reel, column) => {
@@ -98,8 +119,14 @@ export class Director {
         this.hooks.onAnticipation(active)
       },
     })
+    landed = true
     audio.spinStop()
     scene.resetHurry()
+    if (glitching) {
+      scene.stopGlitch()
+      this.hooks.onGlitch?.(false)
+    }
+    if (result.haywire) await this.presentHaywire(result, turbo)
 
     const lineTotal = result.lineWins.reduce((sum, win) => sum + win.win, 0)
     if (lineTotal > 0) {
@@ -136,6 +163,8 @@ export class Director {
 
     if (result.pick) await this.presentPick(result.pick, turbo)
 
+    if (result.haywire && result.haywire.multiplier > 1) await this.presentMultiplier(result, lineTotal, turbo)
+
     if (result.trigger === 'respin') {
       await this.startRespins(result, turbo)
       return
@@ -150,6 +179,37 @@ export class Director {
     }
 
     if (result.featureEnd?.kind === 'free') await this.endFree(result.featureEnd.total)
+  }
+
+  private async presentHaywire(result: SpinResult, turbo: boolean): Promise<void> {
+    const haywire = result.haywire
+    if (!haywire) return
+    const { scene, audio } = this
+    audio.haywireHit()
+    if (haywire.cells.length > 0) {
+      scene.highlight(haywire.cells, EMBER, turbo ? 1.6 : 2.3)
+      for (const [reel, row] of haywire.cells) scene.burst(scene.cellCenter(reel, row), 'violet', 0.8)
+    }
+    const name = HAYWIRE_NAMES[haywire.kind]
+    const kicker = haywire.kind === 'double' ? `${name} ×${haywire.multiplier}` : name
+    await this.banner({ kicker, title: 'HAYWIRE!', subtitle: HAYWIRE_LINES[haywire.kind], tone: 'ember' }, turbo ? 0.7 : 1.1)
+  }
+
+  private async presentMultiplier(result: SpinResult, lineTotal: number, turbo: boolean): Promise<void> {
+    const haywire = result.haywire
+    if (!haywire) return
+    const collected = result.collects.reduce((sum, event) => sum + event.amount, 0)
+    const shown = lineTotal + (result.scatter.count >= 3 ? result.scatter.win : 0) + collected + (result.pick?.amount ?? 0)
+    const extra = result.stepWin - shown
+    if (extra <= 0) return
+    const { scene, audio } = this
+    const { gridX, gridY, gridW, gridH, cell } = scene.layout
+    const center = { x: gridX + gridW / 2, y: gridY + gridH / 2 }
+    audio.haywireHit()
+    scene.floatText(`×${haywire.multiplier}`, center, cell * 0.8, EMBER, 1.4)
+    scene.burst(center, 'stars', 1.5)
+    this.add(extra)
+    await scene.wait(turbo ? 0.35 : 0.6, true)
   }
 
   private async presentCollect(result: SpinResult, event: CollectEvent, turbo: boolean): Promise<void> {

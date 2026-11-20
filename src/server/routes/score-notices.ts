@@ -2,7 +2,12 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
-import { ensureNoticeTable, gameTitle } from '../score-notices.js'
+import { isScoredModule, scoreBoardLabel, scoreBoardParent } from '../../lib/module-scores.js'
+import { ensureNoticeTable, gameTitle, noticeModule } from '../score-notices.js'
+
+function boardDetail(game: string) {
+  return isScoredModule(game) && scoreBoardParent(game) !== game ? scoreBoardLabel(game) : null
+}
 
 const actions = z.object({ action: z.literal('clear'), game: z.string().min(1).max(40).optional() })
 
@@ -15,7 +20,7 @@ export async function scoreNotices(request: Request, env: Env) {
       .bind(user.id).all<{ game: string; detail: string | null; by_username: string; place: number; created_at: number }>()
     return json({
       signedIn: true,
-      notices: rows.results.map(row => ({ game: row.game, title: gameTitle(row.game), detail: row.detail, by: row.by_username, place: row.place, date: new Date(row.created_at).toISOString() })),
+      notices: rows.results.map(row => ({ game: row.game, module: noticeModule(row.game), title: gameTitle(row.game), detail: row.detail ?? boardDetail(row.game), by: row.by_username, place: row.place, date: new Date(row.created_at).toISOString() })),
     })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)

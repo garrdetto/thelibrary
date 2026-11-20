@@ -61,6 +61,7 @@ export function App() {
   const [betIndex, setBetIndex] = useState(DEFAULT_BET_INDEX)
   const [win, setWin] = useState(0)
   const [banner, setBanner] = useState<Banner | null>(null)
+  const [glitching, setGlitching] = useState(false)
   const [respins, setRespins] = useState<{ left: number; reset: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [auto, setAuto] = useState(false)
@@ -145,6 +146,7 @@ export function App() {
       onRespins: (left, reset) => setRespins({ left, reset }),
       onAnticipation: (active) => setAnticipating(active),
       onPick: (pick) => new Promise<void>((resolve) => setActivePick({ pick, resolve })),
+      onGlitch: (active) => setGlitching(active),
     })
     setStage({ status: 'ready', adapter: renderer.info.adapter })
     const small = document.createElement('canvas')
@@ -408,6 +410,7 @@ export function App() {
       />
       <main className="relative min-h-0 flex-1">
         {stage.status !== 'failed' && <SlotCanvas options={renderOptions} onReady={handleReady} onFailure={handleFailure} onFps={setFps} />}
+        {glitching && <div className="sv-haywire pointer-events-none absolute inset-0 z-10" aria-hidden />}
         {stage.status === 'loading' && (
           <div className="absolute inset-0 grid place-items-center" role="status">
             <span className="animate-pulse font-display text-lg tracking-[0.3em] text-gold-300">OPENING THE VAULT…</span>

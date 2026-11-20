@@ -1,0 +1,69 @@
+@import "tailwindcss" source(none);
+@source "./ui";
+@source "../sunvault/ui/DailyCollect.tsx";
+
+@theme {
+  --font-display: "Luckiest Guy", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif;
+  --font-body: "Nunito", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-gold-100: #fff3cf;
+  --color-gold-200: #ffe7a3;
+  --color-gold-300: #ffd36a;
+  --color-gold-400: #f8c64c;
+  --color-gold-500: #d99a22;
+  --color-gold-700: #8a5a10;
+  --color-sand-100: #f6ead0;
+  --color-sand-200: #e8d8b6;
+  --color-sand-300: #c9b48e;
+  --color-night-700: #1c3a1a;
+  --color-night-800: #132a12;
+  --color-night-900: #0b1a0a;
+  --color-cream-100: #fffbea;
+  --color-cream-200: #f1ead2;
+  --color-cream-300: #cfc7a8;
+  --color-leaf-300: #a6ef74;
+  --color-leaf-500: #4fb83a;
+  --color-leaf-700: #2b6e22;
+  --color-soil-800: #3a2412;
+  --color-soil-900: #22150a;
+  --color-plum-700: #5a2a8a;
+  --color-plum-900: #2a1046;
+  --color-sky-900: #0f3a5c;
+  --animate-banner-in: banner-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+
+  @keyframes banner-in {
+    from { opacity: 0; transform: scale(0.6) translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-sky-900);
+  color: var(--color-cream-100);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.haywire-banner {
+  animation: haywire-jitter 0.12s steps(2) infinite;
+  text-shadow: 3px 0 rgba(255, 0, 200, 0.8), -3px 0 rgba(0, 255, 230, 0.8);
+}
+
+@keyframes haywire-jitter {
+  0% { transform: translate(-3px, 1px) skewX(-4deg); }
+  50% { transform: translate(3px, -2px) skewX(5deg); }
+  100% { transform: translate(-1px, 2px) skewX(-2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

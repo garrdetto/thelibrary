@@ -1,4 +1,4 @@
-import { JACKPOT_TIERS, type JackpotTier } from './paytable'
+import { JACKPOT_TIERS, type HaywireKind, type JackpotTier } from './paytable'
 import { SlotEngine, type SpinResult } from './slotEngine'
 
 export interface SimulationReport {
@@ -7,10 +7,12 @@ export interface SimulationReport {
   returned: number
   rtp: number
   hitRate: number
-  sources: { lines: number; scatter: number; collect: number; pick: number; free: number; respin: number }
+  sources: { lines: number; scatter: number; collect: number; pick: number; haywire: number; free: number; respin: number }
   freeEvery: number
   respinEvery: number
   collectEvery: number
+  haywireEvery: number
+  haywires: Record<HaywireKind, number>
   jackpots: Record<JackpotTier, number>
   biggestWinMultiple: number
   standardDeviation: number
@@ -33,7 +35,8 @@ export class Simulation {
   private respinTriggers = 0
   private baseCollects = 0
   private biggest = 0
-  private sources = { lines: 0, scatter: 0, collect: 0, pick: 0, free: 0, respin: 0 }
+  private haywires: Record<HaywireKind, number> = { wilds: 0, coins: 0, double: 0 }
+  private sources = { lines: 0, scatter: 0, collect: 0, pick: 0, haywire: 0, free: 0, respin: 0 }
   private jackpots: Record<JackpotTier, number> = { mini: 0, minor: 0, major: 0, grand: 0 }
 
   constructor(seed: number, bet = 100) {
@@ -66,7 +69,12 @@ export class Simulation {
       this.sources.lines += lines
       this.sources.scatter += step.scatter.win
       this.sources.collect += collect
-      this.sources.pick += step.pick?.amount ?? 0
+      const pick = step.pick?.amount ?? 0
+      this.sources.pick += pick
+      if (step.haywire) {
+        this.haywires[step.haywire.kind]++
+        this.sources.haywire += step.stepWin - (lines + step.scatter.win + collect + pick)
+      }
       if (step.collects.length > 0) this.baseCollects++
       if (step.trigger === 'free') this.freeTriggers++
       if (step.trigger === 'respin') this.respinTriggers++
@@ -100,12 +108,15 @@ export class Simulation {
         scatter: share(this.sources.scatter),
         collect: share(this.sources.collect),
         pick: share(this.sources.pick),
+        haywire: share(this.sources.haywire),
         free: share(this.sources.free),
         respin: share(this.sources.respin),
       },
       freeEvery: every(this.freeTriggers),
       respinEvery: every(this.respinTriggers),
       collectEvery: every(this.baseCollects),
+      haywireEvery: every(this.haywires.wilds + this.haywires.coins + this.haywires.double),
+      haywires: { ...this.haywires },
       jackpots,
       biggestWinMultiple: this.biggest,
       standardDeviation: Math.sqrt(Math.max(0, this.sumSquares / spins - rtp * rtp)),

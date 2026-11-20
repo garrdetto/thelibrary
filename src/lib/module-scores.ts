@@ -34,6 +34,9 @@ export const scoredModules = {
   'sunvault-win': { title: 'Biggest Wins', metric: 'Win', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000, parent: 'sunvault', label: 'Biggest win', serverOnly: true, note: 'The most won from one spin, counting every free spin, respin and jackpot it led to. Recorded by the vault on signed-in balances; forced outcomes never count.' },
   'sunvault-multiple': { title: 'Biggest Multipliers', metric: 'Times bet', order: 'desc', unit: 'multiple', min: 1, max: 100_000_000, parent: 'sunvault', label: 'Biggest ×', serverOnly: true, note: "One spin's total win divided by its bet, so a small bet can top this board. Recorded by the vault on signed-in balances." },
   'sunvault-total': { title: 'Biggest Total Wins', metric: 'Total won', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000_000, parent: 'sunvault', label: 'Total won', serverOnly: true, note: 'Everything you have won in Sun Vault, added up across every spin. Bets are not subtracted.' },
+  'beanstalk-win': { title: 'Biggest Wins', metric: 'Win', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000, parent: 'beanstalk', label: 'Biggest win', serverOnly: true, note: 'The most won from one spin, counting the five Sky Garden spins it led to. Recorded on signed-in vault balances; forced outcomes never count.' },
+  'beanstalk-multiple': { title: 'Biggest Multipliers', metric: 'Times bet', order: 'desc', unit: 'multiple', min: 1, max: 100_000_000, parent: 'beanstalk', label: 'Biggest ×', serverOnly: true, note: "One spin's total win divided by its bet, so a small bet can top this board. Recorded on signed-in vault balances." },
+  'beanstalk-total': { title: 'Biggest Total Wins', metric: 'Total won', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000_000, parent: 'beanstalk', label: 'Total won', serverOnly: true, note: 'Everything you have won in Beanstalk Bounty, added up across every spin. Bets are not subtracted.' },
 } as const
 
 export type ScoredModuleId = keyof typeof scoredModules
@@ -43,6 +46,7 @@ export const scoreBoardGroups: Partial<Record<string, ScoredModuleId[]>> = {
   arena: ['arena-range', 'arena-horde'],
   proskater: ['proskater-blitz', 'proskater-showdown', 'proskater-story', 'proskater-free'],
   sunvault: ['sunvault-win', 'sunvault-multiple', 'sunvault-total'],
+  beanstalk: ['beanstalk-win', 'beanstalk-multiple', 'beanstalk-total'],
 }
 
 export function scoreBoardParent(module: ScoredModuleId): string {

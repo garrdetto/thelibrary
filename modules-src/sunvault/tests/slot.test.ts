@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { BASE_STRIPS, BASE_STRIP_COUNTS, CELLS, FREE_STRIPS, JACKPOT_MULTIPLIERS, JACKPOT_TIERS, LINE_PAYS, PAYLINES, REELS, ROWS, Sym, ZONE_MULTIPLIERS, ZONE_RECTS, expansionRect, type CoinPrize } from '../engine/paytable'
+import { BASE_STRIPS, BASE_STRIP_COUNTS, CELLS, FREE_STRIPS, HAYWIRE_COIN_PRIZES, HAYWIRE_MULTIPLIERS, JACKPOT_MULTIPLIERS, RESPIN_TRIGGER, JACKPOT_TIERS, LINE_PAYS, PAYLINES, REELS, ROWS, Sym, ZONE_MULTIPLIERS, ZONE_RECTS, expansionRect, type CoinPrize } from '../engine/paytable'
 import { createRng } from '../engine/rng'
 import { SlotEngine, SpinError, anticipationFor, evaluateLines, evaluateScatter, type Cell, type Grid, type SpinResult } from '../engine/slotEngine'
 import { simulate } from '../engine/simulate'
@@ -230,6 +230,118 @@ test('the jackpot pick reveals three of the winning tier last and never three of
     assert.ok(result.jackpots.some((award) => award.tier === pick.tier && award.cell === null))
   }
   assert.ok(seen.has('mini') && seen.has('minor'))
+})
+
+const forcedHaywires = (seed: number, kind: 'wilds' | 'coins' | 'double', count: number): SpinResult[] => {
+  const engine = new SlotEngine({ seed, balance: 1e12 })
+  const found: SpinResult[] = []
+  let guard = 0
+  while (found.length < count) {
+    const result = engine.spin(100, 'haywire')
+    finishRound(engine, result, 100)
+    assert.ok(result.haywire, 'forced haywire always goes haywire')
+    assert.equal(result.forced, 'haywire')
+    if (result.haywire.kind === kind) found.push(result)
+    if (++guard > 5000) throw new Error(`never drew ${kind}`)
+  }
+  return found
+}
+
+const componentTotal = (result: SpinResult) =>
+  result.lineWins.reduce((sum, win) => sum + win.win, 0) + result.scatter.win + result.collects.reduce((sum, event) => sum + event.amount, 0) + (result.pick?.amount ?? 0)
+
+test('haywire Wild Surge turns 3 to 5 plain cells on reels 2-4 wild and never opens respins', () => {
+  for (const result of forcedHaywires(61, 'wilds', 300)) {
+    const haywire = result.haywire
+    assert.ok(haywire)
+    assert.equal(haywire.multiplier, 1)
+    assert.ok(haywire.cells.length >= 3 && haywire.cells.length <= 5)
+    for (const [reel, row] of haywire.cells) {
+      assert.ok(reel >= 1 && reel <= 3, `wild on reel ${reel}`)
+      assert.equal(result.grid[reel][row].sym, Sym.Wild)
+    }
+    assert.notEqual(result.trigger, 'respin')
+    assert.ok(result.grid.flat().filter((cell) => cell.sym === Sym.Coin).length < RESPIN_TRIGGER)
+    assert.equal(result.stepWin, componentTotal(result))
+  }
+})
+
+test('haywire Coin Storm lands a collector and 3 to 5 cash coins, never six', () => {
+  const cashValues = new Set(HAYWIRE_COIN_PRIZES.items.map((prize) => (prize.kind === 'cash' ? prize.multiple * 100 : -1)))
+  for (const result of forcedHaywires(62, 'coins', 300)) {
+    const haywire = result.haywire
+    assert.ok(haywire)
+    const coins = result.grid.flat().filter((cell) => cell.sym === Sym.Coin).length
+    assert.ok(coins >= 3 && coins < RESPIN_TRIGGER, `${coins} coins`)
+    assert.ok(result.grid[REELS - 1].some((cell) => cell.sym === Sym.Sphinx))
+    assert.notEqual(result.trigger, 'respin')
+    assert.equal(result.state.mode === 'respin', false)
+    assert.ok(result.collects.length >= 1)
+    for (const [reel, row] of haywire.cells) {
+      const here = result.grid[reel][row]
+      if (here.sym === Sym.Sphinx) continue
+      assert.equal(here.sym, Sym.Coin)
+      assert.equal(here.prize?.kind, 'cash')
+      assert.ok(cashValues.has(here.value))
+    }
+    assert.equal(result.stepWin, componentTotal(result))
+  }
+})
+
+test('haywire Double Trouble multiplies the whole spin win', () => {
+  const multipliers = new Set(HAYWIRE_MULTIPLIERS.items)
+  let paid = 0
+  for (const result of forcedHaywires(63, 'double', 300)) {
+    const haywire = result.haywire
+    assert.ok(haywire)
+    assert.ok(multipliers.has(haywire.multiplier))
+    assert.deepEqual(haywire.cells, [])
+    assert.equal(result.stepWin, componentTotal(result) * haywire.multiplier)
+    if (result.stepWin > 0) paid++
+  }
+  assert.ok(paid > 0)
+})
+
+test('haywire only happens on paid base spins and is counted in the stats', () => {
+  const engine = new SlotEngine({ seed: 64, balance: 1e12 })
+  let seen = 0
+  for (let round = 0; round < 3000; round++) {
+    const first = engine.spin(100)
+    if (first.haywire) seen++
+    for (const step of finishRound(engine, first, 100).slice(1)) assert.equal(step.haywire, null)
+  }
+  assert.ok(seen > 0)
+  assert.equal(engine.snapshot().stats.haywires, seen)
+  const forced = new SlotEngine({ seed: 65, balance: 100000 })
+  for (const outcome of ['collect', 'bigwin', 'free', 'respin', 'pick'] as const) {
+    const result = forced.spin(100, outcome)
+    assert.equal(result.haywire, null)
+    finishRound(forced, result, 100)
+  }
+  forced.spin(100, 'free')
+  const inFree = forced.spin(100, 'haywire')
+  assert.equal(inFree.mode, 'free')
+  assert.equal(inFree.haywire, null)
+})
+
+test('saved states from before haywire still load', () => {
+  const engine = new SlotEngine({ seed: 66, balance: 50000 })
+  for (let k = 0; k < 20; k++) finishRound(engine, engine.spin(100), 100)
+  const saved = JSON.parse(JSON.stringify(engine.toState()))
+  delete saved.stats.haywires
+  const restored = SlotEngine.fromState(saved)
+  assert.equal(restored.snapshot().stats.haywires, 0)
+  assert.equal(restored.snapshot().stats.spins, 20)
+  restored.spin(100, 'haywire')
+  assert.equal(restored.snapshot().stats.haywires, 1)
+})
+
+test('the simulation reports haywire counts', () => {
+  const report = simulate(40000, 12)
+  const total = report.haywires.wilds + report.haywires.coins + report.haywires.double
+  assert.ok(total > 0)
+  assert.ok(report.haywireEvery > 50 && report.haywireEvery < 200, `haywire every ${report.haywireEvery}`)
+  assert.ok(report.sources.haywire >= 0)
 })
 
 test('long-run return sits near 95%', () => {
