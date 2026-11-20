@@ -1,6 +1,6 @@
 import { liveFiguresOf, type RadarHistoryPoint, type RadarLiveFigures, type RadarPayload, type RadarToken, type RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
-import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
+import { buildTokenDetail, sharedRadarPayload } from './radar-query.js'
 import { abandonIfHung, createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
 import { applyRadarSettings } from './settings-store.js'
 
@@ -114,7 +114,7 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
     while (!signal.aborted) {
       const started = Date.now()
       try {
-        const full = buildRadarPayload(database)
+        const full = sharedRadarPayload(database)
         if (!liveSupported && started >= liveRetryAt) liveSupported = true
         const live = watching && liveSupported ? { at: full.generatedAt, tokens: Object.fromEntries(full.tokens.map(token => [token.mint, liveFiguresOf(token)])) } : undefined
         const payloadDue = !live || started - lastPayloadAt >= watchingPayloadMs

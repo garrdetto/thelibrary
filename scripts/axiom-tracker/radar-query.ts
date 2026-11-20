@@ -673,6 +673,15 @@ function smartWallets(database: TrackerDatabase, minRunnerHits: number): RadarWa
   ]
 }
 
+let sharedPayload: { at: number; payload: RadarPayload } | null = null
+
+/** The payload built at most once per `maxAgeMs` and shared by the site publisher, the bot's local feed and the Radar page's local stream, which each ask every second. */
+export function sharedRadarPayload(database: TrackerDatabase, maxAgeMs = 400, now = Date.now()): RadarPayload {
+  if (sharedPayload && now >= sharedPayload.at && now - sharedPayload.at < maxAgeMs) return sharedPayload.payload
+  sharedPayload = { at: now, payload: buildRadarPayload(database, now) }
+  return sharedPayload.payload
+}
+
 export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): RadarPayload {
   const model = loadModelState(database)
   const tokens = buildRadarTokens(database, model.weights, now).map(withLearning)
