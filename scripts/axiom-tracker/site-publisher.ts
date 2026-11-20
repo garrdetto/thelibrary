@@ -8,8 +8,8 @@ const logger = createLogger('site-publisher')
 const watchingIntervalMs = 1_000
 const watchingPayloadMs = 1_000
 const idleIntervalMs = 5_000
-const watchingDetailsMs = 2_000
-const idleDetailsMs = 5_000
+const watchingDetailsMs = 10_000
+const idleDetailsMs = 10_000
 const maxBodyBytes = 1_800_000
 /** The site's ingest takes at most 300 coins; the list is already ordered pinned, then most watched. */
 export const siteTokenLimit = 300
