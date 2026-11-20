@@ -513,7 +513,7 @@ function Studio() {
         {activePlay?.id === 'darts' && <DartsRecordBoard/>}
         {activePlay?.id === 'arena' && <ArenaDuelBoard/>}
         {activePlay?.id === 'angler' && <AnglerRecordBoard/>}
-        {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
+        {activePlay && activePlay.id !== 'rackreel' && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {activePlay && !isScoredModule(activePlay.id) && hasScoreBoard(activePlay.id) && <ModuleScoreTabs key={activePlay.id} moduleId={activePlay.id} username={access.username}/>}
         {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel canRadar={Boolean(access.radar)} onOpenStudio={id => switchView(id)}/></Suspense>}
         {view === 'pool' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Racking the balls…</p>}><PoolTable lobby={lobby}/></Suspense>}

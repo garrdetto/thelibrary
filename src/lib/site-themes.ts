@@ -2,6 +2,7 @@ export const siteThemes = [
   { id: 'midnight', label: 'Midnight' },
   { id: 'slate', label: 'Gray' },
   { id: 'light', label: 'Light' },
+  { id: 'wics', label: 'WICS' },
 ] as const
 
 export type SiteTheme = typeof siteThemes[number]['id']
