@@ -17,9 +17,10 @@ interface SlotCanvasProps {
   onReady: (stage: StageReady) => void
   onFailure: (failure: StageFailure) => void
   onFps: (fps: number) => void
+  onTap?: () => void
 }
 
-export function SlotCanvas({ options, onReady, onFailure, onFps }: SlotCanvasProps) {
+export function SlotCanvas({ options, onReady, onFailure, onFps, onTap }: SlotCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<WebGPURenderer | null>(null)
@@ -47,7 +48,7 @@ export function SlotCanvas({ options, onReady, onFailure, onFps }: SlotCanvasPro
         canvas.width = width
         canvas.height = height
       }
-      scene.resize(width, height)
+      scene.resize(width, height, dpr)
     }
 
     WebGPURenderer.create(canvas, (message) => callbacks.current.onFailure({ kind: 'lost', message }))
@@ -96,7 +97,7 @@ export function SlotCanvas({ options, onReady, onFailure, onFps }: SlotCanvasPro
   }, [])
 
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div ref={containerRef} className="absolute inset-0 touch-manipulation" onPointerDown={onTap}>
       <canvas ref={canvasRef} className="block h-full w-full" aria-label="Sun Vault reels" role="img" />
     </div>
   )

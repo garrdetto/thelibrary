@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { BASE_STRIPS, BASE_STRIP_COUNTS, CELLS, FREE_STRIPS, HAYWIRE_COIN_PRIZES, HAYWIRE_MULTIPLIERS, JACKPOT_MULTIPLIERS, RESPIN_TRIGGER, JACKPOT_TIERS, LINE_PAYS, PAYLINES, REELS, ROWS, Sym, ZONE_MULTIPLIERS, ZONE_RECTS, expansionRect, type CoinPrize } from '../engine/paytable'
+import { BASE_STRIPS, BASE_STRIP_COUNTS, BET_LEVELS_CENTS, CELLS, DEFAULT_BET_CENTS, FREE_STRIPS, HAYWIRE_COIN_PRIZES, HAYWIRE_MULTIPLIERS, JACKPOT_MULTIPLIERS, REEL_COIN_PRIZES, RESPIN_COIN_PRIZES, RESPIN_TRIGGER, JACKPOT_TIERS, LINE_PAYS, PAYLINES, REELS, ROWS, SCATTER_PAYS, Sym, ZONE_MULTIPLIERS, ZONE_RECTS, expansionRect, type CoinPrize } from '../engine/paytable'
 import { createRng } from '../engine/rng'
 import { SlotEngine, SpinError, anticipationFor, evaluateLines, evaluateScatter, type Cell, type Grid, type SpinResult } from '../engine/slotEngine'
 import { simulate } from '../engine/simulate'
@@ -113,6 +113,32 @@ test('spins debit the bet, refuse bad bets and keep the books balanced', () => {
   assert.equal(engine.snapshot().balance, 10000 - wagered + credited)
   assert.equal(engine.snapshot().stats.wagered, wagered)
   assert.equal(engine.snapshot().stats.won, credited)
+})
+
+test('bet levels run up to $5 and every level pays whole cents', () => {
+  assert.equal(BET_LEVELS_CENTS[BET_LEVELS_CENTS.length - 1], 500)
+  assert.ok(BET_LEVELS_CENTS.includes(DEFAULT_BET_CENTS))
+  assert.ok(BET_LEVELS_CENTS.every((bet, index) => Number.isInteger(bet) && bet > 0 && (index === 0 || bet > BET_LEVELS_CENTS[index - 1])))
+  for (const bet of BET_LEVELS_CENTS) {
+    const lineBet = bet / PAYLINES.length
+    for (const pays of Object.values(LINE_PAYS)) for (const pay of pays ?? []) assert.ok(Number.isInteger(pay * lineBet), `line pay ${pay} at ${bet}`)
+    for (const pay of Object.values(SCATTER_PAYS)) assert.ok(Number.isInteger(pay * bet), `scatter ${pay} at ${bet}`)
+    for (const table of [REEL_COIN_PRIZES, RESPIN_COIN_PRIZES, HAYWIRE_COIN_PRIZES]) {
+      for (const prize of table.items) if (prize.kind === 'cash') assert.ok(Number.isInteger(prize.multiple * bet), `coin ${prize.multiple} at ${bet}`)
+    }
+  }
+})
+
+test('features opened at an older, larger bet keep playing at that bet', () => {
+  for (const force of ['free', 'respin'] as const) {
+    const engine = new SlotEngine({ seed: 31, balance: 1_000_000 })
+    engine.spin(10000, force)
+    const restored = SlotEngine.fromState(JSON.parse(JSON.stringify(engine.toState())))
+    assert.equal(restored.snapshot().mode, force)
+    assert.equal(restored.snapshot().bet, 10000)
+    const next = restored.spin(BET_LEVELS_CENTS[0])
+    assert.equal(next.bet, 10000)
+  }
 })
 
 test('a forced collect pays every visible coin to the collector', () => {

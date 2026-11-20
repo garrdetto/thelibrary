@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { HAYWIRE_MULTIPLIERS, HAYWIRE_NAMES, HAYWIRE_ODDS, JACKPOT_MULTIPLIERS, JACKPOT_TIERS, LINE_PAYS, PAYLINES, PICK_ODDS, SCATTER_PAYS, SYMBOLS, Sym, ZONE_MULTIPLIERS } from '../engine/paytable'
-import { formatMoney } from '../format'
+import { BET_LEVELS_CENTS, HAYWIRE_MULTIPLIERS, HAYWIRE_NAMES, HAYWIRE_ODDS, JACKPOT_MULTIPLIERS, JACKPOT_TIERS, LINE_PAYS, PAYLINES, PICK_ODDS, SCATTER_PAYS, SYMBOLS, Sym, ZONE_MULTIPLIERS } from '../engine/paytable'
+import { formatLineBet, formatMoney } from '../format'
 import { DAILY_BASE_CENTS, DAILY_STEP_CENTS, dailyAmount } from '../engine/daily'
 
 interface PaytableModalProps {
@@ -44,25 +44,27 @@ export function PaytableModal({ open, bet, atlasUrl, onClose }: PaytableModalPro
   const lineBet = bet / PAYLINES.length
   const paying = SYMBOLS.filter((symbol) => LINE_PAYS[symbol.id]).reverse()
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-3 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-sm sm:p-3" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="paytable-title"
-        className="relative max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-gold-700/60 bg-gradient-to-b from-night-800 to-night-900 p-4 text-sand-100 shadow-2xl sm:p-6"
+        className="relative max-h-full w-full max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-gold-700/60 bg-gradient-to-b from-night-800 to-night-900 px-4 pb-4 text-sand-100 shadow-2xl sm:px-6 sm:pb-6"
         onClick={(event) => event.stopPropagation()}
       >
-        <button
-          ref={closeRef}
-          type="button"
-          onClick={onClose}
-          aria-label="Close paytable"
-          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full border border-gold-700/60 text-gold-300 hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300"
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
-        <h2 id="paytable-title" className="font-display text-2xl font-black tracking-widest text-gold-300">Paytable &amp; rules</h2>
-        <p className="mt-1 text-sm text-sand-300">Values shown for a total bet of {formatMoney(bet)} across 25 fixed lines ({formatMoney(lineBet)} per line). Play credits only.</p>
+        <div className="sticky top-0 z-10 -mx-4 flex items-center gap-3 bg-night-800/95 px-4 pb-2 pt-3 backdrop-blur sm:-mx-6 sm:px-6 sm:pt-5">
+          <h2 id="paytable-title" className="font-display text-xl font-black tracking-widest text-gold-300 sm:text-2xl">Paytable &amp; rules</h2>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close paytable"
+            className="ml-auto grid h-11 w-11 shrink-0 place-items-center rounded-full border border-gold-700/60 text-gold-300 hover:border-gold-400 active:scale-95 focus-visible:outline-2 focus-visible:outline-gold-300"
+          >
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-sand-300">Values shown for a total bet of {formatMoney(bet)} across 25 fixed lines ({formatLineBet(lineBet)} per line). Bets run from {formatMoney(BET_LEVELS_CENTS[0])} to {formatMoney(BET_LEVELS_CENTS[BET_LEVELS_CENTS.length - 1])}. Play credits only.</p>
 
         <section className="mt-5">
           <h3 className="font-display text-sm font-bold uppercase tracking-[0.2em] text-gold-400">Line pays</h3>

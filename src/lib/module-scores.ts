@@ -37,6 +37,9 @@ export const scoredModules = {
   'beanstalk-win': { title: 'Biggest Wins', metric: 'Win', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000, parent: 'beanstalk', label: 'Biggest win', serverOnly: true, note: 'The most won from one spin, counting the five Sky Garden spins it led to. Recorded on signed-in vault balances; forced outcomes never count.' },
   'beanstalk-multiple': { title: 'Biggest Multipliers', metric: 'Times bet', order: 'desc', unit: 'multiple', min: 1, max: 100_000_000, parent: 'beanstalk', label: 'Biggest ×', serverOnly: true, note: "One spin's total win divided by its bet, so a small bet can top this board. Recorded on signed-in vault balances." },
   'beanstalk-total': { title: 'Biggest Total Wins', metric: 'Total won', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000_000, parent: 'beanstalk', label: 'Total won', serverOnly: true, note: 'Everything you have won in Beanstalk Bounty, added up across every spin. Bets are not subtracted.' },
+  'modollaz-win': { title: 'Biggest Wins', metric: 'Win', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000, parent: 'modollaz', label: 'Biggest win', serverOnly: true, note: 'The most won from one spin, counting the Cash Collect, free games and jackpot it led to. Recorded on signed-in vault balances; forced outcomes never count.' },
+  'modollaz-multiple': { title: 'Biggest Multipliers', metric: 'Times bet', order: 'desc', unit: 'multiple', min: 1, max: 100_000_000, parent: 'modollaz', label: 'Biggest ×', serverOnly: true, note: "One spin's total win divided by its bet, so a small bet can top this board. Recorded on signed-in vault balances." },
+  'modollaz-total': { title: 'Biggest Total Wins', metric: 'Total won', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000_000, parent: 'modollaz', label: 'Total won', serverOnly: true, note: "Everything you have won in Mo' Dollaz, added up across every spin. Bets are not subtracted." },
 } as const
 
 export type ScoredModuleId = keyof typeof scoredModules
@@ -47,6 +50,7 @@ export const scoreBoardGroups: Partial<Record<string, ScoredModuleId[]>> = {
   proskater: ['proskater-blitz', 'proskater-showdown', 'proskater-story', 'proskater-free'],
   sunvault: ['sunvault-win', 'sunvault-multiple', 'sunvault-total'],
   beanstalk: ['beanstalk-win', 'beanstalk-multiple', 'beanstalk-total'],
+  modollaz: ['modollaz-win', 'modollaz-multiple', 'modollaz-total'],
 }
 
 export function scoreBoardParent(module: ScoredModuleId): string {

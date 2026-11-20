@@ -59,6 +59,11 @@ export const WAY_PAYS: Readonly<Partial<Record<Sym, readonly [number, number, nu
 }
 
 export const BET_UNITS = 122
+
+export function wayWin(pay: number, ways: number, bet: number): number {
+  return Math.max(1, Math.round(pay * ways * (bet / BET_UNITS)))
+}
+
 export const SCATTER_PAYS: Readonly<Record<number, number>> = { 3: 2, 4: 10, 5: 50 }
 export const FREE_SPINS_AWARD = 5
 export const MIN_WAY = 3
@@ -142,7 +147,8 @@ function buildStrip(stripCounts: StripCounts, salt: number): Sym[] {
 export const BASE_STRIPS: readonly (readonly Sym[])[] = BASE_STRIP_COUNTS.map((stripCounts, reel) => buildStrip(stripCounts, reel + 1))
 export const FREE_STRIPS: readonly (readonly Sym[])[] = FREE_STRIP_COUNTS.map((stripCounts, reel) => buildStrip(stripCounts, reel + 21))
 
-export const BET_LEVELS_CENTS: readonly number[] = [50, 100, 200, 300, 500, 1000, 2000, 2500, 5000, 10000]
+export const BET_LEVELS_CENTS: readonly number[] = [25, 50, 100, 150, 200, 250, 300, 400, 500]
+export const DEFAULT_BET_CENTS = 100
 export const STARTING_BALANCE_CENTS = 100000
 
 export function isWild(symbol: Sym): boolean {

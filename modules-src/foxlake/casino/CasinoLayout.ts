@@ -146,12 +146,12 @@ export function townToLocal(x: number, z: number, out = { x: 0, z: 0 }): { x: nu
 /** A yaw in the casino's frame as a town yaw. */
 export const siteYaw = (yaw: number): number => yaw + SITE.yaw
 
-/** Ten machines: five down the front wall either side of the main door, five down the back wall, facing across the hall. */
+/** Eleven machines: five down the front wall either side of the main door, six down the back wall (Mo' Dollaz last, before the stage), facing across the hall. */
 export const MACHINE_SPOTS: MachineSpot[] = (() => {
   const out: MachineSpot[] = []
   const d = CASINO.door
   const front = [HALL.z0 + 1.6, HALL.z0 + 4.4, HALL.z0 + 7.2, d.z + 4.2, d.z + 7.2]
-  const back = [HALL.z0 + 2.4, HALL.z0 + 5.4, HALL.z0 + 8.4, HALL.z0 + 11.4, HALL.z0 + 14.4]
+  const back = [HALL.z0 + 2.4, HALL.z0 + 5.4, HALL.z0 + 8.4, HALL.z0 + 11.4, HALL.z0 + 14.4, HALL.z0 + 17.4]
   front.forEach((z, i) => {
     const x = HALL.x0 + W + 0.45
     out.push({ index: i, x, z, yaw: Math.PI / 2, seat: { x: x + 1.05, y: CASINO.floorY + CHAIR_HIP, z, yaw: -Math.PI / 2 } })

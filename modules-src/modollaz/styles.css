@@ -1,0 +1,63 @@
+@import "tailwindcss" source(none);
+@source "./ui";
+@source "../sunvault/ui/DailyCollect.tsx";
+
+@custom-variant short (@media (max-height: 520px) and (orientation: landscape));
+
+@theme {
+  --font-display: "Bungee", "Arial Black", Impact, sans-serif;
+  --font-body: "Nunito", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-gold-100: #fff3cf;
+  --color-gold-200: #ffe7a3;
+  --color-gold-300: #ffd36a;
+  --color-gold-400: #f8c64c;
+  --color-gold-500: #d99a22;
+  --color-gold-700: #8a5a10;
+  --color-sand-300: #c9b48e;
+  --color-cream-100: #fbfff4;
+  --color-cream-200: #e4f2dc;
+  --color-cream-300: #b8ccb0;
+  --color-cash-300: #7dff9a;
+  --color-cash-500: #2fa84f;
+  --color-cash-700: #17642e;
+  --color-cash-800: #0c3a1c;
+  --color-night-700: #0d2a18;
+  --color-night-900: #03100a;
+  --color-plum-700: #5a2a8a;
+  --color-plum-900: #2a1046;
+  --animate-banner-in: banner-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  --animate-win-pulse: win-pulse 0.7s ease-in-out infinite alternate;
+
+  @keyframes banner-in {
+    from { opacity: 0; transform: scale(0.6) translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @keyframes win-pulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.08); }
+  }
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-night-900);
+  color: var(--color-cream-100);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

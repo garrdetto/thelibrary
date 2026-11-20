@@ -32,12 +32,21 @@
  *   and gems grow the zone to 3x3 (+3 spins), 4x4 (+2) and 5x5 (+1). Pink: 6
  *   free games without the royals. Blue (the wild): a 15-tile jackpot pick,
  *   first jackpot revealed three times wins.
+ * - dollaz (Mo' Dollaz): 5x3 on 20 lines. A money bag on reel 1 with any cash
+ *   bill on reels 2-5 starts Cash Collect (any bill may also start it at
+ *   random): the bills are paid and copied onto a 5x5 board, a 2x2 collector
+ *   zone collects the coins that land inside it and then moves to every new
+ *   bill and collects it; 5, 9 and 12 bills grow it to 3x3 (+3 spins), 4x4
+ *   (+2) and 5x5 (+1, no more bills). Three scatters give 8 free games without
+ *   the royals (Cash Collect can start inside them). Any wild may start a
+ *   15-tile jackpot pick. Bills, scatters and wilds fill three meters that
+ *   guarantee their feature when full.
  */
 import { cellsOf, evaluateWays, gridAt, buildStrip, round, spinStops, type Paytable, type SymbolId, type WaysWin } from './reels'
 import { evaluateLines, LINES_25, type LineWin } from './lines'
 import { pick, weighted, type Rng } from './rng'
 
-export type Family = 'link' | 'house' | 'gold' | 'goldwheel' | 'collect'
+export type Family = 'link' | 'house' | 'gold' | 'goldwheel' | 'collect' | 'dollaz'
 export type Jackpot = 'MINI' | 'MINOR' | 'MAXI' | 'MAJOR' | 'GRAND'
 export type Win = (WaysWin | LineWin) & { scatter?: boolean }
 
@@ -55,6 +64,8 @@ export interface MachineDef {
   jackpots: Partial<Record<Jackpot, number>>
   /** Multiplies every award so the machine returns its target share over time (see tests/casino.test.ts). */
   scale: number
+  /** Symbols each collector meter needs to fill (default METER_FULL each). */
+  meterFull?: { green: number; pink: number; blue: number }
 }
 
 export interface SpinStep {
@@ -94,8 +105,9 @@ export type Feature =
   | { kind: 'holdspin'; start: Record<string, OrbValue>; steps: HoldSpinStep[]; grand: boolean; win: number }
   | { kind: 'freegames'; awarded: number; spins: SpinStep[]; win: number; wheel?: WheelSpin[]; startHeads?: number }
   | { kind: 'houses'; awarded: number; spins: SpinStep[]; reveals: { cell: string; tier: number; credits: number; jackpot?: Jackpot }[]; win: number }
-  | { kind: 'cashcollect'; steps: CollectStep[]; win: number }
+  | { kind: 'cashcollect'; steps: CollectStep[]; win: number; start?: CollectCell[]; zone?: { reel: number; row: number; size: number } }
   | { kind: 'jackpotpick'; tiles: Jackpot[]; won: Jackpot; win: number }
+  | { kind: 'chain'; parts: Feature[]; win: number }
 
 export interface WheelSpin {
   wedges: WheelWedge[]
@@ -103,14 +115,22 @@ export interface WheelSpin {
 }
 export type WheelWedge = { kind: 'credits'; credits: number } | { kind: 'heads'; heads: number } | { kind: 'jackpot'; jackpot: Jackpot; credits: number } | { kind: 'start' }
 
+export interface CollectCell {
+  cell: string
+  credits: number
+  jackpot?: Jackpot
+}
+
 export interface CollectStep {
   /** Collector zone after this spin: top-left cell and size. */
   zone: { reel: number; row: number; size: number }
-  coins: { cell: string; credits: number; collected: boolean }[]
-  gems: { cell: string; credits: number }[]
+  coins: (CollectCell & { collected: boolean })[]
+  gems: CollectCell[]
   gemsTotal: number
   left: number
   collected: number
+  /** dollaz: where the zone moved this spin (one entry per bill it went to collect). */
+  path?: { reel: number; row: number; size: number }[]
 }
 
 /** Kept between spins per player and machine (the collector machines' meters). */
@@ -129,6 +149,20 @@ export interface SpinResult {
 }
 
 export const METER_FULL = 40
+
+/** Machines whose gem meters are kept between spins. */
+export function hasMeters(def: MachineDef): boolean {
+  return def.family === 'collect' || def.family === 'dollaz'
+}
+
+export function meterFull(def: MachineDef): { green: number; pink: number; blue: number } {
+  return def.meterFull ?? { green: METER_FULL, pink: METER_FULL, blue: METER_FULL }
+}
+
+/** Meter level 1 to 5 for display (5 = about to fill). */
+export function meterLevel(value: number, full: number): number {
+  return Math.max(1, Math.min(5, 1 + Math.floor((Math.max(0, value) / Math.max(1, full)) * 5)))
+}
 
 function strips(weights: Record<SymbolId, number>[], seed: number): SymbolId[][] {
   return weights.map((w, i) => buildStrip(w, seed * 31 + i))
@@ -189,6 +223,21 @@ function collectMachine(id: string, name: string, seed: number, scale: number): 
   }
 }
 
+export const MO_DOLLAZ_ID = 'mo-dollaz'
+
+function dollazMachine(id: string, name: string, seed: number, scale: number): MachineDef {
+  const base = { J: 8, Q: 8, K: 7, A: 7, h5: 5, h4: 5, h3: 4, h2: 4, h1: 3, W: 2, S: 2 }
+  const free = { h5: 10, h4: 10, h3: 8, h2: 8, h1: 6, W: 4, S: 3 }
+  return {
+    id, name, family: 'dollaz', rows: 3, credits: 50, scale,
+    strips: strips(reelWeights(base, (r): Record<SymbolId, number> => (r === 0 ? { M: 1, N: 0, W: 2, S: 1, J: 11, Q: 11, K: 10, A: 10 } : { M: 0, N: 1, W: 3, S: r === 4 ? 1 : 2 })), seed),
+    freeStrips: strips(reelWeights(free, (r) => ({ M: r === 0 ? 1 : 0, N: r === 0 ? 0 : 1 })), seed + 1),
+    paytable: { J: [4, 10, 40], Q: [4, 10, 40], K: [5, 12, 50], A: [5, 12, 50], h5: [6, 20, 60], h4: [6, 20, 60], h3: [8, 25, 80], h2: [10, 30, 100], h1: [12, 40, 150], W: [15, 50, 200] },
+    jackpots: { MINI: 20, MINOR: 60, MAXI: 100, MAJOR: 200, GRAND: 2000 },
+    meterFull: { green: 150, pink: 250, blue: 300 },
+  }
+}
+
 export const MACHINES: MachineDef[] = [
   linkMachine('northern-lights-link', 'Northern Lights Link', 11, 0.83),
   linkMachine('gold-pan-link', 'Gold Pan Link', 13, 1.0),
@@ -200,6 +249,7 @@ export const MACHINES: MachineDef[] = [
   goldMachine('mustang-gold-revolution', 'Mustang Gold Revolution', 'goldwheel', 37, 4.3),
   collectMachine('bigfoot-bucks', 'Bigfoot Bucks', 41, 1.5),
   collectMachine('lake-monster-loot', 'Lake Monster Loot', 43, 1.46),
+  dollazMachine(MO_DOLLAZ_ID, "Mo' Dollaz", 47, 1.035),
 ]
 
 export const MACHINE_BY_ID: Record<string, MachineDef> = Object.fromEntries(MACHINES.map((m) => [m.id, m]))
@@ -540,13 +590,13 @@ function cashCollect(def: MachineDef, bet: number, rng: Rng): Feature {
 const PICK_TIERS: Jackpot[] = ['MINI', 'MINOR', 'MAXI', 'MAJOR', 'GRAND']
 const PICK_WEIGHTS = [50, 28, 14, 6, 2]
 
-function jackpotPick(def: MachineDef, bet: number, rng: Rng): Feature {
+function jackpotPick(def: MachineDef, bet: number, rng: Rng, weights: readonly number[] = PICK_WEIGHTS): Feature {
   const tiles: Jackpot[] = []
   const counts: Record<string, number> = {}
   let won: Jackpot | null = null
   while (!won) {
-    let j = PICK_TIERS[weighted(rng, PICK_WEIGHTS)]
-    if ((counts[j] ?? 0) === 2 && tiles.length < 4 && rng.next() < 0.5) j = PICK_TIERS[weighted(rng, PICK_WEIGHTS)]
+    let j = PICK_TIERS[weighted(rng, weights)]
+    if ((counts[j] ?? 0) === 2 && tiles.length < 4 && rng.next() < 0.5) j = PICK_TIERS[weighted(rng, weights)]
     tiles.push(j)
     counts[j] = (counts[j] ?? 0) + 1
     if (counts[j] === 3) won = j
@@ -594,6 +644,157 @@ function playCollect(def: MachineDef, bet: number, rng: Rng, state: MachineState
   return { base, feature, state: { meters } }
 }
 
+// ------------------------------------------------------------------ dollaz
+
+/** Cash values in bet multiples (50 to 5,000 credits on a 50-credit bet). */
+export const DOLLAZ_X = [1, 2, 3, 4, 5, 6, 10, 15, 20, 30, 40, 50, 100]
+const DOLLAZ_W = [30, 22, 13, 9, 7, 5, 4, 3, 2, 1.4, 0.9, 0.5, 0.2]
+const DOLLAZ_SCATTER: Record<number, number> = { 3: 1, 4: 10, 5: 50 }
+const DOLLAZ_FREE = 8
+const DOLLAZ_MAX_FREE = 80
+const DOLLAZ_PICK = [56, 27, 11, 5.4, 0.6]
+const DOLLAZ_GROW: [number, number, number][] = [[5, 3, 3], [9, 4, 2], [12, 5, 1]]
+const DOLLAZ_HEAT = [28, 60, 12]
+const DOLLAZ_BILL_CHANCE = [0, 0.03, 0.085]
+const DOLLAZ_COIN_CHANCE = 0.11
+const DOLLAZ_RANDOM = { collect: 0.004, free: 0.003, wild: 0.002 }
+
+function rollCash(def: MachineDef, bet: number, rng: Rng): OrbValue {
+  const r = rng.next()
+  if (r < 0.004) return { jackpot: 'MINOR', credits: jackpotCredits(def, bet, 'MINOR') }
+  if (r < 0.02) return { jackpot: 'MINI', credits: jackpotCredits(def, bet, 'MINI') }
+  return { credits: award(def, bet, DOLLAZ_X[weighted(rng, DOLLAZ_W)]) }
+}
+
+function cashCell(cell: string, value: OrbValue): CollectCell {
+  return 'jackpot' in value ? { cell, credits: value.credits, jackpot: value.jackpot } : { cell, credits: value.credits }
+}
+
+function dollazSpin(def: MachineDef, bet: number, rng: Rng, reelStrips: SymbolId[][]): SpinStep {
+  const { stops, grid } = spinOn(def, reelStrips, rng)
+  const wins: Win[] = evaluateLines(grid, LINES_25.slice(0, 20), (bet / 20) * def.scale, def.paytable, 'W', new Set(['S', 'M', 'N']))
+  const scatters = cellsOf(grid, 'S')
+  if (scatters.length >= 3) wins.push({ symbol: 'S', count: scatters.length, ways: 1, multiplier: 1, pay: award(def, bet, DOLLAZ_SCATTER[Math.min(5, scatters.length)]), cells: scatters, scatter: true })
+  const orbs: Record<string, OrbValue> = {}
+  for (const [r, row] of cellsOf(grid, 'N')) orbs[key(r, row)] = rollCash(def, bet, rng)
+  return { stops, grid, wins, win: round(wins.reduce((a, w) => a + w.pay, 0)), anticipation: anticipate(grid, new Set(['S']), 3), orbs }
+}
+
+function zoneAround(reel: number, row: number, size: number): { reel: number; row: number; size: number } {
+  const offset = Math.floor((size - 1) / 2)
+  return { reel: Math.max(0, Math.min(5 - size, reel - offset)), row: Math.max(0, Math.min(5 - size, row - offset)), size }
+}
+
+const cellOf = (k: string): [number, number] => k.split(',').map(Number) as [number, number]
+
+/** Cash Collect on a 5x5 board; the base reels show as its bottom three rows. */
+export function dollazCollect(def: MachineDef, bet: number, rng: Rng, bills: Record<string, OrbValue>): Feature & { kind: 'cashcollect' } {
+  const start = Object.entries(bills)
+    .map(([k, v]) => {
+      const [r, row] = cellOf(k)
+      return cashCell(key(r, row + 2), v)
+    })
+    .sort((a, b) => cellOf(a.cell)[0] - cellOf(b.cell)[0] || cellOf(a.cell)[1] - cellOf(b.cell)[1])
+  let collected = start.reduce((a, c) => a + c.credits, 0)
+  let gemsTotal = 0
+  let left = 5
+  let zone = start.length ? zoneAround(...cellOf(start[start.length - 1].cell), 2) : zoneAround(2, 3, 2)
+  const grow = (count: number) => {
+    const before = gemsTotal
+    gemsTotal += count
+    for (const [need, size, add] of DOLLAZ_GROW) if (before < need && gemsTotal >= need) {
+      zone = zoneAround(zone.reel + Math.floor(zone.size / 2), zone.row + Math.floor(zone.size / 2), size)
+      left += add
+    }
+  }
+  grow(start.length)
+  const zone0 = { ...zone }
+  const steps: CollectStep[] = []
+  while (left > 0 && steps.length < 40) {
+    left--
+    const billChance = zone.size >= 5 ? 0 : DOLLAZ_BILL_CHANCE[weighted(rng, DOLLAZ_HEAT)]
+    const area = { ...zone }
+    const inZone = (r: number, row: number) => r >= area.reel && r < area.reel + area.size && row >= area.row && row < area.row + area.size
+    const coins: CollectStep['coins'] = []
+    const gems: CollectStep['gems'] = []
+    for (let r = 0; r < 5; r++) for (let row = 0; row < 5; row++) {
+      const x = rng.next()
+      const inside = inZone(r, row)
+      if (x < billChance) {
+        if (!inside) gems.push(cashCell(key(r, row), rollCash(def, bet, rng)))
+      } else if (x < billChance + DOLLAZ_COIN_CHANCE) {
+        const coin = cashCell(key(r, row), rollCash(def, bet, rng))
+        coins.push({ ...coin, collected: inside })
+        if (inside) collected += coin.credits
+      }
+    }
+    const path: { reel: number; row: number; size: number }[] = []
+    for (const gem of gems) {
+      collected += gem.credits
+      zone = zoneAround(...cellOf(gem.cell), zone.size)
+      path.push({ ...zone })
+    }
+    grow(gems.length)
+    steps.push({ zone: { ...zone }, coins, gems, gemsTotal, left, collected: round(collected), path })
+  }
+  return { kind: 'cashcollect', steps, win: round(collected), start, zone: zone0 }
+}
+
+function dollazFree(def: MachineDef, bet: number, rng: Rng, bonus: number): Feature {
+  const spins: SpinStep[] = []
+  let left = DOLLAZ_FREE
+  let awarded = DOLLAZ_FREE
+  let win = bonus
+  while (left > 0 && spins.length < DOLLAZ_MAX_FREE) {
+    left--
+    const s = dollazSpin(def, bet, rng, def.freeStrips)
+    if (cellsOf(s.grid, 'S').length >= 3) {
+      const add = Math.min(DOLLAZ_FREE, DOLLAZ_MAX_FREE - awarded)
+      left += add
+      awarded += add
+    }
+    if (s.grid[0].includes('M') && Object.keys(s.orbs ?? {}).length) {
+      const inner = dollazCollect(def, bet, rng, s.orbs!)
+      s.inner = inner
+      s.win = round(s.win + inner.win)
+    }
+    s.left = left
+    win += s.win
+    spins.push(s)
+  }
+  return { kind: 'freegames', awarded, spins, win: round(win) }
+}
+
+function playDollaz(def: MachineDef, bet: number, rng: Rng, state: MachineState): { base: SpinStep; feature: Feature | null; state: MachineState } {
+  const full = meterFull(def)
+  const meters = { green: 0, pink: 0, blue: 0, ...state.meters }
+  const base = dollazSpin(def, bet, rng, def.strips)
+  const bills = Object.keys(base.orbs ?? {}).length
+  const scatters = cellsOf(base.grid, 'S').length
+  const wilds = cellsOf(base.grid, 'W').length
+  meters.green += bills
+  meters.pink += scatters
+  meters.blue += wilds
+  const parts: Feature[] = []
+  if (meters.blue >= full.blue || (wilds > 0 && rng.next() < 1 - (1 - DOLLAZ_RANDOM.wild) ** wilds)) {
+    parts.push(jackpotPick(def, bet, rng, DOLLAZ_PICK))
+    meters.blue = 0
+  }
+  const collector = base.grid[0].includes('M')
+  if (bills > 0 && (collector || meters.green >= full.green || rng.next() < DOLLAZ_RANDOM.collect)) {
+    parts.push(dollazCollect(def, bet, rng, base.orbs!))
+    meters.green = 0
+  }
+  if (scatters >= 3 || meters.pink >= full.pink || (scatters > 0 && rng.next() < DOLLAZ_RANDOM.free)) {
+    parts.push(dollazFree(def, bet, rng, scatters >= 3 ? 0 : award(def, bet, 1)))
+    meters.pink = 0
+  }
+  for (const k of ['green', 'pink', 'blue'] as const) meters[k] = Math.min(full[k], meters[k])
+  const win = round(parts.reduce((a, f) => a + f.win, 0))
+  const feature: Feature | null = parts.length === 0 ? null : parts.length === 1 ? parts[0] : { kind: 'chain', parts, win }
+  return { base, feature, state: { meters } }
+}
+
 // ------------------------------------------------------------------ entry
 
 export function playSpin(def: MachineDef, bet: number, rng: Rng, state: MachineState = {}): SpinResult {
@@ -601,6 +802,7 @@ export function playSpin(def: MachineDef, bet: number, rng: Rng, state: MachineS
   if (def.family === 'link') out = playLink(def, bet, rng)
   else if (def.family === 'house') out = playHouse(def, bet, rng)
   else if (def.family === 'collect') out = playCollect(def, bet, rng, state)
+  else if (def.family === 'dollaz') out = playDollaz(def, bet, rng, state)
   else out = playGold(def, bet, rng)
   const totalWin = round(out.base.win + (out.feature?.win ?? 0))
   return { machine: def.id, bet, base: out.base, feature: out.feature, state: out.state ?? state, totalWin }

@@ -29,7 +29,8 @@ export interface DartsConfig {
   room: { wall: string; wallTrim: string; floor: string; oche: string; cabinet: string }
   camera: { eyeHeight: number; distanceBehindOche: number; boardHalfExtent: number; minFov: number; maxFov: number }
   gesture: {
-    touchAimOffsetPx: number
+    /** A press on the board this close to the target (CSS pixels) picks it up and drags it from where it is; further away the target jumps to the press. */
+    grabRadiusPx: number
     keyboardStepM: number
     keyboardFineM: number
     /** Seconds for the height meter to swing from empty to full and back (the side meter sweeps at the same pace). */
@@ -67,9 +68,9 @@ export const config: DartsConfig = {
   },
   board: { textureSize: 2048, lowTextureSize: 1024, highTextureSize: 4096, renderHeightFloor: 1440, slowFps: 45, thickness: 0.038, surroundRadius: 0.33, surroundDepth: 0.03 },
   room: { wall: '#3b1f1a', wallTrim: '#24120d', floor: '#5a3a24', oche: '#d9c9a3', cabinet: '#4a2a17' },
-  camera: { eyeHeight: 1.62, distanceBehindOche: 0.3, boardHalfExtent: 0.3, minFov: 12, maxFov: 34 },
+  camera: { eyeHeight: 1.62, distanceBehindOche: 0.3, boardHalfExtent: 0.26, minFov: 10, maxFov: 34 },
   gesture: {
-    touchAimOffsetPx: 64,
+    grabRadiusPx: 40,
     keyboardStepM: 0.005,
     keyboardFineM: 0.001,
     chargeSeconds: 1.76,

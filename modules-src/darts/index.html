@@ -7,7 +7,7 @@
     <meta name="description" content="Projectile motion and probability at a regulation dartboard: 501, 301, Cricket and Count Up, solo, against the computer, pass-and-play or in an online room." />
   </head>
   <body>
-    <div id="stage" aria-label="Dartboard. Click and hold on the board to aim and swing the height meter, let go to lock it, then click again to stop the side meter and throw; arrow keys aim and Space works for both meters."></div>
+    <div id="stage" aria-label="Dartboard. Tap or click the board to put the target there, or drag the target to move it; arrow keys move it too. Then hold the Throw button or Space to swing the height meter, let go in the green to lock it, and press Throw or Space again to stop the side meter and throw."></div>
 
     <div class="d-hud" id="hud" hidden>
       <div class="d-topbar">
@@ -28,6 +28,7 @@
         <div class="d-checkout" id="checkout" hidden></div>
         <div class="d-hint" id="hint"></div>
       </div>
+      <button type="button" class="d-throw-btn is-away" id="throw-btn" data-ui aria-label="Throw" aria-keyshortcuts="Space" aria-disabled="true"><span class="d-throw-btn-label" data-throw-label>Throw</span><small class="d-throw-btn-sub" data-throw-sub>Hold</small></button>
     </div>
 
     <div class="d-overlay" id="menu">
@@ -48,7 +49,7 @@
             <label><input type="radio" name="meterStyle" value="cross" checked /><span>Cross</span></label>
             <label><input type="radio" name="meterStyle" value="classic" /><span>Classic</span></label>
           </div>
-          <p class="d-note">Cross: let go to lock the height (miss high or low), then click again to stop the side meter (miss left or right). Classic: one hold, and the dart flies when you let go.</p>
+          <p class="d-note">Cross: hold Throw and let go to lock the height (miss high or low), then press Throw again to stop the side meter (miss left or right). Classic: one hold of Throw, and the dart flies when you let go.</p>
         </div>
 
         <h2 id="format-title">Format</h2>
@@ -164,7 +165,7 @@
         <div class="d-setup-foot">
           <details class="d-help">
             <summary>How to throw</summary>
-            Click and hold on the board to aim (move to fine-tune) and the height meter swings; let go in the green to lock the height, then click again (or tap <kbd>Space</kbd>) while the side meter is in the green to throw. Between the two white lines on either meter is Perfect and flies true; the rest of the green misses slightly (more the further from the lines), and in the yellow and red the dart misses high or low on the height meter and left or right on the side meter. Right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green, then press <kbd>Space</kbd> again to stop the side meter; <kbd>Esc</kbd> cancels a throw. <kbd>P</kbd> or <kbd>Esc</kbd> pauses. <span id="classic-help" hidden>With the Classic meter there is no side meter: the dart flies as soon as you let go, and the further from the white lines you let go the further it can stray in any direction.</span> The record book is below the board on this page (in pass &amp; play and tournaments, Player 1 is you; team matches aren't recorded).
+            Tap or click the board to put the target there, or drag it (press near the target to pick it up and nudge it without your finger covering it). Then hold the round <strong>Throw</strong> button and the height meter swings; let go in the green to lock the height, then press <strong>Throw</strong> again while the side meter is in the green to throw. Between the two white lines on either meter is Perfect and flies true; the rest of the green misses slightly (more the further from the lines), and in the yellow and red the dart misses high or low on the height meter and left or right on the side meter. Right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move the target (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green, then press <kbd>Space</kbd> again to stop the side meter; <kbd>Esc</kbd> cancels a throw. <kbd>P</kbd> or <kbd>Esc</kbd> pauses. <span id="classic-help" hidden>With the Classic meter there is no side meter: the dart flies as soon as you let go, and the further from the white lines you let go the further it can stray in any direction.</span> The record book is below the board on this page (in pass &amp; play and tournaments, Player 1 is you; team matches aren't recorded).
           </details>
           <div class="d-actions">
             <button type="button" class="d-btn tl-full-only" data-tl-exit-full>Exit full screen</button>

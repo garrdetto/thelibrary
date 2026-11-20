@@ -3,6 +3,7 @@ import { JACKPOT_MULTIPLIERS, type JackpotTier } from '../engine/paytable'
 import type { JackpotPick } from '../engine/slotEngine'
 import { AtlasCell } from '../render/atlas'
 import { formatMoney } from '../format'
+import type { LayoutMode } from './useViewport'
 
 const TIER_CELL: Record<JackpotTier, number> = {
   mini: AtlasCell.CoinMini,
@@ -23,11 +24,13 @@ interface JackpotPickBoardProps {
   bet: number
   atlasUrl: string | null
   auto: boolean
+  layout: LayoutMode
+  touch: boolean
   onReveal: (tier: JackpotTier, matches: number) => void
   onDone: () => void
 }
 
-export function JackpotPickBoard({ pick, bet, atlasUrl, auto, onReveal, onDone }: JackpotPickBoardProps) {
+export function JackpotPickBoard({ pick, bet, atlasUrl, auto, layout, touch, onReveal, onDone }: JackpotPickBoardProps) {
   const [tiles, setTiles] = useState<(JackpotTier | null)[]>(() => Array(pick.order.length).fill(null))
   const [finished, setFinished] = useState(false)
   const [settled, setSettled] = useState(false)
@@ -87,28 +90,33 @@ export function JackpotPickBoard({ pick, bet, atlasUrl, auto, onReveal, onDone }
   }, [finished, revealRandom])
 
   const revealedCount = (tier: JackpotTier) => tiles.filter((item, index) => item === tier && picked[index]).length
+  const short = layout === 'short'
+  const hint = <p className={`text-[10px] uppercase tracking-[0.25em] text-sand-300/60 ${short ? 'mt-2' : 'mt-3'}`}>{auto ? 'Auto picking' : touch ? 'Tap a tile' : 'Click a tile or press Space'}</p>
 
   return (
-    <div className="absolute inset-0 z-20 grid place-items-center bg-night-900/70 p-3 backdrop-blur-[2px]">
-      <section aria-label="Jackpot Pick" className="animate-banner-in w-full max-w-md rounded-3xl border border-gold-500/70 bg-gradient-to-b from-night-800 to-night-900 p-4 text-center shadow-[0_0_60px_rgba(255,190,70,0.35)] sm:p-5">
-        <h2 className="font-display text-2xl font-black tracking-[0.18em] text-transparent bg-clip-text bg-gradient-to-b from-gold-100 via-gold-300 to-gold-700 sm:text-3xl">JACKPOT PICK</h2>
-        <p className="mt-1 text-xs text-sand-300 sm:text-sm">{finished ? 'Three of a kind!' : 'Pick tiles until three jackpots match.'}</p>
-        <ul className="mt-3 grid grid-cols-4 gap-1.5 text-[10px] sm:text-xs" aria-label="Jackpot values">
-          {(['grand', 'major', 'minor', 'mini'] as const).map((tier) => {
-            const count = Math.min(3, revealedCount(tier))
-            const won = finished && tier === pick.tier
-            return (
-              <li key={tier} className={`rounded-lg bg-night-700/80 px-1 py-1 ring-1 ${won ? `${TIER_RING[tier]} animate-flash` : 'ring-gold-700/40'}`}>
-                <span className="block font-display font-black tracking-widest text-gold-200">{tier.toUpperCase()}</span>
-                <span className="block tabular-nums text-sand-200">{formatMoney(JACKPOT_MULTIPLIERS[tier] * bet)}</span>
-                <span className="mt-0.5 flex justify-center gap-0.5" aria-label={`${count} of 3 found`}>
-                  {[0, 1, 2].map((dot) => <span key={dot} className={`h-1.5 w-1.5 rounded-full ${dot < count ? 'bg-gold-300' : 'bg-night-900 ring-1 ring-gold-700/60'}`} />)}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="mx-auto mt-4 grid max-w-[18rem] grid-cols-3 gap-2 sm:gap-3">
+    <div className="absolute inset-0 z-20 grid place-items-center overflow-y-auto bg-night-900/70 p-2 backdrop-blur-[2px] sm:p-3">
+      <section aria-label="Jackpot Pick" className={`animate-banner-in w-full rounded-3xl border border-gold-500/70 bg-gradient-to-b from-night-800 to-night-900 text-center shadow-[0_0_60px_rgba(255,190,70,0.35)] ${short ? 'grid max-w-2xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 p-3' : 'max-w-md p-4 sm:p-5'}`}>
+        <div className="min-w-0">
+          <h2 className={`font-display font-black tracking-[0.18em] text-transparent bg-clip-text bg-gradient-to-b from-gold-100 via-gold-300 to-gold-700 ${short ? 'text-xl' : 'text-2xl sm:text-3xl'}`}>JACKPOT PICK</h2>
+          <p className="mt-1 text-xs text-sand-300 sm:text-sm">{finished ? 'Three of a kind!' : 'Pick tiles until three jackpots match.'}</p>
+          <ul className={`mt-3 grid gap-1.5 text-[10px] sm:text-xs ${short ? 'grid-cols-2' : 'grid-cols-4'}`} aria-label="Jackpot values">
+            {(['grand', 'major', 'minor', 'mini'] as const).map((tier) => {
+              const count = Math.min(3, revealedCount(tier))
+              const won = finished && tier === pick.tier
+              return (
+                <li key={tier} className={`rounded-lg bg-night-700/80 px-1 py-1 ring-1 ${won ? `${TIER_RING[tier]} animate-flash` : 'ring-gold-700/40'}`}>
+                  <span className="block font-display font-black tracking-widest text-gold-200">{tier.toUpperCase()}</span>
+                  <span className="block truncate tabular-nums text-sand-200">{formatMoney(JACKPOT_MULTIPLIERS[tier] * bet)}</span>
+                  <span className="mt-0.5 flex justify-center gap-0.5" aria-label={`${count} of 3 found`}>
+                    {[0, 1, 2].map((dot) => <span key={dot} className={`h-1.5 w-1.5 rounded-full ${dot < count ? 'bg-gold-300' : 'bg-night-900 ring-1 ring-gold-700/60'}`} />)}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+          {short && hint}
+        </div>
+        <div className={short ? 'grid w-[min(15rem,calc(100dvh-7rem))] grid-cols-3 gap-2' : 'mx-auto mt-4 grid w-full max-w-[18rem] grid-cols-3 gap-2 sm:gap-3'}>
           {tiles.map((tier, index) => {
             const winning = finished && tier === pick.tier && picked[index]
             const leftover = settled && !picked[index]
@@ -120,7 +128,7 @@ export function JackpotPickBoard({ pick, bet, atlasUrl, auto, onReveal, onDone }
                 disabled={tier !== null || finished}
                 onClick={() => reveal(index)}
                 aria-label={tier ? `${tier} jackpot` : `Hidden tile ${index + 1}`}
-                className={`relative aspect-square rounded-xl transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-200 ${tier ? 'bg-night-700' : 'bg-[radial-gradient(circle_at_35%_30%,#ffe9a8,#d99a22_50%,#6a3e08)] shadow-[inset_0_-4px_8px_rgba(60,30,0,0.6),0_0_12px_rgba(255,190,80,0.35)] hover:brightness-110 active:scale-95'} ${winning ? `ring-2 ${TIER_RING[pick.tier]} animate-flash` : ''} ${leftover ? 'opacity-40' : ''}`}
+                className={`relative aspect-square min-h-11 touch-manipulation rounded-xl transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-200 ${tier ? 'bg-night-700' : 'bg-[radial-gradient(circle_at_35%_30%,#ffe9a8,#d99a22_50%,#6a3e08)] shadow-[inset_0_-4px_8px_rgba(60,30,0,0.6),0_0_12px_rgba(255,190,80,0.35)] hover:brightness-110 active:scale-95'} ${winning ? `ring-2 ${TIER_RING[pick.tier]} animate-flash` : ''} ${leftover ? 'opacity-40' : ''}`}
               >
                 {tier ? (
                   <span
@@ -139,7 +147,7 @@ export function JackpotPickBoard({ pick, bet, atlasUrl, auto, onReveal, onDone }
             )
           })}
         </div>
-        <p className="mt-3 text-[10px] uppercase tracking-[0.25em] text-sand-300/60">{auto ? 'Auto picking' : 'Click a tile or press Space'}</p>
+        {!short && hint}
       </section>
     </div>
   )

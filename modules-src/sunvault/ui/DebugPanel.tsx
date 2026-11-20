@@ -81,10 +81,10 @@ export function DebugPanel(props: DebugPanelProps) {
   const toggle = (key: keyof RenderOptions) => props.onOptions({ ...props.options, [key]: !props.options[key] })
 
   return (
-    <aside className="absolute right-0 top-0 z-30 flex h-full w-full max-w-xs flex-col border-l border-gold-700/50 bg-night-900/95 text-sand-100 shadow-2xl backdrop-blur" aria-label="Developer panel">
-      <div className="flex items-center justify-between border-b border-gold-700/40 px-3 py-2">
+    <aside className="absolute right-0 top-0 z-30 flex h-full w-full max-w-xs flex-col overscroll-contain border-l border-gold-700/50 bg-night-900/95 text-sand-100 shadow-2xl backdrop-blur" aria-label="Developer panel">
+      <div className="flex items-center justify-between border-b border-gold-700/40 py-0.5 pl-3 pr-1">
         <h2 className="font-display text-sm font-black tracking-[0.2em] text-gold-300">DEVELOPER</h2>
-        <button type="button" onClick={props.onClose} aria-label="Close developer panel" className="grid h-8 w-8 place-items-center rounded-full text-gold-300 hover:bg-night-700 focus-visible:outline-2 focus-visible:outline-gold-300">
+        <button type="button" onClick={props.onClose} aria-label="Close developer panel" className="grid h-11 w-11 place-items-center rounded-full text-gold-300 hover:bg-night-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-gold-300">
           <X className="h-4 w-4" aria-hidden />
         </button>
       </div>
@@ -112,7 +112,7 @@ export function DebugPanel(props: DebugPanelProps) {
                 <span className="block font-semibold text-gold-200">Practice mode</span>
                 <span className="block text-xs text-sand-300">Practice credits, forcing allowed, nothing saved or ranked.</span>
               </span>
-              <input type="checkbox" checked={props.practice.on} disabled={props.practice.locked} onChange={props.onTogglePractice} className="h-4 w-4 accent-[#f8c64c]" />
+              <input type="checkbox" checked={props.practice.on} disabled={props.practice.locked} onChange={props.onTogglePractice} className="h-5 w-5 shrink-0 accent-[#f8c64c]" />
             </label>
           )}
         </section>
@@ -121,15 +121,15 @@ export function DebugPanel(props: DebugPanelProps) {
           <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-sand-300">Shaders</h3>
           <div className="mt-2 grid gap-1">
             {([['motionBlur', 'Velocity motion blur'], ['barrel', 'Cylindrical reel curve'], ['shimmer', 'Gold foil sweep']] as const).map(([key, label]) => (
-              <label key={key} className="flex cursor-pointer items-center justify-between rounded-md bg-night-700 px-3 py-1.5">
+              <label key={key} className="flex min-h-11 cursor-pointer items-center justify-between rounded-md bg-night-700 px-3 py-1.5">
                 <span>{label}</span>
-                <input type="checkbox" checked={props.options[key]} onChange={() => toggle(key)} className="h-4 w-4 accent-[#f8c64c]" />
+                <input type="checkbox" checked={props.options[key]} onChange={() => toggle(key)} className="h-5 w-5 accent-[#f8c64c]" />
               </label>
             ))}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
             {([['fountain', 'Coin fountain'], ['sand', 'Sand storm'], ['sparks', 'Scarab sparks'], ['celebrate', 'Celebration']] as const).map(([effect, label]) => (
-              <button key={effect} type="button" onClick={() => props.onEffect(effect)} className="rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300">
+              <button key={effect} type="button" onClick={() => props.onEffect(effect)} className="min-h-11 rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300">
                 {label}
               </button>
             ))}
@@ -149,7 +149,7 @@ export function DebugPanel(props: DebugPanelProps) {
             <dt className="text-sand-300">Haywire</dt><dd>{stats.haywires ?? 0}</dd>
             <dt className="text-sand-300">Jackpots</dt><dd>{stats.jackpots.mini}/{stats.jackpots.minor}/{stats.jackpots.major}/{stats.jackpots.grand}</dd>
           </dl>
-          {props.onAddCredits && <button type="button" onClick={props.onAddCredits} className="mt-2 w-full rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300">
+          {props.onAddCredits && <button type="button" onClick={props.onAddCredits} className="mt-2 min-h-11 w-full rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs hover:border-gold-400 focus-visible:outline-2 focus-visible:outline-gold-300">
             Add $1,000 practice credits
           </button>}
         </section>
@@ -157,10 +157,10 @@ export function DebugPanel(props: DebugPanelProps) {
         <section>
           <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-sand-300">Long-run simulation</h3>
           <div className="mt-2 flex gap-1.5">
-            <select value={simSpins} onChange={(event) => setSimSpins(Number(event.target.value))} disabled={running} aria-label="Spins to simulate" className="flex-1 rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs">
+            <select value={simSpins} onChange={(event) => setSimSpins(Number(event.target.value))} disabled={running} aria-label="Spins to simulate" className="min-h-11 flex-1 rounded-md border border-gold-700/40 bg-night-700 px-2 py-1.5 text-xs">
               {[50000, 200000, 1000000].map((count) => <option key={count} value={count}>{count.toLocaleString()} spins</option>)}
             </select>
-            <button type="button" onClick={running ? () => { cancelRef.current = true } : runSimulation} className="rounded-md border border-gold-400/70 bg-gold-500/20 px-3 py-1.5 text-xs font-semibold text-gold-100 focus-visible:outline-2 focus-visible:outline-gold-300">
+            <button type="button" onClick={running ? () => { cancelRef.current = true } : runSimulation} className="min-h-11 rounded-md border border-gold-400/70 bg-gold-500/20 px-4 py-1.5 text-xs font-semibold text-gold-100 focus-visible:outline-2 focus-visible:outline-gold-300">
               {running ? 'Stop' : 'Run'}
             </button>
           </div>

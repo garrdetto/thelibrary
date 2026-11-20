@@ -10,8 +10,11 @@
  *   the gold-head meter and converted animals, the Revolution wheel first;
  * - houses: straw, stick and brick frames building up, then the storm blowing
  *   them down tier by tier, each showing its prize;
- * - Cash Collect: the 5x5 board, the collector zone growing with gems;
+ * - Cash Collect: the 5x5 board, the collector zone growing with gems (Mo' Dollaz:
+ *   the money bag hopping to every new bill);
  * - jackpot pick: 15 tiles turned until one jackpot shows three times.
+ * Big and Huge wins get the shared celebration (`_shared/win-fx.ts`), and the
+ * collection features count their total up in big letters mid-screen.
  */
 import { Animation } from '@babylonjs/core/Animations/animation'
 import { AnimationGroup } from '@babylonjs/core/Animations/animationGroup'
@@ -26,8 +29,9 @@ import { MachineDisplay, money, reelWindow, type PlayInfo } from './MachineDispl
 import { drawSymbol, roundRect } from './SymbolArt'
 import type { CasinoClient } from '../CasinoClient'
 import { BET_STEPS } from '../CasinoLayout'
-import { METER_FULL, playSpin, type Feature, type HoldSpinStep, type OrbValue, type SpinResult, type SpinStep, type WheelSpin, type WheelWedge } from '../math/machines'
+import { hasMeters, meterFull, playSpin, type CollectCell, type Feature, type HoldSpinStep, type OrbValue, type SpinResult, type SpinStep, type WheelSpin, type WheelWedge } from '../math/machines'
 import { cryptoRng } from '../math/rng'
+import { createWinFx, winTier, type WinFx } from '../../../_shared/win-fx'
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const HEAD_MARKS = [[4, 'h2'], [7, 'h3'], [13, 'h4'], [15, 'h5']] as const
@@ -44,12 +48,14 @@ export class SlotSession {
   private message = ''
   private heads: PlayInfo['heads']
   private readonly ui: HTMLElement
+  private readonly fx: WinFx
   private readonly keyHandler = (e: KeyboardEvent) => this.key(e)
   private closed = false
 
   constructor(private readonly scene: Scene, private readonly display: MachineDisplay, private readonly client: CasinoClient, private readonly toast: (text: string) => void, private readonly onLeave: () => void) {
     this.reels = this.makeReels(display.def.strips, 'base')
     this.reels.setStops(display.def.strips.map((s) => Math.floor(s.length / 3)))
+    this.fx = createWinFx({ format: money, font: '"Arial Black", Impact, system-ui, sans-serif', particles: display.def.family === 'dollaz' ? ['bill', 'coin', 'spark'] : ['coin', 'gem', 'spark'], zIndex: 42 })
     this.ui = this.buildUi()
     addEventListener('keydown', this.keyHandler)
     setTimeout(() => {
@@ -90,11 +96,13 @@ export class SlotSession {
 
   private draw(): void {
     if (this.closed) return
-    const meters = this.def.family === 'collect' ? this.client.meters(this.def.id) : undefined
+    const metered = hasMeters(this.def)
+    const meters = metered ? this.client.meters(this.def.id) : undefined
+    const full = meterFull(this.def)
     this.display.drawPlay({
       credit: this.client.balance, bet: this.bet, win: this.win, status: this.status, message: this.message,
       heads: this.heads,
-      meters: this.def.family === 'collect' ? { green: (meters?.green ?? 0) / METER_FULL, pink: (meters?.pink ?? 0) / METER_FULL, blue: (meters?.blue ?? 0) / METER_FULL } : undefined,
+      meters: metered ? { green: (meters?.green ?? 0) / full.green, pink: (meters?.pink ?? 0) / full.pink, blue: (meters?.blue ?? 0) / full.blue } : undefined,
     })
     const credit = this.ui.querySelector('[data-credit]')
     if (credit) credit.textContent = this.client.balance === null ? '—' : money(this.client.balance)
@@ -167,8 +175,10 @@ export class SlotSession {
       if (r.feature) await this.playFeature(r.feature, r.base)
       this.client.balance = settled
       this.win = r.totalWin
-      this.status = r.totalWin > 0 ? (r.totalWin >= this.bet * 20 ? 'BIG WIN!' : 'WINNER!') : 'GOOD LUCK!'
+      const tier = winTier(r.totalWin, this.bet)
+      this.status = r.totalWin > 0 ? (tier === 'huge' ? 'HUGE WIN!' : tier === 'big' ? 'BIG WIN!' : 'WINNER!') : 'GOOD LUCK!'
       this.draw()
+      if (tier && !this.closed) await this.fx.celebrate(r.totalWin, this.bet)
     } catch (error) {
       if (this.closed) return
       this.client.balance = before
@@ -242,6 +252,10 @@ export class SlotSession {
 
   private async playFeature(f: Feature, base: SpinStep): Promise<void> {
     if (this.closed) return
+    if (f.kind === 'chain') {
+      for (const part of f.parts) await this.playFeature(part, base)
+      return
+    }
     if (f.kind === 'holdspin') return this.holdSpin(f, this.reels)
     if (f.kind === 'jackpotpick') return this.jackpotPick(f)
     if (f.kind === 'cashcollect') return this.cashCollect(f)
@@ -323,7 +337,10 @@ export class SlotSession {
       await wait(1500)
     }
     this.message = 'COLLECTING'
+    const tally = this.fx.tally(f.grand ? 'GRAND!' : 'HOLD & SPIN')
+    tally.set(f.win)
     await this.countTo(this.win + f.win, 2)
+    await tally.finish({ title: 'HOLD & SPIN WIN' })
     this.display.drawTopper(this.bet, null)
     set.showOverlay(false)
     set.showReels(true)
@@ -364,11 +381,16 @@ export class SlotSession {
         set.stopPulse()
       } else await wait(250)
       if (s.inner?.kind === 'holdspin') await this.holdSpin(s.inner, set)
+      else if (s.inner?.kind === 'cashcollect') await this.cashCollect(s.inner, set)
     }
     this.heads = undefined
     this.message = `FREE GAMES WON ${money(f.win)}`
     this.draw()
-    await wait(1600)
+    if (f.win > 0) {
+      const tally = this.fx.tally('FREE GAMES', { subtitle: `${f.awarded} GAMES PLAYED` })
+      tally.set(f.win)
+      await tally.finish({ title: 'FREE GAMES WON' })
+    } else await wait(1600)
     set.showOverlay(false)
     set.showReels(false)
     this.reels.showReels(true)
@@ -549,6 +571,7 @@ export class SlotSession {
     const frames = f.spins[f.spins.length - 1]?.frames ?? frames0
     const prizes = new Map<string, string>()
     const gone = new Set<string>()
+    const tally = this.fx.tally('HOUSE PRIZES')
     for (const tier of [1, 2, 3]) {
       this.status = `${TIER_NAME[tier]} HOUSES`
       this.message = 'HUFF... PUFF...'
@@ -559,6 +582,7 @@ export class SlotSession {
         gone.add(rv.cell)
         if (rv.jackpot) this.display.drawTopper(this.bet, rv.jackpot)
         paintFrames(frames, prizes, gone)
+        tally.add(rv.credits)
         await this.countTo(this.win + rv.credits, 0.35)
         this.draw()
       }
@@ -566,21 +590,23 @@ export class SlotSession {
     this.message = `HOUSES PAID ${money(f.reveals.reduce((a, r) => a + r.credits, 0))}`
     this.draw()
     this.display.drawTopper(this.bet, null)
-    await wait(1600)
+    await tally.finish({ title: 'HOUSES PAID' })
     set.showOverlay(false)
     set.showReels(false)
     this.reels.showReels(true)
   }
 
-  private async cashCollect(f: Extract<Feature, { kind: 'cashcollect' }>): Promise<void> {
-    const set = this.reels
+  private async cashCollect(f: Extract<Feature, { kind: 'cashcollect' }>, set: ReelSet = this.reels): Promise<void> {
     const o = set.overlayContext()
     const size = Math.min(o.h / 5, o.w / 5)
     const ox = (o.w - size * 5) / 2
     const coin = this.display.theme.symbols.O
     const gem = this.display.theme.symbols.N
     const collector = this.display.theme.symbols.M
-    const paint = (step: (typeof f.steps)[number] | null) => {
+    const label = (c: CollectCell) => c.jackpot ?? money(c.credits)
+    const at = (cell: string) => cell.split(',').map(Number) as [number, number]
+    type Zone = { reel: number; row: number; size: number }
+    const paint = (zone: Zone, coins: (CollectCell & { collected: boolean })[], gems: CollectCell[], taken: Set<string> = new Set()) => {
       o.g.clearRect(0, 0, o.w, o.h)
       o.g.fillStyle = '#04100c'
       o.g.fillRect(ox, 0, size * 5, size * 5)
@@ -589,48 +615,80 @@ export class SlotSession {
         o.g.lineWidth = 2
         o.g.strokeRect(ox + r * size + 2, row * size + 2, size - 4, size - 4)
       }
-      const z = step?.zone ?? f.steps[0].zone
-      roundRect(o.g, ox + z.reel * size, z.row * size, z.size * size, z.size * size, 14)
+      for (const c of coins) {
+        const [r, row] = at(c.cell)
+        o.g.globalAlpha = c.collected ? 1 : 0.4
+        drawSymbol(o.g, coin, ox + r * size, row * size, size, size, label(c))
+        o.g.globalAlpha = 1
+      }
+      for (const g of gems) {
+        const [r, row] = at(g.cell)
+        o.g.globalAlpha = taken.has(g.cell) ? 0.35 : 1
+        drawSymbol(o.g, gem, ox + r * size, row * size, size, size, label(g))
+        o.g.globalAlpha = 1
+      }
+      roundRect(o.g, ox + zone.reel * size, zone.row * size, zone.size * size, zone.size * size, 14)
       o.g.lineWidth = 8
       o.g.strokeStyle = '#ffd040'
       o.g.stroke()
-      o.g.globalAlpha = 0.3
-      drawSymbol(o.g, collector, ox + z.reel * size, z.row * size, z.size * size, z.size * size)
+      o.g.globalAlpha = 0.35
+      drawSymbol(o.g, collector, ox + zone.reel * size, zone.row * size, zone.size * size, zone.size * size)
       o.g.globalAlpha = 1
-      if (step) {
-        for (const c of step.coins) {
-          const [r, row] = c.cell.split(',').map(Number)
-          o.g.globalAlpha = c.collected ? 1 : 0.4
-          drawSymbol(o.g, coin, ox + r * size, row * size, size, size, money(c.credits))
-          o.g.globalAlpha = 1
-        }
-        for (const g of step.gems) {
-          const [r, row] = g.cell.split(',').map(Number)
-          drawSymbol(o.g, gem, ox + r * size, row * size, size, size)
-        }
-      }
       set.showOverlay(true)
     }
+    let zone: Zone = f.zone ?? f.steps[0]?.zone ?? { reel: 1, row: 1, size: 2 }
+    const start = f.start ?? []
     set.showReels(false)
     this.status = 'CASH COLLECT'
-    this.message = '5 SPINS'
-    paint(null)
+    this.message = start.length ? `${start.length} ${this.display.theme.orbName ?? 'GEMS'} COLLECTED` : '5 SPINS'
+    paint(zone, [], start)
     this.draw()
-    await wait(1200)
+    const tally = this.fx.tally('CASH COLLECT', { subtitle: '5 SPINS' })
+    await wait(900)
     let collected = 0
+    for (const bill of start) {
+      if (this.closed) return
+      tally.add(bill.credits)
+      await this.countTo(this.win + bill.credits, 0.3)
+      collected += bill.credits
+    }
     for (const step of f.steps) {
       if (this.closed) return
-      paint(step)
-      this.status = `SPINS LEFT ${step.left}`
-      this.message = step.gems.length ? `+${step.gems.length} GEMS · ZONE ${step.zone.size}x${step.zone.size}` : ''
-      await this.countTo(this.win + (step.collected - collected), 0.5)
+      const taken = new Set<string>()
+      paint(zone, step.coins, step.gems, taken)
+      const coinWin = step.coins.reduce((a, c) => a + (c.collected ? c.credits : 0), 0)
+      if (coinWin > 0) {
+        tally.add(coinWin)
+        await this.countTo(this.win + coinWin, 0.4)
+        collected += coinWin
+      }
+      const path = step.path ?? []
+      for (let i = 0; i < step.gems.length; i++) {
+        if (this.closed) return
+        if (path[i]) zone = path[i]
+        taken.add(step.gems[i].cell)
+        paint(zone, step.coins, step.gems, taken)
+        tally.add(step.gems[i].credits)
+        await this.countTo(this.win + step.gems[i].credits, 0.3)
+        collected += step.gems[i].credits
+      }
+      zone = step.zone
+      paint(zone, step.coins, step.gems, taken)
+      const rest = Math.round((step.collected - collected) * 100) / 100
+      if (rest > 0) {
+        tally.add(rest)
+        await this.countTo(this.win + rest, 0.3)
+      }
       collected = step.collected
+      this.status = `SPINS LEFT ${step.left}`
+      this.message = step.gems.length ? `+${step.gems.length} · ZONE ${step.zone.size}x${step.zone.size}` : ''
+      tally.subtitle(`SPINS LEFT ${step.left} · ZONE ${step.zone.size}x${step.zone.size}`)
       this.draw()
       await wait(450)
     }
     this.message = `COLLECTED ${money(f.win)}`
     this.draw()
-    await wait(1500)
+    await tally.finish({ title: 'CASH COLLECTED' })
     set.showOverlay(false)
     set.showReels(true)
   }
@@ -672,9 +730,11 @@ export class SlotSession {
     }
     this.display.drawTopper(this.bet, f.won)
     this.message = `${f.won} JACKPOT!`
+    const tally = this.fx.tally(`${f.won} JACKPOT`)
+    tally.set(f.win)
     await this.countTo(this.win + f.win, 1.5)
     this.draw()
-    await wait(1400)
+    await tally.finish({ hold: 1400 })
     this.display.drawTopper(this.bet, null)
     set.showOverlay(false)
     set.showReels(true)
@@ -684,6 +744,7 @@ export class SlotSession {
     if (this.closed) return
     this.closed = true
     removeEventListener('keydown', this.keyHandler)
+    this.fx.destroy()
     this.ui.remove()
     this.reels.dispose()
     this.freeReels?.dispose()

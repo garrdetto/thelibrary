@@ -124,8 +124,22 @@ export class StalkAudio {
     notes.forEach((freq, index) => this.tone(freq, 0.3, 'triangle', 0.16, index * 0.09))
   }
 
-  bigWin(): void {
+  bigWin(huge = false): void {
     ;[392, 523, 659, 784, 1047, 784, 1047, 1319].forEach((freq, index) => this.tone(freq, 0.4, 'triangle', 0.18, index * 0.12))
+    if (huge) {
+      this.tone(98, 1.4, 'sawtooth', 0.08, 0, 196)
+      ;[1568, 1319, 1568, 2093].forEach((freq, index) => this.tone(freq, 0.3, 'sine', 0.1, 1 + index * 0.1))
+    }
+  }
+
+  tick(): void {
+    this.tone(1250 + Math.random() * 250, 0.035, 'square', 0.025)
+  }
+
+  land(tier: 'big' | 'huge' | 'tally'): void {
+    const chord = tier === 'huge' ? [523, 659, 784, 1047, 1319, 1568] : tier === 'big' ? [523, 659, 784, 1047] : [659, 784, 988, 1319]
+    chord.forEach((freq, index) => this.tone(freq, 0.9, 'triangle', 0.12, index * 0.035))
+    this.noise(0.4, 0.12, 0, 6000)
   }
 
   freeTrigger(): void {

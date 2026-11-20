@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { formatMoney } from '../../sunvault/format'
-import { BET_UNITS, FREE_SPINS_AWARD, HAYWIRE_ODDS, SCATTER_PAYS, SYMBOLS, Sym, WAY_PAYS } from '../engine/paytable'
+import { BET_LEVELS_CENTS, FREE_SPINS_AWARD, HAYWIRE_ODDS, SCATTER_PAYS, SYMBOLS, Sym, WAY_PAYS, wayWin } from '../engine/paytable'
 import type { Stage } from '../render/stage'
 
 function Tile({ stage, sym }: { stage: Stage | null; sym: Sym }) {
@@ -30,15 +30,15 @@ export function Paytable({ stage, bet, onClose }: { stage: Stage | null; bet: nu
       previous?.focus()
     }
   }, [onClose])
-  const unit = bet / BET_UNITS
   const paying = SYMBOLS.filter((symbol) => WAY_PAYS[symbol.id]).reverse()
   return (
-    <div className="fixed inset-0 z-20 grid place-items-center bg-black/70 p-3" role="dialog" aria-modal="true" aria-labelledby="paytable-title" onClick={onClose}>
-      <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl border-2 border-leaf-500 bg-soil-900 p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="mb-3 flex items-center">
+    <div className="bs-modal fixed inset-0 z-20 grid place-items-center bg-black/70" role="dialog" aria-modal="true" aria-labelledby="paytable-title" onClick={onClose}>
+      <div className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border-2 border-leaf-500 bg-soil-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex shrink-0 items-center border-b border-leaf-700/60 py-1 pl-4 pr-1 wide:pl-5">
           <h2 id="paytable-title" className="font-display text-2xl text-gold-300">How it pays</h2>
-          <button ref={closeRef} type="button" onClick={onClose} className="ml-auto rounded-full p-2 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-gold-300" aria-label="Close"><X className="h-5 w-5" aria-hidden /></button>
+          <button ref={closeRef} type="button" onClick={onClose} className="ml-auto grid h-11 w-11 place-items-center rounded-full hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-gold-300" aria-label="Close"><X className="h-5 w-5" aria-hidden /></button>
         </div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain p-4 wide:p-5">
         <p className="mb-4 text-sm text-cream-200">Five reels of four rows with 1,024 ways: a symbol pays when it lands on three or more reels in a row from the left, anywhere on each reel. Each matching symbol on a reel adds a way. Amounts below are for your {formatMoney(bet)} bet with one way.</p>
 
         <section className="mb-4 grid gap-3 sm:grid-cols-2">
@@ -73,14 +73,15 @@ export function Paytable({ stage, bet, onClose }: { stage: Stage | null; bet: nu
                   <Tile stage={stage} sym={symbol.id} />
                   <div className="text-sm">
                     <p className="font-semibold text-cream-100">{symbol.name}</p>
-                    <p className="text-cream-300">{pays.map((pay) => formatMoney(Math.round(pay * unit))).join(' · ')}</p>
+                    <p className="text-cream-300">{pays.map((pay) => formatMoney(wayWin(pay, 1, bet))).join(' · ')}</p>
                   </div>
                 </li>
               )
             })}
           </ul>
-          <p className="mt-3 text-xs text-cream-300">Ways made only of wilds pay as the Cloud Giant. The long-run return is about 97%: over many spins the machine keeps about 3 cents of every dollar bet, and any single session can land far above or below that.</p>
+          <p className="mt-3 text-xs text-cream-300">Ways made only of wilds pay as the Cloud Giant, and a winning way always pays at least 1 cent. Bets run from {formatMoney(BET_LEVELS_CENTS[0])} to {formatMoney(BET_LEVELS_CENTS[BET_LEVELS_CENTS.length - 1])}. The long-run return is about 97%: over many spins the machine keeps about 3 cents of every dollar bet, and any single session can land far above or below that.</p>
         </section>
+        </div>
       </div>
     </div>
   )

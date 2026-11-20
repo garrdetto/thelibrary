@@ -13,6 +13,15 @@ export function formatShort(cents: number): string {
   return `$${dollars.toFixed(2)}`
 }
 
+export function formatWhole(cents: number): string {
+  return Number.isInteger(cents / 100) ? `$${(cents / 100).toLocaleString('en-US')}` : formatMoney(cents)
+}
+
+export function formatLineBet(cents: number): string {
+  if (Number.isInteger(cents)) return formatMoney(cents)
+  return `${trim(cents.toFixed(1))}¢`
+}
+
 function trim(text: string): string {
   return text.endsWith('.0') ? text.slice(0, -2) : text
 }

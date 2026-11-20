@@ -86,6 +86,21 @@ function collect(title: string, tagline: string, sky: [string, string], accent: 
   }
 }
 
+function dollaz(title: string, tagline: string, sky: [string, string], accent: string, led: string): MachineTheme {
+  return {
+    title, tagline, sky, reelBack: ['#0b2a18', '#03100a'], accent, titleColor: '#eaffd8', led, orbName: 'CASH BILLS',
+    symbols: {
+      J: RANKS.J, Q: RANKS.Q, K: RANKS.K, A: RANKS.A,
+      h1: pic('🏎️', '#7a1a1a', '#ffb0a0'), h2: pic('💍', '#2a3a7a', '#c0d0ff'), h3: pic('⌚', '#7a5a12', '#ffe8a0'), h4: pic('🥂', '#5a2a5a', '#f0c8f0'), h5: pic('🕶️', '#1a4a4a', '#a8f0e8'),
+      W: { glyph: '💸', kind: 'wild', color: '#0e5a2a', light: '#b8ffc8', caption: 'WILD' },
+      S: { glyph: '🏦', kind: 'scatter', color: '#7a5a08', light: '#ffe890', caption: 'FREE GAMES' },
+      M: { glyph: '💰', kind: 'special', color: '#4a3208', light: '#ffd890', caption: 'COLLECT' },
+      N: { glyph: '💵', kind: 'special', color: '#1a7a3a', light: '#b8ffc0', caption: 'CASH' },
+      O: coin('#c88a10', '#fff0a0', '$'),
+    },
+  }
+}
+
 export const THEMES: Record<string, MachineTheme> = {
   'northern-lights-link': link('Northern Lights Link', 'Hold & Spin for the Grand', ['#06223a', '#0a4a3a'], '#5fffd0', '#40e0ff',
     { h1: '🐻‍❄️', h2: '🦉', h3: '🦌', h4: '🦭', wild: '❄️', scatter: '🏔️', orb: '✦', orbColor: '#18a8a0', orbLight: '#b0fff0', orbName: 'AURORA ORBS' }),
@@ -107,4 +122,5 @@ export const THEMES: Record<string, MachineTheme> = {
     { h1: '🏕️', h2: '🛶', h3: '🔦', h4: '🗺️', collector: '👣' }),
   'lake-monster-loot': collect('Lake Monster Loot', 'Collect · Free Games · Jackpots', ['#06223a', '#0a5a6a'], '#60ffe0', '#20d0ff',
     { h1: '⚓', h2: '🎣', h3: '🛥️', h4: '🐟', collector: '🦕' }),
+  'mo-dollaz': dollaz("Mo' Dollaz", 'Cash Collect · Free Games · Jackpots', ['#041a0e', '#0d4a26'], '#7dffa0', '#2dff7a'),
 }

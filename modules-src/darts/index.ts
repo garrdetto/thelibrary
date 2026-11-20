@@ -8,9 +8,10 @@ import { applyBoardColors, isBoardStyle, type BoardStyle } from './render/BoardT
 import { loadDartsSettings } from './net/Settings'
 import { applyMeterSettings, meterChoice, type DartsSettings } from './shared/Settings'
 import { createDartKit, aimDart } from './render/Dart'
+import { CAMERA_EYE, CAMERA_LOOK_AT, fitFov } from './render/CameraFit'
 import { createPub } from './render/Pub'
 import { LocalSession, OnlineSession, type Session } from './session/Session'
-import { BULL_HEIGHT, OCHE_DISTANCE, RADII } from './shared/Board'
+import { BULL_HEIGHT, RADII } from './shared/Board'
 import type { Announcement, CpuLevel, DartThrow, FlightParams, GameState, MatchConfig, TeamPlay } from './shared/interfaces'
 import { RELEASE, aimDirection } from './shared/Physics'
 import { TEAM_SIZE, currentPlayer, modeLabel, type SeatSpec } from './shared/Rules'
@@ -241,15 +242,11 @@ async function boot(): Promise<void> {
   const sounds = createSounds()
   app.own(sounds)
 
-  const eye = new THREE.Vector3(0, config.camera.eyeHeight, OCHE_DISTANCE + config.camera.distanceBehindOche)
-  const lookAt = new THREE.Vector3(0, BULL_HEIGHT - 0.03, 0)
+  const eye = new THREE.Vector3(...CAMERA_EYE)
+  const lookAt = new THREE.Vector3(...CAMERA_LOOK_AT)
   const fitCamera = () => {
     const camera = app.camera
-    const distance = eye.distanceTo(lookAt)
-    const half = config.camera.boardHalfExtent
-    const aspect = Math.max(0.3, camera.aspect)
-    const vertical = aspect >= 1 ? half : half / aspect
-    const fov = THREE.MathUtils.clamp((2 * Math.atan(vertical / distance) * 180) / Math.PI, config.camera.minFov, config.camera.maxFov)
+    const fov = fitFov(camera.aspect)
     if (Math.abs(camera.fov - fov) > 0.01) {
       camera.fov = fov
       camera.updateProjectionMatrix()
@@ -259,14 +256,25 @@ async function boot(): Promise<void> {
   }
   fitCamera()
 
-  const reticleMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(config.meta.accent), transparent: true, opacity: 0.9, depthWrite: false })
-  const reticleRing = new THREE.RingGeometry(0.0055, 0.0072, 40)
-  const reticleDot = new THREE.CircleGeometry(0.0013, 16)
+  /** The target the player taps or drags: a white ring and a dot in the thrower's colour over a dark halo, so it reads on red, black and white beds alike; `placeMeter` scales it up on small screens so it never draws smaller than `RETICLE_MIN_PX`. */
+  const RETICLE_RADIUS = 0.0072
+  const RETICLE_MIN_PX = 10
+  const reticleMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(config.meta.accent), transparent: true, opacity: 0.95, depthWrite: false })
+  const reticleRingMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.92, depthWrite: false })
+  const reticleShade = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.6, depthWrite: false })
+  const reticleRing = new THREE.RingGeometry(0.0057, RETICLE_RADIUS, 40)
+  const reticleDot = new THREE.CircleGeometry(0.0014, 16)
+  const reticleHalo = new THREE.RingGeometry(0.0047, 0.0083, 40)
+  const reticleDotHalo = new THREE.CircleGeometry(0.0023, 16)
   const reticle = new THREE.Group()
-  reticle.add(new THREE.Mesh(reticleRing, reticleMaterial), new THREE.Mesh(reticleDot, reticleMaterial))
+  const reticleShades = [new THREE.Mesh(reticleHalo, reticleShade), new THREE.Mesh(reticleDotHalo, reticleShade)]
+  const reticleMarks = [new THREE.Mesh(reticleRing, reticleRingMaterial), new THREE.Mesh(reticleDot, reticleMaterial)]
+  for (const shade of reticleShades) shade.position.z = -0.0004
+  for (const mark of reticleMarks) mark.renderOrder = 1
+  reticle.add(...reticleShades, ...reticleMarks)
   reticle.renderOrder = 5
   app.graph.add('fx', reticle)
-  app.own({ dispose() { reticleMaterial.dispose(); reticleRing.dispose(); reticleDot.dispose() } })
+  app.own({ dispose() { reticleMaterial.dispose(); reticleRingMaterial.dispose(); reticleShade.dispose(); reticleRing.dispose(); reticleDot.dispose(); reticleHalo.dispose(); reticleDotHalo.dispose() } })
 
   /** The dart in hand follows the aim every frame; its shadow would only fall on the floor behind the oche, and casting one made the board lamp's shadow map redraw on every mouse move. */
   const handDart = (color: string) => {
@@ -303,6 +311,7 @@ async function boot(): Promise<void> {
   const teamSetup = new TeamSetup(byId('team-list'))
   const tourSetup = new TournamentSetup(byId('tour-list'))
 
+  const throwButton = byId<HTMLButtonElement>('throw-btn')
   const input = new ThrowInput(container, app.camera, {
     aim(x, y) {
       reticle.position.set(x, y + BULL_HEIGHT, 0.0025)
@@ -319,7 +328,7 @@ async function boot(): Promise<void> {
       sounds.unlock()
       session.throw(intent)
     },
-  })
+  }, throwButton)
   app.own(input)
   input.setAim(input.aimX, input.aimY)
   const meterOptions = meterChoice(settings.meter.classic)
@@ -344,10 +353,18 @@ async function boot(): Promise<void> {
     })
   }
 
+  /** A person at this screen is up (the overlay's `mine`): the Throw button shows for the whole turn, and works whenever the session takes a throw. */
+  const localTurn = (state: GameState | null): boolean => {
+    if (!state || state.status !== 'playing') return false
+    const player = currentPlayer(state)
+    return !player.cpu && (!localIds || localIds.has(player.id))
+  }
+
   const refreshHand = () => {
     const state = session?.state ?? null
-    const can = !!session?.canThrow() && !overlayOpen()
-    input.enabled = can
+    const open = overlayOpen()
+    const can = !!session?.canThrow() && !open
+    input.setTurn(can || (localTurn(state) && !open), can)
     reticle.visible = can
     hand.visible = can && !flights.inFlight
     const color = state && state.status === 'playing' ? playerColor(state, currentPlayer(state).id) : handColor
@@ -887,7 +904,7 @@ async function boot(): Promise<void> {
     steps++
   })
   const boardEdge = new THREE.Vector3()
-  const boardTop = new THREE.Vector3()
+  const boardCentre = new THREE.Vector3()
   const stageSize = { width: container.clientWidth, height: container.clientHeight }
   const hudSize = { width: overlay.hud.clientWidth, height: overlay.hud.clientHeight }
   let meterKey = ''
@@ -915,11 +932,16 @@ async function boot(): Promise<void> {
     meterKey = key
     const radius = RADII.board / 1000
     boardEdge.set(radius, BULL_HEIGHT, 0).project(app.camera)
-    boardTop.set(0, BULL_HEIGHT + radius, 0).project(app.camera)
-    const x = ((boardEdge.x + 1) / 2) * rect.width
-    const y = ((1 - boardEdge.y) / 2) * rect.height
-    const top = ((1 - boardTop.y) / 2) * rect.height
-    overlay.placeMeter(x, y, (y - top) * 2, hudSize.width, hudSize.height)
+    boardCentre.set(0, BULL_HEIGHT, 0).project(app.camera)
+    const bullX = ((boardCentre.x + 1) / 2) * rect.width
+    const bullY = ((1 - boardCentre.y) / 2) * rect.height
+    const edgeX = ((boardEdge.x + 1) / 2) * rect.width
+    const pixelsPerMetre = (edgeX - bullX) / radius
+    if (pixelsPerMetre > 0) reticle.scale.setScalar(Math.max(1, RETICLE_MIN_PX / (RETICLE_RADIUS * pixelsPerMetre)))
+    const avoid = throwButton.offsetWidth
+      ? { left: throwButton.offsetLeft, top: throwButton.offsetTop, right: throwButton.offsetLeft + throwButton.offsetWidth, bottom: throwButton.offsetTop + throwButton.offsetHeight }
+      : null
+    overlay.placeMeter(bullX, bullY, edgeX - bullX, hudSize.width, hudSize.height, avoid)
   }
   app.onFrame((dt) => {
     fitCamera()

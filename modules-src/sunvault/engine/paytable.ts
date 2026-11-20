@@ -178,7 +178,8 @@ function buildStrip(stripCounts: StripCounts, salt: number): Sym[] {
 export const BASE_STRIPS: readonly (readonly Sym[])[] = BASE_STRIP_COUNTS.map((stripCounts, reel) => buildStrip(stripCounts, reel + 1))
 export const FREE_STRIPS: readonly (readonly Sym[])[] = FREE_STRIP_COUNTS.map((stripCounts, reel) => buildStrip(stripCounts, reel + 11))
 
-export const BET_LEVELS_CENTS: readonly number[] = [50, 100, 200, 300, 500, 1000, 2000, 2500, 5000, 10000]
+export const BET_LEVELS_CENTS: readonly number[] = [20, 50, 100, 150, 200, 250, 300, 400, 500]
+export const DEFAULT_BET_CENTS = 100
 export const STARTING_BALANCE_CENTS = 100000
 
 export interface ZoneRect {

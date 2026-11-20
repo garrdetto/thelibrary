@@ -1,5 +1,6 @@
+import { winTier, type Tally, type TallyOptions, type WinFx } from '../../_shared/win-fx'
 import { HAYWIRE_NAMES, REELS, ROWS, Sym, ZONE_MULTIPLIERS, type JackpotTier } from '../engine/paytable'
-import type { CellRef, CollectEvent, JackpotAward, JackpotPick, SpinResult } from '../engine/slotEngine'
+import type { CellRef, CollectEvent, JackpotPick, SpinResult } from '../engine/slotEngine'
 import { formatShort } from '../format'
 import type { SlotAudio } from '../audio/synth'
 import { EMBER, GOLD, JADE, VIOLET } from '../render/particles'
@@ -14,7 +15,6 @@ export interface Banner {
   subtitle?: string
   amount?: number
   tone: BannerTone
-  jackpot?: JackpotTier
 }
 
 export interface DirectorHooks {
@@ -24,6 +24,8 @@ export interface DirectorHooks {
   onAnticipation: (active: boolean) => void
   onPick: (pick: JackpotPick) => Promise<void>
   onGlitch?: (active: boolean) => void
+  onFlash?: (tier: JackpotTier | null) => void
+  onTally?: (open: boolean) => void
 }
 
 const calmMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -34,22 +36,17 @@ const HAYWIRE_LINES: Record<'wilds' | 'coins' | 'double', string> = {
   double: 'Everything this spin pays is multiplied.',
 }
 
-const BIG_WIN_LEVELS: readonly { at: number; title: string; tone: BannerTone }[] = [
-  { at: 60, title: 'EPIC WIN', tone: 'ember' },
-  { at: 30, title: 'MEGA WIN', tone: 'violet' },
-  { at: 15, title: 'BIG WIN', tone: 'gold' },
-]
-
-const JACKPOT_TONES: Record<JackpotTier, BannerTone> = { mini: 'jade', minor: 'gold', major: 'violet', grand: 'ember' }
+const JACKPOT_LEVEL: Record<JackpotTier, number> = { mini: 1, minor: 1, major: 2, grand: 3 }
 
 export class Director {
   private roundWin = 0
   private bannerId = 0
 
-  constructor(private readonly scene: Scene, private readonly audio: SlotAudio, private readonly hooks: DirectorHooks) {}
+  constructor(private readonly scene: Scene, private readonly audio: SlotAudio, private readonly hooks: DirectorHooks, private readonly fx: WinFx) {}
 
   hurry(): void {
     this.scene.hurry()
+    this.fx.dismiss()
   }
 
   get currentRoundWin(): number {
@@ -69,6 +66,30 @@ export class Director {
     this.scene.resetHurry()
   }
 
+  private openTally(title: string, options: TallyOptions = {}): Tally {
+    this.hooks.onTally?.(true)
+    return this.fx.tally(title, options)
+  }
+
+  private async settle(tally: Tally, turbo: boolean, lead = 0): Promise<void> {
+    if (lead > 0) await this.scene.wait(turbo ? lead * 0.6 : lead, true)
+    const hold = turbo ? 900 : 1700
+    const done = tally.finish({ hold })
+    await this.scene.wait(turbo ? 0.55 : 0.75)
+    await Promise.race([done, this.scene.wait(hold / 1000 + 0.2, true)])
+    tally.close()
+    this.hooks.onTally?.(false)
+    this.scene.resetHurry()
+  }
+
+  private jackpotFlourish(tier: JackpotTier): void {
+    const level = JACKPOT_LEVEL[tier]
+    this.audio.jackpot(tier)
+    this.scene.celebrate(level, tier === 'grand' ? 6 : 3)
+    this.scene.coinFountain(tier === 'grand' ? 140 : level > 1 ? 80 : 50)
+    this.hooks.onFlash?.(tier)
+  }
+
   async present(result: SpinResult, turbo: boolean): Promise<void> {
     this.scene.resetHurry()
     this.scene.bet = result.bet
@@ -82,7 +103,7 @@ export class Director {
       await this.presentReels(result, turbo)
     }
     this.scene.resetHurry()
-    if (result.state.mode === 'base') await this.finishRound(result)
+    if (result.state.mode === 'base') await this.finishRound(result, turbo)
   }
 
   private async presentReels(result: SpinResult, turbo: boolean): Promise<void> {
@@ -178,7 +199,7 @@ export class Director {
       await this.banner({ kicker: 'Retrigger', title: `+${result.freeSpinsAwarded} FREE SPINS`, tone: 'violet' }, 1.8)
     }
 
-    if (result.featureEnd?.kind === 'free') await this.endFree(result.featureEnd.total)
+    if (result.featureEnd?.kind === 'free') await this.endFree(result.featureEnd.total, turbo)
   }
 
   private async presentHaywire(result: SpinResult, turbo: boolean): Promise<void> {
@@ -231,43 +252,41 @@ export class Director {
       await scene.wait(turbo ? 0.5 : 0.95, true)
     }
     let gathered = 0
+    const tally = this.openTally('SPHINX COLLECT', event.size > 1 ? { subtitle: `${event.size}×${event.size} Sphinx` } : {})
     const flights: Promise<void>[] = []
     for (let index = 0; index < event.sources.length; index++) {
       const [reel, row] = event.sources[index]
       const cell = result.grid[reel][row]
       const from = scene.cellCenter(reel, row)
+      const jackpot = result.jackpots.find((award) => award.cell?.[0] === reel && award.cell?.[1] === row)
       const flight = scene.fly(from, goal, visualCell(cell, false), turbo ? 0.38 : 0.6).then(() => {
         gathered += cell.value
         setValue(gathered)
         audio.collectTick(index)
-        scene.floatText(`+${formatShort(cell.value)}`, goal, scene.layout.cell * 0.22, GOLD, 1)
+        tally.add(cell.value)
+        if (jackpot) {
+          tally.subtitle(`${jackpot.tier.toUpperCase()} JACKPOT`)
+          this.jackpotFlourish(jackpot.tier)
+        }
       })
       flights.push(flight)
       await scene.wait(turbo ? 0.08 : 0.16, true)
     }
     await Promise.all(flights)
+    let lead = 0
     if (event.multiplier > 1) {
       audio.zoneGrow()
       scene.floatText(`×${event.multiplier}`, { x: goal.x, y: goal.y - scene.layout.cell * 0.2 }, scene.layout.cell * 0.55, JADE, 1.4)
       scene.burst(goal, 'jade', 2)
       await scene.wait(turbo ? 0.35 : 0.7, true)
       setValue(event.amount)
+      tally.subtitle(`×${event.multiplier} Sphinx`)
+      tally.set(event.amount)
+      lead = 0.9
     }
     this.add(event.amount)
-    const jackpots = this.jackpotsIn(result, event)
-    for (const award of jackpots) await this.presentJackpot(award, turbo)
-    await scene.wait(turbo ? 0.25 : 0.5, true)
-  }
-
-  private jackpotsIn(result: SpinResult, event: CollectEvent): JackpotAward[] {
-    return result.jackpots.filter((award) => award.cell && event.sources.some(([reel, row]) => award.cell?.[0] === reel && award.cell?.[1] === row))
-  }
-
-  private async presentJackpot(award: JackpotAward, turbo: boolean): Promise<void> {
-    this.audio.jackpot(award.tier)
-    this.scene.celebrate(award.tier === 'grand' ? 3 : award.tier === 'major' ? 2 : 1, award.tier === 'grand' ? 6 : 3)
-    this.scene.coinFountain(award.tier === 'grand' ? 140 : 50)
-    await this.banner({ kicker: 'Jackpot', title: award.tier.toUpperCase(), amount: award.amount, tone: JACKPOT_TONES[award.tier], jackpot: award.tier }, turbo ? 1.6 : 2.6)
+    await this.settle(tally, turbo, lead)
+    this.hooks.onFlash?.(null)
   }
 
   private async presentPick(pick: JackpotPick, turbo: boolean): Promise<void> {
@@ -278,8 +297,12 @@ export class Director {
     await this.banner({ kicker: 'The vault stirs', title: 'JACKPOT PICK', subtitle: 'Uncover tiles until three jackpots match. That jackpot is yours.', tone: 'gold' }, turbo ? 1.4 : 2.2)
     await this.hooks.onPick(pick)
     scene.resetHurry()
+    this.jackpotFlourish(pick.tier)
+    const tally = this.openTally(`${pick.tier.toUpperCase()} JACKPOT`, { subtitle: 'Jackpot Pick' })
+    tally.set(pick.amount)
     this.add(pick.amount)
-    await this.presentJackpot({ tier: pick.tier, amount: pick.amount, cell: null }, turbo)
+    await this.settle(tally, turbo, 0.9)
+    this.hooks.onFlash?.(null)
   }
 
   private async startRespins(result: SpinResult, turbo: boolean): Promise<void> {
@@ -348,9 +371,9 @@ export class Director {
     }
 
     if (end.grand) {
-      await this.presentJackpot({ tier: 'grand', amount: result.jackpots.find((award) => award.tier === 'grand')?.amount ?? 0, cell: null }, turbo)
+      this.jackpotFlourish('grand')
+      await this.banner({ kicker: 'All 15 spaces filled', title: 'GRAND', subtitle: 'The whole vault is yours.', tone: 'ember' }, turbo ? 1.4 : 2.4)
     }
-    await this.banner({ kicker: 'Vault Respins complete', title: 'COUNTING THE VAULT', tone: 'gold' }, turbo ? 0.8 : 1.2)
     const meter = scene.meterPoint()
     let tallied = 0
     const order: CellRef[] = []
@@ -358,19 +381,35 @@ export class Director {
       const sym = result.grid[reel][row].sym
       if (sym === Sym.Coin || sym === Sym.Sphinx) order.push([reel, row])
     }
+    const tally = this.openTally('VAULT WIN', { subtitle: `Counting ${order.length} coins` })
     for (const [reel, row] of order) {
       const cell = result.grid[reel][row]
       const award = result.jackpots.find((item) => item.cell?.[0] === reel && item.cell?.[1] === row)
       await scene.fly(scene.cellCenter(reel, row), meter, visualCell(cell, true), turbo ? 0.22 : 0.38, 0.5)
-      audio.tally()
       this.add(cell.value)
+      tally.add(cell.value)
       tallied += cell.value
       scene.setCellValue(reel, row, 0)
-      if (award) await this.presentJackpot(award, turbo)
+      if (award) {
+        tally.subtitle(`${award.tier.toUpperCase()} JACKPOT`)
+        this.jackpotFlourish(award.tier)
+        await scene.wait(turbo ? 0.35 : 0.7, true)
+      }
     }
     const grand = result.stepWin - tallied
-    if (grand > 0) this.add(grand)
-    await this.banner({ kicker: 'Vault Respins', title: 'VAULT WIN', amount: result.stepWin, tone: 'gold' }, turbo ? 1.6 : 2.6)
+    if (grand > 0) {
+      await scene.wait(turbo ? 0.2 : 0.4, true)
+      tally.subtitle('+ GRAND JACKPOT')
+      this.audio.zoneGrow()
+      this.scene.coinFountain(120)
+      this.hooks.onFlash?.('grand')
+      this.add(grand)
+      tally.add(grand)
+    } else {
+      tally.subtitle('Vault Respins complete')
+    }
+    await this.settle(tally, turbo, 0.5)
+    this.hooks.onFlash?.(null)
     await scene.exitCells(result.grid)
     if (result.state.mode === 'free') {
       scene.setTheme('free')
@@ -382,26 +421,26 @@ export class Director {
     }
     scene.setTheme('base')
     scene.setZone(0, false)
-    if (end.closesFree !== null) await this.endFree(end.closesFree)
+    if (end.closesFree !== null) await this.endFree(end.closesFree, turbo)
   }
 
-  private async endFree(total: number): Promise<void> {
+  private async endFree(total: number, turbo: boolean): Promise<void> {
     this.scene.setZone(0, false)
     this.scene.setTheme('base')
-    this.audio.bigWin(1)
     this.scene.coinFountain(40)
-    await this.banner({ kicker: 'Free spins complete', title: 'TEMPLE TOTAL', amount: total, tone: 'violet' }, 2.6)
+    const tally = this.openTally('TEMPLE TOTAL', { subtitle: 'Free spins complete' })
+    tally.set(total)
+    await this.settle(tally, turbo, 0.9)
   }
 
-  private async finishRound(result: SpinResult): Promise<void> {
-    const multiple = this.roundWin / Math.max(1, result.bet)
-    const level = BIG_WIN_LEVELS.find((item) => multiple >= item.at)
-    if (!level) return
-    const rank = BIG_WIN_LEVELS.length - BIG_WIN_LEVELS.indexOf(level)
-    this.audio.bigWin(rank)
-    this.scene.celebrate(rank, 2.5 + rank)
-    this.scene.coinFountain(40 + rank * 40)
-    await this.banner({ kicker: `${Math.floor(multiple)}× your bet`, title: level.title, amount: this.roundWin, tone: level.tone }, 3 + rank * 0.5)
+  private async finishRound(result: SpinResult, turbo: boolean): Promise<void> {
+    const tier = winTier(this.roundWin, result.bet)
+    if (!tier) return
+    const level = tier === 'huge' ? 3 : 1
+    this.scene.celebrate(level, 3 + level)
+    this.scene.coinFountain(40 + level * 40)
+    await this.fx.celebrate(this.roundWin, result.bet, { turbo })
     this.scene.stopCelebration()
+    this.scene.resetHurry()
   }
 }
