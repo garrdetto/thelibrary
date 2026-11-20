@@ -17,7 +17,7 @@ from .dashboard import Keys, PlainLog, Screen, build, enable_ansi
 from .engine import Engine
 from .ledger import Ledger
 from .money import both, signed, small_sol, sol
-from .site import FileSite, Site, find_credentials
+from .site import FileSite, LocalFeedSite, Site, find_credentials
 
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_SETTINGS = REPO / "data" / "paper-bot.toml"
@@ -32,6 +32,7 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--origin", help="the site to pull from (overrides AXIOM_SITE_ORIGIN)")
     parser.add_argument("--settings", type=Path, default=DEFAULT_SETTINGS, help=f"the settings file (default {DEFAULT_SETTINGS})")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"the account database (default {DEFAULT_DB})")
+    parser.add_argument("--site-feed", action="store_true", help="read the Radar from the site instead of straight from the tracker on this PC")
     parser.add_argument("--offline", type=Path, help="use a saved Radar payload (JSON) instead of the site")
     parser.add_argument("--no-dashboard", action="store_true", help="print one line per event instead of the live view")
     parser.add_argument("--once", action="store_true", help="pull once, act on it, print the account and stop")
@@ -90,6 +91,8 @@ def run(args: argparse.Namespace) -> int:
             print("AXIOM_RADAR_TOKEN was not found. Put it in .env (the file the tracker uses) or point at that file with --env.", file=sys.stderr)
             return 2
         site = Site(args.origin or origin, token)
+        if not args.site_feed:
+            site = LocalFeedSite(site, args.origin or origin)
     lock = hold_lock(args.db)
     if lock is None:
         print("The bot is already running on this account. Stop the other copy first.", file=sys.stderr)

@@ -13,9 +13,9 @@ export const earlyLogRules = {
   goneAfterMs: 3 * 60_000,
   refireMs: 30 * 60_000,
   cycleMs: 2_000,
-  readingEveryMs: 20_000,
-  readingMaxAgeMinutes: 60,
-  keepReadingsMs: 72 * 60 * 60_000,
+  readingEveryMs: 1_000,
+  readingMaxAgeMinutes: 24 * 60,
+  keepReadingsMs: 24 * 60 * 60_000,
   keepStartsMs: 14 * 24 * 60 * 60_000,
   summaryWindowMs: 7 * 24 * 60 * 60_000,
 }
@@ -187,7 +187,7 @@ function readingsOf(token: RadarToken) {
 
 /**
  * Every 2 seconds: records each coin whose early-start pattern is complete (once per coin per 30 minutes, noting the gate
- * that was failing if one held it at 0), follows it for 15 minutes, and keeps a 20-second reading of every coin under an hour old (score, early-start reading, holders, holder
+ * that was failing if one held it at 0), follows it for 15 minutes, and keeps a 1-second reading of every tracked coin under a day old (score, early-start reading, holders, holder
  * growth, pro traders, wallet score, holder shares) so those readings can be tested against what the coin did next. It
  * only keeps records: nothing here buys or tells the paper bot to.
  */
