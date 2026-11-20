@@ -13,7 +13,7 @@ import { createLogger, runLoop } from './runtime.js'
 import { loadWinnersModel, runWinnersCycle } from './winners.js'
 
 const logger = createLogger('learner')
-const cycleMs = 5_000
+const cycleMs = 1_000
 const trainEveryMs = 5 * 60_000
 const featureDelayMs = 60_000
 const rugDrop = 0.25

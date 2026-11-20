@@ -9,7 +9,7 @@ import { researchResetAt } from './research-meta.js'
 import { createLogger, runLoop } from './runtime.js'
 
 const logger = createLogger('advice')
-const cycleMs = 3_000
+const cycleMs = 1_000
 const studyEveryMs = 15 * 60_000
 const horizonMs = 5 * 60_000
 const rebuyWindowMs = 30 * 60_000
