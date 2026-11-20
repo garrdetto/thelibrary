@@ -38,36 +38,41 @@ const watchlistReport = z.object({
   reason: z.string().max(200).optional(),
 }).strict()
 
-const report = z.object({
+const clipped = (limit: number) => z.string().max(20_000).transform(value => value.slice(0, limit))
+const cardSchema = z.object({
+  viewers: z.number().int().min(0).max(1_000_000),
+  pairAddress: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
+  mint: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
+  short: z.object({ prefix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/), suffix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/) }).nullable(),
+  lines: z.array(clipped(60)).max(200).transform(lines => lines.slice(0, 60)).optional(),
+  icons: z.array(clipped(80)).max(200).transform(icons => icons.slice(0, 40)).optional(),
+}).strict()
+
+/** One unreadable card or section is dropped on its own; it used to reject the whole report, and the bridge then resent it without the Pulse feed. */
+export const report = z.object({
   url: z.string().max(500),
   pairAddress: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
   pageViewers: z.number().int().min(0).max(1_000_000).nullable(),
   frames: z.array(z.string().max(60_000)).max(200),
-  cards: z.array(z.object({
-    viewers: z.number().int().min(0).max(1_000_000),
-    pairAddress: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
-    mint: z.string().refine(isSolanaAddress, 'Not a Solana address').nullable(),
-    short: z.object({ prefix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/), suffix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/) }).nullable(),
-    lines: z.array(z.string().max(60)).max(60).optional(),
-    icons: z.array(z.string().max(80)).max(40).optional(),
-  }).strict()).max(300).default([]),
-  stats: z.record(z.string().max(40), z.number().min(0).max(100)).refine(value => Object.keys(value).length <= 60).optional(),
-  pulse: pulseFeedSchema.optional(),
-  lists: axiomListsSchema.optional(),
-  probe: discoverProbeSchema.optional(),
-  digest: z.string().max(80_000).optional(),
-  discover: discoverPageSchema.optional(),
-  api: z.array(capturedApiSchema).max(30).optional(),
-  streams: z.array(capturedStreamSchema).max(400).optional(),
-  tabs: capturedTabsSchema.optional(),
-  poll: pollStatsSchema.optional(),
-}).strict()
+  cards: z.array(cardSchema.nullable().catch(null)).max(300).default([]).transform(cards => cards.filter((card): card is NonNullable<typeof card> => card !== null)),
+  stats: z.record(z.string().max(40), z.number().min(0).max(100)).refine(value => Object.keys(value).length <= 60).optional().catch(undefined),
+  pulse: pulseFeedSchema.optional().catch(undefined),
+  lists: axiomListsSchema.optional().catch(undefined),
+  probe: discoverProbeSchema.optional().catch(undefined),
+  digest: z.string().max(80_000).optional().catch(undefined),
+  discover: discoverPageSchema.optional().catch(undefined),
+  api: z.array(capturedApiSchema).max(30).optional().catch(undefined),
+  streams: z.array(capturedStreamSchema).max(400).optional().catch(undefined),
+  tabs: capturedTabsSchema.optional().catch(undefined),
+  poll: pollStatsSchema.optional().catch(undefined),
+})
 
-export type ExtensionReport = z.input<typeof report>
+export type ExtensionReport = z.output<typeof report>
 
 const siteOrigins = new Set([(process.env.AXIOM_SITE_ORIGIN?.trim() || 'https://thelibrary.garrdetto.workers.dev').replace(/\/$/, ''), 'http://localhost:3000'])
 const liveIntervalMs = 1_000
 const coinPageVisits = new Map<string, number>()
+const rejectedLogged = new Map<string, number>()
 const coinRevisitMs = 4 * 60_000
 const visitListSize = 40
 
@@ -307,7 +312,15 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       if (request.headers['x-bridge-rtt'] !== undefined) keepTiming(roundTrips, Number(request.headers['x-bridge-rtt']))
       const parsed = report.safeParse(JSON.parse(await readBody(request)))
       const handleStart = performance.now()
-      if (!parsed.success) return send(response, 400, { error: 'Report could not be read.' })
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0]
+        const where = issue ? issue.path.join('.') : 'unknown'
+        if (Date.now() - (rejectedLogged.get(where) ?? 0) > 60_000) {
+          rejectedLogged.set(where, Date.now())
+          logger.warn('Extension report rejected', { where, problem: issue?.message ?? 'unknown' })
+        }
+        return send(response, 400, { error: 'Report could not be read.' })
+      }
       const matched = applyExtensionReport(database, parsed.data)
       if (parsed.data.pairAddress) coinPageVisits.set(parsed.data.pairAddress, Date.now())
       if (parsed.data.digest) {
