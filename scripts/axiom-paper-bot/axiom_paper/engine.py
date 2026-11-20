@@ -24,6 +24,7 @@ from .models import Coin, Position, number
 from .money import both, signed, small_sol, usd
 from .prices import SOL_MINT, Quote, fetch_prices
 from .site import SiteError
+from . import sources
 
 COMMAND_WINDOW_MS = 10 * 60_000
 TREND_WINDOW_MS = 60_000
@@ -99,8 +100,11 @@ def liquidity_glitch(previous: float | None, liquidity: float, price_before: flo
 
 
 class Engine:
-    def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, fee_source: Callable[[], fees.FeeLevels | None] = fees.fetch_levels, clock: Callable[[], float] = time.time, background: bool = False, observer: bool = False, rule_overrides: dict[str, Any] | None = None):
+    def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, fee_source: Callable[[], fees.FeeLevels | None] = fees.fetch_levels, clock: Callable[[], float] = time.time, background: bool = False, observer: bool = False, rule_overrides: dict[str, Any] | None = None, axiom_only: bool = False):
         self.ledger = ledger
+        self.axiom_only = axiom_only
+        if axiom_only:
+            price_source, fee_source = sources.no_prices, sources.no_fee_levels
         self.rule_overrides = dict(rule_overrides or {})
         self._rules: dials.Values = {}
         self._rules_for: dials.Values | None = None
@@ -164,7 +168,7 @@ class Engine:
     def rules(self) -> dials.Values:
         """The full rule set for the current dials (see rules.py), plus any fixed overrides."""
         if self._rules_for is not self.values:
-            self._rules = {**rules.expand(self.values), **self.rule_overrides}
+            self._rules = {**rules.expand(self.values), **(rules.FEED_ONLY if self.axiom_only else {}), **self.rule_overrides}
             self._rules_for = self.values
         return self._rules
 
@@ -184,6 +188,8 @@ class Engine:
         return fees.quote(self.rules, self.fee_levels)
 
     def _market(self) -> tuple[float | None, fees.FeeLevels | None]:
+        if self.axiom_only:
+            return (self.sol_usd or sources.fallback_sol_usd()), None
         quote = self.price_source({SOL_MINT: None}).get(SOL_MINT)
         return (quote.price if quote else None), self.fee_source()
 
@@ -397,6 +403,8 @@ class Engine:
             self.feed_age_from = self.clock()
         fresh = False
         payload = reply.get("payload")
+        if self.axiom_only:
+            self._take_market(sources.sol_from_payload(payload), None)
         if isinstance(payload, dict) and payload_at is not None and int(payload_at) != self.payload_at and self.sol_usd:
             self.payload_at = int(payload_at)
             self._take_payload(payload)

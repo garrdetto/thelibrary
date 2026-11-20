@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import { allowedHost, SourceOffError } from './sources.js'
 
 if (existsSync('.env')) {
   try { process.loadEnvFile('.env') } catch { }
@@ -79,6 +80,7 @@ export function abandonIfHung<T>(name: string, limitMs: number, task: () => Prom
 }
 
 export async function fetchJson<T>(url: string, init: RequestInit & { timeoutMs?: number; retries?: number } = {}): Promise<T> {
+  if (!allowedHost(url)) throw new SourceOffError(url)
   const { timeoutMs = 12_000, retries = 2, ...request } = init
   let attempt = 0
   while (true) {
