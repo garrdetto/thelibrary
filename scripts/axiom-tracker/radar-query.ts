@@ -6,7 +6,8 @@ import { radarSettings } from './settings-store.js'
 import { learnerState, withLearning } from './learner-state.js'
 import { activeBotClimb, botClimbHoldMs, freshViewerCount, trackerState } from './state.js'
 import type { TrackerDatabase } from './db.js'
-import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
+import { defaultWeights, radarThresholds, scoreSetup, viewerDeltas } from './model.js'
+import { coinSafety, coinSafetyLevel } from './axiom-safety.js'
 import { jupiterReading } from './jupiter.js'
 import { detectBotClimb } from './holder-limits.js'
 import { scoreDex } from './dex-score.js'
@@ -89,7 +90,6 @@ type PaperRow = {
   created_at: number
 }
 
-const flag = (value: number | null) => value === null ? null : value === 1
 
 function weightsFromRow(row: WeightsRow | undefined): RadarWeights {
   if (!row) return { ...defaultWeights }
@@ -393,7 +393,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
   const delta1m = live.viewers !== null ? live.viewersDelta1m : stored.delta1m
   const delta5m = live.viewers !== null ? live.viewersDelta5m ?? stored.delta5m : stored.delta5m
   const pct5m = delta5m !== null && viewers !== null && viewers - delta5m > 0 ? Math.round((delta5m / (viewers - delta5m)) * 1000) / 10 : stored.pct5m
-  const safety = { mintAuthority: flag(token.mint_auth), freezeAuthority: flag(token.freeze_auth), top10Pct: token.top10_pct }
+  const safety = coinSafety(token.mint, token, traits?.top10 ?? null)
   const buys = live.market?.buys5m ?? latest?.buys_5m ?? null
   const sells = live.market?.sells5m ?? latest?.sells_5m ?? null
   const marketCap = live.market?.marketCap ?? latest?.market_cap ?? null
@@ -522,7 +522,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     buys5m: buys,
     sells5m: sells,
     buyRatio: transactions ? (buys ?? 0) / transactions : null,
-    safety: { level: safetyLevel(safety), ...safety },
+    safety: { level: coinSafetyLevel(safety), ...safety },
     score: axiom?.score ?? 0,
     runnerScore: runner.score,
     axiomScore: axiom,
