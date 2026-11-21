@@ -17,7 +17,7 @@
       --r: 10px;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1014; color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1014; color: var(--ink); font: 13px/1.4 'TL Fox Dollar', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
     #app canvas { display: block; }
     button { font: inherit; color: inherit; cursor: pointer; }
     .ui { position: fixed; z-index: 10; }
@@ -25,9 +25,9 @@
 
     /* ---------- start screen */
     #start { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(1200px 600px at 30% 20%, #2b3a2a 0%, #12171c 60%); }
-    .vt-hud { position: fixed; left: 12px; bottom: 12px; z-index: 60; max-width: min(520px, calc(100% - 24px)); padding: 8px 12px; border-radius: 8px; background: rgba(12, 16, 20, 0.78); color: #f2f2ea; font: 13px/1.4 system-ui, sans-serif; }
+    .vt-hud { position: fixed; left: 12px; bottom: 12px; z-index: 60; max-width: min(520px, calc(100% - 24px)); padding: 8px 12px; border-radius: 8px; background: rgba(12, 16, 20, 0.78); color: #f2f2ea; font: 13px/1.4 'TL Fox Dollar', system-ui, sans-serif; }
     #start .card { width: min(420px, calc(100vw - 32px)); padding: 28px; }
-    #start h1 { margin: 0 0 4px; font: 600 30px/1.1 Georgia, serif; letter-spacing: 0.2px; }
+    #start h1 { margin: 0 0 4px; font: 600 30px/1.1 'TL Fox Dollar', Georgia, serif; letter-spacing: 0.2px; }
     #start p { margin: 0 0 20px; color: var(--mute); }
     #start label { display: block; margin: 12px 0 6px; color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
     #start input[type=text] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.05); color: var(--ink); font: inherit; }
@@ -38,10 +38,10 @@
     #start.dev .card > :is(small, label:not(#bodyLabel):not([for]), .row.join, details) { display: none; }
     #start.dev #playWorld { background: #f2b544; }
     #start .dev-note { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px dashed rgba(242,181,68,0.6); color: var(--ink); font-size: 13px; line-height: 1.45; }
-    #devBadge { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 12px; border-radius: 999px; background: rgba(242,181,68,0.92); color: #1b1406; font: 700 12px/1.6 system-ui, sans-serif; letter-spacing: 0.06em; pointer-events: none; }
+    #devBadge { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 12px; border-radius: 999px; background: rgba(242,181,68,0.92); color: #1b1406; font: 700 12px/1.6 'TL Fox Dollar', system-ui, sans-serif; letter-spacing: 0.06em; pointer-events: none; }
     #devPanel { top: 64px; left: 12px; width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow: auto; padding: 14px 16px; z-index: 30; }
     #devPanel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    #devPanel h2 { margin: 0; font: 600 17px/1.2 Georgia, serif; }
+    #devPanel h2 { margin: 0; font: 600 17px/1.2 'TL Fox Dollar', Georgia, serif; }
     #devPanel h3 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
     #devPanel p { margin: 8px 0 0; color: var(--mute); font-size: 13px; line-height: 1.45; }
     #devPanel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -69,7 +69,7 @@
     #wardrobe.show { display: flex; }
     body.dressing #side, body.dressing #needs, body.dressing #dash, body.dressing #prompt { display: none !important; }
     .wd-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
-    .wd-head h2 { margin: 0 0 2px; font: 600 22px Georgia, serif; }
+    .wd-head h2 { margin: 0 0 2px; font: 600 22px 'TL Fox Dollar', Georgia, serif; }
     .wd-head p { margin: 0; color: var(--mute); font-size: 12px; }
     #wdBodyBox { margin-top: 10px; }
     #wdBodyBox[hidden] { display: none; }
@@ -223,7 +223,7 @@
     .modal { inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 30; }
     .modal.show { display: flex; }
     .modal .card { width: min(400px, calc(100vw - 32px)); padding: 22px; max-height: calc(100vh - 32px); overflow-y: auto; }
-    .modal h2 { margin: 0 0 4px; font: 600 22px Georgia, serif; }
+    .modal h2 { margin: 0 0 4px; font: 600 22px 'TL Fox Dollar', Georgia, serif; }
     .modal .sub { color: var(--mute); margin: 0 0 12px; }
     #bankInfo div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
     #bankInfo p { color: var(--mute); font-size: 12px; }

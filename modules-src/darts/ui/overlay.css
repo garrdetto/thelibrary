@@ -11,7 +11,7 @@
   --d-good: #57d68d;
   --d-warn: #ffcf4a;
   --d-radius: 14px;
-  --d-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --d-font: 'TL Fox Dollar', "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 * { box-sizing: border-box; }

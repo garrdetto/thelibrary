@@ -15,7 +15,7 @@
 .radar-topbar .breadcrumb a:hover { color: var(--tone-41); text-decoration: underline; }
 .radar-main { max-width: 1440px; margin: 0 auto; padding: 32px 40px 64px; }
 .radar-gate { display: grid; justify-items: center; gap: 12px; text-align: center; padding: 96px 16px; color: var(--muted); }
-.radar-gate h1 { font-family: 'Manrope', sans-serif; font-weight: 500; font-size: 30px; letter-spacing: -.8px; margin: 0; color: var(--tone-0); }
+.radar-gate h1 { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-weight: 500; font-size: 30px; letter-spacing: -.8px; margin: 0; color: var(--tone-0); }
 .radar-gate p { margin: 0; max-width: 420px; line-height: 1.6; }
 .radar-gate .secondary-button { text-decoration: none; }
 
@@ -34,7 +34,7 @@
 .radar-embedded button:focus-visible, .radar-embedded a:focus-visible, .radar-embedded input:focus-visible, .radar-embedded .radar-table tbody tr:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .radar-embedded-note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 13px; color: var(--muted); }
 .radar-embedded-note a { display: inline-flex; align-items: center; gap: 4px; color: var(--tone-41); }
-.radar-heading h1 { font-family: 'Manrope', sans-serif; font-size: clamp(32px, 3.4vw, 48px); line-height: 1.18; letter-spacing: -1.6px; margin: 16px 0 10px; font-weight: 500; }
+.radar-heading h1 { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: clamp(32px, 3.4vw, 48px); line-height: 1.18; letter-spacing: -1.6px; margin: 16px 0 10px; font-weight: 500; }
 .radar-heading p { max-width: 760px; margin: 0 0 22px; font-size: 15px; line-height: 1.7; color: var(--muted); }
 
 .radar-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -72,7 +72,7 @@
 .radar-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .radar-kpi { display: grid; gap: 4px; background: var(--radar-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; min-width: 0; }
 .radar-kpi span { font-size: 12px; letter-spacing: .4px; color: var(--muted); }
-.radar-kpi strong { font-family: 'Manrope', sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -.6px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radar-kpi strong { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -.6px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .radar-kpi small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .radar-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
@@ -146,7 +146,7 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-launch a:hover, .radar-drawer-links a:hover { border-color: var(--green); color: var(--tone-0); }
 
 .radar-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 64px 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); }
-.radar-empty h3 { margin: 6px 0 0; font-family: 'Manrope', sans-serif; font-weight: 500; font-size: 22px; color: var(--tone-0); }
+.radar-empty h3 { margin: 6px 0 0; font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-weight: 500; font-size: 22px; color: var(--tone-0); }
 .radar-empty p { margin: 0 0 6px; max-width: 460px; font-size: 14px; line-height: 1.6; }
 .radar-empty .secondary-button { width: auto; }
 
@@ -157,7 +157,7 @@ div.radar-delta { display: grid; gap: 1px; }
 @keyframes radar-fade { from { opacity: 0; } to { opacity: 1; } }
 .radar-drawer-header { display: flex; align-items: flex-start; gap: 14px; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .radar-drawer-header > div { flex: 1; min-width: 0; }
-.radar-drawer-header h2 { font-family: 'Manrope', sans-serif; font-weight: 600; font-size: 28px; letter-spacing: -.6px; margin: 8px 0; overflow-wrap: anywhere; }
+.radar-drawer-header h2 { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-weight: 600; font-size: 28px; letter-spacing: -.6px; margin: 8px 0; overflow-wrap: anywhere; }
 .radar-drawer-header h2 small { font-size: 15px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
 .radar-drawer-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .radar-drawer-close { width: 34px; height: 34px; }
@@ -237,13 +237,13 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-top3 li > .radar-row-button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--tone-1); color: var(--tone-0); min-width: 0; }
 .radar-top3 li > .radar-row-button:hover { border-color: var(--green); }
 .radar-top3 li > .radar-row-button.surging { border-color: color-mix(in oklab, var(--radar-warn) 60%, transparent); background: color-mix(in oklab, var(--radar-warn) 9%, var(--tone-1)); }
-.radar-top3-rank { font-family: 'Manrope', sans-serif; font-size: 20px; font-weight: 700; color: var(--muted); width: 16px; flex-shrink: 0; }
+.radar-top3-rank { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 20px; font-weight: 700; color: var(--muted); width: 16px; flex-shrink: 0; }
 .radar-top3-name { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .radar-top3-name strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .radar-top3-name small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .radar-top3 .surging .radar-top3-name small { color: var(--radar-warn); font-weight: 600; }
 .radar-top3-count { display: grid; justify-items: end; gap: 1px; flex-shrink: 0; }
-.radar-top3-count strong { font-family: 'Manrope', sans-serif; font-size: 24px; font-weight: 600; letter-spacing: -.5px; line-height: 1.1; }
+.radar-top3-count strong { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 24px; font-weight: 600; letter-spacing: -.5px; line-height: 1.1; }
 .radar-top3-count small { font-size: 13px; font-weight: 600; }
 
 .radar-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--radar-soft); width: fit-content; max-width: 100%; }
@@ -253,7 +253,7 @@ div.radar-delta { display: grid; gap: 1px; }
 
 .radar-picks { display: grid; gap: 26px; }
 .radar-section-head { margin-bottom: 12px; }
-.radar-section-head h2 { display: flex; align-items: center; gap: 8px; font-family: 'Manrope', sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -.3px; margin: 0 0 4px; }
+.radar-section-head h2 { display: flex; align-items: center; gap: 8px; font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -.3px; margin: 0 0 4px; }
 .radar-section-head h2 span { font-size: 13px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
 .radar-section-head p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.6; max-width: 760px; }
 .radar-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
@@ -373,13 +373,13 @@ div.radar-delta { display: grid; gap: 1px; }
 }
 
 .radar-appbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 12px 40px; border-bottom: 1px solid var(--border); background: var(--sidebar); }
-.radar-brand { display: flex; align-items: center; gap: 10px; margin: 0; font-family: 'Manrope', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
+.radar-brand { display: flex; align-items: center; gap: 10px; margin: 0; font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
 .radar-brand > span { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: var(--tone-120); color: var(--tone-121); }
-.radar-brand small { font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-left: 4px; }
+.radar-brand small { font-family: 'TL Fox Dollar', 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-left: 4px; }
 .radar-appbar-side { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); }
 .radar-exit { display: inline-flex; align-items: center; gap: 6px; color: var(--tone-41); text-decoration: none; border: 1px solid var(--border); border-radius: 7px; padding: 6px 11px; background: var(--tone-1); }
 .radar-exit:hover { border-color: var(--green); color: var(--tone-0); }
-.radar-gate h2 { font-family: 'Manrope', sans-serif; font-weight: 500; font-size: 28px; letter-spacing: -.6px; margin: 0; color: var(--tone-0); }
+.radar-gate h2 { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-weight: 500; font-size: 28px; letter-spacing: -.6px; margin: 0; color: var(--tone-0); }
 .radar-intro { max-width: 860px; margin: 0 0 16px; font-size: 14px; line-height: 1.7; color: var(--muted); }
 .radar-age { white-space: nowrap; }
 .radar-col-token { min-width: 280px; }
@@ -462,7 +462,7 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-learn-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .radar-learn-stat { display: grid; gap: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--radar-card); padding: 12px 14px; min-width: 0; }
 .radar-learn-stat span { font-size: 12px; color: var(--muted); }
-.radar-learn-stat strong { font-family: 'Manrope', sans-serif; font-size: 22px; font-weight: 600; letter-spacing: -.4px; }
+.radar-learn-stat strong { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 22px; font-weight: 600; letter-spacing: -.4px; }
 .radar-learn-stat small { font-size: 12px; color: var(--muted); line-height: 1.4; }
 .radar-learn-list { margin: 0; padding: 0 0 0 16px; display: grid; gap: 8px; font-size: 14px; line-height: 1.55; }
 .radar-learn-coin { display: grid; gap: 10px; align-content: start; border: 1px solid var(--border); border-radius: 12px; background: var(--radar-card); padding: 14px; cursor: pointer; min-width: 0; transition: border-color .15s ease; }
@@ -470,7 +470,7 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-learn-coin > header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .radar-learn-coin .radar-pick-name { flex: 1; min-width: 0; }
 .radar-learn-headline { display: grid; justify-items: end; gap: 1px; flex-shrink: 0; }
-.radar-learn-headline strong { font-family: 'Manrope', sans-serif; font-size: 22px; font-weight: 600; color: var(--radar-accent); line-height: 1.1; }
+.radar-learn-headline strong { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 22px; font-weight: 600; color: var(--radar-accent); line-height: 1.1; }
 .radar-learn-headline small { font-size: 11px; color: var(--muted); text-align: right; }
 .radar-learn-fact { margin: 0; font-size: 13px; color: var(--tone-0); }
 .radar-learn-timing { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
@@ -490,7 +490,7 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-survival small { font-size: 11px; color: var(--muted); }
 .radar-ladder { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
 .radar-ladder > div { display: grid; gap: 2px; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-.radar-ladder strong { font-family: 'Manrope', sans-serif; font-size: 24px; font-weight: 600; }
+.radar-ladder strong { font-family: 'TL Fox Dollar', 'Manrope', sans-serif; font-size: 24px; font-weight: 600; }
 .radar-ladder span { font-size: 13px; }
 .radar-ladder small { font-size: 12px; color: var(--muted); }
 .radar-maker-filter-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }

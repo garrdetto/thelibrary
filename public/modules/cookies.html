@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/fox-dollar.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Cookie Factory</title>
@@ -14,32 +15,32 @@
   @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
   .panel.bake { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px; overflow: hidden; }
   .bank { text-align: center; }
-  .bank b { display: block; font: 700 40px/1 Rajdhani, sans-serif; font-variant-numeric: tabular-nums; }
+  .bank b { display: block; font: 700 40px/1 'TL Fox Dollar', Rajdhani, sans-serif; font-variant-numeric: tabular-nums; }
   .bank span { color: var(--muted); font-size: 13px; }
   .stage { position: relative; width: min(100%, 420px); aspect-ratio: 1; }
   #cv { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   #cookie { position: absolute; left: 14%; top: 14%; width: 72%; height: 72%; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: transparent; touch-action: manipulation; }
   #cookie:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
-  .timer { font: 700 26px Rajdhani, sans-serif; font-variant-numeric: tabular-nums; }
+  .timer { font: 700 26px 'TL Fox Dollar', Rajdhani, sans-serif; font-variant-numeric: tabular-nums; }
   .timer.low { color: var(--bad); }
   .golden { position: absolute; width: 58px; height: 58px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: radial-gradient(circle at 35% 30%, #fff6c4, #ffcf3a 45%, #c98a12); box-shadow: 0 0 22px #ffd84a; animation: bob 1.4s ease-in-out infinite; z-index: 3; }
   @keyframes bob { 50% { transform: translateY(-6px) rotate(10deg); } }
   .buff { min-height: 20px; color: var(--warn); font-weight: 700; font-size: 14px; }
   .shop { display: flex; flex-direction: column; gap: 8px; padding: 12px; max-height: 640px; overflow: auto; }
-  .shop h2 { margin: 2px 2px 4px; font: 700 22px Rajdhani, sans-serif; }
+  .shop h2 { margin: 2px 2px 4px; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .item { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; text-align: left; padding: 9px 10px; }
   .item .ic { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 22px; background: var(--cell); }
   .item b { display: block; font-size: 14px; }
   .item small { color: var(--muted); font-size: 12px; }
-  .item em { font-style: normal; font: 700 22px Rajdhani, sans-serif; color: var(--muted); }
+  .item em { font-style: normal; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; color: var(--muted); }
   .item .cost { color: var(--good); font-weight: 700; font-size: 12px; }
   .item:disabled .cost { color: var(--bad); }
   .ups { display: flex; flex-wrap: wrap; gap: 6px; }
   .ups button { padding: 7px 9px; font-size: 12px; }
   .ups button .cost { color: var(--good); font-weight: 700; }
-  .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px Rajdhani, sans-serif; }
+  .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay .ov-stats > div { display: block; text-align: center; }
-  .ov-stats span { display: block; font: 600 10px Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+  .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
 </style>
 </head>
 <body>

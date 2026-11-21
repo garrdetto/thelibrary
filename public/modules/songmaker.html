@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/fox-dollar.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Song Maker</title>
@@ -11,7 +12,7 @@
   main { --width: 980px; }
   :root { --accent: #ff3b7a; --accent2: #7c5cff; }
   .layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-  .panel h2 { margin: 0 0 12px; font: 700 24px Rajdhani, sans-serif; }
+  .panel h2 { margin: 0 0 12px; font: 700 24px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .panel h2.sub { margin-top: 18px; }
   label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
@@ -49,14 +50,14 @@
   .songs { display: grid; gap: 10px; }
   .song { padding: 12px; border-radius: 12px; background: var(--cell); border: 1px solid var(--line); }
   .song.fresh { border-color: var(--accent); }
-  .song h3 { margin: 0; font: 700 20px Rajdhani, sans-serif; }
+  .song h3 { margin: 0; font: 700 20px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .song small { color: var(--muted); display: block; margin: 2px 0 8px; }
   .song .tag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--accent); color: var(--text); font-size: 11px; font-weight: 600; }
   .song audio { width: 100%; height: 40px; }
   .song .line { min-height: 18px; margin: 6px 0 0; font-size: 13px; color: var(--text); }
   .song .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .song .row button, .song .row a { font: 600 12px Inter, sans-serif; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); color: var(--text); background: var(--panel); text-decoration: none; cursor: pointer; }
-  .song pre { white-space: pre-wrap; font: 13px/1.5 Inter, sans-serif; color: var(--muted); max-height: 220px; overflow: auto; margin: 8px 0 0; }
+  .song .row button, .song .row a { font: 600 12px 'TL Fox Dollar', Inter, sans-serif; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); color: var(--text); background: var(--panel); text-decoration: none; cursor: pointer; }
+  .song pre { white-space: pre-wrap; font: 13px/1.5 'TL Fox Dollar', Inter, sans-serif; color: var(--muted); max-height: 220px; overflow: auto; margin: 8px 0 0; }
   .empty { color: var(--muted); font-size: 14px; }
   .signin { text-align: center; padding: 40px 20px; }
   @media (max-width: 780px) { .layout { grid-template-columns: 1fr; } }

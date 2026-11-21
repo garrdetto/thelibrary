@@ -6,7 +6,7 @@
     <title>Northwoods Angler · the library</title>
     <style>
       :root{--accent:#3fc7b6;--panel:rgba(24,46,58,.64);--panel-solid:#16262f;--line:rgba(160,210,220,.18);--text:#e8f1f2;--soft:#a9bec2;--muted:#7f969b;--good:#7bd88f;--warn:#ffcf4a}
-      html,body{margin:0;height:100%;background:#0a1116;color:var(--text);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+      html,body{margin:0;height:100%;background:#0a1116;color:var(--text);overflow:hidden;font:500 14px/1.45 'TL Fox Dollar', Inter,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
       #stage{position:fixed;inset:0;touch-action:none}
       #scene{width:100%;height:100%;display:block}
       [hidden]{display:none!important}
@@ -18,13 +18,13 @@
       .ang-btn.is-primary{background:var(--accent);color:#04211d;border-color:transparent}
       #loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 40%,#3a6f7c,#142a33);z-index:50}
       #loading div{display:grid;gap:10px;justify-items:center;text-align:center}
-      #loading strong{font:800 30px Rajdhani,Inter,sans-serif;letter-spacing:.5px}
+      #loading strong{font:800 30px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.5px}
       .ang-spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:spin 1s linear infinite}
       @keyframes spin{to{transform:rotate(360deg)}}
       .ang-screen{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:16px;background:rgba(5,10,14,.55);backdrop-filter:blur(3px);overflow:auto}
       .ang-card{width:min(860px,100%);max-height:calc(100vh - 32px);overflow:auto;display:grid;gap:14px;padding:22px 24px;border-radius:16px;background:var(--panel-solid);border:1px solid var(--line);box-shadow:0 24px 60px -24px rgba(0,0,0,.6)}
       .ang-eyebrow{font-size:11px;font-weight:750;letter-spacing:1.6px;text-transform:uppercase;color:var(--accent)}
-      .ang-card h1,.ang-card h2{margin:0;font-family:Rajdhani,Inter,sans-serif;letter-spacing:.3px}
+      .ang-card h1,.ang-card h2{margin:0;font-family:'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.3px}
       .ang-card h1{font-size:34px}
       .ang-card h2{font-size:24px}
       .ang-card p{margin:0;color:var(--soft)}
@@ -41,13 +41,13 @@
       .hud-top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
       .hud-left{display:grid;gap:8px;justify-items:start;align-content:start}
       .hud-info{padding:8px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:2px;max-width:min(520px,60vw)}
-      .hud-info strong{font:750 17px Rajdhani,Inter,sans-serif;letter-spacing:.3px}
+      .hud-info strong{font:750 17px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.3px}
       .hud-info span{font-size:12px;color:var(--soft)}
       .hud-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
       .hud-bottom{position:absolute;left:10px;right:10px;bottom:10px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
       .hud-gauges{display:flex;gap:6px;flex-wrap:wrap}
-      .hud-gauge{padding:6px 11px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font:750 15px Rajdhani,Inter,sans-serif;font-variant-numeric:tabular-nums;min-width:62px;text-align:center}
-      .hud-gauge small{display:block;font:650 10px Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      .hud-gauge{padding:6px 11px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font:750 15px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;font-variant-numeric:tabular-nums;min-width:62px;text-align:center}
+      .hud-gauge small{display:block;font:650 10px 'TL Fox Dollar', Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
       #minimap{width:150px;height:150px;border-radius:12px;border:1px solid var(--line);background:#132}
       #stick{position:absolute;left:18px;bottom:96px;width:120px;height:120px;border-radius:50%;background:rgba(10,20,26,.45);border:1px solid var(--line);display:none;touch-action:none}
       #stick [data-knob]{position:absolute;left:38px;top:38px;width:44px;height:44px;border-radius:50%;background:rgba(220,240,240,.55)}
@@ -63,10 +63,10 @@
       #stat-outlook{color:var(--accent);font-weight:650}
       #guest-note{font-size:11.5px;color:var(--warn)}
       .hud-rig{display:flex;gap:6px;align-items:center;padding:5px 7px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}
-      .hud-rig select{font:600 12.5px Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:8px;padding:5px 6px;max-width:170px}
+      .hud-rig select{font:600 12.5px 'TL Fox Dollar', Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:8px;padding:5px 6px;max-width:170px}
       #sonar{width:300px;height:96px;border-radius:12px;border:1px solid var(--line);background:#071c2a}
       #tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-      .ang-tag{position:absolute;left:0;top:0;padding:2px 8px;border-radius:999px;background:rgba(8,16,20,.62);border:1px solid var(--line);font:700 12px Inter,sans-serif;white-space:nowrap;will-change:transform}
+      .ang-tag{position:absolute;left:0;top:0;padding:2px 8px;border-radius:999px;background:rgba(8,16,20,.62);border:1px solid var(--line);font:700 12px 'TL Fox Dollar', Inter,sans-serif;white-space:nowrap;will-change:transform}
       #crew{width:min(250px,60vw);padding:8px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:6px;font-size:12px}
       #crew header{display:flex;justify-content:space-between;gap:6px;align-items:center;color:var(--soft);font-weight:650}
       #crew header i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px}
@@ -78,21 +78,21 @@
       #crew .ang-btn{padding:6px 10px;font-size:12px}
       #crew .crew-actions{display:flex;gap:6px;flex-wrap:wrap}
       #crew p{margin:0;color:var(--muted)}
-      #fish-status{position:absolute;bottom:200px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font:750 14px Rajdhani,Inter,sans-serif;letter-spacing:.4px}
+      #fish-status{position:absolute;bottom:200px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font:750 14px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.4px}
       #reel{position:absolute;bottom:112px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:16px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px)}
-      #btn-reel{min-width:150px;padding:12px 18px;font:800 17px Rajdhani,Inter,sans-serif;letter-spacing:.6px;border-radius:12px;touch-action:none}
+      #btn-reel{min-width:150px;padding:12px 18px;font:800 17px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.6px;border-radius:12px;touch-action:none}
       #btn-reel.is-strike{background:#ffcf4a;animation:strike .45s ease-in-out infinite alternate}
       #btn-reel.is-held{filter:brightness(1.15);transform:scale(.97)}
       @keyframes strike{to{transform:scale(1.08);box-shadow:0 0 0 6px rgba(255,207,74,.35)}}
       .reel-meters{display:grid;gap:5px;width:150px}
-      .reel-meter small{display:flex;justify-content:space-between;font:700 10px Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--soft)}
+      .reel-meter small{display:flex;justify-content:space-between;font:700 10px 'TL Fox Dollar', Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--soft)}
       .meter{position:relative;height:9px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden}
       .meter i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:linear-gradient(90deg,var(--good),var(--warn) 70%,#ff6a4a);transition:width .08s linear}
       .meter.is-line i{background:#8fd3ff}
       .meter.is-cast i{background:linear-gradient(90deg,#3fc7b6,#8fd3ff 60%,#ffffff);transition:none}
       #btn-reel.is-jump{background:#ff7a5a;color:#fff;animation:strike .3s ease-in-out infinite alternate}
       .card-actions{display:flex;gap:6px}
-      .ang-float{position:absolute;transform:translate(-50%,-100%);font:800 26px Rajdhani,Inter,sans-serif;letter-spacing:.4px;text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.8);white-space:nowrap;pointer-events:none;animation:float-up 2.6s ease-out forwards}
+      .ang-float{position:absolute;transform:translate(-50%,-100%);font:800 26px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.4px;text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.8);white-space:nowrap;pointer-events:none;animation:float-up 2.6s ease-out forwards}
       .ang-float.tier-common{color:#fff}
       @keyframes float-up{0%{opacity:0;transform:translate(-50%,-60%) scale(.7)}12%{opacity:1;transform:translate(-50%,-100%) scale(1.12)}25%{transform:translate(-50%,-110%) scale(1)}100%{opacity:0;transform:translate(-50%,-260%) scale(1)}}
       .ang-confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:45}
@@ -116,15 +116,15 @@
       .tier-keeper{color:#b8e0a8}.tier-quality{color:#7fd0ff}.tier-trophy{color:#ffcf4a}.tier-legendary{color:#ff8af0}.tier-common{color:var(--soft)}
       #catch-card{position:fixed;right:12px;top:112px;z-index:25;width:min(340px,92vw);padding:16px 18px;border-radius:16px;background:linear-gradient(160deg,#122830,#0c171c);border:1px solid var(--line);box-shadow:0 28px 70px -24px rgba(0,0,0,.8);display:grid;gap:6px;animation:toast-in .35s ease-out}
       #catch-card header{display:flex;justify-content:space-between;align-items:center}
-      .card-tier{font:800 12px Inter,sans-serif;letter-spacing:1.4px;text-transform:uppercase}
-      #card-species{margin:0;font:800 24px Rajdhani,Inter,sans-serif;letter-spacing:.3px}
+      .card-tier{font:800 12px 'TL Fox Dollar', Inter,sans-serif;letter-spacing:1.4px;text-transform:uppercase}
+      #card-species{margin:0;font:800 24px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.3px}
       #card-latin{font-style:italic;color:var(--muted);font-size:12.5px}
-      .card-numbers{display:flex;gap:18px;font:800 24px Rajdhani,Inter,sans-serif;font-variant-numeric:tabular-nums}
-      .card-numbers small{display:block;font:650 10px Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-      #card-banner{font:800 15px Rajdhani,Inter,sans-serif;color:#ffcf4a;letter-spacing:.6px;text-transform:uppercase}
+      .card-numbers{display:flex;gap:18px;font:800 24px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;font-variant-numeric:tabular-nums}
+      .card-numbers small{display:block;font:650 10px 'TL Fox Dollar', Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      #card-banner{font:800 15px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;color:#ffcf4a;letter-spacing:.6px;text-transform:uppercase}
       #card-meta,#card-fact{font-size:12.5px;color:var(--soft);margin:0}
       #card-credits{font-weight:750;color:#ffe7a3;font-size:13px}
-      #card-fight{font:750 13px Inter,sans-serif;color:var(--good)}
+      #card-fight{font:750 13px 'TL Fox Dollar', Inter,sans-serif;color:var(--good)}
       #records-panel .ang-card{width:min(820px,100%)}
       .rec-hall{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;align-items:start}
       .rec-card{text-align:left;display:grid;align-content:start;gap:6px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.05)}
@@ -134,7 +134,7 @@
       .rec-card li.is-empty{font-size:12px;color:var(--muted)}
       .rec-medal{font-size:16px;line-height:1.3}
       .rec-fish{display:grid}
-      .rec-fish strong{font:800 18px Rajdhani,Inter,sans-serif}
+      .rec-fish strong{font:800 18px 'TL Fox Dollar', Rajdhani,Inter,sans-serif}
       .rec-fish small{display:inline;color:var(--muted);font-size:11.5px}
       .rec-fish em{font-style:normal;font-size:12px;color:var(--soft)}
       .rec-fish time{font-size:11.5px;color:var(--muted)}
@@ -145,23 +145,23 @@
       .rec-table small{display:block;color:var(--muted);font-size:11px}
       .rec-table td small[class^=tier]{display:inline}
       .podium-1 td:first-child{color:#ffcf4a;font-weight:800}
-      .ang-select{font:600 13px Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+      .ang-select{font:600 13px 'TL Fox Dollar', Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
       .ang-lake b{font-size:12px;color:var(--warn)}
       @media (max-width:640px){.reel-meters{width:110px}#btn-reel{min-width:120px}#reel{bottom:140px}#fish-status{bottom:222px}#toasts{bottom:262px}}
       @media (max-width:760px){#catch-card{top:auto;bottom:200px;left:50%;right:auto;transform:translateX(-50%)}#sonar{display:none}#catch-log{display:none}.hud-rig select{max-width:120px}}
       #panel{position:fixed;top:0;bottom:0;right:0;z-index:35;width:min(560px,100vw);overflow:auto;padding:14px 16px 20px;background:rgba(10,18,22,.94);border-left:1px solid var(--line);backdrop-filter:blur(8px);display:grid;align-content:start;gap:10px}
-      #panel h2{margin:0;font:800 22px Rajdhani,Inter,sans-serif}
-      #panel h3{margin:10px 0 4px;font:750 15px Rajdhani,Inter,sans-serif;letter-spacing:.4px;color:var(--accent)}
+      #panel h2{margin:0;font:800 22px 'TL Fox Dollar', Rajdhani,Inter,sans-serif}
+      #panel h3{margin:10px 0 4px;font:750 15px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:.4px;color:var(--accent)}
       #panel label{display:block;margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
       .pan-tabs{display:flex;gap:6px;flex-wrap:wrap}
-      .pan-tabs button,.chip-btn{cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--soft);font:700 12.5px Inter,sans-serif}
+      .pan-tabs button,.chip-btn{cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--soft);font:700 12.5px 'TL Fox Dollar', Inter,sans-serif}
       .pan-tabs button[aria-selected=true],.chip-btn[aria-pressed=true]{background:var(--accent);color:#04211d;border-color:transparent}
       .pan-grid{display:grid;gap:4px}
       .sw-row{display:flex;flex-wrap:wrap;gap:5px}
       .sw{width:24px;height:24px;border-radius:7px;border:2px solid rgba(255,255,255,.18);cursor:pointer;padding:0}
       .sw[aria-checked=true]{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
       .opt-row{display:flex;flex-wrap:wrap;gap:6px}
-      .opt{cursor:pointer;display:grid;gap:1px;text-align:left;padding:7px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font:650 12.5px Inter,sans-serif;color:var(--text)}
+      .opt{cursor:pointer;display:grid;gap:1px;text-align:left;padding:7px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font:650 12.5px 'TL Fox Dollar', Inter,sans-serif;color:var(--text)}
       .opt small{font-size:10.5px;color:var(--muted);font-weight:600}
       .opt em{font-style:normal;font-size:11px;color:#ffe7a3}
       .opt[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -177,16 +177,16 @@
       .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
       .stat-row div{padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.05)}
       .stat-row small{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-      .stat-row strong{font:800 16px Rajdhani,Inter,sans-serif}
+      .stat-row strong{font:800 16px 'TL Fox Dollar', Rajdhani,Inter,sans-serif}
       .alm-bars{display:flex;align-items:flex-end;gap:2px;height:96px;padding:4px 2px 16px;border-radius:10px;background:rgba(255,255,255,.04)}
       .alm-bar{position:relative;flex:1;border-radius:3px 3px 0 0;background:#5d7a80}
       .alm-bar.is-fair{background:#6fa7a0}.alm-bar.is-good{background:var(--accent)}.alm-bar.is-hot{background:var(--warn)}.alm-bar.is-dead{background:#3d4d52}
-      .alm-bar i{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);font:600 9.5px Inter,sans-serif;font-style:normal;color:var(--muted)}
+      .alm-bar i{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);font:600 9.5px 'TL Fox Dollar', Inter,sans-serif;font-style:normal;color:var(--muted)}
       .alm-list{margin:0;padding:0;list-style:none;display:grid;gap:4px}
       .alm-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;border-radius:9px;background:rgba(255,255,255,.04)}
       .alm-list li span{display:grid}
       .alm-list small{color:var(--muted);font-size:11.5px}
-      .alm-list b{font:800 14px Rajdhani,Inter,sans-serif}
+      .alm-list b{font:800 14px 'TL Fox Dollar', Rajdhani,Inter,sans-serif}
       .alm-list b.is-good{color:var(--accent)}.alm-list b.is-hot{color:var(--warn)}.alm-list b.is-dead,.alm-list b.is-slow{color:var(--muted)}
       .ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
       .ach{padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.03);display:grid;gap:4px}
