@@ -93,6 +93,13 @@ class Coin:
     bad_whales: int | None = None
     smart_usd: float | None = None
     wallet_summary: str | None = None
+    top10_pct: float | None = None
+    bundlers_pct: float | None = None
+    pro_traders_pct: float | None = None
+    snipers_pct: float | None = None
+    insiders_pct: float | None = None
+    dev_pct: float | None = None
+    fresh_pct: float | None = None
 
     def below_high_pct(self) -> float | None:
         """How far under its 10-minute high the coin is, in percent."""
@@ -183,6 +190,13 @@ class Coin:
             bad_whales=_count(wallets, "badWhales"),
             smart_usd=number(wallets.get("smartUsd")),
             wallet_summary=str(wallets["summary"])[:160] if isinstance(wallets.get("summary"), str) else None,
+            top10_pct=number(traits.get("top10")),
+            bundlers_pct=number(traits.get("bundlers")),
+            pro_traders_pct=number(traits.get("proTraders")),
+            snipers_pct=number(traits.get("snipers")),
+            insiders_pct=number(traits.get("insiders")),
+            dev_pct=number(traits.get("dev")),
+            fresh_pct=number(traits.get("fresh")),
         )
 
     def entry_facts(self) -> dict[str, Any]:
