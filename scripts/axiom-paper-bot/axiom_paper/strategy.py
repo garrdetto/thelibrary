@@ -145,7 +145,9 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float, trend: 
     if s["entry.skip_warnings"] and coin.alerts:
         return f"warning: {coin.alerts[0]}"
     if s["entry.radar_advice"] != "ignore":
-        if coin.advice_rebuy == "never":
+        rebuy_gain = float(s.get("entry.rebuy_gain_1m_pct", -1))
+        climbing = rebuy_gain >= 0 and coin.gain_1m is not None and coin.gain_1m >= rebuy_gain
+        if coin.advice_rebuy == "never" and not climbing:
             return f"Radar says never rebuy: {coin.rebuy_advice_reason or 'it crashed or has a warning'}"
         if s["entry.radar_advice"] == "follow":
             if coin.advice_exit == "exit":

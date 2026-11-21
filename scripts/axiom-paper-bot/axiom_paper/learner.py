@@ -20,6 +20,9 @@ GONE_MS = 120_000
 WINDOW_MS = 3 * 86_400_000
 KEEP_MS = 7 * 86_400_000
 MIN_SEEN = 20
+VETO_SEEN = 40
+VETO_LOSS = -0.08
+VETO_WON = 0.3
 TRADE_WEIGHT = 3
 REFRESH_MS = 120_000
 RECENT_TRADES = 20
@@ -248,9 +251,9 @@ class Learner:
 
     def _bad(self, name: str, band: str | None) -> Stat | None:
         stat = self.table.get(name, {}).get(band) if band else None
-        if stat is None or stat.seen < MIN_SEEN:
+        if stat is None or stat.seen < VETO_SEEN:
             return None
-        return stat if stat.mean - self.cost < -0.02 and stat.won < 0.4 else None
+        return stat if stat.mean - self.cost < VETO_LOSS and stat.won < VETO_WON else None
 
     def _best(self, name: str) -> tuple[str, Stat] | None:
         good = [(band, stat) for band, stat in self.table.get(name, {}).items() if stat.seen >= MIN_SEEN and stat.mean - self.cost > 0]
