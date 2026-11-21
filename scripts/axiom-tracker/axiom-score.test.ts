@@ -57,3 +57,11 @@ test('a tiny holder share ranks with the exact zeros, not above them', () => {
   assert.equal(tiny, zero)
   assert.ok(tiny >= 50)
 })
+
+test('one pool per coin: the followed pool stays unless another is over twice as deep', async () => {
+  const { deeperPool } = await import('./pulse-feed.js')
+  const pool = (pairAddress: string, liquidityNative: number) => row({ pairAddress, liquidityNative } as Partial<PulseRow>)
+  assert.equal(deeperPool(pool('B', 150), pool('A', 100), 'A'), false)
+  assert.equal(deeperPool(pool('B', 250), pool('A', 100), 'A'), true)
+  assert.equal(deeperPool(pool('B', 150), pool('A', 100), null), true)
+})

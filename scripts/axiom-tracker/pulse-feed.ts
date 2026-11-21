@@ -92,21 +92,36 @@ export function metricsFromRow(row: PulseRow, usdPerSol: number, seenAt: number)
 }
 
 /**
+ * Axiom lists some coins once per pool, each pool with its own volume and trade totals. The tracker follows one pool per
+ * coin: the one it already follows, unless another holds over twice the liquidity; otherwise the deepest.
+ */
+export function deeperPool(candidate: PulseRow, current: PulseRow, followed: string | null) {
+  const depth = (row: PulseRow) => num(row.liquidityNative) ?? 0
+  if (followed && current.pairAddress === followed) return depth(candidate) > depth(current) * 2
+  if (followed && candidate.pairAddress === followed) return depth(current) <= depth(candidate) * 2
+  return depth(candidate) > depth(current)
+}
+
+/**
  * Takes every coin in the bridge's Pulse feed into the tracker the same way a Pulse card is taken: card metrics, ticker and
  * launch time, viewer count and Pulse membership. A coin already read from a drawn card keeps the fresher of the two.
  */
 export function applyPulseFeed(feed: PulseFeed, now: number) {
   let taken = 0
   let skipped = 0
+  const best = new Map<string, PulseRow>()
   for (const raw of feed.rows) {
     const parsed = pulseRowSchema.safeParse(raw)
     if (!parsed.success) { skipped += 1; continue }
-    const row = parsed.data
+    const current = best.get(parsed.data.tokenAddress)
+    if (!current || deeperPool(parsed.data, current, trackerState.pulseNames.get(parsed.data.tokenAddress)?.pairAddress ?? null)) best.set(parsed.data.tokenAddress, parsed.data)
+  }
+  for (const row of best.values()) {
     const mint = row.tokenAddress
     const metrics = metricsFromRow(row, feed.usdPerSol, now)
     trackerState.pulseCards.set(mint, metrics)
     noteAxiomRow(mint, row, feed.usdPerSol, now)
-    notePulseFlow(mint, metrics)
+    notePulseFlow(mint, metrics, row.pairAddress)
     const created = typeof row.createdAt === 'number' ? row.createdAt : typeof row.createdAt === 'string' ? Date.parse(row.createdAt) : NaN
     trackerState.pulseNames.set(mint, {
       symbol: (row.tokenTicker ?? '???').slice(0, 24),

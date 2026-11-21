@@ -26,20 +26,27 @@ export function pulseIdentity(lines: string[], pairAddress: string | null, seenA
 
 type FlowPoint = { t: number; volume: number; txns: number }
 const flows = new Map<string, FlowPoint[]>()
+const flowPools = new Map<string, string>()
 
 /** Keeps the card's running volume and transaction totals so a five-minute figure can be taken from them. */
-export function notePulseFlow(mint: string, card: RadarPulseMetrics) {
+export function notePulseFlow(mint: string, card: RadarPulseMetrics, pool: string | null = null) {
   if (card.volume === null && card.txCount === null) return
+  if (pool && flowPools.get(mint) !== pool) {
+    if (flowPools.has(mint)) flows.delete(mint)
+    flowPools.set(mint, pool)
+  }
   const points = flows.get(mint) ?? []
   points.push({ t: card.seenAt, volume: card.volume ?? points.at(-1)?.volume ?? 0, txns: card.txCount ?? points.at(-1)?.txns ?? 0 })
   while (points.length && card.seenAt - points[0].t > flowKeepMs) points.shift()
   flows.set(mint, points)
-  if (flows.size > 1_000) for (const [key, list] of flows) if (card.seenAt - (list.at(-1)?.t ?? 0) > flowKeepMs) flows.delete(key)
+  if (flows.size > 1_000) for (const [key, list] of flows) if (card.seenAt - (list.at(-1)?.t ?? 0) > flowKeepMs) { flows.delete(key); flowPools.delete(key) }
 }
 
 /**
  * Five-minute volume and transactions from the card's running totals. With under five minutes of readings the change is
- * scaled up to five minutes; a coin younger than five minutes uses its whole total.
+ * scaled up to five minutes; a coin younger than five minutes uses its whole total. Axiom refreshes the volume total less
+ * often than the trade count, so when the volume barely moved while trades kept coming, the volume is the new trades
+ * times the coin's average trade size.
  */
 export function pulseFlow5m(mint: string, now: number, createdAt: number | null) {
   const points = (flows.get(mint) ?? []).filter(point => now - point.t <= flowKeepMs)
@@ -50,7 +57,11 @@ export function pulseFlow5m(mint: string, now: number, createdAt: number | null)
   const span = latest.t - first.t
   if (span < 30_000) return null
   const scale = Math.max(1, flowWindowMs / span)
-  return { volume: Math.max(0, (latest.volume - first.volume) * scale), txns: Math.max(0, Math.round((latest.txns - first.txns) * scale)) }
+  const txns = Math.max(0, latest.txns - first.txns)
+  let volume = Math.max(0, latest.volume - first.volume)
+  const averageTrade = latest.txns > 0 ? latest.volume / latest.txns : 0
+  if (txns > 0 && averageTrade > 0 && volume < txns * averageTrade * 0.25) volume = txns * averageTrade
+  return { volume: volume * scale, txns: Math.round(txns * scale) }
 }
 
 /** How long a card's price outlives the card while DexScreener still shows the figure it had when the card was read. */
