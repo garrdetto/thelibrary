@@ -116,3 +116,21 @@ test('a coin with a field the tracker cannot read is skipped, not the whole Puls
   assert.equal(trackerState.pulseNames.get(good)?.createdAt, null)
   for (const map of [trackerState.pulseCards, trackerState.pulseNames, trackerState.viewers, trackerState.pulse]) map.delete(good)
 })
+
+test('a stale volume total is estimated from new trades times the average trade size', () => {
+  const mint = 'Stale11111111111111111111111111111111111111'
+  const now = 2_000_000_000
+  for (let second = 0; second <= 60; second += 10) notePulseFlow(mint, { ...parsePulseCard(['X'], 10, now + second * 1_000), volume: 10_000, txCount: 100 + second }, 'poolA')
+  const flow = pulseFlow5m(mint, now + 60_000, now - 60 * 60_000)
+  assert.ok(flow)
+  assert.equal(flow!.txns, 300)
+  assert.equal(Math.round(flow!.volume), Math.round(60 * (10_000 / 160) * 5))
+})
+
+test('switching pools starts the running totals afresh instead of reading a drop as zero volume', () => {
+  const mint = 'Pools11111111111111111111111111111111111111'
+  const now = 2_100_000_000
+  for (let second = 0; second <= 60; second += 10) notePulseFlow(mint, { ...parsePulseCard(['X'], 10, now + second * 1_000), volume: 500_000 + second * 100, txCount: 5_000 + second }, 'big')
+  notePulseFlow(mint, { ...parsePulseCard(['X'], 10, now + 61_000), volume: 3_000, txCount: 100 }, 'small')
+  assert.equal(pulseFlow5m(mint, now + 61_000, now - 60 * 60_000), null)
+})
