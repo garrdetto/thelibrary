@@ -1,0 +1,9 @@
+{
+  "note": "Weights of the Axiom Score's measures (any non-negative number; 0 leaves a measure out). The strategy lab re-tunes these from what made money; see axiom-score.ts.",
+  "weights": {
+    "mcapChange30s": 4, "mcapChange1m": 6, "mcapChange5m": 5, "calm": 8,
+    "viewers": 6, "viewersChange1m": 6, "holdersPerMin": 7, "txPerMin": 5, "buyShare1m": 7, "buyVolumeShare": 5, "volumeToMcap": 4,
+    "top10": 4, "dev": 3, "snipers": 4, "insiders": 4, "bundlers": 5, "fresh": 3, "proTraders": 3, "kols": 3, "devCreated": 2, "devMigrated": 2,
+    "socials": 2, "dexPaid": 2
+  }
+}

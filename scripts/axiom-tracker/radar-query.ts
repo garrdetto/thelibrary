@@ -23,6 +23,8 @@ import { walletScoreFor } from './wallet-score.js'
 import { earlyStart, stretchAboveLow, withEarlyGate } from './early-start.js'
 import { earlyState } from './early-state.js'
 import { axiomListsOf } from './axiom-lists.js'
+import { axiomScore } from './axiom-score.js'
+import { pulseFeedSeen } from './pulse-feed.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -438,6 +440,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     stretchPct: stretchAboveLow(series, now, price),
     minuteChange: live.priceChange.m1,
   })
+  const axiom = axiomScore(token.mint, now)
   const runnerInput: Parameters<typeof scoreRunner>[0] = {
     now,
     marketCap,
@@ -520,7 +523,9 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     sells5m: sells,
     buyRatio: transactions ? (buys ?? 0) / transactions : null,
     safety: { level: coinSafetyLevel(safety), ...safety },
-    score: runner.score,
+    score: axiom?.score ?? 0,
+    runnerScore: runner.score,
+    axiomScore: axiom,
     scoreCuts: runner.cuts,
     scoreParts: runner.parts,
     botClimb,
@@ -698,6 +703,7 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     status,
     message: status === 'offline' ? 'The Axiom tracker worker has not reported in. Start it with `pnpm axiom:worker` or `pm2 start ecosystem.axiom.config.js`.' : status === 'stale' ? 'The worker last reported more than 30 seconds ago.' : null,
     generatedAt: now,
+    solUsd: pulseFeedSeen.usdPerSol || null,
     workerSeenAt,
     components,
     tokens,
