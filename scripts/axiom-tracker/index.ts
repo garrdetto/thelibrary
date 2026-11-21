@@ -23,6 +23,7 @@ import { startWalletTracker } from './wallet-tracker.js'
 import { startWalletScores, walletBook } from './wallet-score.js'
 import { startWalletPnl } from './wallet-pnl.js'
 import { startFlipTraders } from './flip-traders.js'
+import { axiomOnly, axiomOnlyNote } from './sources.js'
 
 const logger = createLogger('orchestrator')
 const controller = new AbortController()
@@ -42,29 +43,36 @@ process.once('SIGTERM', () => shutdown('SIGTERM'))
 process.on('unhandledRejection', error => logger.error('Unhandled rejection', { error: errorMessage(error) }))
 process.on('uncaughtException', error => logger.error('Uncaught exception', { error: errorMessage(error) }))
 
-logger.info('Starting Axiom tracker', { database: trackerDatabasePath, pid: process.pid })
+logger.info('Starting Axiom tracker', { database: trackerDatabasePath, pid: process.pid, sources: axiomOnly ? 'Axiom only' : 'all' })
+
+/** Loops that only read outside sites (DexScreener, GeckoTerminal, Jupiter, Solana RPC, Helius) stay off in Axiom-only mode. */
+function outsideSource(component: string, start: () => Promise<unknown>) {
+  if (!axiomOnly) return start()
+  recordHeartbeat(database, component, 'disabled', axiomOnlyNote)
+  return Promise.resolve()
+}
 recordHeartbeat(database, 'orchestrator', 'ok', `pid ${process.pid}`)
 
 const tasks = [
   startDiscovery(database, controller.signal),
   startLiveMarket(database, controller.signal),
   startAxiomCollector(database, controller.signal),
-  startWalletTracker(database, controller.signal),
+  outsideSource('wallet-tracker', () => startWalletTracker(database, controller.signal)),
   startWalletScores(database, controller.signal),
-  startWalletPnl(database, controller.signal, walletBook),
-  startFlipTraders(database, controller.signal),
+  outsideSource('wallet-pnl', () => startWalletPnl(database, controller.signal, walletBook)),
+  outsideSource('flip-traders', () => startFlipTraders(database, controller.signal)),
   startScoring(database, controller.signal),
   startSitePublisher(database, controller.signal),
   startExtensionIntake(database, controller.signal),
   startLearner(database, controller.signal),
   startCoinArchive(database, controller.signal),
   startExplosions(database, controller.signal),
-  startFollowUp(database, controller.signal),
-  startHolderRefresh(database, controller.signal),
-  startJupiter(database, controller.signal),
-  startFreshWallets(database, controller.signal),
-  startDexPaid(database, controller.signal),
-  startChartHistory(database, controller.signal),
+  outsideSource('follow-up', () => startFollowUp(database, controller.signal)),
+  outsideSource('holder-refresh', () => startHolderRefresh(database, controller.signal)),
+  outsideSource('jupiter', () => startJupiter(database, controller.signal)),
+  outsideSource('fresh-wallets', () => startFreshWallets(database, controller.signal)),
+  outsideSource('dex-paid', () => startDexPaid(database, controller.signal)),
+  outsideSource('chart-history', () => startChartHistory(database, controller.signal)),
   startRunnerAlerts(database, controller.signal),
   startEarlyLog(database, controller.signal),
   startAdvice(database, controller.signal),

@@ -20,7 +20,7 @@ class DexCheckDial(unittest.TestCase):
             expanded = rules.expand({**dials.defaults(), "buy.picky": picky, "buy.dex_check": False})
             self.assertFalse(expanded["verify.enabled"], picky)
             self.assertFalse(expanded["bot.live_prices"], picky)
-            self.assertEqual(expanded["bot.poll_seconds"], 2, picky)
+            self.assertEqual(expanded["bot.poll_seconds"], 1, picky)
             self.assertEqual(expanded["entry.confirm_pulls"], 1, picky)
 
     def test_older_settings_files_get_the_check_on(self):

@@ -10,7 +10,7 @@ from typing import Any
 from .settings import Schema, Values
 
 SCHEMA = Schema(Path(__file__).with_name("rules.json"))
-FEED_ONLY: Values = {"verify.enabled": False, "bot.live_prices": False, "bot.poll_seconds": 2, "entry.confirm_pulls": 1}
+FEED_ONLY: Values = {"verify.enabled": False, "bot.live_prices": False, "bot.poll_seconds": 1, "entry.confirm_pulls": 1}
 PASSED_THROUGH = ("bot.enabled", "account.starting_sol", "costs.fee_mode", "costs.auto_fee_level", "costs.max_fee_sol", "costs.priority_fee_sol", "costs.bribe_sol")
 
 COMMON: Values = {

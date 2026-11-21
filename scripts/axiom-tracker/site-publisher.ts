@@ -1,15 +1,15 @@
 import { liveFiguresOf, type RadarHistoryPoint, type RadarLiveFigures, type RadarPayload, type RadarToken, type RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
-import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
+import { buildTokenDetail, sharedRadarPayload } from './radar-query.js'
 import { abandonIfHung, createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
 import { applyRadarSettings } from './settings-store.js'
 
 const logger = createLogger('site-publisher')
 const watchingIntervalMs = 1_000
-const watchingPayloadMs = 3_000
+const watchingPayloadMs = 1_000
 const idleIntervalMs = 5_000
-const watchingDetailsMs = 5_000
-const idleDetailsMs = 5_000
+const watchingDetailsMs = 10_000
+const idleDetailsMs = 10_000
 const maxBodyBytes = 1_800_000
 /** The site's ingest takes at most 300 coins; the list is already ordered pinned, then most watched. */
 export const siteTokenLimit = 300
@@ -78,10 +78,24 @@ function slimLive(live: { at: number; tokens: Record<string, RadarLiveFigures> }
   return { at: live.at, tokens: Object.fromEntries(Object.entries(live.tokens).map(([mint, figures]) => [mint, { ...figures, scoreLedger: undefined, scoreTrail: undefined }])) }
 }
 
-function collectDetails(database: TrackerDatabase, payload: RadarPayload, historyLimit: number) {
+const detailCache = new Map<string, { at: number; detail: RadarTokenDetail }>()
+const detailsPerCycle = 12
+
+/** Rebuilds the detail pages of the dozen coins whose copy is oldest. Building all of them at once blocked the tracker for about 3 s; a few each second keeps every loop on time and every page under ~15 s old. */
+function refreshDetails(database: TrackerDatabase, payload: RadarPayload, now: number) {
+  const mints = new Set(payload.tokens.map(token => token.mint))
+  for (const mint of detailCache.keys()) if (!mints.has(mint)) detailCache.delete(mint)
+  const due = [...mints].sort((first, second) => (detailCache.get(first)?.at ?? 0) - (detailCache.get(second)?.at ?? 0)).slice(0, detailsPerCycle)
+  for (const mint of due) {
+    const detail = buildTokenDetail(database, mint)
+    if (detail) detailCache.set(mint, { at: now, detail })
+  }
+}
+
+function collectDetails(payload: RadarPayload, historyLimit: number) {
   const details: Record<string, RadarTokenDetail> = {}
   for (const token of payload.tokens) {
-    const detail = buildTokenDetail(database, token.mint)
+    const detail = detailCache.get(token.mint)?.detail
     if (detail) details[token.mint] = { ...detail, history: thin(detail.history, historyLimit), live: thin(detail.live, 90), token: { ...detail.token, history: thin(detail.token.history, 45), spark: { fast: [], slow: [] } } }
   }
   return details
@@ -114,14 +128,15 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
     while (!signal.aborted) {
       const started = Date.now()
       try {
-        const full = buildRadarPayload(database)
+        const full = sharedRadarPayload(database)
         if (!liveSupported && started >= liveRetryAt) liveSupported = true
         const live = watching && liveSupported ? { at: full.generatedAt, tokens: Object.fromEntries(full.tokens.map(token => [token.mint, liveFiguresOf(token)])) } : undefined
         const payloadDue = !live || started - lastPayloadAt >= watchingPayloadMs
         const payload = compactPayload(full)
+        refreshDetails(database, payload, started)
         const detailsDue = payloadDue && started - lastDetailsAt >= (watching ? watchingDetailsMs : idleDetailsMs)
         const body = fitBody(!payloadDue ? [() => ({ live }), () => ({ live: slimLive(live) })] : [
-          ...(detailsDue ? [() => ({ payload, live, details: collectDetails(database, payload, 180) }), () => ({ payload, live, details: collectDetails(database, payload, 60) })] : []),
+          ...(detailsDue ? [() => ({ payload, live, details: collectDetails(payload, 180) }), () => ({ payload, live, details: collectDetails(payload, 60) })] : []),
           () => ({ payload, live }),
           () => ({ payload }),
           () => ({ payload: slimPayload(payload) }),

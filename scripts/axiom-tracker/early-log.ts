@@ -12,10 +12,11 @@ export const earlyLogRules = {
   followMs: 15 * 60_000,
   goneAfterMs: 3 * 60_000,
   refireMs: 30 * 60_000,
-  cycleMs: 2_000,
-  readingEveryMs: 20_000,
-  readingMaxAgeMinutes: 60,
-  keepReadingsMs: 72 * 60 * 60_000,
+  cycleMs: 1_000,
+  readingEveryMs: 1_000,
+  axiomPartsEveryMs: 5_000,
+  readingMaxAgeMinutes: 24 * 60,
+  keepReadingsMs: 24 * 60 * 60_000,
   keepStartsMs: 14 * 24 * 60 * 60_000,
   summaryWindowMs: 7 * 24 * 60 * 60_000,
 }
@@ -67,6 +68,16 @@ CREATE TABLE IF NOT EXISTS coin_readings (
   PRIMARY KEY (mint, t)
 );
 CREATE INDEX IF NOT EXISTS coin_readings_time ON coin_readings (t);
+CREATE TABLE IF NOT EXISTS axiom_score_readings (
+  mint TEXT NOT NULL,
+  t INTEGER NOT NULL,
+  score INTEGER NOT NULL,
+  price REAL,
+  market_cap REAL,
+  parts_json TEXT NOT NULL,
+  PRIMARY KEY (mint, t)
+);
+CREATE INDEX IF NOT EXISTS axiom_score_readings_time ON axiom_score_readings (t);
 `
 
 export type EarlyRow = {
@@ -187,7 +198,7 @@ function readingsOf(token: RadarToken) {
 
 /**
  * Every 2 seconds: records each coin whose early-start pattern is complete (once per coin per 30 minutes, noting the gate
- * that was failing if one held it at 0), follows it for 15 minutes, and keeps a 20-second reading of every coin under an hour old (score, early-start reading, holders, holder
+ * that was failing if one held it at 0), follows it for 15 minutes, and keeps a 1-second reading of every tracked coin under a day old (score, early-start reading, holders, holder
  * growth, pro traders, wallet score, holder shares) so those readings can be tested against what the coin did next. It
  * only keeps records: nothing here buys or tells the paper bot to.
  */
@@ -201,6 +212,8 @@ export function startEarlyLog(database: TrackerDatabase, signal: AbortSignal) {
   const lastFired = new Map<string, number>()
   for (const row of database.prepare('SELECT mint, MAX(fired_at) AS at FROM early_starts WHERE fired_at >= ? GROUP BY mint').all(Date.now() - earlyLogRules.refireMs) as Array<{ mint: string; at: number }>) lastFired.set(row.mint, row.at)
   const lastReading = new Map<string, number>()
+  const axiomReading = database.prepare('INSERT OR REPLACE INTO axiom_score_readings (mint, t, score, price, market_cap, parts_json) VALUES (?, ?, ?, ?, ?, ?)')
+  const lastAxiomReading = new Map<string, number>()
   const previousPrice = new Map<number, number>()
   let dirty = true
   let lastSummaryAt = 0
@@ -238,10 +251,17 @@ export function startEarlyLog(database: TrackerDatabase, signal: AbortSignal) {
           reading.run(token.mint, now, token.ageMinutes, token.priceUsd, token.marketCap, token.viewers, token.score, token.early?.score ?? null, token.early?.firing ? 1 : 0, traits?.holders ?? null, token.holdersPerMin, traits?.proTraders ?? null, token.wallets?.score ?? null, traits?.top10 ?? null, traits?.bundlers ?? null, traits?.insiders ?? null, traits?.snipers ?? null, traits?.fresh ?? null, traits?.dev ?? null)
           lastReading.set(token.mint, now)
         }
+        if (token.axiomScore && now - (lastAxiomReading.get(token.mint) ?? 0) >= earlyLogRules.axiomPartsEveryMs) {
+          const parts = Object.fromEntries(token.axiomScore.parts.map(part => [part.measure, [part.value, part.scaled]]))
+          axiomReading.run(token.mint, now, token.axiomScore.score, token.priceUsd, token.marketCap, JSON.stringify(parts))
+          lastAxiomReading.set(token.mint, now)
+        }
       }
     })()
     if (now - lastPruneAt >= 60 * 60_000) {
       database.prepare('DELETE FROM coin_readings WHERE t < ?').run(now - earlyLogRules.keepReadingsMs)
+      database.prepare('DELETE FROM axiom_score_readings WHERE t < ?').run(now - earlyLogRules.keepReadingsMs)
+      for (const [mint, at] of lastAxiomReading) if (now - at > 10 * 60_000) lastAxiomReading.delete(mint)
       database.prepare('DELETE FROM early_starts WHERE fired_at < ?').run(now - earlyLogRules.keepStartsMs)
       for (const [mint, at] of lastReading) if (now - at > 10 * 60_000) lastReading.delete(mint)
       for (const [mint, at] of lastFired) if (now - at > earlyLogRules.refireMs) lastFired.delete(mint)

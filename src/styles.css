@@ -2530,7 +2530,12 @@ html.play-full-lock,html.play-full-lock body{overflow:hidden;overscroll-behavior
 
 :root[data-theme="wics"] body,:root[data-theme="wics"] .studio-shell,:root[data-theme="wics"] .main-panel{background:#d7d6cb}
 :root[data-theme="wics"] .studio-shell .sidebar .brand{background:#ffffff;box-shadow:0 0 0 100vmax #ffffff;clip-path:inset(-100vmax -100vmax -18px -100vmax)}
-:root[data-theme="wics"] .studio-shell .topbar{background:linear-gradient(180deg,#e0e2d8 0%,#f1f2ec 100%);border-bottom:48px solid #6f83b5}
+:root[data-theme="wics"] .studio-shell .topbar{box-sizing:content-box;background:linear-gradient(180deg,#e0e2d8 0%,#f1f2ec 100%);border-bottom:16px solid #6f83b5}
+@media(max-width:600px){:root[data-theme="wics"] .studio-shell .topbar{min-height:55px}}
+:root[data-theme="wics"] :is(.chat-content,.workspace-content.play-content,.pk-root){min-height:calc(100dvh - var(--tl-ribbon-h,0px) - 95px)}:root[data-theme="wics"] .pk-root-game{height:calc(100dvh - var(--tl-ribbon-h,0px) - 95px)}
+@media(max-width:900px){:root[data-theme="wics"] :is(.chat-content,.pk-root){min-height:calc(100dvh - var(--tl-ribbon-h,0px) - 84px)}:root[data-theme="wics"] .pk-root-game{height:calc(100dvh - var(--tl-ribbon-h,0px) - 84px)}}
+@media(max-width:650px){:root[data-theme="wics"] :is(.chat-content,.pk-root,.pk-root-game){min-height:calc(100dvh - var(--tl-ribbon-h,0px) - 80px)}:root[data-theme="wics"] .pk-root-game{height:calc(100dvh - var(--tl-ribbon-h,0px) - 80px)}}
+:root[data-theme="wics"] .studio-shell .sidebar .nav-category-list{margin-left:4px;padding:4px 4px 4px 8px;border-radius:0 8px 8px 0;background:color-mix(in srgb,var(--lib-side) 50%,#ffffff)}
 :root[data-theme="wics"] :is(.module-scores,.lap-board){background:#ffffff}
 /* Mobile shell: phones in both orientations and touch tablets get the drawer, a compact topbar, a play frame that fits the screen, and the Mobile friendly badge and filter */
 html:has(.site-ribbon .ribbon-item:not([hidden])){--tl-ribbon-h:calc(42px + env(safe-area-inset-bottom,0px))}

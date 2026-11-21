@@ -9,7 +9,7 @@ import { researchResetAt } from './research-meta.js'
 import { createLogger, runLoop } from './runtime.js'
 
 const logger = createLogger('explosions')
-const cycleMs = 2_000
+const cycleMs = 1_000
 const trainEveryMs = 3 * 60_000
 const viewerJump = 20
 const viewerWindowMs = 30_000

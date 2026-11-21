@@ -6,7 +6,8 @@ import { radarSettings } from './settings-store.js'
 import { learnerState, withLearning } from './learner-state.js'
 import { activeBotClimb, botClimbHoldMs, freshViewerCount, trackerState } from './state.js'
 import type { TrackerDatabase } from './db.js'
-import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
+import { defaultWeights, radarThresholds, scoreSetup, viewerDeltas } from './model.js'
+import { coinSafety, coinSafetyLevel } from './axiom-safety.js'
 import { jupiterReading } from './jupiter.js'
 import { detectBotClimb } from './holder-limits.js'
 import { scoreDex } from './dex-score.js'
@@ -22,6 +23,8 @@ import { walletScoreFor } from './wallet-score.js'
 import { earlyStart, stretchAboveLow, withEarlyGate } from './early-start.js'
 import { earlyState } from './early-state.js'
 import { axiomListsOf } from './axiom-lists.js'
+import { axiomScore } from './axiom-score.js'
+import { pulseFeedSeen } from './pulse-feed.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
 const activeWindowMs = 90_000
@@ -87,7 +90,6 @@ type PaperRow = {
   created_at: number
 }
 
-const flag = (value: number | null) => value === null ? null : value === 1
 
 function weightsFromRow(row: WeightsRow | undefined): RadarWeights {
   if (!row) return { ...defaultWeights }
@@ -391,7 +393,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
   const delta1m = live.viewers !== null ? live.viewersDelta1m : stored.delta1m
   const delta5m = live.viewers !== null ? live.viewersDelta5m ?? stored.delta5m : stored.delta5m
   const pct5m = delta5m !== null && viewers !== null && viewers - delta5m > 0 ? Math.round((delta5m / (viewers - delta5m)) * 1000) / 10 : stored.pct5m
-  const safety = { mintAuthority: flag(token.mint_auth), freezeAuthority: flag(token.freeze_auth), top10Pct: token.top10_pct }
+  const safety = coinSafety(token.mint, token, traits?.top10 ?? null)
   const buys = live.market?.buys5m ?? latest?.buys_5m ?? null
   const sells = live.market?.sells5m ?? latest?.sells_5m ?? null
   const marketCap = live.market?.marketCap ?? latest?.market_cap ?? null
@@ -438,6 +440,7 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     stretchPct: stretchAboveLow(series, now, price),
     minuteChange: live.priceChange.m1,
   })
+  const axiom = axiomScore(token.mint, now)
   const runnerInput: Parameters<typeof scoreRunner>[0] = {
     now,
     marketCap,
@@ -519,8 +522,10 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
     buys5m: buys,
     sells5m: sells,
     buyRatio: transactions ? (buys ?? 0) / transactions : null,
-    safety: { level: safetyLevel(safety), ...safety },
-    score: runner.score,
+    safety: { level: coinSafetyLevel(safety), ...safety },
+    score: axiom?.score ?? 0,
+    runnerScore: runner.score,
+    axiomScore: axiom,
     scoreCuts: runner.cuts,
     scoreParts: runner.parts,
     botClimb,
@@ -673,6 +678,15 @@ function smartWallets(database: TrackerDatabase, minRunnerHits: number): RadarWa
   ]
 }
 
+let sharedPayload: { at: number; payload: RadarPayload } | null = null
+
+/** The payload built at most once per `maxAgeMs` and shared by the site publisher, the bot's local feed and the Radar page's local stream, which each ask every second. */
+export function sharedRadarPayload(database: TrackerDatabase, maxAgeMs = 400, now = Date.now()): RadarPayload {
+  if (sharedPayload && now >= sharedPayload.at && now - sharedPayload.at < maxAgeMs) return sharedPayload.payload
+  sharedPayload = { at: now, payload: buildRadarPayload(database, now) }
+  return sharedPayload.payload
+}
+
 export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): RadarPayload {
   const model = loadModelState(database)
   const tokens = buildRadarTokens(database, model.weights, now).map(withLearning)
@@ -689,6 +703,7 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     status,
     message: status === 'offline' ? 'The Axiom tracker worker has not reported in. Start it with `pnpm axiom:worker` or `pm2 start ecosystem.axiom.config.js`.' : status === 'stale' ? 'The worker last reported more than 30 seconds ago.' : null,
     generatedAt: now,
+    solUsd: pulseFeedSeen.usdPerSol || null,
     workerSeenAt,
     components,
     tokens,

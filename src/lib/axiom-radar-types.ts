@@ -175,6 +175,10 @@ export type RadarToken = {
   rawScore?: number
   holderRisk?: RadarHolderRisk | null
   scoreCuts?: string[]
+  /** The old runner score, kept beside the Axiom Score (which is `score`) for comparison. */
+  runnerScore?: number
+  /** The Axiom Score's parts: each measure, its 0-100 rank among recent coins and its weight. */
+  axiomScore?: RadarAxiomScore | null
   scoreParts?: RadarScorePart[]
   botClimb?: boolean
   researchScore?: number | null
@@ -281,6 +285,8 @@ export type RadarPayload = {
   message: string | null
   generatedAt: number
   workerSeenAt: number | null
+  /** Axiom's own SOL price in dollars, from the Pulse feed. */
+  solUsd?: number | null
   components: RadarComponentStatus[]
   tokens: RadarToken[]
   kpis: {
@@ -308,6 +314,8 @@ export type RadarPayload = {
   runner?: RadarRunnerSummary | null
   early?: RadarEarlySummary | null
 }
+
+export type RadarAxiomScore = { score: number; parts: Array<{ measure: string; value: number; scaled: number; weight: number }>; reference: number }
 
 export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'priceChangeSources' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'rawScore' | 'scoreCuts' | 'scoreParts' | 'botClimb' | 'alerts' | 'safetyPlan' | 'runnerThesis' | 'learnedEdge' | 'scoreLedger' | 'scoreTrail' | 'dex'>
 

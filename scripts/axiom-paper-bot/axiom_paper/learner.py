@@ -8,7 +8,6 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, NamedTuple
 
 from .models import Coin, Position
@@ -42,7 +41,14 @@ FEATURES: dict[str, Feature] = {
     "run1m": Feature("Last minute", True, (0, 10, 30, 60), ("falling over the last minute", "up 0–10% in a minute", "up 10–30% in a minute", "up 30–60% in a minute", "up 60%+ in a minute")),
     "run5m": Feature("Last 5 minutes", True, (0, 25, 75), ("falling over 5 minutes", "up 0–25% in 5 minutes", "up 25–75% in 5 minutes", "up 75%+ in 5 minutes")),
     "dip": Feature("Below its 10-minute high", True, (5, 15), ("at its 10-minute high", "5–15% under its 10-minute high", "over 15% under its 10-minute high")),
-    "hour": Feature("Time of day", True, (6, 12, 18), ("bought at night (0–6)", "bought in the morning (6–12)", "bought in the afternoon (12–18)", "bought in the evening (18–24)")),
+    "top10": Feature("Top 10 holders", False, (20, 30, 45), ("top 10 holders own under 20%", "top 10 holders own 20–30%", "top 10 holders own 30–45%", "top 10 holders own over 45%")),
+    "bundlers": Feature("Bundlers", False, (5, 15, 30), ("bundlers hold under 5%", "bundlers hold 5–15%", "bundlers hold 15–30%", "bundlers hold over 30%")),
+    "protraders": Feature("Pro traders", False, (5, 15, 30), ("pro traders hold under 5%", "pro traders hold 5–15%", "pro traders hold 15–30%", "pro traders hold over 30%")),
+    "snipers": Feature("Snipers", False, (5, 15), ("snipers hold under 5%", "snipers hold 5–15%", "snipers hold over 15%")),
+    "insiders": Feature("Insiders", False, (5, 15), ("insiders hold under 5%", "insiders hold 5–15%", "insiders hold over 15%")),
+    "devhold": Feature("Dev holding", False, (1, 5), ("the dev holds under 1%", "the dev holds 1–5%", "the dev holds over 5%")),
+    "freshwallets": Feature("Fresh wallets", False, (5, 15), ("fresh wallets hold under 5%", "fresh wallets hold 5–15%", "fresh wallets hold over 15%")),
+    "holdrate": Feature("Holder growth", True, (0, 5, 20), ("losing holders", "0–5 new holders a minute", "5–20 new holders a minute", "over 20 new holders a minute")),
     "wallets": Feature("Wallet Score", False, (35, 50, 65, 80), ("a Wallet Score under 35", "a Wallet Score of 35–49", "a Wallet Score of 50–64", "a Wallet Score of 65–79", "a Wallet Score of 80+")),
     "whales": Feature("Whales holding", False, (1, 3), ("no whale holding $1k+", "1–2 whales holding $1k+", "3+ whales holding $1k+")),
     "liqshare": Feature("Liquidity vs market cap", False, (15, 30), ("liquidity under 15% of market cap", "liquidity 15–30% of market cap", "liquidity over 30% of market cap")),
@@ -76,11 +82,12 @@ def _band(value: float | None, feature: Feature) -> str | None:
 def features(coin: Coin, value: float | None, at_ms: int, market: Mapping[str, float | None] | None = None) -> dict[str, str | None]:
     """Which band of each feature the coin is in right now. `value` is the number the bot buys on; `market` holds the
     volume and liquidity trends from the bot's own pulls."""
-    hour = datetime.fromtimestamp(at_ms / 1000).hour
     market = market or {}
     raw = {
         "score": value, "age": coin.age_minutes, "buys": coin.buy_share_pct, "liquidity": coin.liquidity, "viewers": coin.viewers,
-        "run1m": coin.gain_1m, "run5m": coin.gain_5m, "dip": coin.below_high_pct(), "hour": float(hour),
+        "run1m": coin.gain_1m, "run5m": coin.gain_5m, "dip": coin.below_high_pct(),
+        "top10": coin.top10_pct, "bundlers": coin.bundlers_pct, "protraders": coin.pro_traders_pct, "snipers": coin.snipers_pct,
+        "insiders": coin.insiders_pct, "devhold": coin.dev_pct, "freshwallets": coin.fresh_pct, "holdrate": coin.holders_per_min,
         "wallets": coin.wallet_score, "whales": None if coin.whales is None else float(coin.whales),
         "liqshare": coin.liquidity_share_pct(), "turnover": coin.turnover_pct(),
         "voltrend": market.get("volume_trend"), "liqtrend": market.get("liquidity_trend"),
@@ -128,6 +135,10 @@ class Learner:
 
     def __post_init__(self) -> None:
         self.db.executescript(SCHEMA)
+        have = {row[1] for row in self.db.execute("PRAGMA table_info(learn_samples)")}
+        for column in COLUMNS:
+            if column not in have:
+                self.db.execute(f"ALTER TABLE learn_samples ADD COLUMN {column} TEXT")
         present = {row[1] for row in self.db.execute("PRAGMA table_info(learn_samples)")}
         for column in COLUMNS:
             if column not in present:

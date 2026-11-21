@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { RadarPulseMetrics } from '../../src/lib/axiom-radar-types.js'
 import { isSolanaAddress } from './runtime.js'
 import { notePulseFlow } from './pulse-market.js'
+import { noteAxiomRow, pruneAxiomScore } from './axiom-score.js'
 import { trackerState } from './state.js'
 
 const numeric = z.union([z.number(), z.string().max(40)]).nullable().optional()
@@ -104,6 +105,7 @@ export function applyPulseFeed(feed: PulseFeed, now: number) {
     const mint = row.tokenAddress
     const metrics = metricsFromRow(row, feed.usdPerSol, now)
     trackerState.pulseCards.set(mint, metrics)
+    noteAxiomRow(mint, row, feed.usdPerSol, now)
     notePulseFlow(mint, metrics)
     const created = typeof row.createdAt === 'number' ? row.createdAt : typeof row.createdAt === 'string' ? Date.parse(row.createdAt) : NaN
     trackerState.pulseNames.set(mint, {
@@ -118,9 +120,11 @@ export function applyPulseFeed(feed: PulseFeed, now: number) {
     taken += 1
   }
   pulseFeedSeen.at = now
+  pulseFeedSeen.usdPerSol = feed.usdPerSol
+  pruneAxiomScore(now)
   pulseFeedSeen.count = taken
   pulseFeedSeen.skipped = skipped
   return taken
 }
 
-export const pulseFeedSeen = { at: 0, count: 0, skipped: 0 }
+export const pulseFeedSeen = { at: 0, count: 0, skipped: 0, usdPerSol: 0 }

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import { allowedHost, SourceOffError } from './sources.js'
 
 if (existsSync('.env')) {
   try { process.loadEnvFile('.env') } catch { }
@@ -12,9 +13,9 @@ function envNumber(name: string, fallback: number) {
 
 export const trackerConfig = {
   maxPairAgeMs: 5 * 60 * 60 * 1000,
-  discoveryIntervalMs: 5_000,
-  snapshotIntervalMs: 5_000,
-  scoringIntervalMs: 5_000,
+  discoveryIntervalMs: 1_000,
+  snapshotIntervalMs: 1_000,
+  scoringIntervalMs: 1_000,
   runnerScanIntervalMs: 5_000,
   walletSwapIntervalMs: 5_000,
   maxCandidates: envNumber('AXIOM_MAX_CANDIDATES', 30),
@@ -79,6 +80,7 @@ export function abandonIfHung<T>(name: string, limitMs: number, task: () => Prom
 }
 
 export async function fetchJson<T>(url: string, init: RequestInit & { timeoutMs?: number; retries?: number } = {}): Promise<T> {
+  if (!allowedHost(url)) throw new SourceOffError(url)
   const { timeoutMs = 12_000, retries = 2, ...request } = init
   let attempt = 0
   while (true) {
