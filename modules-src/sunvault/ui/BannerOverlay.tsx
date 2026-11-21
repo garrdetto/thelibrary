@@ -9,33 +9,40 @@ const TONES: Record<BannerTone, { ring: string; text: string; glow: string }> = 
   ember: { ring: 'ring-[#ff8a3a]/80', text: 'from-[#fff6dc] via-[#ffb347] to-[#ff3d1f]', glow: 'shadow-[0_0_70px_rgba(255,120,40,0.55)]' },
 }
 
-export function BannerOverlay({ banner, onSkip }: { banner: Banner | null; onSkip: () => void }) {
-  if (!banner) return null
-  return <BannerCard key={banner.id} banner={banner} onSkip={onSkip} />
+interface BannerProps {
+  banner: Banner | null
+  touch: boolean
+  compact: boolean
+  onSkip: () => void
 }
 
-function BannerCard({ banner, onSkip }: { banner: Banner; onSkip: () => void }) {
+export function BannerOverlay({ banner, touch, compact, onSkip }: BannerProps) {
+  if (!banner) return null
+  return <BannerCard key={banner.id} banner={banner} touch={touch} compact={compact} onSkip={onSkip} />
+}
+
+function BannerCard({ banner, touch, compact, onSkip }: Omit<BannerProps, 'banner'> & { banner: Banner }) {
   const tone = TONES[banner.tone]
   const amount = useRollingNumber(banner.amount ?? 0, 1.2)
   return (
-    <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center p-4">
+    <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center p-3 sm:p-4">
       <button
         type="button"
         onClick={onSkip}
         aria-live="assertive"
-        className={`pointer-events-auto animate-banner-in max-w-md rounded-3xl bg-night-900/85 px-6 py-5 text-center ring-2 backdrop-blur-sm sm:px-10 sm:py-7 ${tone.ring} ${tone.glow} focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-200`}
+        className={`pointer-events-auto animate-banner-in max-h-full w-full max-w-md touch-manipulation overflow-hidden rounded-3xl bg-night-900/85 text-center ring-2 backdrop-blur-sm ${compact ? 'px-5 py-3' : 'px-6 py-5 sm:px-10 sm:py-7'} ${tone.ring} ${tone.glow} focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-200`}
       >
         <span className="block text-[11px] font-bold uppercase tracking-[0.3em] text-sand-300">{banner.kicker}</span>
-        <span className={`mt-1 block font-display text-4xl font-black leading-tight tracking-wide text-transparent bg-clip-text bg-gradient-to-b ${tone.text} drop-shadow-[0_2px_0_rgba(0,0,0,0.6)] sm:text-6xl`}>
+        <span className={`mt-1 block font-display text-[clamp(1.6rem,8vmin,3.75rem)] font-black leading-tight tracking-wide text-transparent bg-clip-text bg-gradient-to-b ${tone.text} drop-shadow-[0_2px_0_rgba(0,0,0,0.6)]`}>
           {banner.title}
         </span>
         {banner.amount !== undefined && (
-          <span className="mt-2 block font-display text-3xl font-black tabular-nums text-gold-100 drop-shadow-[0_0_12px_rgba(255,210,110,0.7)] sm:text-4xl">
+          <span className="mt-2 block font-display text-[clamp(1.5rem,6vmin,2.25rem)] font-black tabular-nums text-gold-100 drop-shadow-[0_0_12px_rgba(255,210,110,0.7)]">
             {formatMoney(amount)}
           </span>
         )}
-        {banner.subtitle && <span className="mt-3 block text-sm leading-snug text-sand-200/90">{banner.subtitle}</span>}
-        <span className="mt-3 block text-[10px] uppercase tracking-[0.25em] text-sand-300/50">Tap or press Space to continue</span>
+        {banner.subtitle && <span className={`block leading-snug text-sand-200/90 ${compact ? 'mt-1.5 text-[13px]' : 'mt-3 text-sm'}`}>{banner.subtitle}</span>}
+        <span className={`block text-[10px] uppercase tracking-[0.25em] text-sand-300/60 ${compact ? 'mt-1.5' : 'mt-3'}`}>{touch ? 'Tap to continue' : 'Click or press Space to continue'}</span>
       </button>
     </div>
   )

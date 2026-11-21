@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { BeanstalkEngine, evaluateWays, type Grid } from '../engine/engine'
 import { simulate } from '../engine/simulate'
-import { BET_UNITS, FREE_SPINS_AWARD, REELS, ROWS, Sym, WAY_PAYS, isWild } from '../engine/paytable'
+import { BET_LEVELS_CENTS, BET_UNITS, DEFAULT_BET_CENTS, FREE_SPINS_AWARD, REELS, ROWS, Sym, WAY_PAYS, isWild } from '../engine/paytable'
 
 const fill = (sym: Sym): Grid => Array.from({ length: REELS }, () => Array.from({ length: ROWS }, () => ({ sym, mult: 1 })))
 
@@ -77,6 +77,49 @@ test('state survives a save and reload mid-feature', () => {
   engine.spin(100, 'grow')
   const copy = BeanstalkEngine.fromState(JSON.parse(JSON.stringify(engine.toState())))
   assert.deepEqual(copy.spin(100), engine.spin(100))
+})
+
+test('bets run from 25 cents to a $5 top level that pays in proportion', () => {
+  assert.equal(BET_LEVELS_CENTS[0], 25)
+  assert.equal(BET_LEVELS_CENTS[BET_LEVELS_CENTS.length - 1], 500)
+  assert.ok(BET_LEVELS_CENTS.includes(DEFAULT_BET_CENTS))
+  assert.ok(BET_LEVELS_CENTS.every((bet, index) => Number.isInteger(bet) && bet > 0 && (index === 0 || bet > BET_LEVELS_CENTS[index - 1])))
+  const top = BET_LEVELS_CENTS[BET_LEVELS_CENTS.length - 1]
+  const grid = fill(Sym.Ten)
+  for (let reel = 0; reel < 3; reel++) grid[reel][0] = { sym: Sym.Giant, mult: 1 }
+  const giant = evaluateWays(grid, top).find((win) => win.symbol === Sym.Giant)
+  assert.ok(giant)
+  assert.equal(giant.win, Math.round((WAY_PAYS[Sym.Giant] as readonly number[])[0] * top / BET_UNITS))
+  const engine = new BeanstalkEngine({ seed: 21 })
+  const free = engine.spin(top, 'free')
+  assert.equal(free.bet, top)
+  assert.equal(free.scatter.win, 2 * top)
+  while (engine.inFeature) assert.equal(engine.spin(top).bet, top)
+  const big = new BeanstalkEngine({ seed: 22 }).spin(top, 'bigwin')
+  assert.ok(big.stepWin >= top * 15)
+})
+
+test('a real win at the smallest bet never rounds down to zero cents', () => {
+  const engine = new BeanstalkEngine({ seed: 9, balance: 10_000_000 })
+  let wins = 0
+  for (let spin = 0; spin < 20_000; spin++) {
+    const result = engine.spin(BET_LEVELS_CENTS[0])
+    for (const way of result.ways) {
+      wins++
+      assert.ok(way.win >= 1, `way of ${way.ways} paid ${way.win}`)
+    }
+  }
+  assert.ok(wins > 1000)
+})
+
+test('a Sky Garden opened at an old, bigger bet resumes at its own bet', () => {
+  const engine = new BeanstalkEngine({ seed: 5, balance: 1_000_000 })
+  engine.spin(10_000, 'free')
+  const saved = BeanstalkEngine.fromState(JSON.parse(JSON.stringify(engine.toState())))
+  const result = saved.spin(BET_LEVELS_CENTS[0])
+  assert.equal(result.mode, 'free')
+  assert.equal(result.bet, 10_000)
+  assert.equal(result.state.balance, engine.snapshot().balance + result.stepWin)
 })
 
 test('long-run return stays between 90% and 100%', () => {

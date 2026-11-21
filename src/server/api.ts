@@ -13,6 +13,7 @@ import { rackreelLobbies } from './routes/rackreel-lobbies'
 import { casino } from './routes/casino'
 import { sunvault } from './routes/sunvault'
 import { beanstalk } from './routes/beanstalk'
+import { modollaz } from './routes/modollaz'
 import { bushleague } from './routes/bushleague'
 import { darts } from './routes/darts'
 import { dartsRecords } from './routes/darts-records'
@@ -64,6 +65,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/casino': casino,
   '/api/sunvault': sunvault,
   '/api/beanstalk': beanstalk,
+  '/api/modollaz': modollaz,
   '/api/bushleague': bushleague,
   '/api/darts': darts,
   '/api/darts-records': dartsRecords,

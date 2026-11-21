@@ -4,7 +4,7 @@ import { HttpError, json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser } from '../auth.js'
 import { adjustFoxLakeWallet, type WalletOwner } from '../shared-wallet.js'
 import { cryptoRng } from '../../../modules-src/foxlake/casino/math/rng'
-import { MACHINE_BY_ID, MACHINES, playSpin, type MachineState } from '../../../modules-src/foxlake/casino/math/machines'
+import { MACHINE_BY_ID, MACHINES, hasMeters, playSpin, type MachineState } from '../../../modules-src/foxlake/casino/math/machines'
 import { act, deal, publicView, type Table } from '../../../modules-src/foxlake/casino/math/blackjack'
 import { BAR, BET_STEPS, BLACKJACK_BETS } from '../../../modules-src/foxlake/casino/CasinoLayout'
 
@@ -113,7 +113,7 @@ export async function casino(request: Request, env: Env) {
     if (!def) throw new HttpError(400, 'That machine is out of order.')
     if (!(BET_STEPS as readonly number[]).includes(input.bet)) throw new HttpError(400, 'That bet is not offered.')
     await ensureTables(env)
-    const stored = def.family === 'collect' ? await env.DB.prepare('SELECT data FROM casino_machine_state WHERE user_id = ? AND machine = ?').bind(player.id, def.id).first<{ data: string }>() : null
+    const stored = hasMeters(def) ? await env.DB.prepare('SELECT data FROM casino_machine_state WHERE user_id = ? AND machine = ?').bind(player.id, def.id).first<{ data: string }>() : null
     let state: MachineState = {}
     try {
       state = stored ? (JSON.parse(stored.data) as MachineState) : {}
@@ -122,7 +122,7 @@ export async function casino(request: Request, env: Env) {
     }
     await debit(env, player, input.bet)
     const result = playSpin(def, input.bet, rng, state)
-    if (def.family === 'collect') {
+    if (hasMeters(def)) {
       await env.DB.prepare('INSERT INTO casino_machine_state (user_id, machine, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, machine) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
         .bind(player.id, def.id, JSON.stringify(result.state), Date.now()).run()
     }

@@ -1,7 +1,6 @@
 import { createRng, cryptoSeed, type Rng } from '../../sunvault/engine/rng'
 import {
   BASE_STRIPS,
-  BET_UNITS,
   CLIMB_HEIGHTS,
   FREE_SEED_MULTIPLIERS,
   FREE_SPINS_AWARD,
@@ -24,6 +23,7 @@ import {
   WAY_PAYS,
   isPaying,
   isWild,
+  wayWin,
   type HaywireKind,
 } from './paytable'
 
@@ -155,7 +155,6 @@ export function findCells(grid: Grid, test: (sym: Sym) => boolean): CellRef[] {
 }
 
 export function evaluateWays(grid: Grid, bet: number): WayWin[] {
-  const unit = bet / BET_UNITS
   const wins: WayWin[] = []
   for (let symbol = Sym.Ten as number; symbol <= Sym.Giant; symbol++) {
     const pays = WAY_PAYS[symbol as Sym]
@@ -187,7 +186,7 @@ export function evaluateWays(grid: Grid, bet: number): WayWin[] {
     if (ways <= 0 || (!real && symbol !== Sym.Giant)) continue
     const cells: CellRef[] = []
     for (let reel = 0; reel < count; reel++) for (let row = 0; row < ROWS; row++) if (grid[reel][row].sym === symbol || isWild(grid[reel][row].sym)) cells.push([reel, row])
-    wins.push({ symbol: symbol as Sym, count, ways, win: Math.round(pays[count - MIN_WAY] * ways * unit), cells })
+    wins.push({ symbol: symbol as Sym, count, ways, win: wayWin(pays[count - MIN_WAY], ways, bet), cells })
   }
   return wins
 }

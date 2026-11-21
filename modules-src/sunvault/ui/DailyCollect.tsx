@@ -11,6 +11,7 @@ interface DailyCollectProps {
   collecting: boolean
   onCollect: () => void
   onExpired: () => void
+  className?: string
 }
 
 function countdown(ms: number): string {
@@ -19,7 +20,7 @@ function countdown(ms: number): string {
   return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
 }
 
-export function DailyCollect({ status, daily, receivedAt, busy, collecting, onCollect, onExpired }: DailyCollectProps) {
+export function DailyCollect({ status, daily, receivedAt, busy, collecting, onCollect, onExpired, className = '' }: DailyCollectProps) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 20000)
@@ -34,7 +35,7 @@ export function DailyCollect({ status, daily, receivedAt, busy, collecting, onCo
   if (status === 'guest' || !daily) {
     return (
       <span
-        className="hidden items-center gap-1.5 rounded-full border border-gold-700/50 bg-night-700 px-3 py-1.5 text-[11px] font-semibold text-sand-300 md:flex"
+        className={`hidden items-center gap-1.5 rounded-full border border-gold-700/50 bg-night-700 px-3 py-1.5 text-[11px] font-semibold text-sand-300 md:flex ${className}`}
         title={`Signed-in members keep a balance, collect ${formatMoney(DAILY_BASE_CENTS)} a day (+${formatMoney(DAILY_STEP_CENTS)} for every day in a row) and post high scores.`}
       >
         <Gift className="h-3.5 w-3.5 text-gold-400" aria-hidden />
@@ -48,7 +49,7 @@ export function DailyCollect({ status, daily, receivedAt, busy, collecting, onCo
         type="button"
         onClick={onCollect}
         disabled={busy || collecting}
-        className="flex items-center gap-1.5 rounded-full border border-gold-300 bg-gradient-to-b from-gold-400 to-gold-700 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-night-900 shadow-[0_0_18px_rgba(255,200,90,0.55)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-200 disabled:opacity-50 motion-safe:animate-pulse"
+        className={`flex items-center gap-1.5 rounded-full border border-gold-300 bg-gradient-to-b from-gold-400 to-gold-700 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-night-900 shadow-[0_0_18px_rgba(255,200,90,0.55)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-200 disabled:opacity-50 motion-safe:animate-pulse ${className}`}
         title={daily.streak > 0 ? `${daily.streak} day streak: +${formatMoney(DAILY_STEP_CENTS * daily.streak)} on top of ${formatMoney(DAILY_BASE_CENTS)}` : `Collect every day in a row for +${formatMoney(DAILY_STEP_CENTS)} more each day`}
       >
         <Gift className="h-4 w-4" aria-hidden />
@@ -57,7 +58,7 @@ export function DailyCollect({ status, daily, receivedAt, busy, collecting, onCo
     )
   }
   return (
-    <span className="flex items-center gap-1.5 rounded-full border border-gold-700/50 bg-night-700 px-3 py-1.5 text-[11px] font-semibold text-sand-200" title={`Streak: ${daily.streak} day${daily.streak === 1 ? '' : 's'}. Collect tomorrow to keep it going.`}>
+    <span className={`flex items-center gap-1.5 rounded-full border border-gold-700/50 bg-night-700 px-3 py-1.5 text-[11px] font-semibold text-sand-200 ${className}`} title={`Streak: ${daily.streak} day${daily.streak === 1 ? '' : 's'}. Collect tomorrow to keep it going.`}>
       <Gift className="h-3.5 w-3.5 text-gold-400" aria-hidden />
       <span>
         {daily.streak}-day streak · {formatMoney(daily.amount)} in {countdown(remaining)}

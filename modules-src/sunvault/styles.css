@@ -42,12 +42,28 @@ html, body, #root {
   margin: 0;
 }
 
+#root {
+  height: 100dvh;
+}
+
 body {
   background: var(--color-night-900);
   color: var(--color-sand-100);
   overflow: hidden;
+  overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   user-select: none;
+}
+
+html:not(.tl-full) .tl-full-only {
+  display: none !important;
+}
+
+.sv-tally-dim {
+  background: radial-gradient(ellipse 70% 55% at 50% 50%, rgba(10, 6, 22, 0.78) 0%, rgba(10, 6, 22, 0.5) 55%, rgba(10, 6, 22, 0.15) 100%);
 }
 
 .sv-haywire {

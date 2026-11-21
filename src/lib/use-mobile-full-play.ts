@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { RefObject } from 'react'
 
-/** Modules whose play frame fills the whole screen on phones and tablets. */
-export const MOBILE_FULL_MODULES: ReadonlySet<string> = new Set(['shorttrack', 'darts'])
+/** Modules whose play frame fills the whole screen on its own on phones and tablets; any other module can be put there with the frame bar's Full screen button. */
+export const MOBILE_FULL_MODULES: ReadonlySet<string> = new Set(['shorttrack', 'darts', 'sunvault', 'beanstalk', 'modollaz'])
 /** Phones in either orientation and touch tablets up to 1024 px wide. */
 export const MOBILE_FULL_QUERY = '(max-width: 650px), (pointer: coarse) and (max-width: 1024px), (pointer: coarse) and (max-height: 600px)'
 
@@ -13,9 +13,10 @@ export const MOBILE_FULL_QUERY = '(max-width: 650px), (pointer: coarse) and (max
  * button so a page that fails to load never traps the player.
  */
 export function useMobileFullPlay(moduleId: string | undefined, frame: RefObject<HTMLIFrameElement | null>) {
-  const supported = !!moduleId && MOBILE_FULL_MODULES.has(moduleId)
+  const playing = !!moduleId
+  const supported = playing && MOBILE_FULL_MODULES.has(moduleId)
   const [mobile, setMobile] = useState(false)
-  const [wanted, setWanted] = useState(true)
+  const [wanted, setWanted] = useState(supported)
   const [ack, setAck] = useState(false)
 
   useEffect(() => {
@@ -27,13 +28,13 @@ export function useMobileFullPlay(moduleId: string | undefined, frame: RefObject
     return () => query.removeEventListener('change', update)
   }, [])
 
-  useEffect(() => { setWanted(true); setAck(false) }, [moduleId])
+  useEffect(() => { setWanted(supported); setAck(false) }, [moduleId, supported])
 
-  const available = supported && mobile
+  const available = playing && mobile
   const full = available && wanted
 
   useEffect(() => {
-    if (!supported) return
+    if (!playing) return
     const send = () => frame.current?.contentWindow?.postMessage({ type: 'tl-full', on: full }, window.location.origin)
     send()
     const listen = (event: MessageEvent) => {
@@ -45,7 +46,7 @@ export function useMobileFullPlay(moduleId: string | undefined, frame: RefObject
     }
     window.addEventListener('message', listen)
     return () => window.removeEventListener('message', listen)
-  }, [supported, full, frame])
+  }, [playing, full, frame])
 
   useEffect(() => {
     if (!full) return

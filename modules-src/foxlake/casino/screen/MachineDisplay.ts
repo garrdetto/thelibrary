@@ -193,7 +193,7 @@ export class MachineDisplay {
     g.shadowBlur = 0
     g.font = '600 26px Arial,sans-serif'
     g.fillStyle = '#e8e0c8'
-    g.fillText(`${this.def.family === 'gold' || this.def.family === 'goldwheel' ? '1,024 WAYS' : this.def.family === 'house' ? '243 WAYS' : `${this.def.family === 'collect' ? 20 : 25} LINES`} · ${this.def.credits} CREDITS`, w / 2, h * 0.9)
+    g.fillText(`${this.def.family === 'gold' || this.def.family === 'goldwheel' ? '1,024 WAYS' : this.def.family === 'house' ? '243 WAYS' : `${this.def.family === 'collect' || this.def.family === 'dollaz' ? 20 : 25} LINES`} · ${this.def.credits} CREDITS`, w / 2, h * 0.9)
     this.screenTex.update(true)
   }
 

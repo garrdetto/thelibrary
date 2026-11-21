@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { ArrowRight, Layers, Radio, Sparkles, Users } from 'lucide-react'
+import { ArrowRight, Layers, Radio, Smartphone, Sparkles, Users } from 'lucide-react'
 import { HubSlideshow } from './HubSlideshow'
 import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
+import { PHONE_TOUCH_QUERY, useMediaQuery } from '@/lib/use-media-query'
 import type { LearningModule, ModuleId } from '@/lib/modules'
 
 const ALL = 'all'
 const GROUPED = 'grouped'
+const MOBILE = ':mobile'
 const PICK_COUNT = 8
 
 function ModuleCard({ item, onLaunch }: { item: LearningModule; onLaunch: (id: ModuleId) => void }) {
   return <button type="button" className="module-card" style={{ '--module-accent': item.accent } as CSSProperties} onClick={() => onLaunch(item.id)}>
-    <span className="module-art"><img src={item.image} alt="" loading="lazy"/><span className="module-launch">Launch <ArrowRight size={14}/></span></span>
+    <span className="module-art"><img src={item.image} alt="" loading="lazy"/>{item.mobile && <span className="module-mobile"><Smartphone size={13} strokeWidth={2.2} aria-hidden="true"/> Mobile friendly</span>}<span className="module-launch">Launch <ArrowRight size={14}/></span></span>
     <span className="module-meta">
       <small>{item.subject}</small>
       <strong>{item.title}</strong>
@@ -24,12 +26,17 @@ function ModuleCard({ item, onLaunch }: { item: LearningModule; onLaunch: (id: M
 
 export function ModuleHub({ onLaunch, account, online }: { onLaunch: (id: ModuleId) => void; account: ReactNode; online: ReactNode; username: string | null }) {
   const [filter, setFilter] = useState<string>(ALL)
+  const picked = useRef(false)
+  const phone = useMediaQuery(PHONE_TOUCH_QUERY)
   const layout = useModuleLayout()
   const { visible: learningModules, featured, groups } = useMemo(() => arrangeModules(layout), [layout])
+  const mobileModules = useMemo(() => learningModules.filter(item => item.mobile), [learningModules])
   const activeGroup = groups.find(group => group.category.id === filter)
-  const shown = activeGroup ? activeGroup.modules : learningModules
-  useEffect(() => { if (filter !== ALL && filter !== GROUPED && !activeGroup) setFilter(ALL) }, [filter, activeGroup])
-  const filters = [{ id: ALL, name: 'All' }, { id: GROUPED, name: 'By category' }, ...groups.map(group => group.category)]
+  const shown = filter === MOBILE ? mobileModules : activeGroup ? activeGroup.modules : learningModules
+  useEffect(() => { if (filter !== ALL && filter !== GROUPED && filter !== MOBILE && !activeGroup) setFilter(ALL) }, [filter, activeGroup])
+  useEffect(() => { if (phone && !picked.current) setFilter(MOBILE) }, [phone])
+  function choose(id: string) { picked.current = true; setFilter(id) }
+  const filters = [{ id: ALL, name: 'All' }, { id: MOBILE, name: 'Mobile friendly' }, { id: GROUPED, name: 'By category' }, ...groups.map(group => group.category)]
   const [picks, setPicks] = useState<typeof learningModules | null>(null)
   useEffect(() => {
     const pool = [...learningModules]
@@ -54,6 +61,7 @@ export function ModuleHub({ onLaunch, account, online }: { onLaunch: (id: Module
           <span><Layers size={15}/><b>{learningModules.length}</b> modules</span>
           <span><Radio size={15}/><b>Live</b> head-to-head</span>
           <span><Users size={15}/><b>Room codes</b> for online sessions</span>
+          <span><Smartphone size={15}/><b>{mobileModules.length}</b> mobile friendly</span>
         </div>
         <div className="hub-actions">
           <button type="button" className="hub-cta" onClick={() => onLaunch(featured.id)}>Launch {featured.title} <ArrowRight size={18}/></button>
@@ -67,9 +75,10 @@ export function ModuleHub({ onLaunch, account, online }: { onLaunch: (id: Module
         <div className="hub-section-head">
           <h2>Module Library</h2>
           <div className="hub-filters" role="group" aria-label="Sort modules by category">
-            {filters.map(item => <button type="button" key={item.id} aria-pressed={filter === item.id} className={filter === item.id ? 'is-active' : ''} onClick={() => setFilter(item.id)}>{item.name}</button>)}
+            {filters.map(item => <button type="button" key={item.id} aria-pressed={filter === item.id} className={`${filter === item.id ? 'is-active' : ''}${item.id === MOBILE ? ' hub-filter-mobile' : ''}`} onClick={() => choose(item.id)}>{item.id === MOBILE && <Smartphone size={14} strokeWidth={2.2} aria-hidden="true"/>}{item.name}</button>)}
           </div>
         </div>
+        {filter === MOBILE && <p className="hub-filter-note"><Smartphone size={15} aria-hidden="true"/><span>{mobileModules.length ? `${mobileModules.length} modules that play well on a phone by touch.` : 'No mobile-friendly modules are showing right now.'} <button type="button" onClick={() => choose(ALL)}>Show all modules</button></span></p>}
         {filter === GROUPED ? groups.map(group => <section key={group.category.id} className="hub-category" aria-labelledby={`hub-category-${group.category.id}`}>
           <h3 id={`hub-category-${group.category.id}`}>{group.category.name}<small>{group.modules.length}</small></h3>
           <div className="hub-grid">{group.modules.map(item => <ModuleCard key={item.id} item={item} onLaunch={onLaunch}/>)}</div>

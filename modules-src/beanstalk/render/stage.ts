@@ -14,6 +14,9 @@ export interface StageHooks {
 export interface PlayOptions {
   turbo: boolean
   reduced: boolean
+  plaque?: boolean
+  format?: (cents: number) => string
+  onWin?: () => void
 }
 
 interface ReelAnim {
@@ -58,6 +61,8 @@ const easeOutBack = (t: number) => {
   return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2
 }
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
+const BOARD_FRAME = 14
+const STALK_ROOM = 0.6
 
 export class Stage {
   private readonly ctx: CanvasRenderingContext2D
@@ -81,7 +86,7 @@ export class Stage {
   private connectors: Connector[] = []
   private highlight: Set<number> | null = null
   private focus: Set<number> | null = null
-  private winText: { text: string; sub: string; born: number; big: number } | null = null
+  private winText: { amount: number; format: (cents: number) => string; sub: string; born: number } | null = null
   private multiplierFlash: { value: number; born: number } | null = null
   private glitchUntil = 0
   private anticipating = -1
@@ -230,13 +235,14 @@ export class Stage {
       for (const win of result.ways) for (const [reel, row] of win.cells) cells.add(key(reel, row))
       for (const [reel, row] of result.scatter.win > 0 ? result.scatter.cells : []) cells.add(key(reel, row))
       this.highlight = cells
-      const big = multiple >= 50 ? 3 : multiple >= 25 ? 2 : multiple >= 12 ? 1 : 0
-      this.winText = { text: '', sub: result.multiplier > 1 ? `Bean Burst ×${result.multiplier}` : `${result.ways.length + (result.scatter.win > 0 ? 1 : 0)} win${result.ways.length + (result.scatter.win > 0 ? 1 : 0) === 1 ? '' : 's'}`, born: performance.now(), big }
+      const plaque = options.plaque !== false
+      const count = result.ways.length + (result.scatter.win > 0 ? 1 : 0)
+      if (plaque) this.winText = { amount: result.stepWin, format: options.format ?? ((cents) => (cents / 100).toFixed(2)), sub: result.multiplier > 1 ? `Bean Burst ×${result.multiplier}` : `${count} win${count === 1 ? '' : 's'}`, born: performance.now() }
       this.hooks.win(multiple)
-      if (big > 0) this.burst('coin', 30 + big * 30)
-      else if (!options.turbo) this.burst('leaf', 10)
-      await this.wait((big ? 1700 + big * 600 : 900) * fast)
-      if (!options.turbo && result.ways.length > 1 && result.ways.length <= 4) {
+      options.onWin?.()
+      if (!options.turbo) this.burst('leaf', multiple >= 5 ? 18 : 10)
+      await this.wait((plaque ? 900 : 750) * fast)
+      if (plaque && !options.turbo && result.ways.length > 1 && result.ways.length <= 4) {
         for (const win of result.ways) {
           this.focus = new Set(win.cells.map(([reel, row]) => key(reel, row)))
           await this.wait(620)
@@ -244,10 +250,6 @@ export class Stage {
         this.focus = null
       }
     }
-  }
-
-  setWinLabel(text: string): void {
-    if (this.winText) this.winText.text = text
   }
 
   private fillerFor(reel: number, mode: Mode): number[] {
@@ -274,9 +276,11 @@ export class Stage {
     this.height = Math.max(1, rect.height)
     this.canvas.width = Math.round(this.width * this.dpr)
     this.canvas.height = Math.round(this.height * this.dpr)
-    const padX = Math.max(30, this.width * 0.07)
-    const padY = Math.max(18, this.height * 0.05)
-    this.cell = Math.max(24, Math.min((this.width - padX * 2) / REELS, (this.height - padY * 2) / ROWS))
+    const usableW = this.width - 2 * (BOARD_FRAME + Math.max(6, this.width * 0.02))
+    const usableH = this.height - 2 * (BOARD_FRAME + Math.max(8, this.height * 0.04))
+    const withStalks = Math.min(usableW / (REELS + STALK_ROOM * 2), usableH / ROWS)
+    const boardOnly = Math.min(usableW / REELS, usableH / ROWS)
+    this.cell = Math.max(24, withStalks >= boardOnly * 0.9 ? withStalks : boardOnly)
     this.originX = (this.width - this.cell * REELS) / 2
     this.originY = (this.height - this.cell * ROWS) / 2
   }
@@ -362,7 +366,8 @@ export class Stage {
   private drawStalks(ctx: CanvasRenderingContext2D, now: number): void {
     const sway = this.reduced ? 0 : Math.sin(now / 1400) * 6
     for (const side of [-1, 1]) {
-      const baseX = side < 0 ? this.originX - this.cell * 0.32 : this.originX + this.cell * REELS + this.cell * 0.32
+      const inset = this.cell * 0.2
+      const baseX = side < 0 ? Math.max(inset, this.originX - this.cell * 0.32) : Math.min(this.width - inset, this.originX + this.cell * REELS + this.cell * 0.32)
       ctx.save()
       ctx.lineCap = 'round'
       for (const [offset, width, color] of [[0, this.cell * 0.2, '#2f7a24'], [side * this.cell * 0.06, this.cell * 0.11, '#6ccf48']] as const) {
@@ -605,12 +610,15 @@ export class Stage {
       ctx.restore()
     }
     const win = this.winText
-    if (!win || !win.text) return
-    const fade = 1 - clamp01((now - win.born - (win.big ? 5200 : 3200)) / 500)
+    if (!win) return
+    const fade = 1 - clamp01((now - win.born - 3200) / 500)
     if (fade <= 0) return
     const t = clamp01((now - win.born) / 400)
-    const size = this.cell * (win.big ? 0.62 + win.big * 0.12 : 0.5) * easeOutBack(t)
+    const size = this.cell * 0.5 * easeOutBack(t)
     if (size <= 0) return
+    const counted = this.reduced ? win.amount : Math.floor(win.amount * (1 - (1 - clamp01((now - win.born) / 650)) ** 3))
+    const text = win.format(counted)
+    const cx = this.originX + this.cell * REELS * 0.5
     const cy = this.originY + this.cell * ROWS * 0.5
     ctx.save()
     ctx.globalAlpha = fade
@@ -618,29 +626,23 @@ export class Stage {
     ctx.textBaseline = 'middle'
     ctx.fillStyle = 'rgba(20,40,10,0.55)'
     ctx.beginPath()
-    ctx.roundRect(this.width / 2 - this.cell * 1.9, cy - size * 0.95, this.cell * 3.8, size * (win.big ? 2.6 : 1.9), 18)
+    ctx.roundRect(cx - this.cell * 1.9, cy - size * 0.95, this.cell * 3.8, size * 1.9, 18)
     ctx.fill()
-    if (win.big) {
-      const label = win.big >= 3 ? 'GIANT WIN' : win.big === 2 ? 'HUGE WIN' : 'BIG WIN'
-      ctx.font = `${Math.round(size * 0.55)}px ${DISPLAY_FONT}`
-      ctx.fillStyle = '#9ef06a'
-      ctx.fillText(label, this.width / 2, cy - size * 0.45)
-    }
     ctx.font = `${Math.round(size)}px ${DISPLAY_FONT}`
     ctx.lineWidth = Math.max(4, size * 0.14)
     ctx.lineJoin = 'round'
     ctx.strokeStyle = '#3a1f06'
-    const textY = win.big ? cy + size * 0.35 : cy
-    ctx.strokeText(win.text, this.width / 2, textY)
+    const textY = cy
+    ctx.strokeText(text, cx, textY)
     const gold = ctx.createLinearGradient(0, textY - size / 2, 0, textY + size / 2)
     gold.addColorStop(0, '#fff8c8')
     gold.addColorStop(0.5, '#ffd34a')
     gold.addColorStop(1, '#d8851a')
     ctx.fillStyle = gold
-    ctx.fillText(win.text, this.width / 2, textY)
+    ctx.fillText(text, cx, textY)
     ctx.font = `${Math.round(size * 0.32)}px ${DISPLAY_FONT}`
     ctx.fillStyle = '#e8ffd8'
-    ctx.fillText(win.sub, this.width / 2, textY + size * 0.72)
+    ctx.fillText(win.sub, cx, textY + size * 0.72)
     ctx.restore()
   }
 

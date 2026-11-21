@@ -19,7 +19,17 @@ export interface Layout {
   gridY: number
   gridW: number
   gridH: number
+  trim: number
 }
+
+const FRAME_PAD = 0.07
+const FRAME_PILLAR = 0.11
+const FRAME_BAND = 0.2
+const ORNAMENT = 1.6
+const FRAME_MARGIN = 0.03
+const COMPACT_TRIM = 0.62
+const COMPACT_SIDE = 600
+const COMPACT_HEIGHT = 480
 
 export interface ReelSpinHooks {
   turbo: boolean
@@ -134,7 +144,8 @@ const easeOutBack = (t: number) => 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
 export class Scene {
-  layout: Layout = { width: 1, height: 1, cell: 1, gap: 0, gridX: 0, gridY: 0, gridW: 1, gridH: 1 }
+  layout: Layout = { width: 1, height: 1, cell: 1, gap: 0, gridX: 0, gridY: 0, gridW: 1, gridH: 1, trim: 1 }
+  meterTarget: (() => Point | null) | null = null
   strips: ReelStrip[] = []
   stripMode: 'reels' | 'cells' = 'reels'
   theme: Theme = 'base'
@@ -170,13 +181,19 @@ export class Scene {
     this.buildReelStrips()
   }
 
-  resize(width: number, height: number): void {
-    const gapRatio = 0.045
-    const cell = Math.max(24, Math.min((width * 0.9) / (REELS + (REELS - 1) * gapRatio), (height * 0.8) / ROWS))
+  resize(width: number, height: number, pixelRatio = 1): void {
+    const compact = width / pixelRatio < COMPACT_SIDE || height / pixelRatio < COMPACT_HEIGHT
+    const trim = compact ? COMPACT_TRIM : 1
+    const gapRatio = compact ? 0.035 : 0.045
+    const side = FRAME_PAD + trim * (FRAME_PILLAR / 2 + (FRAME_BAND * ORNAMENT) / 2) + FRAME_MARGIN
+    const edge = FRAME_PAD + trim * (FRAME_BAND / 2 + (FRAME_BAND * ORNAMENT) / 2) + FRAME_MARGIN
+    const byWidth = width / (REELS + (REELS - 1) * gapRatio + side * 2)
+    const byHeight = height / (ROWS + edge * 2)
+    const cell = Math.max(24, Math.min(byWidth, byHeight))
     const gap = cell * gapRatio
     const gridW = REELS * cell + (REELS - 1) * gap
     const gridH = ROWS * cell
-    this.layout = { width, height, cell, gap, gridW, gridH, gridX: (width - gridW) / 2, gridY: (height - gridH) / 2 + height * 0.015 }
+    this.layout = { width, height, cell, gap, gridW, gridH, gridX: (width - gridW) / 2, gridY: (height - gridH) / 2, trim }
     this.particles.scale = cell / 180
     this.positionStrips()
     if (this.zone.visible) {
@@ -201,7 +218,16 @@ export class Scene {
   }
 
   meterPoint(): Point {
-    return { x: this.layout.width / 2, y: this.layout.height + this.layout.cell * 0.2 }
+    const { width, height, cell } = this.layout
+    const reach = cell * 0.2
+    const target = this.meterTarget?.()
+    if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return { x: width / 2, y: height + reach }
+    const inside = target.x >= 0 && target.x <= width && target.y >= 0 && target.y <= height
+    if (inside) return target
+    const clampX = Math.min(width + reach, Math.max(-reach, target.x))
+    const clampY = Math.min(height + reach, Math.max(-reach, target.y))
+    if (target.y > height || target.y < 0) return { x: Math.min(width - reach, Math.max(reach, clampX)), y: clampY }
+    return { x: clampX, y: Math.min(height - reach, Math.max(reach, clampY)) }
   }
 
   private stripFor(reel: number, row: number): { strip: ReelStrip; row: number } {
@@ -679,19 +705,19 @@ export class Scene {
   }
 
   private drawFrame(): void {
-    const { gridX, gridY, gridW, gridH, cell, gap } = this.layout
+    const { gridX, gridY, gridW, gridH, cell, gap, trim } = this.layout
     const offset = this.shakeOffset()
     const x = gridX + offset.x
     const y = gridY + offset.y
     const u = this.under
     u.cell(AtlasCell.Glow, x + gridW / 2, y + gridH / 2, Math.max(gridW, gridH) * 1.5, { color: [0, 0, 0, 0.75] })
-    const pad = cell * 0.07
+    const pad = cell * FRAME_PAD
     u.rect(x - pad, y - pad, gridW + pad * 2, gridH + pad * 2, [0.06, 0.035, 0.02, 1])
-    const band = cell * 0.2
+    const band = cell * FRAME_BAND * trim
     const glow: Color = this.theme === 'free' ? [0.75, 0.45, 1, 0.55] : this.theme === 'respin' ? [0.4, 1, 0.6, 0.45] : [1, 0.7, 0.3, 0.35]
     const pulse = 0.7 + 0.3 * Math.sin(this.time * 2.2)
     u.frame(x - pad, y - pad, gridW + pad * 2, gridH + pad * 2, cell * 0.12, [glow[0], glow[1], glow[2], glow[3] * pulse], 1)
-    const pillar = cell * 0.11
+    const pillar = cell * FRAME_PILLAR * trim
     u.quad(x - pad - pillar / 2, y + gridH / 2, gridH / 2 + pad, pillar / 2, BAR_UV, { rotation: Math.PI / 2 })
     u.quad(x + gridW + pad + pillar / 2, y + gridH / 2, gridH / 2 + pad, pillar / 2, BAR_UV, { rotation: -Math.PI / 2 })
     u.band(x - pad - pillar, y - pad - band, gridW + (pad + pillar) * 2, band)
@@ -702,7 +728,7 @@ export class Scene {
     }
     for (const [cx, cy] of [[x - pad - pillar / 2, y - pad - band / 2], [x + gridW + pad + pillar / 2, y - pad - band / 2], [x - pad - pillar / 2, y + gridH + pad + band / 2], [x + gridW + pad + pillar / 2, y + gridH + pad + band / 2]]) {
       u.cell(AtlasCell.Glow, cx, cy, band * 2.4, { color: [glow[0], glow[1], glow[2], 0.7 * pulse], additive: 1 })
-      u.cell(Sym.Ankh, cx, cy, band * 1.6, { shimmer: 1 })
+      u.cell(Sym.Ankh, cx, cy, band * ORNAMENT, { shimmer: 1 })
     }
   }
 

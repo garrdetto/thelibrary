@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { evaluateWays, buildStrip, windowAt } from '../casino/math/reels'
 import { evaluateLines, LINES_25 } from '../casino/math/lines'
 import { seededRng, type Rng } from '../casino/math/rng'
-import { MACHINES, MACHINE_BY_ID, playSpin, type MachineState, type SpinResult } from '../casino/math/machines'
+import { MACHINES, MACHINE_BY_ID, MO_DOLLAZ_ID, dollazCollect, playSpin, type Feature, type MachineState, type SpinResult } from '../casino/math/machines'
 import { act, deal, newShoe, publicView, total } from '../casino/math/blackjack'
 import { BAR, BLACKJACK, MACHINE_SPOTS, insideCasino, nearestSeat } from '../casino/CasinoLayout'
 
@@ -186,9 +186,76 @@ test('blackjack: totals, the dealer hides the hole card, stands on 17, and settl
 test('the club holds every seat: ten machines, five stools, five blackjack spots, all inside its walls and apart', () => {
   for (const m of MACHINE_SPOTS) assert.ok(insideCasino(m.seat.x, m.seat.z))
   for (const s of [...BAR.stools, ...BLACKJACK.seats]) assert.ok(insideCasino(s.x, s.z))
-  assert.equal(MACHINE_SPOTS.length, 10)
+  assert.equal(MACHINE_SPOTS.length, MACHINES.length)
   assert.equal(BAR.stools.length, 5)
   assert.equal(nearestSeat(BAR.stools[2].x, BAR.stools[2].z + 0.3, 1)?.kind, 'stool')
   const all = [...MACHINE_SPOTS.map((m) => m.seat), ...BAR.stools, ...BLACKJACK.seats]
   for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(Math.hypot(all[i].x - all[j].x, all[i].z - all[j].z) > 0.8, `seats ${i} and ${j} overlap`)
+})
+
+const DOLLAZ = MACHINE_BY_ID[MO_DOLLAZ_ID]
+const inside = (zone: { reel: number; row: number; size: number }, cell: string) => {
+  const [r, row] = cell.split(',').map(Number)
+  return r >= zone.reel && r < zone.reel + zone.size && row >= zone.row && row < zone.row + zone.size
+}
+const kindsOf = (f: Feature | null): string[] => (!f ? [] : f.kind === 'chain' ? f.parts.map((p) => p.kind) : [f.kind])
+
+test("Mo' Dollaz: the money bag is on reel 1 only, cash bills on reels 2-5 only, and a bag with any bill always starts Cash Collect", () => {
+  DOLLAZ.strips.forEach((strip, reel) => {
+    assert.equal(strip.includes('M'), reel === 0)
+    assert.equal(strip.includes('N'), reel > 0)
+  })
+  const rng = seededRng(5)
+  let checked = 0
+  for (let i = 0; i < 200000 && checked < 25; i++) {
+    const r = playSpin(DOLLAZ, 1, rng, {})
+    if (r.base.grid[0].includes('M') && Object.keys(r.base.orbs ?? {}).length) {
+      checked++
+      assert.ok(kindsOf(r.feature).includes('cashcollect'))
+    }
+    if (r.feature?.kind === 'chain') assert.equal(r.feature.win, Math.round(r.feature.parts.reduce((a, p) => a + p.win, 0) * 100) / 100)
+  }
+  assert.ok(checked >= 10)
+})
+
+test("Mo' Dollaz Cash Collect: trigger bills are paid, the zone hops to every new bill, never lands one under itself, and grows at 5, 9 and 12 bills", () => {
+  const rng = seededRng(11)
+  for (let n = 0; n < 400; n++) {
+    const f = dollazCollect(DOLLAZ, 1, rng, { '1,1': { credits: 2 }, '3,0': { credits: 5 } })
+    assert.deepEqual(f.start?.map((c) => c.cell), ['1,3', '3,2'])
+    let zone = f.zone!
+    let bills = 2
+    let spins = 5
+    for (const step of f.steps) {
+      assert.equal(step.path?.length, step.gems.length)
+      if (zone.size === 5) assert.equal(step.gems.length, 0)
+      for (const gem of step.gems) assert.ok(!inside(zone, gem.cell), 'a bill landed under the zone')
+      step.gems.forEach((gem, i) => assert.ok(inside(step.path![i], gem.cell), 'the zone did not reach the bill'))
+      for (const coin of step.coins) assert.equal(coin.collected, inside(zone, coin.cell))
+      const before = bills
+      bills += step.gems.length
+      for (const [need, add] of [[5, 3], [9, 2], [12, 1]]) if (before < need && bills >= need) spins += add
+      assert.equal(step.zone.size, bills >= 12 ? 5 : bills >= 9 ? 4 : bills >= 5 ? 3 : 2)
+      zone = step.zone
+    }
+    assert.equal(f.steps.length, spins)
+    assert.equal(f.steps[f.steps.length - 1].left, 0)
+    assert.equal(f.win, f.steps[f.steps.length - 1].collected)
+  }
+})
+
+test("Mo' Dollaz meters stay within their limits and a full meter guarantees its feature", () => {
+  const rng = seededRng(3)
+  let state: MachineState = { meters: { green: 0, pink: DOLLAZ.meterFull!.pink - 1, blue: 0 } }
+  for (let i = 0; i < 5000; i++) {
+    const before = state.meters!.pink
+    const r = playSpin(DOLLAZ, 1, rng, state)
+    const scatters = r.base.grid.flat().filter((s) => s === 'S').length
+    if (before + scatters >= DOLLAZ.meterFull!.pink) {
+      assert.ok(kindsOf(r.feature).includes('freegames'))
+      break
+    }
+    for (const k of ['green', 'pink', 'blue'] as const) assert.ok(r.state.meters![k] <= DOLLAZ.meterFull![k])
+    state = r.state
+  }
 })

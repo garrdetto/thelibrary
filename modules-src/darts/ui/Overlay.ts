@@ -5,6 +5,7 @@ import { label } from '../shared/Board'
 import type { Announcement, DartThrow, GameState, Player, RoomPlayerView } from '../shared/interfaces'
 import { IDEAL_SPEED, METER, meterZone } from '../shared/Physics'
 import { CRICKET_TARGETS, DARTS_PER_TURN, checkoutRoute, currentPlayer, modeLabel, sideName, sideTotals, standings, throwerName } from '../shared/Rules'
+import { meterLayout, type Box } from './MeterLayout'
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id)
@@ -106,27 +107,28 @@ export class Overlay {
   private readonly hmeter = el<HTMLDivElement>('hmeter')
   private readonly hmeterMark = el<HTMLDivElement>('hmeter-mark')
   private meterSpot = ''
+  /** The phone layout in overlay.css, where the meter is narrower and has no label. */
+  private readonly narrowView = matchMedia('(max-width: 640px)')
+  /** A mouse or trackpad, so the hint says click and mentions Space. */
+  private readonly finePointer = matchMedia('(pointer: fine)')
   private cross = false
   private sideShown = ''
   private fillShown = ''
   private labelShown = ''
 
-  /** Puts the power meter just right of the board: `x` is the board's right edge and `y` the bull's height on screen in CSS pixels, `boardPx` the board's on-screen diameter. */
-  placeMeter(x: number, y: number, boardPx: number, width: number, height: number): void {
+  /** Places the power meter by the board (`meterLayout`): `bullX`/`bullY` is the bull and `boardRadius` the board's radius on screen in CSS pixels, `width`/`height` the HUD's size, and `avoid` the Throw button's box. */
+  placeMeter(bullX: number, bullY: number, boardRadius: number, width: number, height: number, avoid: Box | null): void {
     if (!width || !height) return
-    const meterHeight = Math.round(Math.min(height * 0.7, Math.max(140, boardPx * 0.8)))
-    const half = this.cross ? ((meterHeight - 12) * sideScale() + 12) / 2 : 17
-    const left = Math.round(Math.min(width - 27 - half, Math.max(8, x + 14 + half - 17)))
-    const top = Math.round(Math.min(height - meterHeight / 2 - 8, Math.max(meterHeight / 2 + 8, y)))
-    const tight = left + 23 + half + 150 > width
-    const spot = `${left}:${top}:${meterHeight}:${tight}:${this.cross}`
+    const layout = meterLayout({ width, height, bullX, bullY, boardRadius, cross: this.cross, narrow: this.narrowView.matches, sideScale: sideScale(), avoid })
+    const spot = `${layout.left}:${layout.top}:${layout.height}:${layout.half}:${layout.tight}:${layout.spot}`
     if (spot === this.meterSpot) return
     this.meterSpot = spot
-    this.meterWrap.style.setProperty('--meter-x', `${left}px`)
-    this.meterWrap.style.setProperty('--meter-y', `${top}px`)
-    this.meterWrap.style.setProperty('--meter-h', `${meterHeight}px`)
-    this.meterWrap.style.setProperty('--h-half', `${half}px`)
-    this.meterWrap.classList.toggle('is-tight', tight)
+    this.meterWrap.style.setProperty('--meter-x', `${layout.left}px`)
+    this.meterWrap.style.setProperty('--meter-y', `${layout.top}px`)
+    this.meterWrap.style.setProperty('--meter-h', `${layout.height}px`)
+    this.meterWrap.style.setProperty('--h-half', `${layout.half}px`)
+    this.meterWrap.classList.toggle('is-tight', layout.tight)
+    this.meterWrap.dataset.spot = layout.spot
   }
 
   constructor() {
@@ -187,7 +189,15 @@ export class Overlay {
       : statusText ?? (mine ? (state.players.length > 1 || player.members ? `${who} to throw` : 'Your throw') : `${who} is throwing`)
     this.renderThrows(player.currentRoundThrows)
     this.renderCheckout(state, player)
-    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? (this.cross ? 'Hold to aim, let go in the green for height · click again in the green for line · Space works too' : 'Hold to aim and power up · let go in the green · Space works too') : ''
+    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? this.throwHint() : ''
+  }
+
+  /** The turn strip's reminder of how to throw: aim by tapping or dragging the target, then the Throw button (Space too, on a computer). */
+  private throwHint(): string {
+    const fine = this.finePointer.matches
+    const aim = `${fine ? 'Click' : 'Tap'} or drag to aim`
+    const keys = fine ? ' · Space works too' : ''
+    return this.cross ? `${aim} · hold Throw, let go in the green · ${fine ? 'click' : 'tap'} it again in the green${keys}` : `${aim} · hold Throw, let go in the green${keys}`
   }
 
   private renderCards(state: GameState): void {
@@ -270,7 +280,7 @@ export class Overlay {
       this.fillShown = '0px'
       this.meter.classList.remove('is-on')
       this.meterFill.style.height = '0px'
-      this.meterLabel.textContent = 'Hold to throw'
+      this.meterLabel.textContent = 'Aim, then hold Throw'
       this.meterLabel.dataset.zone = 'idle'
       return
     }
