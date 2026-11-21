@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/fox-dollar.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Corner Cart</title>
@@ -14,8 +15,8 @@
   canvas { display: block; width: 100%; height: auto; border-radius: 10px; }
   .plan { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
   .plan section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
-  .plan h2 { margin: 0 0 10px; font: 700 22px Rajdhani, sans-serif; }
-  .plan h2 small { font: 600 12px Inter, sans-serif; color: var(--muted); margin-left: 6px; }
+  .plan h2 { margin: 0 0 10px; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
+  .plan h2 small { font: 600 12px 'TL Fox Dollar', Inter, sans-serif; color: var(--muted); margin-left: 6px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
   .row:last-child { border-bottom: 0; }
   .row small { color: var(--muted); display: block; font-size: 12px; }
@@ -24,7 +25,7 @@
   .seg { display: flex; flex-wrap: wrap; gap: 6px; }
   .seg button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
   .price { display: flex; align-items: center; gap: 10px; }
-  .price b { font: 700 30px Rajdhani, sans-serif; min-width: 84px; text-align: center; font-variant-numeric: tabular-nums; }
+  .price b { font: 700 30px 'TL Fox Dollar', Rajdhani, sans-serif; min-width: 84px; text-align: center; font-variant-numeric: tabular-nums; }
   .forecast { font-size: 14px; line-height: 1.5; }
   .forecast b { font-size: 16px; }
   .ledger { font-size: 13px; color: var(--muted); line-height: 1.6; }
@@ -32,9 +33,9 @@
   .go { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
   .go p { margin: 0 auto 0 0; color: var(--muted); font-size: 13px; }
   .good { color: var(--good); } .bad { color: var(--bad); }
-  .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px Rajdhani, sans-serif; }
+  .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay .ov-stats > div { display: block; text-align: center; }
-  .ov-stats span { display: block; font: 600 10px Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+  .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
   fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   fieldset:disabled { opacity: .55; }
 </style>

@@ -10,24 +10,24 @@
   :root { --bg: #0b0f19; --panel: #131a2a; --cell: #1b2438; --line: #26324c; --text: #e8eefc; --muted: #8796b5; --accent: #ffcf4a; --accent2: #ff3b7a; --good: #2fd6a3; --bad: #ff5a7a; }
   @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #eef2f8; --panel: #ffffff; --cell: #e8edf6; --line: #d3dae8; --text: #121826; --muted: #5d6b86; } }
   * { box-sizing: border-box; }
-  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: 'TL Fox Dollar', Inter, system-ui, sans-serif; }
   body { display: flex; justify-content: center; padding: 16px 16px 32px; background-image: radial-gradient(circle at 15% 0%, #ffcf4a14, transparent 40%), radial-gradient(circle at 90% 10%, #ff3b7a14, transparent 40%); }
   main { width: min(100%, 940px); }
   header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-  h1 { margin: 0; font: 700 46px/0.95 Rajdhani, sans-serif; letter-spacing: 1px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  h2 { margin: 0; font: 700 28px/1.1 Rajdhani, sans-serif; }
-  h3 { margin: 0; font: 700 24px Rajdhani, sans-serif; }
+  h1 { margin: 0; font: 700 46px/0.95 'TL Fox Dollar', Rajdhani, sans-serif; letter-spacing: 1px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h2 { margin: 0; font: 700 28px/1.1 'TL Fox Dollar', Rajdhani, sans-serif; }
+  h3 { margin: 0; font: 700 24px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .room-tag { padding: 8px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
   .room-tag b { font: 600 16px "JetBrains Mono", monospace; color: var(--text); letter-spacing: 2px; margin-left: 4px; }
   #status { min-height: 18px; margin: 0 0 10px; color: var(--muted); font-size: 13px; }
-  button { font: 600 14px Inter, sans-serif; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; cursor: pointer; }
+  button { font: 600 14px 'TL Fox Dollar', Inter, sans-serif; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; cursor: pointer; }
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .45; cursor: default; }
   button.primary { background: linear-gradient(135deg, var(--accent), #ff9f3b); color: #1d1300; border: 0; font-weight: 800; }
   button.ghost { background: transparent; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  input, select { font: 500 15px Inter, sans-serif; color: var(--text); background: var(--cell); border: 1px solid var(--line); padding: 9px 12px; border-radius: 9px; min-width: 0; }
-  kbd { font: 600 11px Inter, sans-serif; padding: 1px 5px; border: 1px solid #0003; border-bottom-width: 2px; border-radius: 5px; margin-left: 4px; opacity: .8; }
+  input, select { font: 500 15px 'TL Fox Dollar', Inter, sans-serif; color: var(--text); background: var(--cell); border: 1px solid var(--line); padding: 9px 12px; border-radius: 9px; min-width: 0; }
+  kbd { font: 600 11px 'TL Fox Dollar', Inter, sans-serif; padding: 1px 5px; border: 1px solid #0003; border-bottom-width: 2px; border-radius: 5px; margin-left: 4px; opacity: .8; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
   .card p { color: var(--muted); line-height: 1.5; }
   .center { text-align: center; }
@@ -42,8 +42,8 @@
   .chip.mine { box-shadow: 0 0 0 1px var(--pc) inset; }
   .chip.gone { opacity: .5; }
   .chip b { display: block; font-size: 14px; } .chip b small { color: var(--muted); font-weight: 600; font-size: 10px; letter-spacing: 1px; }
-  .chip span { font: 700 18px Rajdhani, sans-serif; color: var(--muted); }
-  .tag { position: absolute; right: 8px; top: 8px; font: 700 10px Inter, sans-serif; font-style: normal; letter-spacing: 1px; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; background: var(--cell); color: var(--muted); }
+  .chip span { font: 700 18px 'TL Fox Dollar', Rajdhani, sans-serif; color: var(--muted); }
+  .tag { position: absolute; right: 8px; top: 8px; font: 700 10px 'TL Fox Dollar', Inter, sans-serif; font-style: normal; letter-spacing: 1px; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; background: var(--cell); color: var(--muted); }
   .tag.done { background: #2fd6a333; color: var(--good); } .tag.pick { background: #ffcf4a33; color: var(--accent); }
   .lobby-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
   .lobby-head p { margin: 4px 0 0; }
@@ -73,7 +73,7 @@
   .contests button:hover:not(:disabled) { transform: translateY(-2px); transition: transform .12s; }
   .contests.locked button:disabled { opacity: .6; }
   .contests .ic { font-size: 28px; }
-  .contests b { font: 700 20px Rajdhani, sans-serif; }
+  .contests b { font: 700 20px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .contests small { color: var(--muted); font-weight: 500; line-height: 1.4; }
   .contests i { position: absolute; top: 10px; right: 10px; font-size: 11px; color: var(--muted); font-style: normal; }
   .contests .surprise { border-style: dashed; }
@@ -89,7 +89,7 @@
   .ready, .waiting { display: grid; justify-items: center; gap: 12px; text-align: center; padding: 20px; }
   .ready p, .waiting p { margin: 0; color: var(--muted); }
   .ready h3 { font-size: 30px; }
-  .count { font: 700 140px/1 Rajdhani, sans-serif; text-align: center; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .count { font: 700 140px/1 'TL Fox Dollar', Rajdhani, sans-serif; text-align: center; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .count.anim { animation: zoom .65s ease-out; }
   @keyframes zoom { from { transform: scale(1.6); opacity: 0; } 40% { opacity: 1; } to { transform: scale(1); } }
   .results { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
@@ -97,19 +97,19 @@
   .results .medal { width: 34px; font-size: 22px; text-align: center; font-weight: 700; color: var(--muted); }
   .results b { font-size: 16px; }
   .results .val { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .results .pts { font: 700 22px Rajdhani, sans-serif; color: var(--good); min-width: 40px; text-align: right; }
+  .results .pts { font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; color: var(--good); min-width: 40px; text-align: right; }
   .final h2 { font-size: 40px; margin: 6px 0 20px; }
   .podium { display: flex; justify-content: center; align-items: flex-end; gap: 14px; }
   .step { display: grid; justify-items: center; gap: 4px; width: 150px; }
   .step span { color: var(--muted); font-size: 13px; }
-  .step .block { width: 100%; display: grid; place-items: center; font: 700 34px Rajdhani, sans-serif; color: #1d1300; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, var(--pc), color-mix(in srgb, var(--pc) 60%, #000)); }
+  .step .block { width: 100%; display: grid; place-items: center; font: 700 34px 'TL Fox Dollar', Rajdhani, sans-serif; color: #1d1300; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, var(--pc), color-mix(in srgb, var(--pc) 60%, #000)); }
   .step.s0 .block { height: 120px; } .step.s1 .block { height: 84px; } .step.s2 .block { height: 60px; }
   .c-qd { position: relative; height: 340px; border-radius: 14px; overflow: hidden; cursor: pointer; user-select: none; touch-action: none; background: linear-gradient(#ffb766 0%, #ffd9a0 55%, #e9b46c 56%, #d49a52 100%); }
   .c-qd-sun { position: absolute; width: 90px; height: 90px; border-radius: 50%; background: #fff3b0; box-shadow: 0 0 60px #fff3b0; left: 50%; top: 24px; transform: translateX(-50%); }
   .c-qd-cactus { position: absolute; font-size: 54px; bottom: 120px; } .c-qd-cactus.a { left: 8%; } .c-qd-cactus.b { right: 10%; font-size: 40px; bottom: 140px; }
   .c-qd-sign { position: absolute; left: 50%; top: 52px; transform: translateX(-50%); min-width: 190px; padding: 14px 22px; background: #8a5a2b; border: 4px solid #5e3a17; border-radius: 10px; text-align: center; box-shadow: 0 8px 0 #5e3a17; }
   .c-qd-sign::before { content: ""; position: absolute; left: 50%; top: -60px; width: 6px; height: 60px; background: #5e3a17; }
-  .c-qd-sign b { font: 700 40px Rajdhani, sans-serif; color: #ffe9c7; letter-spacing: 2px; }
+  .c-qd-sign b { font: 700 40px 'TL Fox Dollar', Rajdhani, sans-serif; color: #ffe9c7; letter-spacing: 2px; }
   .c-qd[data-sign="go"] .c-qd-sign { background: #1fae68; border-color: #137a47; box-shadow: 0 8px 0 #137a47; animation: qdpop .18s; }
   .c-qd[data-sign="fake"] .c-qd-sign { background: #c27a2c; }
   .c-qd[data-sign="early"] .c-qd-sign { background: #7a4bd6; border-color: #4f2c96; box-shadow: 0 8px 0 #4f2c96; }
@@ -124,15 +124,15 @@
   .c-qd.hit .c-qd-splash { animation: qdsplash .7s forwards; }
   @keyframes qdsplash { 0% { opacity: 0; transform: translateX(-160px) scale(.4); } 40% { opacity: 1; transform: translateX(0) scale(1.2); } 100% { opacity: 0; transform: scale(1.4); } }
   .c-qd.early .c-qd-me { filter: grayscale(.6); }
-  .c-qd-hud { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; padding: 8px 14px; background: #0006; color: #fff; font: 700 18px Rajdhani, sans-serif; }
+  .c-qd-hud { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; padding: 8px 14px; background: #0006; color: #fff; font: 700 18px 'TL Fox Dollar', Rajdhani, sans-serif; }
   @media (max-width: 560px) { .c-qd { height: 300px; } .c-qd-me svg, .c-qd-rival svg { width: 72px; height: 72px; } .c-qd-sign b { font-size: 30px; } }
   .c-canvas { display: block; width: 100%; border-radius: 10px; touch-action: none; cursor: crosshair; }
   .c-note { text-align: center; margin: 8px 0; color: var(--muted); min-height: 20px; font-size: 15px; }
   .c-reflex { width: 100%; min-height: 280px; border: 0; border-radius: 14px; display: grid; place-content: center; gap: 6px; color: #fff; touch-action: none; user-select: none; }
-  .c-reflex b { font: 700 64px Rajdhani, sans-serif; } .c-reflex small { opacity: .8; }
+  .c-reflex b { font: 700 64px 'TL Fox Dollar', Rajdhani, sans-serif; } .c-reflex small { opacity: .8; }
   .c-reflex.wait { background: #c2334a; } .c-reflex.go { background: #1fae68; } .c-reflex.early { background: #7a4bd6; } .c-reflex.hit { background: #2a6fd6; }
   .c-stop { width: 100%; min-height: 300px; display: grid; place-content: center; gap: 6px; border-radius: 14px; background: var(--panel); user-select: none; touch-action: none; }
-  .c-stop em { font: 700 30px Rajdhani, sans-serif; font-style: normal; color: var(--accent); }
+  .c-stop em { font: 700 30px 'TL Fox Dollar', Rajdhani, sans-serif; font-style: normal; color: var(--accent); }
   .c-stop b { font: 600 84px/1 "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
   .c-stop small { color: var(--muted); }
   .c-stop.done b { color: var(--good); }
@@ -140,8 +140,8 @@
   .c-grid button { aspect-ratio: 1; border-radius: 12px; background: var(--panel); padding: 0; transition: background .12s, transform .12s; }
   .c-grid button.lit { background: var(--accent); transform: scale(1.04); } .c-grid button.ok { background: var(--good); } .c-grid button.miss { background: var(--bad); }
   .c-math, .c-clash { display: grid; gap: 12px; justify-items: center; }
-  .c-mathtop { display: flex; justify-content: space-between; width: 100%; max-width: 420px; font: 700 22px Rajdhani, sans-serif; color: var(--muted); }
-  .c-q { font: 700 52px Rajdhani, sans-serif; text-align: center; }
+  .c-mathtop { display: flex; justify-content: space-between; width: 100%; max-width: 420px; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; color: var(--muted); }
+  .c-q { font: 700 52px 'TL Fox Dollar', Rajdhani, sans-serif; text-align: center; }
   .c-q.pop { animation: pop .2s; } @keyframes pop { 50% { transform: scale(1.1); color: var(--good); } }
   .c-answer { font: 600 34px "JetBrains Mono", monospace; text-align: center; width: 180px; }
   .c-keypad { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; }

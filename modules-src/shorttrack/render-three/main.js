@@ -516,7 +516,7 @@ function randomLivery(r=Math.random,i=0){
     numColor:pre?pre.fill:dark?'#111111':'#ffffff',numOutline:pre?pre.outline:dark?'#ffffff':'#111111',numAccent:pre?pre.accent:a,numDoors:true,numRoof:true,numTail:true};
 }
 const numArtOpts=lv=>({text:lv.number,font:lv.numFont,style:lv.numStyle,slant:lv.numSlant,fill:lv.numColor,outline:lv.numOutline,accent:lv.numAccent});
-const chipFont=lv=>{const f=numFontOf(lv.numFont);return `font-family:'${f.family}','Arial Black',sans-serif;font-weight:${f.weight};font-style:${f.italic?'italic':'normal'}`;};
+const chipFont=lv=>{const f=numFontOf(lv.numFont);return `font-family:'TL Fox Dollar', '${f.family}','Arial Black',sans-serif;font-weight:${f.weight};font-style:${f.italic?'italic':'normal'}`;};
 function drawPattern(g,w,h,lv,fl){
   const p1=lv.primary,p2=lv.secondary,a=lv.accent;g.fillStyle=p1;g.fillRect(0,0,w,h);
   const fx=fl?0:w,dir=fl?1:-1;

@@ -15,13 +15,13 @@
       --r: 12px;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1118; color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1118; color: var(--ink); font: 13px/1.4 'TL Fox Dollar', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
     #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
     #status { position: fixed; inset: 0; display: grid; place-items: center; color: var(--mute); pointer-events: none; }
     body.ready #status { display: none; }
     #panel { position: fixed; top: 12px; left: 12px; z-index: 10; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
     body.clean #panel { display: none; }
-    h1 { margin: 0; font: 700 17px/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; }
+    h1 { margin: 0; font: 700 17px/1.2 'TL Fox Dollar', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; }
     h1 small { display: block; margin-top: 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
     h2 { margin: 12px 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
     .row { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -37,7 +37,7 @@
     body.clean #hud { display: none; }
     #hud h1 { font-size: 15px; }
     #where { margin-top: 4px; font-weight: 600; }
-    #speed { font: 700 22px/1.1 ui-sans-serif, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+    #speed { font: 700 22px/1.1 'TL Fox Dollar', ui-sans-serif, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
     #speed:empty, #hint:empty, #toast:empty { display: none; }
     #toast { margin-top: 6px; padding: 4px 8px; border-radius: 6px; background: rgba(79, 179, 255, 0.18); font-weight: 600; }
     #hint { margin-top: 4px; color: var(--accent); font-weight: 600; }
@@ -60,7 +60,7 @@
     #flight { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 10; display: grid; grid-template-columns: auto auto auto; gap: 4px 18px; align-items: center; padding: 10px 16px; max-width: calc(100vw - 24px); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-variant-numeric: tabular-nums; }
     #flight[hidden], body.clean #flight { display: none; }
     #flight canvas { grid-row: 1 / span 3; border-radius: 50%; }
-    #flight .big { font: 700 20px/1.1 ui-sans-serif, system-ui, sans-serif; }
+    #flight .big { font: 700 20px/1.1 'TL Fox Dollar', ui-sans-serif, system-ui, sans-serif; }
     #flight .dim { color: var(--mute); font-size: 11px; }
     #f-warn { grid-column: 1 / -1; color: #ff7a6b; font-weight: 700; letter-spacing: 0.06em; }
     #f-warn:empty { display: none; }

@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/fox-dollar.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sudoku</title>
@@ -28,8 +29,8 @@
   .notes span { display: grid; place-items: center; }
   .notes span.hl { color: var(--accent); font-weight: 800; }
   .pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; margin-top: 12px; }
-  .pad button { padding: 8px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 1px; font: 700 22px Rajdhani, sans-serif; touch-action: manipulation; }
-  .pad button small { font: 600 10px Inter, sans-serif; color: var(--muted); }
+  .pad button { padding: 8px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 1px; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; touch-action: manipulation; }
+  .pad button small { font: 600 10px 'TL Fox Dollar', Inter, sans-serif; color: var(--muted); }
   .pad button.empty { opacity: .35; }
   .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
   .tools button { padding: 9px 4px; touch-action: manipulation; }
@@ -38,7 +39,7 @@
   .status.bad { color: var(--bad); } .status.ok { color: var(--good); } .status.warn { color: var(--warn); }
   .pauseov { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; z-index: 4; }
   .pauseov.show { display: flex; }
-  .pauseov h2 { margin: 0; font: 700 40px Rajdhani, sans-serif; }
+  .pauseov h2 { margin: 0; font: 700 40px 'TL Fox Dollar', Rajdhani, sans-serif; }
   @media (max-width: 480px) { .pad { gap: 4px; } .pad button { font-size: 20px; padding: 6px 0 4px; } .tools button { font-size: 12px; padding: 9px 2px; } .tools kbd { display: none; } .panel { padding: 10px; } }
   @media (prefers-reduced-motion: reduce) { .grid { transition: none; } }
 </style>

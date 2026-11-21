@@ -6,14 +6,14 @@
     <title>Bush League Baseball · the library</title>
     <meta name="description" content="Bush League Baseball, a learning module on pitch physics, timing and probability: drag, Magnus lift and the full rulebook on an original diamond." />
     <style>
-      html,body{margin:0;height:100%;background:var(--lib-bg,#0a0e1a);color:var(--lib-text,#e9effc);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif}
+      html,body{margin:0;height:100%;background:var(--lib-bg,#0a0e1a);color:var(--lib-text,#e9effc);overflow:hidden;font:500 14px/1.45 'TL Fox Dollar', Inter,system-ui,sans-serif}
       #stage{position:relative;width:100%;height:100%}
       .bl-screen{position:absolute;inset:0;z-index:20;display:grid;align-items:center;justify-items:start;padding:16px;pointer-events:none;overflow:auto}
       .bl-screen[hidden]{display:none}
       .bl-card{pointer-events:auto;width:min(480px,100%);display:grid;gap:14px;padding:20px 22px;border-radius:16px;background:color-mix(in srgb,var(--lib-panel,#111829) 94%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 24px 60px -24px var(--lib-shadow,rgba(0,0,0,.45));backdrop-filter:blur(8px)}
       .bl-card.is-wide{justify-self:center;width:min(880px,100%)}
       .bl-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--module-accent,var(--lib-accent,#e8b23a))}
-      .bl-card h1,.bl-card h2,.bl-card h3{margin:0;font-family:Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);letter-spacing:.4px}
+      .bl-card h1,.bl-card h2,.bl-card h3{margin:0;font-family:'TL Fox Dollar', Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);letter-spacing:.4px}
       .bl-card h1{font-size:34px}
       .bl-card h2{font-size:26px}
       .bl-card h3{font-size:16px;margin-top:4px}
@@ -22,11 +22,11 @@
       .bl-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
       .bl-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
       @media (max-width:560px){.bl-grid2{grid-template-columns:1fr}}
-      .bl-select{width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel2,#18213a);color:var(--lib-text,#e9effc);font:600 14px Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
+      .bl-select{width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel2,#18213a);color:var(--lib-text,#e9effc);font:600 14px 'TL Fox Dollar', Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
       .bl-chips{display:flex;flex-wrap:wrap;gap:6px}
-      .bl-chip{cursor:pointer;padding:7px 12px;border-radius:999px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-soft,#aab6d3);font:700 12.5px Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
+      .bl-chip{cursor:pointer;padding:7px 12px;border-radius:999px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-soft,#aab6d3);font:700 12.5px 'TL Fox Dollar', Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
       .bl-chip[aria-pressed=true]{background:var(--module-accent,var(--lib-accent,#e8b23a));color:var(--lib-on-accent,#06101f);border-color:transparent}
-      .bl-button{cursor:pointer;padding:11px 16px;border-radius:11px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-text,#e9effc);font:700 14px Inter,system-ui,sans-serif}
+      .bl-button{cursor:pointer;padding:11px 16px;border-radius:11px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-text,#e9effc);font:700 14px 'TL Fox Dollar', Inter,system-ui,sans-serif}
       .bl-button.is-primary{background:var(--module-accent,var(--lib-accent,#e8b23a));color:var(--lib-on-accent,#06101f);border-color:transparent}
       .bl-button:hover{filter:brightness(1.08)}
       .bl-chip:focus-visible,.bl-button:focus-visible,.bl-select:focus-visible,.bl-check input:focus-visible,.bl-pitch:focus-visible{outline:3px solid var(--module-accent,var(--lib-accent,#e8b23a));outline-offset:2px}
@@ -42,7 +42,7 @@
       .bl-table thead th{color:var(--lib-muted,#8d9bba);font-weight:700}
       .bl-table tr.is-total td{font-weight:800;color:var(--lib-strong,#fff)}
       .bl-scroll{overflow-x:auto}
-      #bug{position:absolute;top:12px;left:12px;z-index:12;display:flex;align-items:stretch;border-radius:10px;overflow:hidden;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:800 15px Rajdhani,Inter,sans-serif;box-shadow:0 10px 30px -12px rgba(0,0,0,.6)}
+      #bug{position:absolute;top:12px;left:12px;z-index:12;display:flex;align-items:stretch;border-radius:10px;overflow:hidden;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:800 15px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;box-shadow:0 10px 30px -12px rgba(0,0,0,.6)}
       #bug[hidden]{display:none}
       .bug-teams{display:grid}
       .bug-team{display:flex;justify-content:space-between;gap:14px;padding:3px 10px;min-width:92px;color:#fff}
@@ -54,12 +54,12 @@
       .bug-bases{position:relative;width:34px;height:26px}
       .bug-bases i{position:absolute;width:10px;height:10px;transform:rotate(45deg);background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35)}
       .bug-bases i.on{background:var(--module-accent,#e8b23a)}
-      #pitch-info{position:absolute;top:12px;right:12px;z-index:12;padding:6px 12px;border-radius:10px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:800 16px Rajdhani,Inter,sans-serif;color:#fff;text-align:right}
+      #pitch-info{position:absolute;top:12px;right:12px;z-index:12;padding:6px 12px;border-radius:10px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:800 16px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;color:#fff;text-align:right}
       #pitch-info[hidden]{display:none}
-      #pitch-info small{display:block;font:600 11px Inter,sans-serif;color:var(--lib-muted,#8d9bba)}
-      #banner{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:12;max-width:min(680px,90%);padding:8px 18px;border-radius:12px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 16px Inter,sans-serif;pointer-events:none;color:var(--lib-strong,#fff);text-align:center}
+      #pitch-info small{display:block;font:600 11px 'TL Fox Dollar', Inter,sans-serif;color:var(--lib-muted,#8d9bba)}
+      #banner{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:12;max-width:min(680px,90%);padding:8px 18px;border-radius:12px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 16px 'TL Fox Dollar', Inter,sans-serif;pointer-events:none;color:var(--lib-strong,#fff);text-align:center}
       #banner[hidden]{display:none}
-      #banner.is-big{font:800 26px Rajdhani,Inter,sans-serif;letter-spacing:1px;color:var(--module-accent,#e8b23a)}
+      #banner.is-big{font:800 26px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:1px;color:var(--module-accent,#e8b23a)}
       #matchup{position:absolute;left:12px;bottom:58px;z-index:12;display:grid;gap:4px;font-size:12.5px;pointer-events:none}
       #matchup[hidden]{display:none}
       #matchup div{padding:4px 10px;border-radius:8px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
@@ -68,7 +68,7 @@
       #picker{position:absolute;right:12px;bottom:44px;z-index:13;display:grid;gap:8px;justify-items:end}
       #picker[hidden]{display:none}
       .bl-pitches{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:420px}
-      .bl-pitch{cursor:pointer;padding:7px 10px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel,#111829);color:var(--lib-text,#e9effc);font:700 12.5px Inter,sans-serif}
+      .bl-pitch{cursor:pointer;padding:7px 10px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel,#111829);color:var(--lib-text,#e9effc);font:700 12.5px 'TL Fox Dollar', Inter,sans-serif}
       .bl-pitch[aria-pressed=true]{background:var(--module-accent,#e8b23a);color:var(--lib-on-accent,#06101f)}
       .bl-pitch small{opacity:.75;font-weight:600;margin-left:4px}
       #picker:not([hidden]){grid-template-columns:auto auto;align-items:end;column-gap:14px}
@@ -87,7 +87,7 @@
       #meter-label[data-zone=soft],#meter-label[data-zone=wild]{color:#ff8a8a}
       @media (max-width:640px){#meter{width:24px;padding:4px}}
       @media (prefers-reduced-motion:reduce){#meter{transition:none}}
-      #steal-flag{position:absolute;left:12px;top:116px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px Inter,sans-serif;letter-spacing:.6px}
+      #steal-flag{position:absolute;left:12px;top:116px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px 'TL Fox Dollar', Inter,sans-serif;letter-spacing:.6px}
       #steal-flag[hidden]{display:none}
       #log{position:absolute;right:12px;top:64px;z-index:12;width:min(320px,44vw);max-height:40%;overflow:auto;font-size:12px;padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
       #log[hidden]{display:none}
@@ -98,37 +98,37 @@
       #lower-third.is-in{transform:none}
       #lower-third .lt-band{height:5px;background:var(--team,#e8b23a)}
       #lower-third .lt-body{padding:8px 12px;display:grid;gap:2px}
-      #lower-third b{font:800 20px Rajdhani,Inter,sans-serif;color:#fff;letter-spacing:.4px}
+      #lower-third b{font:800 20px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;color:#fff;letter-spacing:.4px}
       #lower-third i{font-style:normal;font-size:12px;color:var(--module-accent,#e8b23a)}
       #lower-third span{font-size:12px;color:var(--lib-soft,#aab6d3)}
       #stats-panel{position:absolute;right:12px;bottom:118px;z-index:12;width:min(300px,80vw);padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--lib-panel,#111829) 94%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));font-size:12px}
       #stats-panel[hidden]{display:none}
-      #stats-panel h3{margin:0 0 6px;font:800 14px Rajdhani,Inter,sans-serif;color:#fff}
+      #stats-panel h3{margin:0 0 6px;font:800 14px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;color:#fff}
       #ticker{position:absolute;left:0;right:0;bottom:0;z-index:11;height:26px;overflow:hidden;background:#0b0f19;border-top:2px solid var(--module-accent,#e8b23a);display:flex;align-items:center}
       #ticker[hidden]{display:none}
-      #ticker strong{position:relative;z-index:1;flex:none;padding:0 10px;font:800 12px Rajdhani,Inter,sans-serif;letter-spacing:1px;color:#0b0f19;background:var(--module-accent,#e8b23a);height:100%;display:flex;align-items:center}
+      #ticker strong{position:relative;z-index:1;flex:none;padding:0 10px;font:800 12px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:1px;color:#0b0f19;background:var(--module-accent,#e8b23a);height:100%;display:flex;align-items:center}
       #ticker-track{white-space:nowrap;font-size:12px;color:#e9effc;padding-left:100%;animation:bl-ticker 70s linear infinite}
       @media (prefers-reduced-motion:reduce){#ticker-track{animation:none;padding-left:12px;overflow:hidden;text-overflow:ellipsis}#lower-third{transition:none}}
       @keyframes bl-ticker{to{transform:translateX(-100%)}}
-      #subtitle{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);z-index:13;max-width:min(720px,92%);padding:6px 14px;border-radius:8px;background:rgba(0,0,0,.72);color:#fff;font:600 15px Inter,sans-serif;text-align:center;pointer-events:none}
+      #subtitle{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);z-index:13;max-width:min(720px,92%);padding:6px 14px;border-radius:8px;background:rgba(0,0,0,.72);color:#fff;font:600 15px 'TL Fox Dollar', Inter,sans-serif;text-align:center;pointer-events:none}
       #subtitle[hidden]{display:none}
-      #replay-badge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:12;padding:4px 14px;border-radius:999px;background:#c62828;color:#fff;font:800 14px Rajdhani,Inter,sans-serif;letter-spacing:2px}
+      #replay-badge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:12;padding:4px 14px;border-radius:999px;background:#c62828;color:#fff;font:800 14px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:2px}
       #replay-badge[hidden]{display:none}
       #controls-dialog{border:1px solid var(--lib-line,rgba(120,170,255,.16));border-radius:14px;background:var(--lib-panel,#111829);color:var(--lib-text,#e9effc);padding:18px 20px;width:min(460px,92vw)}
       #controls-dialog::backdrop{background:rgba(0,0,0,.5)}
-      #controls-dialog h2{margin:0 0 10px;font:800 22px Rajdhani,Inter,sans-serif}
+      #controls-dialog h2{margin:0 0 10px;font:800 22px 'TL Fox Dollar', Rajdhani,Inter,sans-serif}
       .bl-keys{display:grid;grid-template-columns:1fr auto auto;gap:6px 10px;align-items:center;font-size:13px}
       .bl-keys code{padding:2px 8px;border-radius:6px;background:var(--lib-panel2,#18213a)}
       .bl-online{display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--lib-line,rgba(120,170,255,.16))}
       .bl-code{width:118px;text-transform:uppercase;letter-spacing:2px}
-      .bl-room{font:800 34px Rajdhani,Inter,sans-serif;letter-spacing:6px;color:var(--module-accent,#e8b23a)}
+      .bl-room{font:800 34px 'TL Fox Dollar', Rajdhani,Inter,sans-serif;letter-spacing:6px;color:var(--module-accent,#e8b23a)}
       .bl-room[hidden]{display:none}
       .bl-players{margin:0;padding:0;list-style:none;display:grid;gap:6px}
       .bl-players li{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:9px;background:var(--lib-chip,rgba(255,255,255,.05));font-size:13px}
       .bl-players li.is-away{opacity:.6}
-      #bl-online-tag{position:absolute;top:86px;left:12px;z-index:12;padding:3px 10px;border-radius:999px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 12px Inter,sans-serif;color:var(--lib-soft,#aab6d3)}
+      #bl-online-tag{position:absolute;top:86px;left:12px;z-index:12;padding:3px 10px;border-radius:999px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 12px 'TL Fox Dollar', Inter,sans-serif;color:var(--lib-soft,#aab6d3)}
       #bl-online-tag[hidden]{display:none}
-      .bl-link{cursor:pointer;margin-left:6px;padding:0;border:0;background:none;color:var(--module-accent,#e8b23a);font:700 12px Inter,sans-serif;text-decoration:underline}
+      .bl-link{cursor:pointer;margin-left:6px;padding:0;border:0;background:none;color:var(--module-accent,#e8b23a);font:700 12px 'TL Fox Dollar', Inter,sans-serif;text-decoration:underline}
       .bl-link[hidden]{display:none}
       .bl-link:focus-visible{outline:2px solid var(--module-accent,#e8b23a);outline-offset:2px}
       .bl-sliders{display:grid;gap:8px}

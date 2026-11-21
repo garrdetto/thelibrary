@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/fox-dollar.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>2048</title>
@@ -10,28 +11,28 @@
   :root { --bg: #0b0f19; --panel: #131a2a; --cell: #1b2438; --line: #26324c; --text: #e8eefc; --muted: #8796b5; --accent: #39d0ff; --gap: 12px; --size: min(92vw, 470px); }
   @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #eef2f8; --panel: #ffffff; --cell: #e3e8f2; --line: #d3dae8; --text: #121826; --muted: #5d6b86; } }
   * { box-sizing: border-box; }
-  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: 'TL Fox Dollar', Inter, system-ui, sans-serif; }
   body { display: flex; justify-content: center; padding: 18px 16px 32px; touch-action: none; }
   main { width: var(--size); }
   header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-  h1 { margin: 0; font: 700 56px/0.9 Rajdhani, sans-serif; letter-spacing: 1px; background: linear-gradient(135deg, #39d0ff, #7c5cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h1 { margin: 0; font: 700 56px/0.9 'TL Fox Dollar', Rajdhani, sans-serif; letter-spacing: 1px; background: linear-gradient(135deg, #39d0ff, #7c5cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .scores { display: flex; gap: 8px; }
   .score { min-width: 86px; padding: 8px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); text-align: center; position: relative; }
   .score span { display: block; font-size: 10px; letter-spacing: 2px; color: var(--muted); font-weight: 600; }
-  .score b { font: 700 24px Rajdhani, sans-serif; }
+  .score b { font: 700 24px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .plus { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); color: var(--accent); font-weight: 800; animation: rise .7s ease-out forwards; pointer-events: none; }
   @keyframes rise { to { top: -24px; opacity: 0; } }
   .bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; }
   .bar p { margin: 0; color: var(--muted); font-size: 13px; }
   .bar div { display: flex; gap: 8px; }
-  button { font: 600 13px Inter, sans-serif; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 9px 14px; border-radius: 9px; cursor: pointer; }
+  button { font: 600 13px 'TL Fox Dollar', Inter, sans-serif; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 9px 14px; border-radius: 9px; cursor: pointer; }
   button:hover { border-color: var(--accent); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .board { position: relative; width: var(--size); height: var(--size); padding: var(--gap); background: var(--panel); border-radius: 14px; border: 1px solid var(--line); }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); width: 100%; height: 100%; }
   .grid i { background: var(--cell); border-radius: 9px; }
   .tiles { position: absolute; inset: var(--gap); }
-  .tile { position: absolute; display: grid; place-items: center; border-radius: 9px; font: 700 40px Rajdhani, sans-serif; transition: transform 110ms ease-in-out; will-change: transform; }
+  .tile { position: absolute; display: grid; place-items: center; border-radius: 9px; font: 700 40px 'TL Fox Dollar', Rajdhani, sans-serif; transition: transform 110ms ease-in-out; will-change: transform; }
   .tile .in { width: 100%; height: 100%; display: grid; place-items: center; border-radius: 9px; }
   .tile.new .in { animation: appear 160ms ease-out; }
   .tile.merged .in { animation: pop 180ms ease-out; }
@@ -39,7 +40,7 @@
   @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.18); } 100% { transform: scale(1); } }
   .overlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; border-radius: 14px; background: rgba(8, 11, 20, 0.78); backdrop-filter: blur(3px); z-index: 5; color: #fff; }
   .overlay.show { display: flex; animation: appear .25s ease-out; }
-  .overlay h2 { margin: 0; font: 700 46px Rajdhani, sans-serif; }
+  .overlay h2 { margin: 0; font: 700 46px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay div { display: flex; gap: 10px; }
   footer { margin-top: 14px; color: var(--muted); font-size: 13px; line-height: 1.6; }
   @media (max-width: 420px) { h1 { font-size: 44px; } .tile { font-size: 30px; } .score { min-width: 70px; } }
