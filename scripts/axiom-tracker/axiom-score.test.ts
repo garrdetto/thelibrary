@@ -48,3 +48,12 @@ test('with enough coins seen, a measure is its rank among them', () => {
   assert.equal(scaleMeasure('viewers', 75, 1), 75.5)
   assert.equal(scaleMeasure('viewers', 0, 1), 0.5)
 })
+
+test('a tiny holder share ranks with the exact zeros, not above them', () => {
+  resetAxiomScoreForTests()
+  for (let index = 0; index < 100; index += 1) noteAxiomRow(`Zero-${index}`, row({ snipersHoldPercent: index < 80 ? 0 : 5 + index }), 70, 1_000_000)
+  const tiny = scaleMeasure('snipers', 0.00004, 1_000_001)
+  const zero = scaleMeasure('snipers', 0, 1_000_001)
+  assert.equal(tiny, zero)
+  assert.ok(tiny >= 50)
+})
