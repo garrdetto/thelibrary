@@ -118,7 +118,7 @@ export function noteAxiomRow(mint: string, row: PulseRow, usdPerSol: number, now
     lastReferenceAt.set(mint, now)
     for (const [measure, value] of Object.entries(axiomMeasures(mint, now)) as Array<[AxiomMeasure, number]>) {
       const list = reference.get(measure) ?? []
-      list.push({ t: now, value })
+      list.push({ t: now, value: forRanking(measure, value) })
       while (list.length && (now - list[0].t > referenceMs || list.length > referenceCap)) list.shift()
       reference.set(measure, list)
     }
@@ -190,6 +190,10 @@ export function axiomMeasures(mint: string, now: number): Partial<Record<AxiomMe
 }
 
 const absolute = new Set<AxiomMeasure>(['calm', 'buyShare1m', 'buyVolumeShare'])
+const holderShares = new Set<AxiomMeasure>(['top10', 'dev', 'snipers', 'insiders', 'bundlers', 'fresh', 'proTraders'])
+
+/** Holder shares to the nearest 0.1%: Axiom reports many as tiny non-zero values (0.00004%), which ranked as worse than the pile of exact zeros. */
+export const forRanking = (measure: AxiomMeasure, value: number) => holderShares.has(measure) ? Math.round(value * 10) / 10 : value
 const clamp = (value: number) => Math.max(0, Math.min(100, value))
 
 /**
@@ -197,8 +201,9 @@ const clamp = (value: number) => Math.max(0, Math.min(100, value))
  * every other measure is its rank among recent coins (ties share the middle of their run), flipped when lower is better.
  * Until 50 coins have been seen, holder shares use 100 minus the share and the rest sit at 50.
  */
-export function scaleMeasure(measure: AxiomMeasure, value: number, now: number) {
-  if (absolute.has(measure)) return clamp(value)
+export function scaleMeasure(measure: AxiomMeasure, raw: number, now: number) {
+  if (absolute.has(measure)) return clamp(raw)
+  const value = forRanking(measure, raw)
   const list = reference.get(measure) ?? []
   let cached = sortedCache.get(measure)
   if (!cached || now - cached.at > 5_000) {
