@@ -22,7 +22,7 @@ from axiom_paper.models import Coin, Position
 from axiom_paper.prices import SOL_MINT, Quote
 
 
-PINNED = {
+PINNED = {"entry.rebuy_gain_1m_pct": -1, 
     "risk.position_pct": 3, "exit.stop_loss_pct": 12, "exit.trailing_stop_pct": 15, "exit.trailing_start_pct": 10, "costs.stop_slippage_pct": 0,
     "risk.buy_mode": "percent", "risk.max_per_coin_sol": 0, "risk.min_position_sol": 10, "account.starting_sol": 1000,
     "costs.fee_mode": "manual", "costs.priority_fee_sol": 0.1, "costs.bribe_sol": 0.099995,
@@ -166,7 +166,7 @@ class SettingsTests(unittest.TestCase):
         groups = {group["id"] for group in dials.GROUPS}
         self.assertTrue(all(dial["key"].split(".")[0] in groups for dial in dials.DIALS))
         self.assertEqual(rules.normalize(rules.defaults()), rules.defaults())
-        self.assertLessEqual(len(dials.DIALS), 23)
+        self.assertLessEqual(len(dials.DIALS), 24)
         self.assertTrue(all(dial.get("help") for dial in dials.DIALS))
 
     def test_every_simple_dial_reaches_the_rules(self) -> None:

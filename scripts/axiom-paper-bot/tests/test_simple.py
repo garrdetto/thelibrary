@@ -21,7 +21,7 @@ from axiom_paper.pricegate import PriceGate
 from axiom_paper.prices import Quote
 from test_bot import Harness, position, token
 
-CLEAN = {"verify.enabled": False, "bot.poll_seconds": 3, "costs.fee_mode": "manual", "costs.priority_fee_sol": 0.0, "costs.bribe_sol": 0.0}
+CLEAN = {"entry.rebuy_gain_1m_pct": -1, "verify.enabled": False, "bot.poll_seconds": 3, "costs.fee_mode": "manual", "costs.priority_fee_sol": 0.0, "costs.bribe_sol": 0.0}
 
 
 class SimpleHarness(Harness):

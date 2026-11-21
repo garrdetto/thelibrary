@@ -705,6 +705,17 @@
    "help": "A coin must pass on this many pulls in a row, so a one-off flicker is ignored."
   },
   {
+   "key": "entry.rebuy_gain_1m_pct",
+   "type": "number",
+   "default": 5,
+   "min": -1,
+   "max": 100,
+   "step": 1,
+   "unit": "%",
+   "label": "Buy a coin again when it is up this much in the last minute",
+   "help": "Replaces the cooldown, the buys-per-coin limit and the old-high rule for coins the bot already traded. -1 goes back to those older limits."
+  },
+  {
    "key": "entry.cooldown_minutes",
    "type": "number",
    "default": 30,
