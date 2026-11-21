@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from axiom_paper import strategy
 from axiom_paper import settings as dials
 from axiom_paper.engine import Engine
-from axiom_paper.learner import MIN_SEEN, Learner
+from axiom_paper.learner import MIN_SEEN, VETO_SEEN, Learner
 from axiom_paper.models import Coin
 from axiom_paper.pricegate import PriceGate
 from axiom_paper.prices import Quote
@@ -243,8 +243,8 @@ class LearnerTests(unittest.TestCase):
         self.assertEqual(self.learner.open, {})
 
     def test_it_waits_for_a_better_moment_after_spikes_keep_failing(self) -> None:
-        self.teach(spike, 0.7, MIN_SEEN + 2, "down")
-        self.teach(dipped, 1.4, MIN_SEEN + 2, "up")
+        self.teach(spike, 0.7, VETO_SEEN + 2, "down")
+        self.teach(dipped, 1.4, VETO_SEEN + 2, "up")
         self.learner.refresh(self.now)
         reason = self.learner.check(spike("new", 0.002), 80.0, self.now, timing=True) or ""
         self.assertIn("waiting for a better moment", reason)
