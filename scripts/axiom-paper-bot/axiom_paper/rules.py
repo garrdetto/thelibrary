@@ -123,6 +123,7 @@ def expand(dials: Mapping[str, Any]) -> Values:
         "risk.max_per_coin_sol": amount * 2,
         "risk.min_position_sol": min(0.02, amount),
         "risk.max_open_positions": dials["buy.max_coins"],
+        "entry.rebuy_gain_1m_pct": dials["buy.rebuy_gain_1m_pct"],
         "risk.daily_loss_limit_pct": dials["buy.daily_loss_pct"],
         "entry.min_wallet_score": dials["buy.min_wallet_score"],
         "exit.take_profit_pct": dials["sell.target_pct"],

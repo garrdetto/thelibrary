@@ -597,6 +597,12 @@ class Engine:
     def _coin_limits(self, coin: Coin, now: int) -> str | None:
         s = self.rules
         last_closed = self.ledger.last_closed_at(coin.mint)
+        needed = float(s.get("entry.rebuy_gain_1m_pct", 5))
+        if last_closed and needed >= 0:
+            gain = coin.gain_1m
+            if gain is None or gain < needed:
+                return f"bought before: buys again only while up {needed:.0f}%+ over the last minute (now {'unknown' if gain is None else f'{gain:+.1f}%'})"
+            return None
         if last_closed and s["entry.cooldown_minutes"] > 0:
             left = s["entry.cooldown_minutes"] - (now - last_closed) / 60_000
             if left > 0:
