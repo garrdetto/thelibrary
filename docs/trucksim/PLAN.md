@@ -154,5 +154,5 @@ So Truck Simulator is split into a reusable core and a standalone host:
 
 ## Online
 
-Profiles and lots live in D1 (`trucksim_profiles`, `trucksim_lots`, migration 0048). GET `/api/trucksim?lots=1` lists every
+Profiles and lots live in D1 (`trucksim_profiles`, `trucksim_lots`, migration 0049). GET `/api/trucksim?lots=1` lists every
 claimed lot with its owner and build so the whole Row is shared. Live presence of other drivers is a later phase.

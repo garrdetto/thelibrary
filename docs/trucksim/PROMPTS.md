@@ -59,7 +59,7 @@ Write the files every later prompt compiles against, with `tests/layout.test.ts`
 ### Prompt 3 — Rules and the Worker API (Sonnet, medium effort)
 
 **Owns:** `modules-src/trucksim/shared/{RoadGraph,Economy,Jobs,Lots,Actions}.ts`, `modules-src/trucksim/tests/{roadgraph,economy,jobs,lots}.test.ts`,
-`src/server/trucksim.ts`, `src/server/routes/trucksim.ts`, `migrations/0048_trucksim.sql`, the `/api/trucksim` line in
+`src/server/trucksim.ts`, `src/server/routes/trucksim.ts`, `migrations/0049_trucksim.sql`, the `/api/trucksim` line in
 `src/server/api.ts`.
 
 Build the single authority for money, jobs and lots, shared by the Worker and the page.
@@ -91,7 +91,7 @@ Build the single authority for money, jobs and lots, shared by the Worker and th
   a refused action returns the profile unchanged with a plain message). Refuel and repair are free of labour (fuel at cost) when
   the build has a service building. You can't sell the active truck or the last truck.
 - Worker: D1 `trucksim_profiles (user_id PK, username, data, updated_at)` and `trucksim_lots (lot_index PK, user_id UNIQUE,
-  username, seen_at)` created on first use and in migration 0048. GET `/api/trucksim` → `{ signedIn, username?, profile?, lots }`
+  username, seen_at)` created on first use and in migration 0049. GET `/api/trucksim` → `{ signedIn, username?, profile?, lots }`
   (a signed-in player without a lot is given the first free lot, releasing lots unseen for 45 days); GET `?lots=1` public lots
   list; POST (signed in, same-origin, Zod discriminated union matching `TruckAction`, body ≤ 16 KB) runs `applyAction` with the
   county world and saves; `claim-lot` checks `trucksim_lots`. Profile key is the user id now; leave a `world`/`game` parameter

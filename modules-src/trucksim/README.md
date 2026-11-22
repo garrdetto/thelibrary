@@ -111,7 +111,7 @@ on a `NullEngine` that must return the resource counts to baseline.
 
 `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` serve `/api/trucksim`: GET returns the signed-in profile (assigning the
 first free lot; lots unseen for 45 days are released) and the public lots, `?lots=1` only the lots; POST runs one action through
-`shared/Actions.ts` `applyAction` and saves to D1 (`trucksim_profiles`, `trucksim_lots`, migration 0048). `?world=<id>` selects a
+`shared/Actions.ts` `applyAction` and saves to D1 (`trucksim_profiles`, `trucksim_lots`, migration 0049). `?world=<id>` selects a
 haul world from `HAUL_WORLDS`.
 
 ## Life Sim integration plan
