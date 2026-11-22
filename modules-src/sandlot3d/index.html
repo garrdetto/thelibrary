@@ -79,6 +79,8 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 /* screens */
 .screen{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,rgba(9,19,13,.55),rgba(9,19,13,.92) 38%);padding:calc(env(safe-area-inset-top,0px) + 18px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 110px) max(16px,env(safe-area-inset-left,0px));user-select:none}
 .wrap{max-width:860px;margin:0 auto;display:grid;gap:18px}
+#title[data-page=team] .wrap>.step:not(:nth-of-type(2)),#title[data-page=game] .wrap>.step:nth-of-type(2){display:none}
+@media (min-aspect-ratio:5/4){#title.screen{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 78px)}.wrap{max-width:none}.logo h1{font-size:clamp(34px,6vw,60px)}.logo p{display:none}.card img{height:64px}.roster{grid-template-columns:repeat(auto-fill,minmax(88px,1fr))}.parks{grid-template-columns:1fr 1fr}.park{min-height:80px}}
 .logo{text-align:center;padding-top:6px}
 .logo h1{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(38px,9vw,74px);line-height:.88;color:var(--chalk);text-shadow:0 4px 0 var(--clay),0 10px 30px rgba(0,0,0,.6);letter-spacing:.01em;text-wrap:balance}
 .logo h1 em{font-style:normal;color:var(--gold)}
@@ -206,7 +208,7 @@ td:first-child,th:first-child{text-align:left;font-weight:800}
     </div>
   </footer>
 
-  <section id="title" class="screen">
+  <section id="title" class="screen" data-page="team">
     <div class="wrap">
       <div class="logo">
         <h1>Sandlot<br>Sluggers <em>3D</em></h1>
@@ -218,7 +220,7 @@ td:first-child,th:first-child{text-align:left;font-weight:800}
         <div class="roster" id="roster"></div>
       </div>
       <div class="step">
-        <h2>Ballpark</h2>
+        <h2>Ballpark <span class="rt"><button class="chip" id="backRoster">Back to roster</button></span></h2>
         <div class="parks" id="parks"></div>
       </div>
       <div class="step">
@@ -262,6 +264,7 @@ td:first-child,th:first-child{text-align:left;font-weight:800}
   <div id="load">Rolling out the tarp…</div>
 </div>
 
+<script vite-ignore src="module-fit.js" data-fit=".screen"></script>
 <script type="module" src="./index.ts"></script>
 
 </html>

@@ -27,6 +27,7 @@ from .site import SiteError
 from . import sources
 
 COMMAND_WINDOW_MS = 10 * 60_000
+REPORT_TEXT_LIMIT = 1000
 TREND_WINDOW_MS = 60_000
 VOLUME_WINDOW_MS = 60_000
 LIQUIDITY_WINDOW_MS = 120_000
@@ -888,7 +889,7 @@ class Engine:
             "positions": positions,
             "trades": trades,
             "equity": [{"t": point["t"], "equity": round(point["equity"] * rate, 2), "sol": point["equity"]} for point in self.ledger.equity_curve()],
-            "events": self.ledger.events(30),
+            "events": [{**event, "text": str(event["text"])[:REPORT_TEXT_LIMIT]} for event in self.ledger.events(30)],
             "candidates": self.candidates,
             "learning": {**self.learner.summary(bool(self.values["learn.timing"]), bool(self.values["learn.enabled"])), "buyLevel": round(self.buy_level(), 1), "mistakes": self.reviewer.summary(bool(self.values["learn.mistakes"]))},
             "strength": self.rules["risk.strength"],

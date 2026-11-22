@@ -227,6 +227,8 @@ export function summarizeCoin(database: TrackerDatabase, mint: string, now: numb
   }
 }
 
+const isSavedClimber = (database: TrackerDatabase, mint: string) => tableExists(database, 'steady_climbers') && Boolean(database.prepare('SELECT 1 FROM steady_climbers WHERE mint = ?').get(mint))
+
 /** Every raw row the tracker holds for one coin, gzipped: kept only for the best `fullCoins` coins. */
 export function fullRecord(database: TrackerDatabase, mint: string) {
   const hasMint = (table: string) => tableExists(database, table) && (database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(column => column.name === 'mint')
@@ -314,10 +316,11 @@ export function archiveCoins(database: TrackerDatabase, now: number, options: { 
           JSON.stringify(summary.features), summary.traits, summary.shape ? JSON.stringify(summary.shape) : null, now)
         archiveWallets(database, mint)
         if (skipFull.has(summary.cls)) garbage += 1
-        else if (summary.outcomeScore > fullCutoff(database)) saveFull.run(mint, summary.outcomeScore, now, fullRecord(database, mint))
+        else if (summary.outcomeScore > fullCutoff(database) || isSavedClimber(database, mint)) saveFull.run(mint, summary.outcomeScore, now, fullRecord(database, mint))
         added += 1
       }
-      database.prepare('DELETE FROM coin_archive_full WHERE mint NOT IN (SELECT mint FROM coin_archive_full ORDER BY outcome_score DESC LIMIT ?)').run(fullCoins)
+      const keepClimbers = tableExists(database, 'steady_climbers') ? ' AND mint NOT IN (SELECT mint FROM steady_climbers)' : ''
+      database.prepare(`DELETE FROM coin_archive_full WHERE mint NOT IN (SELECT mint FROM coin_archive_full ORDER BY outcome_score DESC LIMIT ?)${keepClimbers}`).run(fullCoins)
     })()
     if (mints.length < (options.limit ?? batchSize)) break
   }
@@ -394,8 +397,8 @@ export function startCoinArchive(database: TrackerDatabase, signal: AbortSignal)
   }, logger, signal)
 }
 
-/** Tables the fresh start never clears: settings, bookkeeping and the archive itself. */
-const keptTables = new Set<string>(['worker_heartbeat', 'tracker_migrations', 'research_meta', 'axiom_watchlist', 'sqlite_sequence', ...archiveTables])
+/** Tables the fresh start never clears: settings, bookkeeping, the archive itself and the saved steady climbers. */
+const keptTables = new Set<string>(['worker_heartbeat', 'tracker_migrations', 'research_meta', 'axiom_watchlist', 'sqlite_sequence', 'steady_climbers', ...archiveTables])
 
 /**
  * Archives every coin the tracker holds (finished or not), ranks the tiers, then empties every working table so tracking starts
