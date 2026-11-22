@@ -8,7 +8,7 @@
  * engine bay seen through the wheel arches, and the brand badge in raised block letters.
  */
 
-import type { TruckLook } from '../../../shared/Catalog'
+import type { GrilleOption, TruckLook } from '../../../shared/Catalog'
 import type { PartBatch, PartKey } from './Batch'
 import type { TruckLayout } from './Layout'
 import { HOOD_BAND } from './Layout'
