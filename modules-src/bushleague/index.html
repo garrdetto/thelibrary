@@ -12,6 +12,7 @@
       .bl-screen[hidden]{display:none}
       .bl-card{pointer-events:auto;width:min(480px,100%);display:grid;gap:14px;padding:20px 22px;border-radius:16px;background:color-mix(in srgb,var(--lib-panel,#111829) 94%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 24px 60px -24px var(--lib-shadow,rgba(0,0,0,.45));backdrop-filter:blur(8px)}
       .bl-card.is-wide{justify-self:center;width:min(880px,100%)}
+      @media (min-aspect-ratio:5/4){#setup-form{display:block;column-count:2;column-gap:26px;width:min(960px,100%)}#setup-form>*{break-inside:avoid;margin:0 0 14px}#setup-form>*:last-child{margin-bottom:0}#setup-form>div:first-child{column-span:all}}
       .bl-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--module-accent,var(--lib-accent,#e8b23a))}
       .bl-card h1,.bl-card h2,.bl-card h3{margin:0;font-family:'TL Fox Dollar', Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);letter-spacing:.4px}
       .bl-card h1{font-size:34px}
@@ -144,7 +145,8 @@
       @media (max-width:640px){#log{display:none}#lower-third{bottom:150px}#stats-panel{display:none}.bl-card{padding:16px}.bl-card h1{font-size:28px}.bl-screen{justify-items:center;align-items:end}#matchup{bottom:64px}}
       @media (prefers-reduced-motion:reduce){.bl-card{backdrop-filter:none}}
     </style>
-  </head>
+  <script vite-ignore src="module-fit.js" data-fit=".bl-screen"></script>
+</head>
   <body>
     <div id="stage" aria-label="Ballpark view"></div>
 

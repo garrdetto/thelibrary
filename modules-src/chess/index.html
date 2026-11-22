@@ -61,8 +61,9 @@
   .emotes { display: flex; gap: 6px; } .emotes button { flex: 1; font-size: 12px; }
   .bubble { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); background: var(--panel); border: 1px solid var(--accent); padding: 10px 16px; border-radius: 12px; font-weight: 700; z-index: 70; animation: fade 2.2s forwards; pointer-events: none; }
   @keyframes fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
-  @media (max-width: 900px) { .app { grid-template-columns: 1fr; } .boardwrap { --size: min(calc(100vw - 36px), 640px); margin: 0 auto; } .side { max-height: none; } }
+  @media (max-width: 900px) and (orientation: portrait) { .app { grid-template-columns: 1fr; } .boardwrap { --size: min(calc(100vw - 36px), 640px); margin: 0 auto; } .side { max-height: none; } }
 </style>
+<script vite-ignore src="module-fit.js" data-doc></script>
 </head>
 <body>
 <div class="app">

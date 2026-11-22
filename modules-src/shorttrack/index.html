@@ -131,11 +131,12 @@ input[type=color]{padding:2px;height:38px}
 #touch{display:none}
 #wrap.touch #touch{display:block}
 #wrap.touch #keys,#wrap.touch #board{display:none}
-.tpad{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:12px;padding:8px;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent}
+.tpad{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:14px;padding:8px;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent}
 .tpad.steer{left:calc(6px + env(safe-area-inset-left))}
-.tpad.pedal{right:calc(6px + env(safe-area-inset-right));flex-direction:column}
-.tpad i{display:grid;place-items:center;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,.38);background:rgba(10,14,22,.42);color:rgba(255,255,255,.9);font:900 30px/1 'TL Fox Dollar', system-ui;font-style:normal;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:background .08s,transform .08s}
-.tpad.pedal i{width:82px;height:72px;border-radius:22px}
+.tpad.pedal{right:calc(6px + env(safe-area-inset-right));flex-direction:row-reverse;align-items:flex-end}
+.tpad i{display:grid;place-items:center;width:min(156px,19vw,40vh);height:min(156px,19vw,40vh);border-radius:50%;border:3px solid rgba(255,255,255,.38);background:rgba(10,14,22,.42);color:rgba(255,255,255,.9);font:900 min(60px,7.5vw,15vh)/1 'TL Fox Dollar', system-ui;font-style:normal;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:background .08s,transform .08s}
+.tpad.pedal i{width:min(164px,20vw,42vh);height:min(144px,18vw,34vh);border-radius:min(44px,5vw)}
+@media (orientation:portrait){.tpad i{width:min(156px,26vw);height:min(156px,26vw);font-size:min(60px,10vw)}.tpad.pedal{flex-direction:column;align-items:stretch}.tpad.pedal i{width:min(164px,26vw);height:min(144px,23vw);border-radius:min(44px,6vw)}}
 .tpad i.on{background:rgba(255,204,0,.6);border-color:#ffcc00;color:#111;transform:scale(.94)}
 .tpad.pedal i.rev.on{background:rgba(229,56,59,.6);border-color:#e5383b;color:#fff}
 .tbtns{position:absolute;top:calc(58px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));display:flex;gap:8px;pointer-events:auto}
@@ -148,11 +149,12 @@ input[type=color]{padding:2px;height:38px}
 #wrap.touch #dmgCar .l{left:2px;top:12px;bottom:11px;width:6px}#wrap.touch #dmgCar .rt{right:2px;top:12px;bottom:11px;width:6px}
 #wrap.touch #tl{left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top))}
 #wrap.touch #flag{right:calc(12px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top))}
-#wrap.touch #spotter{bottom:calc(110px + env(safe-area-inset-bottom))}
-@media (max-height:420px){.tpad i{width:68px;height:68px;font-size:26px}.tpad.pedal i{width:76px;height:62px}#wrap.touch #tl{padding:6px 10px;min-width:0}#wrap.touch #posBig{font-size:28px}}
+#wrap.touch #spotter{bottom:calc(min(190px,23vw,46vh) + env(safe-area-inset-bottom))}
+@media (max-height:420px){#wrap.touch #tl{padding:6px 10px;min-width:0}#wrap.touch #posBig{font-size:28px}}
 @media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}
   #scrGarage{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%;padding:16px}.gcols{grid-template-columns:1fr}}
 </style>
+<script vite-ignore src="module-fit.js" data-fit=".scr"></script>
 </head>
 <body>
 <div id="wrap">

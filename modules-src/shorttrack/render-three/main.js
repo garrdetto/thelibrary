@@ -1688,8 +1688,9 @@ if(matchMedia('(pointer: coarse)').matches)touchOn();
 addEventListener('pointerdown',e=>{if(e.pointerType==='touch')touchOn();},{capture:true,passive:true});
 function touchSync(){for(const k in TOUCH)TOUCH[k]=false;for(const v of touchPtrs.values())TOUCH[v.key]=true;
   for(const el of document.querySelectorAll('#touch [data-tk]'))el.classList.toggle('on',TOUCH[el.dataset.tk]);}
-function touchKey(pad,e){const r=pad.getBoundingClientRect();
-  return pad.id==='padSteer'?(e.clientX<r.left+r.width/2?'left':'right'):(e.clientY<r.top+r.height/2?'gas':'rev');}
+function touchKey(pad,e){let key=null,best=Infinity;
+  for(const el of pad.children){const r=el.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),d=dx*dx+dy*dy;if(d<best){best=d;key=el.dataset.tk;}}
+  return key;}
 for(const pad of [$('padSteer'),$('padPedal')]){
   pad.addEventListener('pointerdown',e=>{e.preventDefault();audioInit();try{pad.setPointerCapture(e.pointerId);}catch{}touchPtrs.set(e.pointerId,{pad,key:touchKey(pad,e)});touchSync();});
   pad.addEventListener('pointermove',e=>{const p=touchPtrs.get(e.pointerId);if(!p)return;const k=touchKey(pad,e);if(k!==p.key){p.key=k;touchSync();}});

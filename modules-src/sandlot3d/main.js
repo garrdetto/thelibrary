@@ -2005,7 +2005,9 @@ let pick=[];const DEF_PARK=PARKS.findIndex(p=>p.id==='dome');let parkIx=store.ge
 try{const sv=JSON.parse(store.get('ss3dTeam')||'[]');if(Array.isArray(sv)&&sv.length===9&&sv.every(i=>CH[i]))pick=sv}catch(e){}
 function renderRoster(){
   $('roster').innerHTML=CH.map(c=>`<button class="card${pick.includes(c.i)?' sel':''}" data-i="${c.i}" aria-pressed="${pick.includes(c.i)}"><span class="no">${pick.indexOf(c.i)>=0?["P","C","1B","2B","SS","3B","LF","CF","RF"][pick.indexOf(c.i)]:""}</span><img src="${c.src}" alt="" loading="lazy"><span class="nm">${c.n}</span><span class="rl">${c.r}</span><span class="bars"><span>PWR</span><span class="bar"><i style="width:${c.p*20}%"></i></span><span>CON</span><span class="bar"><i style="width:${c.c*20}%"></i></span><span>SPD</span><span class="bar"><i style="width:${c.s*20}%"></i></span></span></button>`).join('');
-  $('pickCount').textContent=pick.length+' of 9 · order sets batting and positions (1 pitches, 2 catches, then 1B, 2B, SS, 3B, LF, CF, RF)';const ok=pick.length===9;$('play').disabled=!ok;$('play').textContent=ok?'Play ball':`Pick ${9-pick.length} more`}
+  $('pickCount').textContent=pick.length+' of 9 · order sets batting and positions (1 pitches, 2 catches, then 1B, 2B, SS, 3B, LF, CF, RF)';setTitlePage()}
+function setTitlePage(page){const t=$('title');if(page)t.dataset.page=page;const ok=pick.length===9;if(!ok)t.dataset.page='team';const onTeam=t.dataset.page==='team';$('play').disabled=!ok;$('play').textContent=!ok?`Pick ${9-pick.length} more`:onTeam?'Next: ballpark':'Play ball'}
+$('backRoster').onclick=()=>{setTitlePage('team');$('title').scrollTop=0};
 $('roster').addEventListener('click',e=>{const b=e.target.closest('.card');if(!b)return;const i=+b.dataset.i;const k=pick.indexOf(i);if(k>=0)pick.splice(k,1);else if(pick.length<9){pick.push(i);if(window.__toon)window.__toon(i)}renderRoster()});
 $('auto').onclick=()=>{const pool=CH.map(c=>c.i).filter(i=>!pick.includes(i)).sort(()=>Math.random()-.5);while(pick.length<9)pick.push(pool.pop());
   // speed at top, power in the middle
@@ -2016,13 +2018,13 @@ $('parks').addEventListener('click',e=>{const b=e.target.closest('.park');if(!b)
 function seg(id,opts,cur,fn){const el=$(id);el.querySelectorAll('button').forEach(b=>b.remove());opts.forEach((o,i)=>{const b=document.createElement('button');b.textContent=o;b.className=i===cur?'on':'';b.onclick=()=>{fn(i);seg(id,opts,i,fn)};el.appendChild(b)})}
 seg('diffSeg',DIFF.map(d=>d.n),diffIx,i=>diffIx=i);
 seg('innSeg',['3','6','9'],0,i=>INN=[3,6,9][i]);
-$('play').onclick=()=>{audio();if(pick.length<9)return;team=pick.slice();store.set('ss3dTeam',JSON.stringify(team));
+$('play').onclick=()=>{audio();if(pick.length<9)return;if($('title').dataset.page==='team'){setTitlePage('game');$('title').scrollTop=0;return}team=pick.slice();store.set('ss3dTeam',JSON.stringify(team));
   cpuTeam=CH.map(c=>c.i).filter(i=>!team.includes(i)).sort(()=>Math.random()-.5).slice(0,9);D=DIFF[diffIx];if(window.__toon)team.concat(cpuTeam).forEach(i=>window.__toon(i));
   if(PK!==PARKS[parkIx])buildWorld(PARKS[parkIx]);newGame();banner('Play Ball!',PK.name,true);sfx.cheer(false)};
 $('again').onclick=()=>{cpuTeam=CH.map(c=>c.i).filter(i=>!team.includes(i)).sort(()=>Math.random()-.5).slice(0,9);newGame();banner('Play Ball!',PK.name,true)};
 $('redraft').onclick=showTitle;
 function showTitle(){phase='title';timers=[];S=null;PS=null;pitch=null;stealRun=null;camMode='orbit';say('');
-  ['bug','batter','ctrl','final','inning','menu'].forEach(id=>$(id).hidden=true);$('title').hidden=false;renderRoster();renderParks();drawBoard();
+  ['bug','batter','ctrl','final','inning','menu'].forEach(id=>$(id).hidden=true);$('title').hidden=false;$('title').dataset.page='team';renderRoster();renderParks();drawBoard();
   Object.values(rigs).forEach(r=>r.root.visible=false)}
 
 /* ================= BOOT ================= */
