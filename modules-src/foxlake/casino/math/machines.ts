@@ -653,7 +653,8 @@ const DOLLAZ_SCATTER: Record<number, number> = { 3: 1, 4: 10, 5: 50 }
 const DOLLAZ_FREE = 8
 const DOLLAZ_MAX_FREE = 80
 const DOLLAZ_PICK = [56, 27, 11, 5.4, 0.6]
-const DOLLAZ_GROW: [number, number, number][] = [[5, 3, 3], [9, 4, 2], [12, 5, 1]]
+/** Cash Collect growth: [bills collected, new zone size, extra spins]. */
+export const DOLLAZ_GROW: [number, number, number][] = [[5, 3, 3], [9, 4, 2], [12, 5, 1]]
 const DOLLAZ_HEAT = [28, 60, 12]
 const DOLLAZ_BILL_CHANCE = [0, 0.03, 0.085]
 const DOLLAZ_COIN_CHANCE = 0.11
