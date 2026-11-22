@@ -543,6 +543,7 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `game/TruckHost.ts` — what a session needs from its world (scene, `frameRoot`, `PhysicsHost`, `HaulWorld`, keys, toasts).
 - `game/TruckSession.ts` — the reusable core: rigs, driving, coupling, dump, jobs, procedures, loaders, fuel, repairs, dealer.
 - `game/Standalone.ts` — the standalone page as a `TruckHost`: engine, scene, world, lots, session, cameras, HUD, sound, memory guard.
+- `game/BootRecovery.ts` — `bootFailure(href, error)`: a failed boot reloads once with `?gpu=webgl`, then the boot text shows the real error — `index.ts`.
 - `game/Procedures.ts` — the realistic loading and unloading steps per haul, as data plus checks over a `ProcedureContext`.
 - `game/JobRunner.ts` — follows one job from pickup to drop, runs the procedures and accumulates cargo damage.
 - `game/BuildMode.ts` — the lot builder's controls, ghost, batched `build` actions and the Land tab (`buy-land`).
@@ -551,7 +552,7 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `game/MapDraw.ts` — the county map and minimap drawing.
 - `net/Progress.ts` — the career client: `/api/trucksim` when signed in, local `applyAction` for guests, `?world=`.
 - `ui/Hud.ts`, `Panels.ts`, `Shop.ts`, `BuilderBar.ts`, `WashHud.ts`, `dom.ts`, `index.ts`, `styles.css` — the HUD, start/job/map/pause/help panels, dealer, garage and fleet screens, the builder toolbar (with the Land tab), the wash toolbar, DOM helpers, the barrel and the stylesheet.
-- `tests/` — Node tests run by `scripts/trucksim-tests.mjs`: `economy`, `jobs`, `lots`, `procedures`, `roadgraph`, `layout` (shared rules and world), `sim-dump`, `sim-excavator`, `sim-trailer`, `sim-truck`, `sim-world` (Rapier rigs), `groups` (collision groups equal Life Sim's), `scope`, `streamer`, `memory` (ownership, streaming, guard), `visual-sites`, `visual-trailer`, `visual-truck`, `visual-world`, `wash`, `land-wash` (build and dispose on a `NullEngine` and require counts to return to baseline).
+- `tests/` — Node tests run by `scripts/trucksim-tests.mjs`: `economy`, `jobs`, `lots`, `procedures`, `roadgraph`, `layout` (shared rules and world), `sim-dump`, `sim-excavator`, `sim-trailer`, `sim-truck`, `sim-world` (Rapier rigs), `groups` (collision groups equal Life Sim's), `boot` (boot recovery, multi-render extension loaded on both engines), `scope`, `streamer`, `memory` (ownership, streaming, guard), `visual-sites`, `visual-trailer`, `visual-truck`, `visual-world`, `wash`, `land-wash` (build and dispose on a `NullEngine` and require counts to return to baseline).
 - `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` — `/api/trucksim` (see Worker API); `migrations/0049_trucksim.sql` — `trucksim_profiles` and `trucksim_lots`.
 - Contracts: coordinates are metres, Y up, right-handed (`scene.useRightHandedSystem = true`, so Rapier and Babylon share numbers); heading `h` faces `(sin h, 0, cos h)`; a vehicle frame has its origin on the ground under the front axle (trucks) or kingpin (trailers), +Z forward, +X the driver's left, so a positive heading change and a positive steer are left turns. Render code parents everything under the `parent`/`frameRoot` it is given, sim code talks to a `PhysicsHost`, rules read a `HaulWorld`. No custom shaders; Babylon imported by path.
 
