@@ -77,7 +77,7 @@ Every dial lives in two places, and the most recent change wins:
 - **On your PC:** `data/paper-bot.toml`. Edit and save; the running bot picks the change up within a few seconds and sends it to the site.
 - **On the Radar page:** the **Trading bot** tab. Pick a style (Careful, Balanced, Bold) or set any dial, then Save. The bot picks the change up on its next pull, rewrites the file to match, and the Save bar says when it is active.
 
-The Trading bot tab also has the terminal's actions as buttons: pause or resume buying, close every position, reset the account. The Paper trades tab shows the bot's account, positions and trades.
+The Trading bot tab also has the terminal's actions as buttons: pause or resume buying, close every position, reset the account. Below the dials the same tab shows the bot's account, positions and trades.
 
 There are about twenty dials, each with a plain description on the Radar page and in the settings file:
 
