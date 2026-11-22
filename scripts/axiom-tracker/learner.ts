@@ -11,6 +11,7 @@ import { researchResetAt } from './research-meta.js'
 import { parseTraits, stepRise, worstOf, type TraitReading } from './rise-traits.js'
 import { createLogger, runLoop } from './runtime.js'
 import { loadWinnersModel, runWinnersCycle } from './winners.js'
+import { climberRules, recordClimbers } from './steady-climbers.js'
 
 const logger = createLogger('learner')
 const cycleMs = 1_000
@@ -405,15 +406,33 @@ export function prepareLearner(database: TrackerDatabase) {
   return loadModel(database)
 }
 
+function recordSteadyClimbers(database: TrackerDatabase, now = Date.now()) {
+  try {
+    const saved = recordClimbers(database, now)
+    if (saved) logger.info('Steady climbers saved', { saved })
+    return saved
+  } catch (error) {
+    logger.warn('Steady climber scan failed', { error: error instanceof Error ? error.message : String(error) })
+    return 0
+  }
+}
+
 export function startLearner(database: TrackerDatabase, signal: AbortSignal) {
   let model = prepareLearner(database)
+  recordSteadyClimbers(database)
   let winners = loadWinnersModel(database)
   let trainedAt = Date.now()
+  let climbersAt = Date.now()
   return runLoop('learner', cycleMs, async () => {
     const now = Date.now()
     const { closed, summary, tokens } = runLearnerCycle(database, model, now)
     runWinnersCycle(database, winners, tokens, now)
-    if (closed > 0 || now - trainedAt >= trainEveryMs) {
+    let newClimbers = 0
+    if (now - climbersAt >= climberRules.scanEveryMs) {
+      newClimbers = recordSteadyClimbers(database, now)
+      climbersAt = now
+    }
+    if (closed > 0 || newClimbers > 0 || now - trainedAt >= trainEveryMs) {
       model = loadModel(database)
       winners = loadWinnersModel(database)
       trainedAt = now

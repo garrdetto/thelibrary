@@ -815,7 +815,7 @@ function mountNumbers(m,lv){
     const pl=customLiveryLv(lv,m.custom.rec),sig=[pl.number,pl.numDoors,pl.numRoof,pl.numTail,pl.numStyle,pl.numFont,pl.numSlant,pl.numSize,pl.numColor,pl.numOutline,pl.numAccent].join('|'),ok=!pl.number||numFontReady(lv.numFont);
     if(m.liveryOn&&m.liverySig!==undefined&&(m.liverySig!==sig||(!m.liveryFontOk&&ok)))repaintCustomCar(m,lv,customLivery(lv,m.custom,{crisp:m.crisp}));
     m.liverySig=sig;m.liveryFontOk=ok;
-    if(!carGarage(m.custom.rec).numbers)lv={...lv,number:''};
+    if(!liveryGarage(lv,m.custom.rec).numbers)lv={...lv,number:''};
     mountCustomNumbers(m,lv,{art:cv=>drawNumberArt(cv,numArtOpts(lv),px),size:(spot,art)=>numberSize(spot,art,lv.numSize/100),spot:numberSpot,fontOk:numFontReady(lv.numFont),
       material:cv=>{const mat=makeNumberMaterial(THREE,makeNumberTexture(THREE,cv));mat.userData.r0=mat.roughness;mat.userData.cc0=mat.clearcoat;mat.envMap=envTex;mat.envMapIntensity=ENVK;
         if(envTex===envNight){mat.roughness=Math.max(0.5,mat.roughness);mat.clearcoat*=0.3;}return mat;}});return;}
@@ -924,7 +924,7 @@ function carLiveryTex(lv,size,glyphPx,o={}){
         region('T',(sa,sd)=>{
           if(base&&sch.roof){g.fillStyle=sch.roof;g.fillRect(-1.6,-2,2.6,4);}
           if(base&&sch.deck){g.fillStyle=sch.deck;g.fillRect(-4,-2,4-1.6,4);}
-          drawSchemeHood(g,sch,{x0:1.0,xf:E.xf,half:1.1},(cv,f,wm)=>{const hm=wm*cv.height/cv.width;g.save();g.translate(f,0);g.scale(sa,sd);g.rotate(Math.PI/2);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();},{layer});});
+          drawSchemeHood(g,sch,{x0:1.0,xf:E.xf,half:1.1},(cv,f,wm)=>{const hm=wm*cv.height/cv.width;g.save();g.translate(f,0);g.scale(sa,sd);g.rotate(-Math.PI/2);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();},{layer});});
         // nose and tail carry the full-length side bands
         if(base)for(const end of ['B','F'])region(end,()=>{for(const op of sch.side)if(op[0]==='band'&&((op[4]??0)<=0.02||(op[5]??1)>=0.98)){
           const y0=op[1]<=0?-1:Y(op[1]),y1=op[2]>=1.15?3:Y(op[2]);g.fillStyle=op[3];g.fillRect(-2,y0,4,y1-y0);}});
@@ -979,7 +979,9 @@ function mountCarLivery(m,lv){
 }
 // A custom car's livery: the stock car's atlas with the Garage options the admin allowed. Numbers go on
 // as decals where the admin placed a spot and are painted on at the stock spots everywhere else.
-function customLiveryLv(lv,rec){const gar=carGarage(rec),N=rec.numbers;
+const FULL_GARAGE={schemes:true,logos:true,numbers:true};
+function liveryGarage(lv,rec){return lv&&lv.pattern!=='custom'&&typeof lv.scheme==='string'&&ICONIC[lv.scheme]?FULL_GARAGE:carGarage(rec);}
+function customLiveryLv(lv,rec){const gar=liveryGarage(lv,rec),N=rec.numbers;
   return {...lv,pattern:gar.schemes?lv.pattern:'solid',scheme:gar.schemes?lv.scheme:undefined,custom:gar.schemes?lv.custom:undefined,noLogo:!gar.logos,
     number:gar.numbers?lv.number:'',numDoors:lv.numDoors&&!N.door,numRoof:lv.numRoof&&!N.roof,numTail:lv.numTail&&!N.tail};}
 // `a` is the prepared custom car (custom-cars.js): its own projection map fits the logos and numbers to its

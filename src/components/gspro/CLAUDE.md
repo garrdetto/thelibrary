@@ -1,0 +1,1 @@
+@../../../docs/agents/gspro.md
