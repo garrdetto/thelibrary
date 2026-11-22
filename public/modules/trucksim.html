@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script src="/fox-dollar.js"></script>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#14161a" />
+    <title>Truck Simulator · the library</title>
+    <meta name="description" content="Haul gravel, fuel, grain, steel, cold freight and heavy equipment across an open county, earn your way into semi-trucks and build up your own truck lot." />
+    <style>
+      html,body{margin:0;height:100%;background:#0d0f12;color:#e9ecef;overflow:hidden;font:500 14px/1.45 'TL Fox Dollar', Inter, system-ui, sans-serif;-webkit-user-select:none;user-select:none}
+      #scene{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
+      #ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+      #ui > *{pointer-events:auto}
+      #boot{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(ellipse at 30% 80%,rgba(242,163,58,.18),transparent 55%),#0d0f12}
+      #boot .card{display:grid;gap:14px;justify-items:center;text-align:center;padding:24px}
+      #boot h1{margin:0;font:800 34px/1 'TL Fox Dollar', 'Barlow Condensed', 'Oswald', 'Arial Narrow', sans-serif;letter-spacing:1.5px;text-transform:uppercase;color:#f2a33a}
+      #boot p{margin:0;color:#aab1ba}
+      #boot .bar{width:min(360px,80vw);height:6px;border-radius:4px;background:#23272d;overflow:hidden}
+      #boot .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#d7d9dd,#f2a33a);transition:width .2s}
+      #boot[hidden]{display:none}
+      @media (prefers-reduced-motion: reduce){#boot .bar i{transition:none}}
+    </style>
+    <script type="module" crossorigin src="/modules/chunks/trucksim-BX53DyuD.js"></script>
+    <link rel="modulepreload" crossorigin href="/modules/chunks/modulepreload-polyfill-B5Qt9EMX.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/vendor-playcanvas-D9Qh8QTW.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/animation.pure-BoYw_rlO.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/instancedMesh-C4CRCAug.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/engine.dynamicTexture-cKTIPcTL.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/instancesVertex-CTgW1Zl0.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/instancesDeclaration-Bl5bsMdd.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/helperFunctions-Dg0thSXH.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/fresnelFunction-q3O4cx6t.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/meshUboDeclaration-CrUXlPcA.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/sceneUboDeclaration-KSuZLiuz.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/decalFragment-_jvIu9DW.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/mesh-Dgxyz0Ef.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/PerfTrend-C2bktZut.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/thinInstanceMesh-BHcwMWoi.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/cubemapToSphericalPolynomial-DI9YO-Yg.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/baseTexture.polynomial.pure-Dod7zIoA.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/geometryBufferRenderer.pure-J2tRKaAW.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/prePassRendererSceneComponent-Bka3-m7a.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/vendor-rapier-DVCvfZ9g.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/easing-C3rjK4i-.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/arcRotateCamera-vVRNuQQS.js">
+    <link rel="stylesheet" crossorigin href="/modules/chunks/trucksim-B7pi_KAz.css">
+  </head>
+  <body>
+    <canvas id="scene" tabindex="0" aria-label="Truck Simulator 3D view"></canvas>
+    <div id="ui"></div>
+    <div id="boot" role="status" aria-live="polite">
+      <div class="card">
+        <h1>Truck Simulator</h1>
+        <div class="bar"><i id="boot-bar"></i></div>
+        <p id="boot-text">Warming up the engine…</p>
+      </div>
+    </div>
+  </body>
+</html>

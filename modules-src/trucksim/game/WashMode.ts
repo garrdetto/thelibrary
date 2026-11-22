@@ -9,6 +9,8 @@ import '@babylonjs/core/Culling/ray'
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
+import type { CameraMode } from './Cameras'
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import type { Scene } from '@babylonjs/core/scene'
@@ -27,6 +29,7 @@ export interface WashModeOptions {
   center: { x: number; y: number; z: number }
   place: string
   cost: number
+  seeThrough?: readonly AbstractMesh[]
   onFinish(cleaned: number): void
 }
 
@@ -42,11 +45,18 @@ export class WashMode {
   private pointer: { x: number; y: number } | null = null
   private finished = false
   private readonly limits: [number | null, number | null, number | null]
+  private readonly returnMode: CameraMode
+  private readonly faded: [AbstractMesh, number][] = []
 
   constructor(private readonly options: WashModeOptions) {
     const { cameras, canvas, scene, center } = options
     options.layer.resetMud()
     const build = cameras.build
+    this.returnMode = cameras.mode === 'build' ? 'chase' : cameras.mode
+    for (const mesh of options.seeThrough ?? []) {
+      this.faded.push([mesh, mesh.visibility])
+      mesh.visibility = 0.18
+    }
     this.limits = [build.lowerRadiusLimit, build.upperRadiusLimit, build.upperBetaLimit]
     cameras.setMode('build')
     build.lowerRadiusLimit = 5
@@ -55,6 +65,8 @@ export class WashMode {
     build.target.set(center.x, center.y + 1.5, center.z)
     build.radius = 9
     build.beta = 1.3
+    build.panningDistanceLimit = 4
+    build.panningOriginTarget.copyFrom(build.target)
     const pointers = cameras.build.inputs.attached.pointers as ArcRotateCameraPointersInput | undefined
     if (pointers) pointers.buttons = [1, 2]
     this.jetMaterial = new PBRMaterial('trucksim-wash-jet', scene)
@@ -80,19 +92,26 @@ export class WashMode {
     const move = (e: PointerEvent) => {
       this.pointer = this.local(e)
     }
-    const up = (e: PointerEvent) => {
-      if (e.button !== 0) return
+    const stop = () => {
       this.spraying = false
       options.audio?.setSpray(false)
     }
+    const up = (e: PointerEvent) => {
+      if (e.button === 0) stop()
+    }
     const key = (e: KeyboardEvent) => {
+      if (e.repeat) return
       if (e.code === 'KeyE' || e.code === 'Escape') this.finish()
     }
     canvas.addEventListener('pointerdown', down)
     canvas.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('keydown', key)
+    window.addEventListener('blur', stop)
+    canvas.addEventListener('pointercancel', stop)
     this.cleanup.push(() => {
+      window.removeEventListener('blur', stop)
+      canvas.removeEventListener('pointercancel', stop)
       canvas.removeEventListener('pointerdown', down)
       canvas.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
@@ -155,6 +174,9 @@ export class WashMode {
     build.lowerRadiusLimit = this.limits[0]
     build.upperRadiusLimit = this.limits[1]
     build.upperBetaLimit = this.limits[2] ?? 1.35
-    this.options.cameras.setMode('chase')
+    build.panningDistanceLimit = null
+    for (const [mesh, visibility] of this.faded) if (!mesh.isDisposed()) mesh.visibility = visibility
+    this.faded.length = 0
+    this.options.cameras.setMode(this.returnMode)
   }
 }

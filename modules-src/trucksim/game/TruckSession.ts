@@ -799,10 +799,15 @@ export class TruckSession {
     return this.dirt
   }
 
-  /** Where the active truck stands (the wash camera's target). */
+  /** The middle of the active truck, bumper to frame end (the wash camera's target). */
   truckCentre(): { x: number; y: number; z: number } {
-    const p = this.truck?.pose().position
-    return p ? { x: p.x, y: p.y, z: p.z } : { x: 0, y: 0, z: 0 }
+    const truck = this.truck
+    if (!truck) return { x: 0, y: 0, z: 0 }
+    const pose = truck.pose()
+    const layout = this.truckVisual?.layout
+    const along = layout ? (layout.bumperZ + layout.frameRearZ) / 2 : 0
+    const heading = headingOf(pose.rotation)
+    return { x: pose.position.x + Math.sin(heading) * along, y: pose.position.y, z: pose.position.z + Math.cos(heading) * along }
   }
 
   /** Records a finished wash: syncs the trip first so the grime it adds is counted, then sends the `wash` action. */

@@ -244,13 +244,28 @@ function demolish(profile: Profile, ids: string[]): ActResult {
   return accept(profile, refund, `Demolished for a ${money(refund)} refund.`)
 }
 
+/**
+ * Moves a driver's lot to `index`, keeping the land they bought (it grows the new lot) and their build: a west lot grows away from
+ * its gate toward -x, so items shifted for bought land on one side are shifted back when the new lot is on the other side.
+ */
+export function moveToLot(profile: Profile, index: number): Profile {
+  if (profile.lot === index) return profile
+  const fromWest = profile.lot !== null && LOTS[profile.lot]?.side === 'west'
+  const toWest = LOTS[index]?.side === 'west'
+  const shift = (toWest ? 1 : 0) - (fromWest ? 1 : 0)
+  const dx = shift * profile.land * LAND_STRIP_M
+  const build = dx === 0 ? profile.build : profile.build.map((item) => ({ ...item, x: item.x + dx }))
+  return { ...profile, lot: index, build }
+}
+
 function claimLot(profile: Profile, index: number, ctx: ActionContext): ActResult {
   if (!Number.isInteger(index) || index < 0 || index >= LOTS.length) return refuse(profile, 'There is no such lot.')
   if (profile.lot === index) return accept(profile, 0, 'That lot is already yours.')
-  if (profile.land > 0) return refuse(profile, 'Land you bought stays with your current lot. Keep this lot, or sell the land first.')
   if (profile.lot !== null && profile.build.length > 0) return refuse(profile, 'Demolish what you built before moving to another lot.')
   if (ctx.lotFree && !ctx.lotFree(index)) return refuse(profile, 'Someone already has that lot.')
-  profile.lot = index
+  const moved = moveToLot(profile, index)
+  profile.lot = moved.lot
+  profile.build = moved.build
   return accept(profile, 0, `Lot ${index + 1} is yours.`)
 }
 

@@ -561,6 +561,7 @@ export class Standalone implements TruckHost {
     this.washing = new WashMode({
       scene: this.scene, canvas: this.canvas, cameras: this.cameras, uiRoot: this.uiRoot, layer, audio: this.audio,
       center: this.session.truckCentre(),
+      seeThrough: place === 'own' && this.progress.profile.lot !== null ? this.lotsRenderer.meshes(this.progress.profile.lot) : [],
       place: place === 'own' ? 'Your wash bay' : 'Crossroads truck wash',
       cost: place === 'own' ? OWN_WASH_WATER : PUBLIC_WASH_PRICE,
       onFinish: (cleaned) => {

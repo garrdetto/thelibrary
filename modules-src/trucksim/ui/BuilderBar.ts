@@ -104,7 +104,10 @@ export class BuilderBar {
   /** Updates the Land tab after a purchase. */
   setLand(land: LandOffer): void {
     this.land = land
-    if (this.category === 'land') this.renderItems()
+    if (this.category !== 'land') return
+    const hadFocus = this.items.contains(document.activeElement)
+    this.renderItems()
+    if (hadFocus) this.items.querySelector<HTMLElement>('button')?.focus()
   }
 
   setHint(text: string): void {

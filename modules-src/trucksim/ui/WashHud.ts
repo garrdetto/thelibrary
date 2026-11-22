@@ -22,7 +22,7 @@ export class WashHud {
     this.bar = h('div', { class: 'ts-builder ts-wash', attrs: { role: 'toolbar', 'aria-label': 'Pressure wash' } },
       h('div', { class: 'ts-build-top' }, h('b', { text: options.place }), h('span', { class: 'ts-note', text: `Water ${money(options.cost)}` })),
       h('div', { class: 'ts-build-bottom' }, this.meter, this.label,
-        h('p', { class: 'ts-hint', text: 'Hold the left mouse button to spray the grime off. Right-drag walks around the truck, the wheel steps closer. E or Done finishes.' }),
+        h('p', { class: 'ts-hint', text: 'Hold the left mouse button to spray the grime off. Middle-drag walks around the truck, right-drag shifts the view, the wheel steps closer. E or Done finishes.' }),
         done))
     root.appendChild(this.bar)
   }

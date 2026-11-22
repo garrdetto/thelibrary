@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyAction } from '../shared/Actions'
+import { applyAction, moveToLot } from '../shared/Actions'
 import type { ActionContext } from '../shared/Actions'
 import { defaultProfile, normalizeProfile } from '../shared/Economy'
 import type { Profile } from '../shared/Economy'
@@ -81,12 +81,18 @@ test('building in the new strip works only after buying it', () => {
   assert.equal(applyAction(grown, { action: 'build', items: [tooFar] }, ctx).ok, false)
 })
 
-test('claim-lot is refused while land is owned', () => {
+test('bought land moves with the driver to a new lot, and the build follows the side it grows on', () => {
   const grown = buy(owner(EAST)).profile
   const moved = applyAction(grown, { action: 'claim-lot', index: 5 }, ctx)
-  assert.equal(moved.ok, false)
-  assert.match(moved.message, /land/i)
-  assert.equal(applyAction(owner(EAST), { action: 'claim-lot', index: 5 }, ctx).ok, true)
+  assert.equal(moved.ok, true)
+  assert.equal(moved.profile.land, 1)
+  const westGrown = buy(owner(WEST)).profile
+  const built = applyAction(westGrown, { action: 'build', items: [pave('p1', 40, 10, 10, 10)] }, ctx).profile
+  assert.equal(built.build[0].x, 40)
+  const toEast = moveToLot(built, EAST)
+  assert.equal(toEast.lot, EAST)
+  assert.equal(toEast.build[0].x, 40 - LAND_STRIP_M)
+  assert.equal(moveToLot(toEast, WEST).build[0].x, 40)
 })
 
 test('odometer adds dirt and caps it at 100', () => {

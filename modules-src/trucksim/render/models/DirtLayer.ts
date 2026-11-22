@@ -31,6 +31,7 @@ const SIDE_COLS = 64
 const SIDE_ROWS = 16
 const REAR_COLS = 32
 const REAR_ROWS = 8
+const EDGE_FADE = 0.35
 
 type Strip = 'left' | 'right' | 'rear'
 
@@ -122,11 +123,17 @@ export function createDirtLayer(scene: Scene, root: TransformNode, layout: Truck
       for (let col = 0; col < s.cols; col++) {
         const a = s.a0 + ((col + 0.5) / s.cols) * (s.a1 - s.a0)
         const y = s.y0 + ((row + 0.5) / s.rows) * (s.y1 - s.y0)
-        const inside = regions.some((region) => region.strip === strip && a >= region.a0 && a <= region.a1 && y >= region.y0 && y <= region.y1)
-        if (!inside) continue
+        let edge = 0
+        for (const region of regions) {
+          if (region.strip !== strip) continue
+          edge = Math.max(edge, Math.min(a - region.a0, region.a1 - a, y - region.y0, region.y1 - y))
+        }
+        if (edge <= 0) continue
         const low = 1 - (y - s.y0) / (s.y1 - s.y0)
         const index = row * s.cols + col
-        support[strip][index] = Math.min(1, (0.5 + 0.5 * low) * (0.65 + 0.35 * hash(index, strip.length * 977)))
+        const ragged = Math.min(1, edge / EDGE_FADE + hash(index, strip.length * 131) * 0.9 - 0.35)
+        if (ragged <= 0.05) continue
+        support[strip][index] = Math.min(1, ragged * (0.5 + 0.5 * low) * (0.65 + 0.35 * hash(index, strip.length * 977)))
         total += support[strip][index]
       }
     }

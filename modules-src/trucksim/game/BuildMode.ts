@@ -126,6 +126,8 @@ export class BuildMode {
     const unsubscribe = options.progress.onChange((profile) => {
       this.bar.setCash(profile.cash)
       this.bar.setLand(this.landOffer())
+      this.cursor = null
+      this.dragStart = null
       this.refresh()
     })
     this.cleanup.push(() => {

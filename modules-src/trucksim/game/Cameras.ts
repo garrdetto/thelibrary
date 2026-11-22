@@ -60,7 +60,7 @@ export class CameraRig {
     this.build.minZ = 0.5
     this.build.maxZ = 6000
     this.build.lowerRadiusLimit = 25
-    this.build.upperRadiusLimit = 220
+    this.build.upperRadiusLimit = 300
     this.build.lowerBetaLimit = 0.2
     this.build.upperBetaLimit = 1.35
     this.build.wheelDeltaPercentage = 0.02
