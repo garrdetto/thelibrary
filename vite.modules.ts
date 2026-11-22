@@ -42,6 +42,13 @@ function renameModulePages(): Plugin {
   }
 }
 
+function foxDollar(): Plugin {
+  return {
+    name: 'thelibrary:fox-dollar',
+    transformIndexHtml: () => [{ tag: 'script', attrs: { src: '/fox-dollar.js' }, injectTo: 'head-prepend' }],
+  }
+}
+
 function cleanPreviousOutput(ids: string[]): Plugin {
   return {
     name: 'thelibrary:module-clean',
@@ -72,7 +79,7 @@ export function learningModulesConfig(watch = false): InlineConfig {
     base: '/modules/',
     publicDir: false,
     logLevel: 'warn',
-    plugins: [cleanPreviousOutput(ids), renameModulePages(), foxLakeMap(), tailwindcss()],
+    plugins: [cleanPreviousOutput(ids), foxDollar(), renameModulePages(), foxLakeMap(), tailwindcss()],
     build: {
       outDir: modulesOut,
       emptyOutDir: false,

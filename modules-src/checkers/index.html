@@ -10,7 +10,7 @@
   :root { --bg: #0b0f19; --panel: #131a2a; --panel2: #182136; --line: #26324c; --text: #e8eefc; --muted: #8796b5; --accent: #39d0ff; --accent2: #7c5cff; --light: #e6d6b8; --dark: #2c3a52; --danger: #ff5a6a; }
   @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #eef2f8; --panel: #ffffff; --panel2: #f4f6fb; --line: #d3dae8; --text: #121826; --muted: #5d6b86; } }
   * { box-sizing: border-box; }
-  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: 'TL Fox Dollar', Inter, system-ui, sans-serif; }
   .app { display: grid; grid-template-columns: minmax(0, auto) 320px; gap: 20px; padding: 18px; justify-content: center; align-items: start; }
   .boardwrap { --size: max(260px, min(calc(100vh - 140px), calc(100vw - 380px), 640px)); width: var(--size); }
   .player { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 4px; font-weight: 600; }
@@ -31,9 +31,9 @@
   .pc.must { animation: pulse 1s infinite; }
   @keyframes pulse { 50% { box-shadow: 0 5px 0 rgba(0, 0, 0, 0.35), 0 0 0 5px rgba(57, 208, 255, 0.5); } }
   .side { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-  h1 { margin: 0; font: 700 32px Rajdhani, sans-serif; letter-spacing: 1px; } h1 span { color: var(--accent); }
+  h1 { margin: 0; font: 700 32px 'TL Fox Dollar', Rajdhani, sans-serif; letter-spacing: 1px; } h1 span { color: var(--accent); }
   .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  button, select, input { font: 600 13px Inter, sans-serif; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; }
+  button, select, input { font: 600 13px 'TL Fox Dollar', Inter, sans-serif; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; }
   button { cursor: pointer; } button:hover:not(:disabled) { border-color: var(--accent); } button:disabled { opacity: 0.45; cursor: not-allowed; }
   button[aria-pressed="true"] { border-color: var(--accent); background: rgba(57, 208, 255, 0.12); }
   button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #06101f; border: 0; }
@@ -41,7 +41,7 @@
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .row > * { flex: 1; }
   .status { padding: 10px 12px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); font-weight: 600; min-height: 42px; }
   .status.alert { border-color: var(--danger); color: var(--danger); }
-  .code { font: 700 30px Rajdhani, sans-serif; letter-spacing: 8px; text-align: center; padding: 6px; border: 1px dashed var(--accent); border-radius: 10px; }
+  .code { font: 700 30px 'TL Fox Dollar', Rajdhani, sans-serif; letter-spacing: 8px; text-align: center; padding: 6px; border: 1px dashed var(--accent); border-radius: 10px; }
   .muted { color: var(--muted); font-size: 12px; line-height: 1.5; }
   .netdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 6px; } .netdot.on { background: #3bff8c; }
   .online { display: grid; gap: 8px; }

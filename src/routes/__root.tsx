@@ -59,6 +59,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <script src="/fox-dollar.js" />
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: initializeSiteTheme }} />
       </head>

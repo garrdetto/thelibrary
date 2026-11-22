@@ -15,7 +15,7 @@
 <style>
 :root{--panel:rgba(10,14,22,.80);--line:rgba(255,255,255,.12);--txt:#eef2f7;--dim:#9aa7b8;--acc:#ffcc00}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:#000;color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+html,body{margin:0;height:100%;background:#000;color:var(--txt);font-family:'TL Fox Dollar', system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
 #wrap{position:relative;width:100%;height:100vh;height:100dvh;overflow:hidden;background:#000;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 canvas#c{display:block;width:100%;height:100%}
 .hidden{display:none!important}
@@ -35,7 +35,7 @@ canvas#c{display:block;width:100%;height:100%}
 #board .gp{color:var(--dim);font-size:11px}
 #br{position:absolute;right:12px;bottom:12px;padding:10px 14px;width:210px}
 #spd{font:900 46px/1 "Arial Black",Impact,sans-serif;font-variant-numeric:tabular-nums}
-#spd small{font-size:13px;color:var(--dim);margin-left:4px;font-family:system-ui}
+#spd small{font-size:13px;color:var(--dim);margin-left:4px;font-family:'TL Fox Dollar', system-ui}
 .rpm{height:8px;background:rgba(255,255,255,.1);border-radius:4px;margin:8px 0;overflow:hidden}
 .rpm i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2ec46d,#ffcc00 70%,#e5383b)}
 #dmgWrap{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--dim)}
@@ -46,9 +46,9 @@ canvas#c{display:block;width:100%;height:100%}
 #dmgCar .l{left:3px;top:19px;bottom:17px;width:11px;border-radius:2px}
 #dmgCar .rt{right:3px;top:19px;bottom:17px;width:11px;border-radius:2px}
 #flag{position:absolute;right:12px;top:12px;padding:8px 14px;font:900 17px "Arial Black",sans-serif;border-radius:8px;letter-spacing:1px;border:1px solid var(--line)}
-#spotter{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);font:800 22px system-ui;text-shadow:0 2px 6px #000;opacity:0;transition:opacity .2s}
+#spotter{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);font:800 22px 'TL Fox Dollar', system-ui;text-shadow:0 2px 6px #000;opacity:0;transition:opacity .2s}
 #bigmsg{position:absolute;left:50%;top:32%;transform:translate(-50%,-50%);font:900 46px "Arial Black",Impact,sans-serif;text-shadow:0 4px 18px rgba(0,0,0,.7);text-align:center;opacity:0;transition:opacity .3s;white-space:nowrap}
-#bigmsg small{display:block;font:700 18px system-ui;margin-top:6px}
+#bigmsg small{display:block;font:700 18px 'TL Fox Dollar', system-ui;margin-top:6px}
 #keys{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);font-size:12px;color:rgba(255,255,255,.75);text-shadow:0 1px 3px #000;white-space:nowrap}
 #mirrorFrame{position:absolute;top:8px;left:50%;transform:translateX(-50%);border:3px solid #1b1b1b;border-radius:10px;box-shadow:0 3px 12px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.15)}
 #menus{position:absolute;inset:0;pointer-events:none}
@@ -59,20 +59,20 @@ canvas#c{display:block;width:100%;height:100%}
 .scr h1 em{color:var(--acc);font-style:normal}
 .scr h2{font:900 22px "Arial Black",sans-serif;margin:0 0 12px}
 .scr p{color:var(--dim);font-size:14px;margin:0 0 14px}
-.btn{display:block;width:100%;padding:12px 14px;margin:8px 0;border:0;border-radius:8px;background:#232b38;color:var(--txt);font:800 15px system-ui;cursor:pointer;text-align:left}
+.btn{display:block;width:100%;padding:12px 14px;margin:8px 0;border:0;border-radius:8px;background:#232b38;color:var(--txt);font:800 15px 'TL Fox Dollar', system-ui;cursor:pointer;text-align:left}
 .btn:hover{background:#2e3949}
 .btn.pri{background:var(--acc);color:#111}
 .row2{display:flex;gap:8px;align-items:flex-end}
 .row2>*{flex:1;min-width:0}
 label.f,div.f{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.6px}
-input,select{width:100%;padding:9px 10px;border-radius:7px;border:1px solid var(--line);background:#141a24;color:var(--txt);font:600 14px system-ui}
+input,select{width:100%;padding:9px 10px;border-radius:7px;border:1px solid var(--line);background:#141a24;color:var(--txt);font:600 14px 'TL Fox Dollar', system-ui}
 input[type=color]{padding:2px;height:38px}
 .code{font:900 40px "Arial Black",monospace;letter-spacing:6px;color:var(--acc);margin:4px 0 10px}
 #plist div{padding:6px 8px;border-bottom:1px solid var(--line);font-size:14px}
 #chatLog{height:110px;overflow:auto;background:#0e131b;border-radius:7px;padding:6px;font-size:13px;margin-top:6px}
 #resTable{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
 #resTable td,#resTable th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left}
-.rectabs{display:flex;gap:6px;margin:4px 0 8px}.rectabs button{flex:1;padding:8px 4px;border:0;border-radius:7px;background:#232b38;color:var(--txt);font:800 12.5px system-ui;cursor:pointer}.rectabs button.on{background:var(--acc);color:#111}.recbox p{font-size:12.5px;margin:6px 0 0}
+.rectabs{display:flex;gap:6px;margin:4px 0 8px}.rectabs button{flex:1;padding:8px 4px;border:0;border-radius:7px;background:#232b38;color:var(--txt);font:800 12.5px 'TL Fox Dollar', system-ui;cursor:pointer}.rectabs button.on{background:var(--acc);color:#111}.recbox p{font-size:12.5px;margin:6px 0 0}
 .recscroll{max-height:340px;overflow-y:auto}.rec{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}.rec td,.rec th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left}.rec tr.me{background:rgba(255,204,0,.15)}
 .scr{width:min(440px,calc(100% - 48px))}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 12px}
@@ -88,7 +88,7 @@ input[type=color]{padding:2px;height:38px}
 .tcard b{font:900 15px "Arial Black",sans-serif}.tcard span{font-size:12px;color:var(--dim)}.tcard.on{border-color:var(--acc);background:#2a2614}
 .daynight{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 0;padding:12px 14px;border-radius:11px;border:1px solid var(--line);background:#161d28}
 .daynight>span{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:700}
-.dnswitch{position:relative;display:grid;grid-template-columns:1fr 1fr;width:190px;padding:3px;border:1px solid var(--line);border-radius:999px;background:#0e131b;color:var(--dim);cursor:pointer;font:800 12.5px system-ui}
+.dnswitch{position:relative;display:grid;grid-template-columns:1fr 1fr;width:190px;padding:3px;border:1px solid var(--line);border-radius:999px;background:#0e131b;color:var(--dim);cursor:pointer;font:800 12.5px 'TL Fox Dollar', system-ui}
 .dnswitch span{position:relative;z-index:1;padding:7px 0;text-align:center;transition:color .2s}
 .dnswitch i{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:999px;background:var(--acc);transition:transform .22s ease,background .22s}
 .dnswitch .dn-day{color:#111}
@@ -103,7 +103,7 @@ input[type=color]{padding:2px;height:38px}
 #scrGarage{width:min(680px,calc(100% - 48px))}
 .gview,.gplace{display:flex;gap:6px}
 .gview{margin:0 0 4px}.gveh{margin:0 0 10px}
-.gview button,.gplace button,.numrow button{flex:1;padding:8px 6px;border:1px solid var(--line);border-radius:7px;background:#1a2230;color:var(--txt);font:800 12.5px system-ui;cursor:pointer}
+.gview button,.gplace button,.numrow button{flex:1;padding:8px 6px;border:1px solid var(--line);border-radius:7px;background:#1a2230;color:var(--txt);font:800 12.5px 'TL Fox Dollar', system-ui;cursor:pointer}
 .gview button:hover,.gplace button:hover,.numrow button:hover{border-color:#5a6577}
 .gview button[aria-pressed="true"],.gplace button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#111}
 .gsec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line);font:900 17px "Arial Black",Impact,sans-serif}
@@ -134,12 +134,12 @@ input[type=color]{padding:2px;height:38px}
 .tpad{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:12px;padding:8px;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent}
 .tpad.steer{left:calc(6px + env(safe-area-inset-left))}
 .tpad.pedal{right:calc(6px + env(safe-area-inset-right));flex-direction:column}
-.tpad i{display:grid;place-items:center;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,.38);background:rgba(10,14,22,.42);color:rgba(255,255,255,.9);font:900 30px/1 system-ui;font-style:normal;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:background .08s,transform .08s}
+.tpad i{display:grid;place-items:center;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,.38);background:rgba(10,14,22,.42);color:rgba(255,255,255,.9);font:900 30px/1 'TL Fox Dollar', system-ui;font-style:normal;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:background .08s,transform .08s}
 .tpad.pedal i{width:82px;height:72px;border-radius:22px}
 .tpad i.on{background:rgba(255,204,0,.6);border-color:#ffcc00;color:#111;transform:scale(.94)}
 .tpad.pedal i.rev.on{background:rgba(229,56,59,.6);border-color:#e5383b;color:#fff}
 .tbtns{position:absolute;top:calc(58px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));display:flex;gap:8px;pointer-events:auto}
-.tbtns button{min-width:46px;height:40px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--txt);font:800 13px system-ui;letter-spacing:.5px;touch-action:manipulation}
+.tbtns button{min-width:46px;height:40px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--txt);font:800 13px 'TL Fox Dollar', system-ui;letter-spacing:.5px;touch-action:manipulation}
 #wrap.touch #br{top:calc(106px + env(safe-area-inset-top));bottom:auto;right:calc(12px + env(safe-area-inset-right));width:150px;padding:6px 10px}
 #wrap.touch #spd{font-size:28px}
 #wrap.touch .rpm{margin:5px 0}
