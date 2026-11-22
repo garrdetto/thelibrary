@@ -257,6 +257,7 @@ function headTexture(L,i){
    At runtime: rig.setLook({...}) for one player, setUniform(team,{...}) for a whole side. */
 const RIG_S=1.5;          // rig units -> feet across
 const RIG_H=.75;          // height squash: a 1.00-height build stands 4'6"
+const TOON_HEAD=.8,TOON_HEAD_Y=1.12;
 const HAIR_STYLE={bun:'long',dreads:'dreads',curly:'curly',wild:'curly',messy:'short',bob:'long',mohawk:'short',short:'short',buzz:'buzz',long:'long',bald:'bald'};
 // [height, shoulder width, limb mass, head size] per roster slot
 const BUILD=[[0.95,0.94,0.92,1.00],[1.05,1.05,1.01,1.00],[1.00,0.95,0.96,0.98],[1.00,1.00,0.98,1.00],[1.02,0.96,0.96,1.00],[1.06,1.06,1.02,1.00],[1.02,0.95,0.95,0.98],[1.06,1.04,1.01,1.00],[1.00,0.98,0.96,1.00],[0.98,0.96,0.96,1.00],[1.06,1.07,1.02,1.02],[1.00,0.96,0.96,1.00],[0.95,0.94,0.92,1.04],[0.96,0.94,0.93,1.00],[1.00,0.94,0.93,1.00],[0.94,0.94,0.92,1.04],[1.03,0.98,0.97,1.00],[1.04,0.94,0.93,1.00],[0.95,0.94,0.92,1.02],[0.98,0.94,0.92,1.00],[0.97,0.94,0.95,1.00],[1.03,0.98,0.96,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.93,1.00],[1.06,1.04,1.00,1.00],[1.06,1.07,1.02,0.98],[1.03,0.97,0.96,1.00],[1.00,0.95,0.96,1.00],[1.03,1.09,1.10,1.00],[0.97,0.94,0.95,1.00],[1.00,0.96,0.96,1.00],[1.00,1.06,1.10,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.92,1.00]];
@@ -675,7 +676,7 @@ class Rig{
     const body=!!this.bones,side=['L','R'];
     if(body){const bw=this.bw;this.setBoneMatrix('hips',this.hips.matrix,bw,1,1);this.setBoneMatrix('chest',_m,bw,1,.88+.12*bw);
       this.neck.updateMatrix();_mn.multiplyMatrices(_m,this.neck.matrix);this.setBoneMatrix('neck',_mn,1,1,1);
-      if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,1,1/RIG_H,1)}}
+      if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,TOON_HEAD,TOON_HEAD*TOON_HEAD_Y,TOON_HEAD)}}
     else this.updateAbdomen();
     // arms: shoulder -> elbow -> wrist, biceps side facing away from the elbow pole
     const HL=V3(...p.hl),HR=V3(...p.hr_),lb=this.lb,lg=Math.pow(lb,.8);
