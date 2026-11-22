@@ -38,7 +38,9 @@
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
   fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   fieldset:disabled { opacity: .55; }
+  @media (max-width: 620px) { .plan { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; } .plan section { padding: 10px; } .plan section:first-child { grid-column: 1 / -1; } .plan h2 { font-size: 18px; margin-bottom: 6px; } .plan h2 small { display: block; margin: 0; } .row { flex-wrap: wrap; } .bar p, .row small, .price + .ledger { display: none; } }
 </style>
+<script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>

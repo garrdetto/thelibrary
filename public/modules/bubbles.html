@@ -21,6 +21,7 @@
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
   @media (max-width: 480px) { .panel.play { padding: 8px; } }
 </style>
+<script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
@@ -337,7 +338,7 @@ function draw() {
 let last = performance.now();
 function frame(now) { const dt = Math.min(0.05, (now - last) / 1000); last = now; update(dt); draw(); requestAnimationFrame(frame); }
 
-function toLogical(e) { const rect = cv.getBoundingClientRect(); return { x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale }; }
+function toLogical(e) { const rect = cv.getBoundingClientRect(); return { x: (e.clientX - rect.left) / rect.width * W, y: (e.clientY - rect.top) / rect.height * H }; }
 function aimAt(p) { const a = Math.atan2(SY - p.y, p.x - SX); aim = Math.max(MIN_A, Math.min(MAX_A, a < -Math.PI / 2 ? Math.PI : a < 0 ? 0 : a)); }
 cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
