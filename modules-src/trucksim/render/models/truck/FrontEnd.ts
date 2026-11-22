@@ -74,7 +74,7 @@ function squareHood(b: PartBatch, L: TruckLayout, rt: number): void {
   b.add('primary', loft((z) => ({ x0: -hh, x1: hh, y0: split, y1: mix(tr, tf, (z - zF) / (noseZ - zF)), rt, rb: 0.012 }), zF - 0.02, noseZ, { re: 0.04, ends: 'front', steps: 2 }))
 }
 
-function classicFront(b: PartBatch, L: TruckLayout): void {
+function classicFront(b: PartBatch, L: TruckLayout, grille: GrilleOption): void {
   const { noseZ, cabFrontZ: zF, hoodHalfWidth: hh, hoodBottom: hb, hoodTopFront: tf } = L
   squareHood(b, L, 0.075)
   const split = hb + HOOD_BAND
@@ -90,6 +90,7 @@ function classicFront(b: PartBatch, L: TruckLayout): void {
   const surround = roundCorners([[-gx, gy0, noseZ + 0.035], [gx, gy0, noseZ + 0.035], [gx, gy1, noseZ + 0.035], [-gx, gy1, noseZ + 0.035]], 0.07, 4, true)
   b.add('chrome', sweep(surround, rectProfile(0.08, 0.1, 0.028), { side: [0, 0, 1], closed: true }))
   b.add('grille', boxAt(-0.5, 0.5, gy0 + 0.03, gy1 - 0.03, noseZ - 0.04, noseZ + 0.012))
+  grilleFill(b, grille, noseZ + 0.004, gy0 + 0.04, gy1 - 0.04, () => 0.5, () => {
   if (L.model.brand === 'Bedrock') {
     for (let k = 0; k < 9; k++) {
       const y = mix(gy0 + 0.1, gy1 - 0.12, k / 8)
@@ -101,6 +102,7 @@ function classicFront(b: PartBatch, L: TruckLayout): void {
       b.add('chrome', slab(x - 0.012, x + 0.012, gy0 + 0.04, gy1 - 0.04, noseZ + 0.006, noseZ + 0.032, 0.008))
     }
   }
+  })
   badge(b, L.model.brand, 0, gy1 - 0.12, noseZ + 0.04, 0.014)
   fenders(b, L, { frontTop: 1.04, rearTop: 0.9, frontBase: 0.8, rearBase: 0.66, rt: 0.16, crestLift: 0.12 })
   const lampZ = noseZ - 0.2
@@ -124,7 +126,7 @@ function classicFront(b: PartBatch, L: TruckLayout): void {
   }
 }
 
-function squareFront(b: PartBatch, L: TruckLayout): void {
+function squareFront(b: PartBatch, L: TruckLayout, grille: GrilleOption): void {
   const { noseZ, hoodTopFront: tf } = L
   squareHood(b, L, 0.09)
   const gy0 = 1.12
@@ -132,10 +134,12 @@ function squareFront(b: PartBatch, L: TruckLayout): void {
   b.add('grille', boxAt(-0.5, 0.5, gy0, gy1, noseZ - 0.03, noseZ + 0.006))
   const surround = roundCorners([[-0.53, gy0 - 0.03, noseZ + 0.012], [0.53, gy0 - 0.03, noseZ + 0.012], [0.53, gy1 + 0.03, noseZ + 0.012], [-0.53, gy1 + 0.03, noseZ + 0.012]], 0.05, 3, true)
   b.add('accent', sweep(surround, rectProfile(0.045, 0.06, 0.016), { side: [0, 0, 1], closed: true }))
-  for (let k = 0; k < 6; k++) {
-    const y = mix(gy0 + 0.06, gy1 - 0.06, k / 5)
-    b.add('accent', slabX(-0.49, 0.49, y - 0.018, y + 0.018, noseZ - 0.004, noseZ + 0.02, 0.008))
-  }
+  grilleFill(b, grille, noseZ - 0.006, gy0, gy1, () => 0.5, () => {
+    for (let k = 0; k < 6; k++) {
+      const y = mix(gy0 + 0.06, gy1 - 0.06, k / 5)
+      b.add('accent', slabX(-0.49, 0.49, y - 0.018, y + 0.018, noseZ - 0.004, noseZ + 0.02, 0.008))
+    }
+  })
   b.add('grille', boxAt(-0.62, 0.62, 0.8, L.hoodBottom + 0.02, noseZ - 0.08, noseZ - 0.03))
   badge(b, L.model.brand, 0, tf - 0.075, noseZ + 0.012, 0.012)
   fenders(b, L, { frontTop: 1.14, rearTop: 0.92, frontBase: 0.8, rearBase: 0.66, rt: 0.08, crestLift: 0.1 })
@@ -198,16 +202,61 @@ function slopedHood(b: PartBatch, L: TruckLayout, spec: SlopedSpec, re = 0.12): 
   return (z) => insetSection(shape(z), endInset(z, z0, z1, re, 'front'), true)
 }
 
-function trapezoidGrille(b: PartBatch, z: number, y0: number, y1: number, bottomHalf: number, topHalf: number, bars: number, surround: PartKey): void {
+/**
+ * Fills a grille opening with the chosen insert, or runs `stock` for the model's own bars. `halfAt(y)` is the opening's half
+ * width at height y; bars stand just proud of the face at `z`.
+ */
+function grilleFill(b: PartBatch, style: GrilleOption, z: number, y0: number, y1: number, halfAt: (y: number) => number, stock: () => void): void {
+  if (style === 'stock') {
+    stock()
+    return
+  }
+  const narrow = Math.min(halfAt(y0), halfAt(y1)) - 0.03
+  const ya = y0 + 0.03
+  const yb = y1 - 0.03
+  if (style === 'bars') {
+    const count = Math.max(7, Math.round((narrow * 2) / 0.07))
+    for (let k = 0; k < count; k++) {
+      const x = mix(-narrow + 0.02, narrow - 0.02, k / (count - 1))
+      b.add('chrome', slab(x - 0.012, x + 0.012, ya, yb, z + 0.002, z + 0.028, 0.008))
+    }
+    return
+  }
+  if (style === 'slats' || style === 'blackout') {
+    const key: PartKey = style === 'blackout' ? 'satinBlack' : 'chrome'
+    const count = Math.max(4, Math.round((yb - ya) / (style === 'blackout' ? 0.06 : 0.085)))
+    for (let k = 0; k < count; k++) {
+      const y = mix(ya + 0.015, yb - 0.015, k / (count - 1))
+      const half = halfAt(y) - 0.025
+      b.add(key, slabX(-half, half, y - (style === 'blackout' ? 0.02 : 0.015), y + (style === 'blackout' ? 0.02 : 0.015), z + 0.002, z + 0.026, 0.006))
+    }
+    return
+  }
+  const rows = Math.max(5, Math.round((yb - ya) / 0.05))
+  for (let k = 0; k < rows; k++) {
+    const y = mix(ya, yb, k / (rows - 1))
+    const half = halfAt(y) - 0.025
+    b.add('chrome', boxAt(-half, half, y - 0.005, y + 0.005, z + 0.004, z + 0.016))
+  }
+  const cols = Math.max(9, Math.round((narrow * 2) / 0.05))
+  for (let k = 0; k < cols; k++) {
+    const x = mix(-narrow, narrow, k / (cols - 1))
+    b.add('chrome', boxAt(x - 0.005, x + 0.005, ya, yb, z + 0.012, z + 0.024))
+  }
+}
+
+function trapezoidGrille(b: PartBatch, z: number, y0: number, y1: number, bottomHalf: number, topHalf: number, bars: number, surround: PartKey, grille: GrilleOption): void {
   b.add('grille', panel([-bottomHalf, y0, z - 0.004], [bottomHalf, y0, z - 0.004], [topHalf, y1, z - 0.004], [-topHalf, y1, z - 0.004], 0.03))
   const loop = roundCorners([[-bottomHalf - 0.02, y0 - 0.02, z + 0.014], [bottomHalf + 0.02, y0 - 0.02, z + 0.014], [topHalf + 0.02, y1 + 0.02, z + 0.014], [-topHalf - 0.02, y1 + 0.02, z + 0.014]], 0.06, 4, true)
   b.add(surround, tube(loop, 0.02, 10, { closed: true }))
-  for (let k = 1; k <= bars; k++) {
-    const t = k / (bars + 1)
-    const y = mix(y0, y1, t)
-    const half = mix(bottomHalf, topHalf, t) - 0.01
-    b.add('chrome', slabX(-half, half, y - 0.011, y + 0.011, z + 0.002, z + 0.02, 0.006))
-  }
+  grilleFill(b, grille, z, y0, y1, (y) => mix(bottomHalf, topHalf, (y - y0) / (y1 - y0)), () => {
+    for (let k = 1; k <= bars; k++) {
+      const t = k / (bars + 1)
+      const y = mix(y0, y1, t)
+      const half = mix(bottomHalf, topHalf, t) - 0.01
+      b.add('chrome', slabX(-half, half, y - 0.011, y + 0.011, z + 0.002, z + 0.02, 0.006))
+    }
+  })
 }
 
 function hoodMirror(b: PartBatch, base: P3, s: number): void {
@@ -217,13 +266,13 @@ function hoodMirror(b: PartBatch, base: P3, s: number): void {
   b.add('chrome', at(sphere(0.13, 10, 1, 0.8, 0.25), head[0], head[1], head[2] - 0.03))
 }
 
-function aeroFront(b: PartBatch, L: TruckLayout): void {
+function aeroFront(b: PartBatch, L: TruckLayout, grille: GrilleOption): void {
   const shape = slopedHood(b, L, { topRear: L.hoodTopRear, topFront: L.hoodTopFront, cowlHalf: 1.08, noseHalf: 1.0, frontBase: 0.74, rearBase: 0.86, rtRear: 0.22, rtFront: 0.32 }, 0.09)
   const zN = L.noseZ
   const face = shape(zN)
   const gy0 = Math.max(face.y0 + 0.03, 0.84)
   const gy1 = face.y1 - 0.05
-  trapezoidGrille(b, zN, gy0, gy1, 0.46, 0.56, 5, 'chrome')
+  trapezoidGrille(b, zN, gy0, gy1, 0.46, 0.56, 5, 'chrome', grille)
   badge(b, L.model.brand, 0, gy1 - 0.035, zN + 0.03, 0.011)
   for (const s of [1, -1] as const) {
     b.add('chrome', cornerStrip(shape, zN - 0.6, zN - 0.08, 8, s, 6, 64, 0.004, 0.01))
@@ -245,7 +294,7 @@ function aeroFront(b: PartBatch, L: TruckLayout): void {
   }
 }
 
-function slopedFront(b: PartBatch, L: TruckLayout): void {
+function slopedFront(b: PartBatch, L: TruckLayout, grille: GrilleOption): void {
   const shape = slopedHood(b, L, { topRear: L.hoodTopRear, topFront: L.hoodTopFront, cowlHalf: 1.12, noseHalf: 1.12, frontBase: 0.8, rearBase: 0.84, rtRear: 0.14, rtFront: 0.18 })
   const zN = L.noseZ
   const face = shape(zN)
@@ -254,10 +303,12 @@ function slopedFront(b: PartBatch, L: TruckLayout): void {
   b.add('grille', slab(-0.5, 0.5, gy0, gy1, zN - 0.03, zN + 0.012, 0.02))
   const surround = roundCorners([[-0.53, gy0 - 0.03, zN + 0.014], [0.53, gy0 - 0.03, zN + 0.014], [0.53, gy1 + 0.03, zN + 0.014], [-0.53, gy1 + 0.03, zN + 0.014]], 0.05, 3, true)
   b.add('accent', sweep(surround, rectProfile(0.04, 0.06, 0.015), { side: [0, 0, 1], closed: true }))
-  for (let k = 0; k < 7; k++) {
-    const y = mix(gy0 + 0.05, gy1 - 0.05, k / 6)
-    b.add('chrome', slabX(-0.48, 0.48, y - 0.014, y + 0.014, zN + 0.004, zN + 0.024, 0.006))
-  }
+  grilleFill(b, grille, zN + 0.002, gy0, gy1, () => 0.5, () => {
+    for (let k = 0; k < 7; k++) {
+      const y = mix(gy0 + 0.05, gy1 - 0.05, k / 6)
+      b.add('chrome', slabX(-0.48, 0.48, y - 0.014, y + 0.014, zN + 0.004, zN + 0.024, 0.006))
+    }
+  })
   badge(b, L.model.brand, 0, gy1 + 0.07, zN + 0.004, 0.012)
   const zHood = L.cabFrontZ - 0.02
   if (zHood > -L.archR) {
@@ -279,17 +330,19 @@ function slopedFront(b: PartBatch, L: TruckLayout): void {
   }
 }
 
-function caboverFront(b: PartBatch, L: TruckLayout): void {
+function caboverFront(b: PartBatch, L: TruckLayout, grille: GrilleOption): void {
   const { hw, cabFloorY: yF, beltY: yB, cabFrontZ: zF } = L
   const gy0 = yF + 0.14
   const gy1 = yB - 0.12
   b.add('grille', slab(-0.6, 0.6, gy0, gy1, zF - 0.02, zF + 0.012, 0.02))
   const surround = roundCorners([[-0.63, gy0 - 0.03, zF + 0.016], [0.63, gy0 - 0.03, zF + 0.016], [0.63, gy1 + 0.03, zF + 0.016], [-0.63, gy1 + 0.03, zF + 0.016]], 0.05, 3, true)
   b.add('chrome', tube(surround, 0.02, 8, { closed: true }))
-  for (let k = 0; k < 6; k++) {
-    const y = mix(gy0 + 0.05, gy1 - 0.05, k / 5)
-    b.add('chrome', slabX(-0.58, 0.58, y - 0.014, y + 0.014, zF + 0.004, zF + 0.024, 0.006))
-  }
+  grilleFill(b, grille, zF + 0.002, gy0, gy1, () => 0.6, () => {
+    for (let k = 0; k < 6; k++) {
+      const y = mix(gy0 + 0.05, gy1 - 0.05, k / 5)
+      b.add('chrome', slabX(-0.58, 0.58, y - 0.014, y + 0.014, zF + 0.004, zF + 0.024, 0.006))
+    }
+  })
   badge(b, L.model.brand, 0, (gy1 + yB) / 2 + 0.005, zF + 0.004, 0.0105)
   for (const s of [1, -1]) {
     const x = s * 0.92
@@ -372,10 +425,10 @@ function bumper(b: PartBatch, L: TruckLayout, look: TruckLook): void {
 /** Writes the front end (hood, grille, fenders, lamps, bumper, engine bay) of a truck into the batch. */
 export function buildFrontEnd(b: PartBatch, L: TruckLayout, look: TruckLook): void {
   engineBay(b, L)
-  if (L.front === 'classic') classicFront(b, L)
-  else if (L.front === 'square') squareFront(b, L)
-  else if (L.front === 'aero') aeroFront(b, L)
-  else if (L.front === 'sloped') slopedFront(b, L)
-  else caboverFront(b, L)
+  if (L.front === 'classic') classicFront(b, L, look.grille)
+  else if (L.front === 'square') squareFront(b, L, look.grille)
+  else if (L.front === 'aero') aeroFront(b, L, look.grille)
+  else if (L.front === 'sloped') slopedFront(b, L, look.grille)
+  else caboverFront(b, L, look.grille)
   bumper(b, L, look)
 }

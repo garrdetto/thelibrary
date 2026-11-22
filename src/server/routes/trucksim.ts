@@ -24,6 +24,9 @@ const lookSchema = z.object({
   wheels: z.enum(LOOK_OPTIONS.wheels),
   mudflaps: z.enum(LOOK_OPTIONS.mudflaps),
   horn: z.enum(LOOK_OPTIONS.horn),
+  grille: z.enum(LOOK_OPTIONS.grille).optional(),
+  roof: z.enum(LOOK_OPTIONS.roof).optional(),
+  skirts: z.boolean().optional(),
 })
 
 const metres = z.number().finite().min(-1000).max(1000)
