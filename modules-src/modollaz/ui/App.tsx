@@ -12,6 +12,7 @@ import { dollazCollect, dollazSpin, fetchDollaz } from '../net/api'
 import { DISPLAY_FONT, ensureFonts } from '../render/art'
 import { Stage, type PlayOptions } from '../render/stage'
 import { JackpotBar, MeterBar } from './Bars'
+import { COLLECT_START_SPINS, CollectLadder, spinsAddedBy, type LadderState } from './CollectLadder'
 import { Paytable } from './Paytable'
 import { PickBoard } from './PickBoard'
 
@@ -103,6 +104,9 @@ export function App() {
   const [recordNote, setRecordNote] = useState<string | null>(null)
   const [collecting, setCollecting] = useState(false)
   const [report, setReport] = useState<SimulationReport | null>(null)
+  const [ladder, setLadder] = useState<LadderState | null>(null)
+  const [wide, setWide] = useState(false)
+  const mainRef = useRef<HTMLElement | null>(null)
 
   const bet = BET_LEVELS_CENTS[betIndex]
   const admin = account.status === 'member' && account.admin
@@ -200,7 +204,7 @@ export function App() {
     if (feature.kind === 'cashcollect') {
       audio.feature()
       await showBanner({ title: 'CASH COLLECT', sub: 'The bag grabs every bill it can reach', tone: 'collect' }, turboOn ? 1000 : 1800)
-      const tally = fx.tally('CASH COLLECT', { subtitle: '5 SPINS' })
+      const tally = fx.tally('CASH COLLECT')
       let added = 0
       const collect = (credits: number) => {
         const amount = cents(credits)
@@ -208,11 +212,26 @@ export function App() {
         tally.add(amount)
         addWin(amount)
       }
-      await stage.openBoard(feature.start ?? [], feature.zone ?? feature.steps[0]?.zone ?? { reel: 1, row: 2, size: 2 }, options(), collect)
+      const startZone = feature.zone ?? feature.steps[0]?.zone ?? { reel: 1, row: 2, size: 2 }
+      let bills = 0
+      let size = 2
+      let spinsLeft = COLLECT_START_SPINS
+      setLadder({ bills, spins: spinsLeft, size })
+      const onBill = () => {
+        spinsLeft += spinsAddedBy(bills, bills + 1)
+        bills++
+        setLadder({ bills, spins: spinsLeft, size })
+      }
+      await stage.openBoard(feature.start ?? [], startZone, options(), collect, onBill)
+      size = startZone.size
+      setLadder({ bills, spins: spinsLeft, size })
       for (const step of feature.steps) {
-        tally.subtitle(`${step.left + 1} SPIN${step.left === 0 ? '' : 'S'} LEFT`)
-        await stage.boardSpin(step, options(), collect)
-        tally.subtitle(`${step.left} SPIN${step.left === 1 ? '' : 'S'} LEFT · ${step.zone.size}×${step.zone.size}`)
+        spinsLeft = Math.max(0, spinsLeft - 1)
+        setLadder({ bills, spins: spinsLeft, size })
+        await stage.boardSpin(step, options(), collect, onBill)
+        spinsLeft = step.left
+        size = step.zone.size
+        setLadder({ bills, spins: spinsLeft, size })
       }
       const exact = cents(feature.win)
       if (exact !== added) {
@@ -220,7 +239,9 @@ export function App() {
         addWin(exact - added)
       }
       await tally.finish({ title: 'CASH COLLECTED', hold: turboOn ? 1000 : 1900 })
+      setLadder(null)
       await stage.closeBoard(options())
+      stage.setBoardReserve({ left: 0, top: 0 })
       return
     }
     if (feature.kind === 'freegames') {
@@ -270,8 +291,12 @@ export function App() {
     if (!stage || !fx || busyRef.current) return
     audio.unlock()
     const level = BET_LEVELS_CENTS[betIndexRef.current]
+    if (balanceRef.current < level && !remoteRef.current) {
+      setBalance(game.addCredits(100000).balance)
+      setNotice('Out of play credits, so you got $1,000 more.')
+    }
     if (balanceRef.current < level) {
-      setNotice(remoteRef.current ? 'Not enough in your vault for this bet. Lower the bet or collect your daily credits.' : 'Out of play credits. Use the refill in the developer panel or lower the bet.')
+      setNotice('Not enough in your vault for this bet. Lower the bet or collect your daily credits.')
       autoRef.current = false
       setAuto(false)
       return
@@ -347,6 +372,16 @@ export function App() {
 
   useEffect(() => () => window.clearTimeout(timerRef.current), [])
 
+  useEffect(() => {
+    const node = mainRef.current
+    if (!node) return
+    const measure = () => setWide(node.clientWidth > node.clientHeight * 1.2)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
   const changeBet = (delta: number) => {
     if (busy) return
     audio.unlock()
@@ -405,8 +440,8 @@ export function App() {
     setPendingForce(force)
   }
 
-  const canForce = !remote || admin
-  const showDebug = debugOpen && (account.status !== 'member' || admin || practice)
+  const canForce = admin
+  const showDebug = debugOpen && admin
   const iconButton = 'grid h-11 w-11 place-items-center rounded-full text-cream-200 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-gold-300'
 
   return (
@@ -418,7 +453,7 @@ export function App() {
           <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
             <DailyCollect status={account.status} daily={account.status === 'member' ? account.daily : null} receivedAt={account.status === 'member' ? account.receivedAt : 0} busy={busy} collecting={collecting} onCollect={() => void collect()} onExpired={() => void applyHello()} />
             <button type="button" onClick={() => setPaytableOpen(true)} className={iconButton} aria-label="How Mo' Dollaz pays"><Info className="h-5 w-5" aria-hidden /></button>
-            {(account.status !== 'member' || admin) && <button type="button" onClick={() => setDebugOpen((open) => !open)} className={iconButton} aria-label="Developer panel" aria-pressed={debugOpen}><Bug className="h-5 w-5" aria-hidden /></button>}
+            {admin && <button type="button" onClick={() => setDebugOpen((open) => !open)} className={iconButton} aria-label="Developer panel" aria-pressed={debugOpen}><Bug className="h-5 w-5" aria-hidden /></button>}
             <button type="button" onClick={toggleMute} className={iconButton} aria-label={muted ? 'Turn sound on' : 'Turn sound off'}>{muted ? <VolumeX className="h-5 w-5" aria-hidden /> : <Volume2 className="h-5 w-5" aria-hidden />}</button>
             <button type="button" className={`tl-full-only ${iconButton}`} data-tl-exit-full aria-label="Exit full screen"><Minimize2 className="h-5 w-5" aria-hidden /></button>
           </div>
@@ -426,7 +461,7 @@ export function App() {
         <JackpotBar bet={bet} />
         <div className="short:hidden"><MeterBar meters={meters} /></div>
 
-        <main className="relative min-h-0 flex-1">
+        <main ref={mainRef} className="relative min-h-0 flex-1">
           <canvas ref={canvasRef} className="block h-full w-full" role="img" aria-label="Five reels of three rows on twenty lines. A money bag on the first reel with any cash bill starts Cash Collect." />
           {!ready && !failure && <p className="absolute inset-0 grid place-items-center text-lg font-semibold" role="status">Counting the cash…</p>}
           {failure && <p className="absolute inset-0 grid place-items-center p-6 text-center text-lg" role="alert">{failure}</p>}
@@ -443,6 +478,13 @@ export function App() {
                 <span className="mt-2 block text-[10px] uppercase tracking-widest text-cream-300 sm:text-xs">Tap to continue</span>
               </span>
             </button>
+          )}
+          {ladder && (
+            <CollectLadder
+              state={ladder}
+              wide={wide}
+              onSize={({ width, height }) => stageRef.current?.setBoardReserve(wide ? { left: width + 10, top: 0 } : { left: 0, top: height + 8 })}
+            />
           )}
           {pick && <PickBoard tiles={pick.tiles} won={pick.won} bet={bet} auto={auto} onPick={() => audio.pop('coin')} onDone={pick.resolve} />}
           {(notice || recordNote) && (
