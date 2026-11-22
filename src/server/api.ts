@@ -5,6 +5,7 @@ import { accountSettings, poolAccount, workspaceAccess, workspaceAdmin } from '.
 import { poolCueOverlay, poolPractice, poolPreferences } from './routes/pool'
 import { racing } from './routes/racing'
 import { fairway } from './routes/fairway'
+import { bridge } from './routes/bridge'
 import { arenaStats } from './routes/arena-stats'
 import { angler } from './routes/angler'
 import { anglerLake } from './routes/angler-lake'
@@ -57,6 +58,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/pool-cue-overlay': poolCueOverlay,
   '/api/racing': racing,
   '/api/fairway': fairway,
+  '/api/bridge': bridge,
   '/api/arena-stats': arenaStats,
   '/api/angler': angler,
   '/api/angler-lake': anglerLake,
