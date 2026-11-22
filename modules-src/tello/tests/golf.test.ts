@@ -7,6 +7,8 @@ import { TelloLand } from '../region'
 import { pointInRing } from '../world/Poly'
 import { junctionFills } from '../world/JunctionShapes'
 import { clipBand } from '../world/GolfCourse'
+import { Forest, TREE_STAND } from '../world/Forest'
+import { inThinnedWoods, ringDist, TEE_CLEAR, THIN_EDGE, THIN_GAP } from '../data/GolfFixes'
 
 const dir = 'public/modules/tello/'
 const doc = JSON.parse(readFileSync(`${dir}montello.json`, 'utf8')) as MapDoc
@@ -108,4 +110,44 @@ test('a driveway meeting a road gets no end cap reaching into it', () => {
   const ex = drive.p[(n - 1) * 2], ez = drive.p[(n - 1) * 2 + 1]
   const capped = junctionFills(doc).some((f) => f.tris.length && Math.hypot(f.tris[0] - ex, f.tris[1] - ez) < 0.01)
   assert.equal(capped, false)
+})
+
+function forestRound(points: [number, number][]): Forest {
+  const sink = { addStaticBox: () => null, addStaticCylinder: () => null, addHeightfield: () => {}, removeStatic: () => {} }
+  const forest = new Forest(land, () => {}, sink)
+  const done = new Set<string>()
+  for (const [x, z] of points) {
+    for (const [dx, dz] of [[-60, -60], [60, -60], [-60, 60], [60, 60], [0, 0]]) {
+      const ci = Math.floor(land.toSceneX(x + dx) / TREE_STAND), cj = Math.floor(land.toSceneZ(z + dz) / TREE_STAND)
+      if (done.has(`${ci},${cj}`)) continue
+      done.add(`${ci},${cj}`)
+      forest.infill(ci, cj)
+    }
+  }
+  return forest
+}
+
+test('every tee box is clear of trees, hole 2 included', () => {
+  const course = doc.golf!.find((c) => c.n === 'White Lake Golf Club')!
+  const forest = forestRound(course.holes.map((h) => [h.tee[0], h.tee[1]]))
+  for (let i = 0; i < forest.treeCount; i++) {
+    const x = forest.treeX(i), z = forest.treeZ(i)
+    for (const hole of course.holes) assert.ok(ringDist(hole.box, x, z) > TEE_CLEAR, `a tree stands ${ringDist(hole.box, x, z).toFixed(1)} m from hole ${hole.n}'s tee box`)
+  }
+})
+
+test("hole 9's woods between the fairway and the green are thinned", () => {
+  const hole = doc.golf!.find((c) => c.n === 'White Lake Golf Club')!.holes[8]
+  assert.equal(hole.n, 9)
+  const forest = forestRound([[hole.pin[0], hole.pin[1]], [hole.line[hole.line.length - 4], hole.line[hole.line.length - 3]]])
+  const inside: [number, number][] = []
+  for (let i = 0; i < forest.treeCount; i++) {
+    const x = forest.treeX(i), z = forest.treeZ(i)
+    if (!inThinnedWoods(hole, x, z)) continue
+    assert.ok(i < forest.bakedCount, `infill grew at (${x.toFixed(0)}, ${z.toFixed(0)})`)
+    assert.ok(ringDist(hole.green, x, z) > THIN_EDGE && hole.fw.every((fw) => ringDist(fw, x, z) > THIN_EDGE), `a tree crowds the fairway or green at (${x.toFixed(0)}, ${z.toFixed(0)})`)
+    for (const [ox, oz] of inside) assert.ok(Math.hypot(ox - x, oz - z) >= THIN_GAP, 'thinned trees stand apart')
+    inside.push([x, z])
+  }
+  assert.ok(inside.length > 0, 'some trees still stand round hole 9')
 })

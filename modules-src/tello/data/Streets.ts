@@ -13,6 +13,7 @@
  * - Every street with a sidewalk is level from side to side (`levelStreets` in `LevelStreets.ts`), and Main Street
  *   gets its concrete retaining wall where it runs beside the river (`fixRiverWalls` in `RiverWall.ts`).
  */
+import { fixGolf } from './GolfFixes'
 import { COVER, type BridgeData, type BuildingData, type MapDoc, type MapGrids, type RoadData } from './MapData'
 import { BUILDING_HEIGHTS, CORNER_GARAGE, EXTRA_BUILDINGS, REMOVED_BUILDINGS } from './Downtown'
 import { pointInRing, resample } from '../world/Poly'
@@ -416,6 +417,7 @@ export function fixStreets(doc: MapDoc, grids: MapGrids): void {
   paveProfiles(doc, grids, townProfiles(doc))
   levelStreets(doc, grids)
   fixRiverWalls(doc, grids)
+  fixGolf(doc, grids)
 }
 
 // ---------------------------------------------------------------- buildings
