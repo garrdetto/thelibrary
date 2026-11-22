@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#14161a" />
+    <title>Truck Simulator · the library</title>
+    <meta name="description" content="Haul gravel, fuel, grain, steel, cold freight and heavy equipment across an open county, earn your way into semi-trucks and build up your own truck lot." />
+    <style>
+      html,body{margin:0;height:100%;background:#0d0f12;color:#e9ecef;overflow:hidden;font:500 14px/1.45 'TL Fox Dollar', Inter, system-ui, sans-serif;-webkit-user-select:none;user-select:none}
+      #scene{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
+      #ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+      #ui > *{pointer-events:auto}
+      #boot{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(ellipse at 30% 80%,rgba(242,163,58,.18),transparent 55%),#0d0f12}
+      #boot .card{display:grid;gap:14px;justify-items:center;text-align:center;padding:24px}
+      #boot h1{margin:0;font:800 34px/1 'TL Fox Dollar', 'Barlow Condensed', 'Oswald', 'Arial Narrow', sans-serif;letter-spacing:1.5px;text-transform:uppercase;color:#f2a33a}
+      #boot p{margin:0;color:#aab1ba}
+      #boot .bar{width:min(360px,80vw);height:6px;border-radius:4px;background:#23272d;overflow:hidden}
+      #boot .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#d7d9dd,#f2a33a);transition:width .2s}
+      #boot[hidden]{display:none}
+      @media (prefers-reduced-motion: reduce){#boot .bar i{transition:none}}
+    </style>
+  </head>
+  <body>
+    <canvas id="scene" tabindex="0" aria-label="Truck Simulator 3D view"></canvas>
+    <div id="ui"></div>
+    <div id="boot" role="status" aria-live="polite">
+      <div class="card">
+        <h1>Truck Simulator</h1>
+        <div class="bar"><i id="boot-bar"></i></div>
+        <p id="boot-text">Warming up the engine…</p>
+      </div>
+    </div>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
