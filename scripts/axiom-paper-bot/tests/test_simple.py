@@ -323,3 +323,12 @@ class LiquidityGlitchTests(unittest.TestCase):
         self.assertFalse(liquidity_glitch(422.0, 0.06, 1.0, 0.2), "the price crashed too: a real pull")
         self.assertFalse(liquidity_glitch(422.0, 300.0, 1.0, 1.0), "an ordinary drop")
         self.assertFalse(liquidity_glitch(None, 0.06, 1.0, 1.0))
+
+
+class ReportLimitTests(unittest.TestCase):
+    def test_a_long_note_is_cut_so_the_site_still_takes_the_report(self) -> None:
+        bot = SimpleHarness()
+        bot.engine.ledger.event(bot.engine.now(), "learn", "x" * 5_000)
+        events = bot.engine.report()["events"]
+        self.assertTrue(all(len(event["text"]) <= 1_000 for event in events))
+        bot.close()

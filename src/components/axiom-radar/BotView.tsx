@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, Bot, Check, LoaderCircle, RotateCcw, Undo2 } from 'lucide-react'
+import { ArrowDown, Bot, Check, LoaderCircle, RotateCcw, Undo2 } from 'lucide-react'
 import { botDialGroups, botDials, botPresets, defaultBotValues, normalizeBotValues, type BotDial, type BotDialValue, type BotValues } from '@/lib/axiom-bot'
+import { BotActivity } from './BotActivity'
 import { BotControls, botStatus, bracket, feeLine, headline, signedHeadline, signedPercent, toneOf } from './BotControls'
 import { BotLearningCard } from './BotLearning'
 import { relativeSeconds } from './format'
@@ -36,8 +37,8 @@ function DialField({ dial, prefix, value, onChange }: { dial: BotDial; prefix: s
   return <NumberField id={id} label={dial.unit ? `${dial.label} (${dial.unit})` : dial.label} hint={hint} value={number} min={dial.min} max={dial.max} step={dial.step} onChange={onChange}/>
 }
 
-/** The bot's control screen: its terminal actions as buttons, quick setup, every dial, and a Save bar that says when the bot has the change. */
-export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () => void }) {
+/** The bot's control screen: its terminal actions as buttons, quick setup, every dial, a Save bar that says when the bot has the change, then its account, positions and trades. */
+export function BotView({ now }: { now: number }) {
   const bot = useBot()
   const { view, error, loading, saveSettings } = bot
   const { canEdit } = useRadarAccess()
@@ -89,7 +90,7 @@ export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () =
         <div className="radar-kpi"><span>Today</span><strong className={`tabular radar-delta ${toneOf(report.account.dayPnl)}`}>{signedHeadline(sol?.dayPnl, report.account.dayPnl)}</strong><small>{bracket(sol?.dayPnl, Math.abs(report.account.dayPnl))}{signedPercent(report.account.dayPnlPct)} · {report.stats.trades} closed trades</small></div>
         <div className="radar-kpi"><span>Coins held</span><strong className="tabular">{report.positions.length}</strong><small>{headline(sol?.exposure, report.account.exposure)} of {headline(sol?.exposureLimit, report.account.exposureLimit)} allowed</small></div>
         <div className="radar-kpi"><span>Radar feed</span><strong className="tabular">{report.feed.ageSeconds === null ? '—' : `${report.feed.ageSeconds}s old`}</strong><small>{report.feed.live ? 'Live' : 'Not live'} · {report.feed.coins} coins</small></div>
-        <button type="button" className="secondary-button radar-bot-more" onClick={onOpenTrades}>Positions, trades and activity <ArrowRight size={13}/></button>
+        <button type="button" className="secondary-button radar-bot-more" onClick={() => document.getElementById('bot-activity')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })}>Positions, trades and activity <ArrowDown size={13}/></button>
         {report.fees && <p className="radar-note radar-bot-fee">{feeLine(report)}</p>}
       </div>}
 
@@ -136,5 +137,7 @@ export function BotView({ now, onOpenTrades }: { now: number; onOpenTrades: () =
         </p>
       </div>
     </form>}
+
+    {report && <BotActivity report={report}/>}
   </div>
 }

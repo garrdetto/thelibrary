@@ -1,6 +1,6 @@
 import { AxiomLink, CoinName, onActivate } from './AxiomLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, BellOff, BellRing, Bot, Brain, ChevronDown, Flame, FlaskConical, Gem, List, ListChecks, Radar, Rocket, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
+import { Bell, BellOff, BellRing, Bot, ChevronDown, Flame, FlaskConical, Gem, List, ListChecks, Radar, Rocket, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
 import { defaultRadarSettings, type RadarSettings, type RadarTheme } from '@/lib/axiom-radar-settings'
 import type { RadarGainWindow, RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatPercent, formatSigned, holderCount, relativeSeconds } from './format'
@@ -10,7 +10,6 @@ import { ResearchView } from './ResearchView'
 import { RunnersView } from './RunnersView'
 import { MoversView } from './MoversView'
 import { BotView } from './BotView'
-import { PaperTrades } from './PaperTrades'
 import { PicksView } from './PicksView'
 import { ChartWindowPicker, PriceSpark, sparkPoints, type ChartWindow } from './PriceSpark'
 import { applyRadarTheme } from './theme'
@@ -23,7 +22,7 @@ import { useRadarAccess } from './access'
 import { ScoreModeProvider, ScoreModeToggle, useScoreMode } from './score-mode'
 import './axiom-radar.css'
 
-type RadarTab = 'picks' | 'runners' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'bot' | 'paper' | 'settings'
+type RadarTab = 'picks' | 'runners' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'bot' | 'settings'
 type RadarFilter = 'all' | 'surge' | 'buy' | 'watch' | 'holders' | 'clean' | 'pinned'
 type RadarToast = { id: string; kind: 'surge' | 'buy' | 'runner' | 'dex' | 'sell'; mint: string; text: string; at: number }
 
@@ -38,7 +37,6 @@ const tabs: Array<{ id: RadarTab; label: string; icon: typeof Radar }> = [
   { id: 'movers', label: 'Top movers', icon: TrendingUp },
   { id: 'wallets', label: 'Smart wallets', icon: Wallet },
   { id: 'bot', label: 'Trading bot', icon: Bot },
-  { id: 'paper', label: 'Paper trades', icon: Brain },
   { id: 'settings', label: 'Settings', icon: Settings2 },
 ]
 
@@ -374,8 +372,7 @@ function AxiomRadarBody() {
         </>}
         {tab === 'movers' && <MoversView tokens={tokens} onOpen={onOpen}/>}
         {tab === 'wallets' && <WalletsView payload={payload} now={now} onOpen={onOpen}/>}
-        {tab === 'bot' && <BotView now={now} onOpenTrades={() => setTab('paper')}/>}
-        {tab === 'paper' && <PaperTrades payload={payload} now={now}/>}
+        {tab === 'bot' && <BotView now={now}/>}
         {tab === 'settings' && <SettingsView settings={settings} activeUpdatedAt={payload.settings.updatedAt} saving={saving} error={saveError} now={now} onSave={next => void persist(next)} onPreviewTheme={setPreviewTheme} readOnly={!canEdit}/>}
       </div>
     </>}
