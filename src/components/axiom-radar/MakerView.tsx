@@ -1,13 +1,15 @@
-import { Gem, SlidersHorizontal } from 'lucide-react'
+import { Gem, SlidersHorizontal, TrendingUp } from 'lucide-react'
 import type { RadarPayload, RadarToken } from '@/lib/axiom-radar-types'
 import { LearnedCoin, chanceLabel } from './LearnedCoin'
+import { ClimbersSection } from './ClimbersSection'
 
-export type MakerSort = 'match' | 'rules' | 'wallets' | 'explode' | 'double' | 'newest' | 'viewers'
+export type MakerSort = 'match' | 'climber' | 'rules' | 'wallets' | 'explode' | 'double' | 'newest' | 'viewers'
 
 type MakerFilter = { key: string; label: string; detail: string; test: (token: RadarToken) => boolean }
 
 const sorts: Array<{ id: MakerSort; label: string; value: (token: RadarToken, matched: number) => number }> = [
   { id: 'match', label: 'Match to past winners', value: token => token.maker?.chance ?? -1 },
+  { id: 'climber', label: 'Looks like a steady climber', value: token => (token.maker?.climberLike ?? 0) * 1_000 + (token.maker?.climb?.minutes ?? 0) },
   { id: 'rules', label: 'Research traits matched', value: (_token, matched) => matched },
   { id: 'wallets', label: 'Winner wallets in', value: token => token.maker?.winnerWallets ?? 0 },
   { id: 'explode', label: 'Chance to explode', value: token => token.explode?.chance ?? -1 },
@@ -22,6 +24,8 @@ function researchFilters(payload: RadarPayload): MakerFilter[] {
   const rules = payload.winners?.rules ?? []
   return [
     ...rules.map(rule => ({ key: rule.key, label: rule.label, detail: `${percent(rule.winnerRate)} of coins like this became positive winners, vs ${percent(rule.otherRate)} otherwise`, test: (token: RadarToken) => token.maker?.passes.includes(rule.key) ?? false })),
+    { key: 'climbing', label: 'Climbing steadily for 30+ minutes', detail: 'Still making highs, rising in most 5-minute steps, never more than 40% off its high on the way up', test: token => Boolean(token.maker?.climb?.rising && (token.maker.climb.minutes ?? 0) >= 30 && token.maker.climb.upShare >= 0.55) },
+    { key: 'climber-like', label: 'Volume, liquidity and holders like past steady climbers', detail: (payload.winners?.climbers?.length ?? 0) > 0 ? `At least half what the ${payload.winners?.climbers?.length} saved steady climber${payload.winners?.climbers?.length === 1 ? '' : 's'} had 30 minutes into their climb` : 'No steady climber saved yet, so this uses $5K 5-minute volume and $30K liquidity', test: token => (token.maker?.climberLike ?? 0) >= 0.83 },
     { key: 'winner-wallets', label: 'Wallets from past winners are in', detail: 'At least one top holder also held a Watch List coin', test: token => (token.maker?.winnerWallets ?? 0) > 0 },
     { key: 'explosion-wallets', label: 'Wallets from past explosions are in', detail: 'At least one top holder was in a coin before it exploded', test: token => (token.explode?.earlyWallets ?? 0) > 0 },
     { key: 'jumping', label: 'Jumping right now', detail: 'Viewers or buys are spiking, from the Could explode study', test: token => token.explode !== null && token.explode !== undefined },
@@ -50,12 +54,13 @@ export function MakerView({ payload, tokens, onOpen, filters, onFilters, sort, o
   const shown = full.slice(0, 30)
   const toggle = (key: string) => onFilters(selected.includes(key) ? selected.filter(item => item !== key) : [...selected, key])
   const card = ({ token, matched }: { token: RadarToken; matched: number }) => <LearnedCoin key={token.mint} token={token} headline={active.length ? `${matched}/${active.length}` : chanceLabel(token.maker?.chance)} headlineLabel={active.length ? 'filters matched' : 'match to past winners'} reasons={token.maker?.reasons ?? []} onOpen={onOpen}>
+    {token.maker?.climb && token.maker.climb.minutes >= 15 && <p className="radar-learn-fact tabular"><TrendingUp size={12} aria-hidden="true"/> {token.maker.climb.rising ? 'Climbing' : 'Climbed'} {token.maker.climb.minutes} min, {token.maker.climb.gain.toFixed(1)}x, up in {Math.round(token.maker.climb.upShare * 100)}% of 5-min steps{(token.maker.climberWallets ?? 0) > 0 ? ` · ${token.maker.climberWallets} climber wallet${token.maker.climberWallets === 1 ? '' : 's'} bought` : ''}</p>}
     <p className="radar-learn-fact tabular">{chanceLabel(token.maker?.chance)} match to past winners{(token.maker?.winnerWallets ?? 0) > 0 ? ` · ${token.maker?.winnerWallets} winner wallet${token.maker?.winnerWallets === 1 ? '' : 's'} in` : ''}{token.explode ? ` · ${chanceLabel(token.explode.chance)} to explode` : ''}</p>
   </LearnedCoin>
 
   return <div className="radar-learn">
     <div className="radar-section-head"><h2 id="radar-maker-title"><Gem size={16} aria-hidden="true"/> Millionaire Maker <span className="tabular">{shown.length || closest.length}</span></h2>
-      <p>My recommended coins: current coins that match what the research found in the biggest coins. Every research filter starts on. Switch filters off to loosen the match. Filters only change what is shown here: the research keeps running on every coin regardless. A match is a pattern, not a guarantee, and most matches still fail.</p></div>
+      <p>My recommended coins: current coins that match what the research found in the biggest coins and in the saved steady climbers (coins that rose for an hour or more with real volume and liquidity to $200K or more). Every research filter starts on. Switch filters off to loosen the match. Filters only change what is shown here: the research keeps running on every coin regardless. A match is a pattern, not a guarantee, and most matches still fail.</p></div>
 
     <section className="radar-card radar-maker-filters" aria-labelledby="radar-maker-filters-title">
       <div className="panel-heading">
@@ -92,6 +97,7 @@ export function MakerView({ payload, tokens, onOpen, filters, onFilters, sort, o
       <div className="radar-section-head"><h2>{shown.length ? 'Next closest' : 'Recommended: closest matches'} <span className="tabular">{closest.length}</span></h2><p>{shown.length ? 'Coins that match most, but not all, of the filters you have on.' : 'No current coin matches every filter that is on, so these are the coins that match the most of them.'}</p></div>
       <div className="radar-pick-grid">{closest.map(card)}</div>
     </section>}
+    <ClimbersSection climbers={summary.climbers ?? []}/>
     {shown.length === 0 && closest.length === 0 && <div className="radar-empty"><Gem size={34} strokeWidth={1}/><h3>No current coin matches any filter that is on.</h3><p>Leave this open: coins appear the moment they match.</p></div>}
     <p className="radar-note">{summary.ready ? summary.flaggedHitRate !== null && summary.winnerRate !== null ? `In its own test on coins it had not seen, coins it rated a likely match became positive winners ${Math.round(summary.flaggedHitRate * 100)}% of the time, against ${Math.round(summary.winnerRate * 100)}% for all coins.` : 'Still measuring how often its matches are right.' : 'Needs more finished coins before it can score matches.'}</p>
   </div>

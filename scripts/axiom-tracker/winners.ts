@@ -6,6 +6,8 @@ import { learnerState } from './learner-state.js'
 import { analyzeShape, type PricePoint, type PriceShape } from './price-shape.js'
 import { judgeResearch, poolShare, sharedAccounts, type ResearchVerdict } from './research-verdict.js'
 import { parseTraits } from './rise-traits.js'
+import { climberBaseline, climberLikeness, climberWallets, liveClimb, loadClimbers } from './steady-climbers.js'
+import type { RadarClimb, RadarClimber } from '../../src/lib/axiom-radar-learner.js'
 import { chanceOf, holdoutAccuracy, median, passesRule, splitRules, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues, type SplitRule } from './logistic.js'
 
 const minimumMultiple = 3
@@ -38,6 +40,9 @@ export type WinnersModel = {
   verdicts: Map<string, ResearchVerdict>
   rules: SplitRule[]
   walletCoins: Map<string, Map<string, number | null>>
+  climbers: RadarClimber[]
+  climberWallets: Map<string, Set<string>>
+  climberBaseline: ReturnType<typeof climberBaseline>
 }
 
 const multipleOf = (row: LifecycleRow) => row.first_mcap && row.peak_mcap ? row.peak_mcap / row.first_mcap : 0
@@ -91,7 +96,9 @@ export function loadWinnersModel(database: TrackerDatabase): WinnersModel {
   storeShapes(database, winners, Date.now())
   const verdicts = new Map<string, ResearchVerdict>()
   for (const winner of winners) verdicts.set(winner.mint, judge(winner))
-  const positive = (row: WinnerRow) => isWinner(row) && isPositiveIn(verdicts, row)
+  const climbers = loadClimbers(database)
+  const climberMints = new Set(climbers.map(climber => climber.mint))
+  const positive = (row: WinnerRow) => climberMints.has(row.mint) || (isWinner(row) && isPositiveIn(verdicts, row))
   const training = rows.filter(row => row.features_json !== null && (row.outcome !== 'open' || isWinner(row)))
   const values = training.map(row => JSON.parse(row.features_json as string) as FeatureValues)
   const labels = training.map(positive)
@@ -108,7 +115,7 @@ export function loadWinnersModel(database: TrackerDatabase): WinnersModel {
       walletCoins.set(holder.wallet, coins)
     }
   }
-  return { verdicts, classifier: trainClassifier(lifecycleSpecs, values, labels, minimumSamples), values, labels, hitRate: holdoutAccuracy(lifecycleSpecs, values, labels, minimumSamples)?.flaggedHitRate ?? null, winners, rows, rules: splitRules(lifecycleSpecs, values, labels), walletCoins }
+  return { verdicts, classifier: trainClassifier(lifecycleSpecs, values, labels, minimumSamples), values, labels, hitRate: holdoutAccuracy(lifecycleSpecs, values, labels, minimumSamples)?.flaggedHitRate ?? null, winners, rows, rules: splitRules(lifecycleSpecs, values, labels), walletCoins, climbers, climberWallets: climberWallets(database), climberBaseline: climberBaseline(climbers) }
 }
 
 function sharedWalletCount(model: WinnersModel, wallets: string[], mint: string) {
@@ -123,10 +130,10 @@ function sharedWalletCount(model: WinnersModel, wallets: string[], mint: string)
 function story(model: WinnersModel) {
   const lines: string[] = []
   const { winners, values, labels } = model
-  if (!winners.length) return ['No tracked coin has grown 3x to at least $50K yet. This fills in as the tracker runs.']
+  if (!winners.length && !model.climbers.length) return ['No tracked coin has grown 3x to at least $50K yet. This fills in as the tracker runs.']
   const multiples = winners.map(multipleOf)
   const minutes = winners.map(row => ((row.peak_mcap_at ?? row.peak_at) - row.first_seen_at) / 60_000)
-  lines.push(`${winners.length} coins grew at least ${minimumMultiple}x while tracked. They were first seen around ${money(median(winners.map(row => row.first_mcap as number)) ?? 0)}, peaked around ${money(median(winners.map(row => row.peak_mcap as number)) ?? 0)} (${(median(multiples) ?? 0).toFixed(1)}x), and took about ${Math.round(median(minutes) ?? 0)} minutes to get there.`)
+  if (winners.length) lines.push(`${winners.length} coins grew at least ${minimumMultiple}x while tracked. They were first seen around ${money(median(winners.map(row => row.first_mcap as number)) ?? 0)}, peaked around ${money(median(winners.map(row => row.peak_mcap as number)) ?? 0)} (${(median(multiples) ?? 0).toFixed(1)}x), and took about ${Math.round(median(minutes) ?? 0)} minutes to get there.`)
   const compare = (key: string, label: string, format: (value: number) => string) => {
     const pick = (wanted: boolean) => values.filter((_, index) => labels[index] === wanted).map(row => row[key]).filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
     const won = median(pick(true))
@@ -146,24 +153,38 @@ function story(model: WinnersModel) {
   const positives = winners.filter(row => isPositiveIn(model.verdicts, row))
   const connected = positives.filter(row => [...model.walletCoins.values()].some(coins => coins.size > 1 && coins.has(row.mint))).length
   if (positives.length >= 3) lines.push(`${connected} of the ${positives.length} positive winners share at least one top-holder wallet with another positive winner.`)
+  if (model.climbers.length) lines.push(`${model.climbers.length} steady climber${model.climbers.length === 1 ? '' : 's'} saved: rose for an hour or more with real volume and liquidity to a median ${money(median(model.climbers.map(climber => climber.peakMcap)) ?? 0)}, over about ${Math.round(median(model.climbers.map(climber => climber.minutes)) ?? 0)} minutes. They count as positive winners for the match.`)
   const crashed = winners.filter(row => row.rugged_at !== null)
   if (crashed.length >= 3) lines.push(`${crashed.length} of them later crashed, about ${Math.round(median(crashed.map(row => ((row.rugged_at as number) - lifecycleStart(row)) / 60_000)) ?? 0)} minutes after launch.`)
   return lines
 }
 
+type ClimbCacheEntry = { at: number; climb: RadarClimb | null; climberWallets: number }
+const climbCache = new Map<string, ClimbCacheEntry>()
+const climbRefreshMs = 30_000
+
 export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, tokens: RadarToken[], now = Date.now()) {
   const holdersOf = database.prepare('SELECT wallet FROM holders WHERE mint = ? AND (pct IS NULL OR pct < ?) UNION SELECT wallet FROM winner_wallets WHERE mint = ? AND (pct IS NULL OR pct < ?)')
   const wallets = (mint: string) => (holdersOf.all(mint, poolShare, mint, poolShare) as Array<{ wallet: string }>).map(row => row.wallet)
-  const maker = new Map<string, { chance: number | null; winnerWallets: number; reasons: Array<{ label: string; good: boolean }>; passes: string[] }>()
+  const hasTrades = Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'coin_trades'").get())
+  const buyersOf = hasTrades ? database.prepare("SELECT DISTINCT wallet FROM coin_trades WHERE mint = ? AND kind = 'buy'") : null
+  const maker = new Map<string, { chance: number | null; winnerWallets: number; reasons: Array<{ label: string; good: boolean }>; passes: string[]; climb: RadarClimb | null; climberLike: number; climberWallets: number }>()
   for (const token of tokens) {
     const values = readFeatures(token)
     const vector = vectorOf(model.classifier, lifecycleSpecs, values)
-    maker.set(token.mint, { chance: model.classifier.ready ? chanceOf(model.classifier, vector) : null, winnerWallets: sharedWalletCount(model, wallets(token.mint), token.mint), reasons: topReasons(model.classifier, lifecycleSpecs, vector), passes: model.rules.filter(rule => passesRule(rule, values)).map(rule => rule.key) })
+    const live = climbCache.get(token.mint)
+    if (!live || now - live.at >= climbRefreshMs) {
+      const buyers = buyersOf ? (buyersOf.all(token.mint) as Array<{ wallet: string }>).map(row => row.wallet) : []
+      climbCache.set(token.mint, { at: now, climb: liveClimb(database, token.mint, now), climberWallets: buyers.filter(wallet => [...(model.climberWallets.get(wallet) ?? [])].some(mint => mint !== token.mint)).length })
+    }
+    const { climb, climberWallets: inClimbers } = climbCache.get(token.mint) as ClimbCacheEntry
+    maker.set(token.mint, { chance: model.classifier.ready ? chanceOf(model.classifier, vector) : null, winnerWallets: sharedWalletCount(model, wallets(token.mint), token.mint), reasons: topReasons(model.classifier, lifecycleSpecs, vector), passes: model.rules.filter(rule => passesRule(rule, values)).map(rule => rule.key), climb, climberLike: Math.round(climberLikeness(token, climb, model.climberBaseline) * 100) / 100, climberWallets: inClimbers })
   }
+  for (const [mint, entry] of climbCache) if (now - entry.at > 10 * climbRefreshMs) climbCache.delete(mint)
   learnerState.maker = maker
   const rank = (mint: string) => {
     const entry = maker.get(mint)
-    return entry ? (entry.chance ?? 0.1) * (1 + 0.2 * Math.min(3, entry.winnerWallets)) : 0
+    return entry ? (entry.chance ?? 0.1) * (1 + 0.2 * Math.min(3, entry.winnerWallets)) * (1 + entry.climberLike) : 0
   }
   const describe = (row: WinnerRow): RadarWinner => {
     const early = row.features_json ? JSON.parse(row.features_json) as FeatureValues : {}
@@ -219,6 +240,7 @@ export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, 
       const shares = [...coins.values()].filter((value): value is number => value !== null)
       return { wallet, hits: coins.size, averagePct: shares.length ? Math.round((shares.reduce((total, value) => total + value, 0) / shares.length) * 100) / 100 : null, coins: [...coins.keys()].slice(0, 6).map(mint => ({ mint, symbol: symbols.get(mint)?.symbol ?? '???', pairAddress: symbols.get(mint)?.pair_address ?? null })) }
     }),
+    climbers: model.climbers.slice(0, 40),
     candidates: tokens.filter(token => token.alerts.length === 0 && !token.holderRisk?.blocked && (token.marketCap ?? 0) < 5_000_000 && rank(token.mint) > 0).sort((first, second) => rank(second.mint) - rank(first.mint)).slice(0, 12).map(token => token.mint),
     updatedAt: now,
   }
