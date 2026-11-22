@@ -30,6 +30,7 @@ export interface JobPayout {
   pay: number
   bonus: number
   penalty: number
+  clean?: number
 }
 
 export const JOB_SLOT_MS = 30 * 60 * 1000

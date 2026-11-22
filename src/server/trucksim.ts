@@ -97,6 +97,6 @@ export async function loadPublicLots(env: Env, now: number): Promise<PublicLot[]
   ).bind(now - LOT_RELEASE_MS).all<{ lot_index: number; username: string; data: string | null }>()
   return (results ?? []).map((row) => {
     const profile = normalizeProfile(parseStored(row.data, {}))
-    return { index: row.lot_index, owner: row.username, company: profile.company, build: profile.build }
+    return { index: row.lot_index, owner: row.username, company: profile.company, land: profile.land, build: profile.build }
   })
 }

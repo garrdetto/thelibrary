@@ -90,12 +90,25 @@ One authority, `applyAction(profile, action, now)`, runs in the Worker and in th
 customise, select the active rig, accept/complete/abandon jobs, refuel, repair, build/demolish on the lot. Start: $3,000 and a
 paid-off Ridgeline RD-10.
 
-## Lot builder (`shared/Lots.ts`, `ui/Builder.ts`, `render/Lots.ts`)
+## Lot builder (`shared/Lots.ts`, `ui/BuilderBar.ts`, `game/BuildMode.ts`, `render/Lots.ts`)
 
 A sims-style build mode on your lot with a top-down orbit camera and a 1 m grid: drag paving (gravel, asphalt, concrete), drag a
 building footprint (steel shop with roll-up doors, pole barn, office), place add-ons (office trailer, fuel island, wash bay, parts
 shed, tire rack, light poles, sign, dumpster, air station, flag pole), draw fences; rotate, recolour, demolish (50 % refund). A
 shop on your lot repairs and refuels your trucks at cost.
+
+- **Paving** is textured: crushed-stone gravel, asphalt with painted stalls and saw-cut concrete, procedural tileable maps
+  (albedo plus bump) shared by every lot and laid in world metres so slabs join seamlessly.
+- **More land**: a lot starts 120 m × 90 m and can grow by up to four 30 m strips at the back (away from Haulers Row), each
+  dearer than the last (`landStripPrice`). Build mode shows the next strip for sale; west-side lots keep their buildings in
+  place as they grow (items are shifted in lot-local terms by the rules). The Row's level pad covers fully grown lots.
+
+## Truck wash (`render/models/DirtLayer.ts`, `game/WashMode.ts`, `game/WashScore.ts`, `ui/WashHud.ts`)
+
+Trucks pick up dirt as they drive (2.2 points per km, 0–100) and it shows as grime on the body. A wash bay you build on your
+lot (water only) or the public wash lane at the travel center ($60) starts a hands-on wash: orbit the truck, lay foam with the
+foam cannon, let it soak, rinse top to bottom with the pressure wand and scrub the wheels, against the clock, for a star
+rating. Delivering with a clean truck (dirt under 25) pays a 5 % clean-rig bonus.
 
 ## Memory and performance (`systems/`)
 

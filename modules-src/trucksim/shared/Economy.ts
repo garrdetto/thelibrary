@@ -8,7 +8,7 @@ import type { BumperOption, Finish, FlapOption, HaulKind, HornOption, LightOptio
 import { MAX_ITEMS, COLOR_PATTERN, normalizeBuildItem } from './Lots'
 import type { BuildItem } from './Lots'
 import type { Job } from './Jobs'
-import { LOTS } from './WorldLayout'
+import { LOTS, MAX_LAND_STRIPS } from './WorldLayout'
 
 export interface OwnedTruck {
   uid: string
@@ -17,6 +17,7 @@ export interface OwnedTruck {
   odometerKm: number
   damage: number
   fuelL: number
+  dirt: number
 }
 
 export interface OwnedTrailer {
@@ -49,6 +50,7 @@ export interface Profile {
   activeTruck: string
   activeTrailer: string | null
   lot: number | null
+  land: number
   build: BuildItem[]
   job: ActiveJob | null
   stats: ProfileStats
@@ -129,7 +131,7 @@ export function nextUid(prefix: string, used: Iterable<string>): string {
 
 /** A new truck of `model` with a full tank. */
 export function newTruck(uid: string, model: TruckModel, look: TruckLook = defaultLook(model)): OwnedTruck {
-  return { uid, model: model.id, look, odometerKm: 0, damage: 0, fuelL: model.fuelTankL }
+  return { uid, model: model.id, look, odometerKm: 0, damage: 0, fuelL: model.fuelTankL, dirt: 0 }
 }
 
 /** A new profile: $3,000 and the paid-off starter dump truck with a full tank. */
@@ -144,6 +146,7 @@ export function defaultProfile(): Profile {
     activeTruck: 't1',
     activeTrailer: null,
     lot: null,
+    land: 0,
     build: [],
     job: null,
     stats: { jobs: 0, earned: 0, km: 0, tonnes: 0 },
@@ -175,6 +178,7 @@ function normalizeTrucks(raw: unknown): OwnedTruck[] {
       odometerKm: clamp(source.odometerKm, 0, 10_000_000, 0),
       damage: clamp(source.damage, 0, 100, 0),
       fuelL: clamp(source.fuelL, 0, model.fuelTankL, model.fuelTankL),
+      dirt: clamp(source.dirt, 0, 100, 0),
     })
   }
   return trucks
@@ -243,6 +247,7 @@ export function normalizeProfile(raw: unknown): Profile {
     activeTruck,
     activeTrailer,
     lot,
+    land: lot === null ? 0 : Math.floor(clamp(source.land, 0, MAX_LAND_STRIPS, 0)),
     build,
     job: normalizeJob(source.job, trucks, trailers),
     stats: {

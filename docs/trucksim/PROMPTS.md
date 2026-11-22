@@ -317,6 +317,37 @@ any failure, squash-merge, and check `Workers Builds: thelibrary` on the new `ma
 
 ---
 
+## Wave 4 — the owner's additions (parallel)
+
+The owner asked mid-build for textured lot paving, buying more land for a lot, and a truck cleaning station that is
+interactive. The director first added the contracts (`LAND_STRIP_M`, `MAX_LAND_STRIPS`, `LOT_MAX_W`, `lotExtent`, the `'wash'`
+zone at the travel center, `DIRT_PER_KM`, wash prices, `CLEAN_BONUS`, `landStripPrice`) and a layout test that fully grown lots
+stay clear and level.
+
+### Prompt 16 — Land and wash rules (Sonnet, medium effort)
+
+`Profile.land`, `OwnedTruck.dirt`; `buy-land` (escalating price, four strips, west lots shift their items so nothing moves),
+`build` validated against the grown lot; `odometer` adds dirt; `wash { uid, cleaned, place }` (own bay: water only, public:
+$60); the clean-rig bonus on `complete-job`; `PublicLot.land`; the Worker's Zod union and public lots. Tests first.
+
+### Prompt 17 — Textured paving, grown lots and the wash bay (Sonnet, medium effort)
+
+Procedural tileable gravel, asphalt and concrete (albedo + bump, shared, world-metre UVs, no gloss); lots drawn at their grown
+extent with survey stakes; `previewLand` for the next strip with a for-sale sign; a detailed drive-through wash bay; the travel
+center's public wash canopy; the builder bar's land section (`onBuyLand`, `setLand`).
+
+### Prompt 18 — The interactive wash (Opus)
+
+`createDirtLayer` places grime patches on the real body by ray casts, one merged mesh whose vertex alpha is each patch's dirt
+(cleaning only rewrites colours), plus a foam layer; `WashMode` orbits the truck with its own camera and sprays from a wand at
+the cursor (foam cannon, pressure rinse 3× on foam, wheel brush), with water particles, a HUD (clean %, timer, water, hints)
+and a star rating from `rateWash`; `TruckAudio.setSpray`. Tests on a `NullEngine`.
+
+### Prompt 19 — Wire it in (director)
+
+The session shows dirt on the active truck and adds it as the odometer runs; E in the travel center's wash lane or inside your
+own wash bay starts `WashMode` and posts `wash` with the result; build mode's Buy land posts `buy-land` and redraws the lot.
+
 ## Later phases (not in the first release)
 
 1. **Life Sim extension**: `modules-src/foxlake/town/TruckSim.ts` implementing `TruckHost` over `GameHost` (town root as

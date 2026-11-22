@@ -3,7 +3,7 @@
  * cash change (`delta`, so a host can route money to a shared wallet) and a plain message. It runs in the Worker for signed-in
  * drivers and in the page for guests. A refused action returns the profile unchanged, `delta` 0 and the reason.
  */
-import { FUEL_PRICE_PER_L, REPAIR_COST_PER_POINT, RESALE_SHARE, TRAILER_BY_ID, TRUCK_BY_ID, defaultLook, haulFor, lookCost } from './Catalog'
+import { CLEAN_BONUS, CLEAN_DIRT_LIMIT, DIRT_PER_KM, FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, RESALE_SHARE, TRAILER_BY_ID, TRUCK_BY_ID, defaultLook, haulFor, landStripPrice, lookCost } from './Catalog'
 import type { TruckLook } from './Catalog'
 import { FUEL_STATION_MARKUP, MAX_TRAILERS, MAX_TRUCKS, REPAIR_LABOUR_MARKUP, SELL_DAMAGE_DISCOUNT, cleanCompany, newTruck, nextUid, normalizeLook } from './Economy'
 import type { Profile } from './Economy'
@@ -12,7 +12,7 @@ import { findJob, jobPayout, jobSlot, minimumMs } from './Jobs'
 import type { JobPayout } from './Jobs'
 import { COLOR_PATTERN, MAX_ITEMS, hasService, itemCost, itemRefund, validateItem } from './Lots'
 import type { BuildItem, LotSize } from './Lots'
-import { LOTS, LOT_D, LOT_W } from './WorldLayout'
+import { LAND_STRIP_M, LOTS, LOT_D, LOT_W, MAX_LAND_STRIPS, lotExtent } from './WorldLayout'
 
 export type TruckAction =
   | { action: 'buy-truck'; model: string; look?: TruckLook }
@@ -30,6 +30,8 @@ export type TruckAction =
   | { action: 'demolish'; ids: string[] }
   | { action: 'rename'; company: string }
   | { action: 'claim-lot'; index: number }
+  | { action: 'buy-land' }
+  | { action: 'wash'; uid: string; cleaned: number; place: 'own' | 'public' }
   | { action: 'odometer'; uid: string; km: number; fuelUsedL: number }
 
 export interface ActionContext {
@@ -67,7 +69,8 @@ function accept(profile: Profile, rawDelta: number, message: string, paid?: JobP
 function lotSizeFor(profile: Profile, ctx: ActionContext): LotSize {
   if (ctx.lotSize) return ctx.lotSize
   const spec = profile.lot === null ? undefined : LOTS[profile.lot]
-  return spec ? { w: spec.w, d: spec.d } : { w: LOT_W, d: LOT_D }
+  if (!spec) return { w: LOT_W, d: LOT_D }
+  return { w: lotExtent(spec, profile.land).w, d: LOT_D }
 }
 
 function jobUses(profile: Profile, uid: string): boolean {
@@ -173,6 +176,10 @@ function completeJob(profile: Profile, jobId: string, rawDamage: number, ctx: Ac
   const paid = jobPayout(active.job, { damage, elapsedMs })
   const points = Math.round(damage * JOB_DAMAGE_POINTS)
   const truck = profile.trucks.find((entry) => entry.uid === active.truck)
+  if (truck && truck.dirt < CLEAN_DIRT_LIMIT) {
+    paid.clean = Math.round(active.job.pay * CLEAN_BONUS)
+    paid.pay += paid.clean
+  }
   if (truck) truck.damage = Math.min(100, truck.damage + points)
   const trailer = profile.trailers.find((entry) => entry.uid === active.trailer)
   if (trailer) trailer.damage = Math.min(100, trailer.damage + points)
@@ -182,7 +189,8 @@ function completeJob(profile: Profile, jobId: string, rawDamage: number, ctx: Ac
   profile.stats.km += active.job.distanceM / 1000
   profile.stats.tonnes += active.job.massKg / 1000
   profile.xp += Math.round(paid.pay * XP_PER_PAY)
-  return accept(profile, paid.pay, `Delivered. ${money(paid.pay)} paid.`, paid)
+  const extra = paid.clean ? ` Includes a ${money(paid.clean)} clean rig bonus.` : ''
+  return accept(profile, paid.pay, `Delivered. ${money(paid.pay)} paid.${extra}`, paid)
 }
 
 function refuel(profile: Profile, uid: string, litres: number): ActResult {
@@ -239,10 +247,36 @@ function demolish(profile: Profile, ids: string[]): ActResult {
 function claimLot(profile: Profile, index: number, ctx: ActionContext): ActResult {
   if (!Number.isInteger(index) || index < 0 || index >= LOTS.length) return refuse(profile, 'There is no such lot.')
   if (profile.lot === index) return accept(profile, 0, 'That lot is already yours.')
+  if (profile.land > 0) return refuse(profile, 'Land you bought stays with your current lot. Keep this lot, or sell the land first.')
   if (profile.lot !== null && profile.build.length > 0) return refuse(profile, 'Demolish what you built before moving to another lot.')
   if (ctx.lotFree && !ctx.lotFree(index)) return refuse(profile, 'Someone already has that lot.')
   profile.lot = index
   return accept(profile, 0, `Lot ${index + 1} is yours.`)
+}
+
+function buyLand(profile: Profile): ActResult {
+  if (profile.lot === null) return refuse(profile, 'Claim a lot before buying land.')
+  if (profile.land >= MAX_LAND_STRIPS) return refuse(profile, 'Your lot cannot grow any larger.')
+  const price = landStripPrice(profile.land)
+  if (price > profile.cash) return refuse(profile, `You need ${money(price - profile.cash)} more.`)
+  if (LOTS[profile.lot]?.side === 'west') {
+    profile.build = profile.build.map((item) => ({ ...item, x: item.x + LAND_STRIP_M }))
+  }
+  profile.land += 1
+  return accept(profile, -price, `Bought ${LAND_STRIP_M} m more land.`)
+}
+
+function wash(profile: Profile, uid: string, rawCleaned: number, place: 'own' | 'public'): ActResult {
+  const truck = profile.trucks.find((entry) => entry.uid === uid)
+  if (!truck) return refuse(profile, 'You do not own that truck.')
+  if (place !== 'own' && place !== 'public') return refuse(profile, 'Choose where to wash.')
+  if (place === 'own' && !profile.build.some((item) => item.def === 'wash-bay')) return refuse(profile, 'Build a wash bay on your lot first.')
+  const cost = place === 'own' ? OWN_WASH_WATER : PUBLIC_WASH_PRICE
+  if (cost > profile.cash) return refuse(profile, `You need ${money(cost - profile.cash)} more.`)
+  const cleaned = Number.isFinite(rawCleaned) ? Math.max(0, Math.min(1, rawCleaned)) : 0
+  truck.dirt = Math.max(0, Math.min(100, Math.round(truck.dirt * (1 - cleaned))))
+  profile.xp += Math.round(10 * cleaned)
+  return accept(profile, -cost, `Washed: ${Math.round(cleaned * 100)} % of the grime is gone.`)
 }
 
 function odometer(profile: Profile, uid: string, km: number, fuelUsedL: number): ActResult {
@@ -251,6 +285,7 @@ function odometer(profile: Profile, uid: string, km: number, fuelUsedL: number):
   const driven = Number.isFinite(km) ? Math.max(0, Math.min(MAX_ODOMETER_KM_PER_UPDATE, km)) : 0
   const burned = Number.isFinite(fuelUsedL) ? Math.max(0, Math.min(driven * MAX_FUEL_PER_KM, fuelUsedL)) : 0
   truck.odometerKm += driven
+  truck.dirt = Math.min(100, truck.dirt + driven * DIRT_PER_KM)
   truck.fuelL = Math.max(0, truck.fuelL - burned)
   return accept(profile, 0, 'Trip recorded.')
 }
@@ -287,6 +322,8 @@ function run(profile: Profile, action: TruckAction, ctx: ActionContext): ActResu
       return accept(profile, 0, 'Company renamed.')
     }
     case 'claim-lot': return claimLot(profile, action.index, ctx)
+    case 'buy-land': return buyLand(profile)
+    case 'wash': return wash(profile, action.uid, action.cleaned, action.place)
     case 'odometer': return odometer(profile, action.uid, action.km, action.fuelUsedL)
     default: return refuse(profile, 'Unknown action.')
   }

@@ -37,6 +37,7 @@ export interface PublicLot {
   index: number
   owner: string
   company: string
+  land: number
   build: BuildItem[]
 }
 

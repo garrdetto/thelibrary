@@ -56,6 +56,8 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('demolish'), ids: z.array(z.string().min(1).max(40)).min(1).max(MAX_ITEMS) }),
   z.object({ action: z.literal('rename'), company: z.string().max(100) }),
   z.object({ action: z.literal('claim-lot'), index: z.number().int().min(0).max(99) }),
+  z.object({ action: z.literal('buy-land') }),
+  z.object({ action: z.literal('wash'), uid, cleaned: z.number().finite().min(0).max(1), place: z.enum(['own', 'public']) }),
   z.object({ action: z.literal('odometer'), uid, km: z.number().finite().min(0).max(1000), fuelUsedL: z.number().finite().min(0).max(1000) }),
 ])
 

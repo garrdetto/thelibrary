@@ -77,6 +77,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/angler.ts` + `src/server/angler.ts` — `/api/angler`, Northwoods Angler profiles, anchored sessions, server-rolled catches and record boards (D1 `angler_*`); `start`/`tick`/`stop` carry the shared-lake `room`, so landed fish are announced to that lake instance and the Boat Party progress is checked against the instance's crew — `api.ts`.
 - `src/server/routes/angler-lake.ts` — `/api/angler-lake`: GET counts boats out per lake; a WebSocket upgrade (same origin; members by session, guests by a zod-checked key) joins the invited instance or the first of eight per lake with room — `api.ts`.
 - `src/server/angler-lake.ts` — Durable Object `AnglerLake` (binding `ANGLER_LAKE`, one per `<lake>:<instance>`): in-memory peers only (nothing stored), up to 4 boats and 8 connections, positions relayed at 4 Hz, fishing phases, crews of two (`board`, `leave`, `lock`, `kick`), member gear read from the saved profile and guest gear checked against the starter kit, internal `/catch` (delayed to the end of the fight) and `/crew` for the REST route — `server.ts`.
+- `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` — `/api/trucksim`: GET (signed-in profile and free Haulers Row lot, `?lots=1` public lots, `?world=`), POST one `TruckAction` through `modules-src/trucksim/shared/Actions.ts`; D1 `trucksim_profiles` and `trucksim_lots` (migration 0048, 45-day lot release) — `api.ts`.
 - `src/server/routes/hood.ts` — `/api/hood`: GET a street of The Hood (`?street=`, owners, home/visitor presence, public shells; `?town=1` returns just the street's service calls from the last hour and who is on a shift), POST `claim` (signed in, Zod) to move a household in, WebSocket upgrade (same origin; members by session, guests by a key) to walk onto a lot — `api.ts`.
 - `src/server/hood.ts` — D1 `hood_lots` (migration 0023) and `hood_requests` (service calls, migration 0024), both also created on first use: load/save a lot's state and public shell, presence, homes, claims, `townRequests`/`addTownRequest`, `streetWorkers` — `routes/hood.ts`, `hood-lot.ts`.
 - `src/server/hood-lot.ts` — Durable Object `HoodLot` (binding `HOOD_LOT`, one per `<street>:<lot>`): runs `modules-src/hood/shared/Room.ts` for everyone on the lot, Zod-checks commands, ticks at 10 Hz, sends state at 5 Hz, saves to D1, borrows visiting Sims from their home lot (`/depart`) and hands them back (`/return`), records service calls in `hood_requests` and refreshes the street's calls into the Room every 20 s — `server.ts`.
@@ -461,6 +462,94 @@ Rack & Reel's game with Montello, Wisconsin as its world and the lake gameplay o
 - `tests/region.test.ts`, `tests/lake.test.ts`, `tests/montello-places.test.ts`, `tests/dev.test.ts`, `tests/places.test.ts` — the frame, the rebased land, the lake site and Wild Man's loops on it, the teleports, the counters (`scripts/foxlake-tests.mjs` in `pnpm test`); `tests/montello-land.ts` loads the baked map once for them.
 - `scripts/foxlake-capture.mjs` — screenshots, frame times and the town ↔ lake leak check in Chrome. `scripts/foxlake-perf.mjs` — load timeline, frame times at Montello spots, heap after GC and the leak laps (`FOXLAKE_PROFILE=<dir>` adds CPU profiles). `scripts/foxlake-flicker.mjs` — frame-to-frame change while turning, with diff images, to catch z-fighting and popping.
 - `modules-src/foxplains2/src/` — the earlier PlayCanvas Fox Plains 2, kept only because Kestrel County imports `src/core/Geo.ts`, `src/core/Assets.ts`, `src/physics/*`, `src/avatar/Avatar.ts` and `src/game/CameraRig.ts`.
+
+### trucksim — Truck Simulator (`modules-src/trucksim/`, Babylon.js 9.34 WebGPU with a WebGL2 fallback through Rack & Reel's `createEngine`, Rapier 0.14, not on `engine/`; details in its `README.md`, design in `docs/trucksim/PLAN.md`, build prompts in `docs/trucksim/PROMPTS.md`)
+
+An open-world trucking module on a 4 km county with 16 shared player lots (Haulers Row). Built from `modules-src/trucksim/index.html` + `index.ts` into `public/modules/trucksim.html`; thumbnail `public/images/modules/trucksim.webp`; catalog entry in `src/lib/modules.ts`. Tests: `scripts/trucksim-tests.mjs` (in `pnpm test`).
+- `module.json`, `tsconfig.json`, `index.html`, `index.ts` — module manifest, type-check config, page shell with loading bar, and the entry that boots `Standalone` and tears it down on `pagehide`.
+- `shared/Actions.ts` — `applyAction(profile, action, ctx)`: the one authority for money, jobs and lots; returns the new profile, the cash `delta` and a message — `net/Progress.ts`, `src/server/routes/trucksim.ts`.
+- `shared/Catalog.ts` — every truck, trailer, cargo, look option and lot building (specs, prices, original makes) — physics, visuals, economy, Worker.
+- `shared/Economy.ts` — `Profile`, `defaultProfile`, `normalizeProfile` (rebuilds untrusted data field by field), `LOOK_OPTIONS`.
+- `shared/HaulWorld.ts` — the `HaulWorld` interface (sites, zones, `routeDistance`) that jobs and procedures read instead of county constants — Life Sim seam.
+- `shared/Jobs.ts` — deterministic jobs per 30-minute slot (`<world>-<slot>-<n>`), pay by mass and distance, damage and on-time adjustments.
+- `shared/Lots.ts` — lot builder rules (lot-local items, `validateItem`, `MAX_ITEMS`, `PublicLot`) shared by page and Worker.
+- `shared/RoadGraph.ts` — the county road graph with A* routing; `COUNTY` is the county `HaulWorld`.
+- `shared/Terrain.ts` — the county ground as a pure function (`heightAt`, `surfaceAt`, flat pads under sites and lots).
+- `shared/WorldLayout.ts` — highway, Main Street, County Road, connectors, sites with work zones, fields, and the 16 lots of Haulers Row.
+- `sim/types.ts` — plain-data poses and inputs passed between physics, game and renderer (no Rapier or Babylon types).
+- `sim/PhysicsHost.ts` — the `PhysicsHost` interface rigs drive in, and collision groups `CG`/`MASK` equal to Life Sim's.
+- `sim/SimWorld.ts` — the standalone Rapier world: 60 Hz fixed step, terrain heightfields streamed per chunk, static boxes, edge walls, tyre grip; `FlatWorld` for tests.
+- `sim/Drivetrain.ts` — engine torque curve, automated gearbox, jake brake, governor and fuel burn as plain numbers.
+- `sim/TruckRig.ts` — a drivable truck: chassis body, ray-cast wheels per axle, springs, Ackermann steering, air brakes, lift axles, dump body; exports the shared `WheelSet`.
+- `sim/TrailerRig.ts` — a semi-trailer body with wheels, landing gear, payload, spring brakes and air lines, doors and the lowboy's gooseneck.
+- `sim/Coupling.ts` — fifth-wheel coupling (distance, height, yaw and speed windows, spherical joint) and the RGN gooseneck detach and attach.
+- `sim/Dump.ts` — the dump bed: load, hydraulic angle, tailgate and material flow.
+- `sim/ExcavatorRig.ts` — the drivable tracked excavator for lowboy jobs, chained to the deck as trailer payload.
+- `sim/LoaderAI.ts` — the timed dig, swing, dump cycle of the quarry excavator and wheel loader.
+- `systems/Keys.ts` — key state by `KeyboardEvent.code` (same shape as Life Sim's `GameHost.keys`), edges, and `BINDINGS`.
+- `systems/Audio.ts` — synthesised diesel, turbo, jake brake, air hiss, beeper, horns and hydraulics with Web Audio only.
+- `systems/Scope.ts` — ownership scopes that dispose children first and items in reverse order.
+- `systems/Streamer.ts` — `ChunkStreamer`: nearest-first chunk loading within a time budget and a maximum count.
+- `systems/Pool.ts` — a small object pool for particles, piles and markers.
+- `systems/MemoryGuard.ts` — samples counts, draw calls and heap, feeds `ResourceTrend`, raises pressure, `window.__truckMem()` and the `?perf=1` overlay.
+- `render/Materials.ts` — `MaterialLibrary`: shared PBR materials under the gloss rule, ref-counted paints and cargo colours.
+- `render/Quality.ts` — the four graphics tiers (`?quality=`) and what each enables (shadows, stream radius, tree density, AA, bloom, SSAO).
+- `render/Lots.ts` — `LotRenderer`: draws a lot from its build items, the gate sign, the translucent ghost, and collision boxes.
+- `render/models/TruckVisual.ts` — `buildTruckVisual`: a drawable truck with moving wheels, lift axles, dump bed, tailgate, hoist, heap and lamps.
+- `render/models/TruckParts.ts` — assembles a truck's static body from the `truck/` part builders into one batch.
+- `render/models/Wheels.ts` — thin-instanced truck tyres, rims, hubs and steer knuckles.
+- `render/models/TrailerVisual.ts` — `buildTrailerVisual` for the five trailers with pose, cargo, straps and doors.
+- `render/models/CargoVisual.ts` — deck cargo models with `setFill`, and the pooled `FallingMaterial` stream.
+- `render/models/MachineVisual.ts` — `buildExcavator`, `buildWheelLoader` and `buildForklift`.
+- `render/models/truck/Batch.ts` — `PartBatch`: collects truck parts per material and builds one mesh each.
+- `render/models/truck/Cab.ts` — cab, glass, interior, sleeper, mirrors, visor and lamps for every style.
+- `render/models/truck/Chassis.ts` — frame, axles, suspension, tanks, fifth wheel, air lines, fenders and the lift axle.
+- `render/models/truck/DumpBody.ts` — the bed, tailgate, hoist barrel and rod, and the heaped load.
+- `render/models/truck/FrontEnd.ts` — hoods, grilles, bumpers, headlights and badges per front-end family.
+- `render/models/truck/Geometry.ts` — the geometry kernel: lofts, sweeps, lathes and boxes as `VertexData`.
+- `render/models/truck/Layout.ts` — derives every visual dimension of a truck from its catalog numbers.
+- `render/models/truck/Letters.ts` — raised block lettering for brand badges.
+- `render/models/trailer/Merge.ts` — `Palette`, `MergeBatch` and flat-shaded shapes shared by trailer, machine and cargo visuals.
+- `render/models/trailer/Chassis.ts` — frame, kingpin, axles, fenders, tape, tail lamps and landing gear every trailer shares.
+- `render/models/trailer/Flatbed.ts`, `Grain.ts`, `Lowboy.ts`, `Reefer.ts`, `Tanker.ts` — the 48 ft flatbed, 42 ft grain hopper, 55 ton RGN lowboy, 53 ft reefer and fuel tanker bodies.
+- `render/models/trailer/TrailerWheels.ts` — dual-tyre assemblies as instanced nodes.
+- `render/models/machine/Excavator.ts`, `Loader.ts`, `Forklift.ts` — the 20 t excavator, articulated wheel loader and counterbalance forklift models.
+- `render/models/machine/Hydraulics.ts` — `MachineRig` disposal tracking and `Ram` hydraulic cylinders.
+- `render/models/machine/MachineWheels.ts` — lugged and plain tyres with rims for the loader and forklift.
+- `render/work/WorkZones.ts` — painted zone outlines, cones and the fixed equipment within about 600 m of the focus.
+- `render/work/ZoneEquipment.ts` — shared types and helpers for zone equipment (activity, contract, environment).
+- `render/work/ProcessEquipment.ts` — tanker rack, station fill post, grain bin with spout, and elevator pit.
+- `render/work/YardEquipment.ts` — reefer dock doors, mill crane, forklift, quarry machines with stockpile, and equipment pads.
+- `render/world/WorldRenderer.ts` — the streamed county: 256 m chunks, terrain, roads, props and site layers, memory pressure response.
+- `render/world/WorldRendererBuffers.ts` — shared index buffers and linked vertex buffers for chunk geometry.
+- `render/world/WorldRendererMaterials.ts` — the terrain, road, foliage and sign materials (no gloss).
+- `render/world/TerrainChunks.ts`, `TerrainChunksPalette.ts` — 2 m and 8 m ground meshes with skirts and linear vertex colours.
+- `render/world/Roads.ts`, `RoadsGeometry.ts` — one merged road ribbon per chunk built from the `ROADS` polylines.
+- `render/world/Props.ts`, `PropsModels.ts`, `PropsPlacement.ts`, `PropsSigns.ts` — thin-instanced trees, utility poles and wires, their pure placement, and the site sign atlas.
+- `render/world/Sites.ts` — the site scenery layer (buildings per chunk, `siteStaticBoxes`, `DEALER_DISPLAY_SPOTS`).
+- `render/world/sites/Plan.ts` — `SitePlanner`: placement rules that keep pieces off zones, lanes and roads.
+- `render/world/sites/Layouts.ts`, `LayoutKit.ts` — what stands on each kind of site and the helpers layouts share.
+- `render/world/sites/Parts.ts`, `FarmParts.ts`, `TownParts.ts`, `Town.ts` — commercial, industrial, farm and Millbrook building models and the town layout.
+- `render/world/sites/Hash.ts` — a deterministic integer hash for building variety.
+- `render/world/Atmosphere.ts`, `AtmosphereSky.ts`, `AtmosphereEnvironment.ts` — sky dome, sun, moon, lights, fog and shadows by tier; the sky as plain numbers; the CPU-baked environment cube.
+- `render/world/Pipeline.ts` — the HDR post chain (ACES or neutral tone map, bloom, FXAA or MSAA, sharpen, SSAO).
+- `render/lots/Batch.ts` — `SceneryBatch`: boxes, cylinders, roofs and quads merged per material key.
+- `render/lots/Items.ts` — lot builder piece models and their collision boxes.
+- `render/lots/Palette.ts` — scenery material keys (matte, painted metal, chain-link) with owned materials.
+- `render/lots/Signs.ts` — `SignAtlas`: one dynamic texture of block lettering split into cells.
+- `game/TruckHost.ts` — what a session needs from its world (scene, `frameRoot`, `PhysicsHost`, `HaulWorld`, keys, toasts).
+- `game/TruckSession.ts` — the reusable core: rigs, driving, coupling, dump, jobs, procedures, loaders, fuel, repairs, dealer.
+- `game/Standalone.ts` — the standalone page as a `TruckHost`: engine, scene, world, lots, session, cameras, HUD, sound, memory guard.
+- `game/Procedures.ts` — the realistic loading and unloading steps per haul, as data plus checks over a `ProcedureContext`.
+- `game/JobRunner.ts` — follows one job from pickup to drop, runs the procedures and accumulates cargo damage.
+- `game/BuildMode.ts` — the lot builder's controls, ghost and batched `build` actions.
+- `game/Cameras.ts` — chase, cab and build cameras.
+- `game/MapDraw.ts` — the county map and minimap drawing.
+- `net/Progress.ts` — the career client: `/api/trucksim` when signed in, local `applyAction` for guests, `?world=`.
+- `ui/Hud.ts`, `Panels.ts`, `Shop.ts`, `BuilderBar.ts`, `dom.ts`, `index.ts`, `styles.css` — the HUD, start/job/map/pause/help panels, dealer, garage and fleet screens, the builder toolbar, DOM helpers, the barrel and the stylesheet.
+- `tests/` — Node tests run by `scripts/trucksim-tests.mjs`: `economy`, `jobs`, `lots`, `procedures`, `roadgraph`, `layout` (shared rules and world), `sim-dump`, `sim-excavator`, `sim-trailer`, `sim-truck`, `sim-world` (Rapier rigs), `groups` (collision groups equal Life Sim's), `scope`, `streamer`, `memory` (ownership, streaming, guard), `visual-sites`, `visual-trailer`, `visual-truck`, `visual-world` (build and dispose on a `NullEngine` and require counts to return to baseline).
+- `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` — `/api/trucksim` (see Worker API); `migrations/0048_trucksim.sql` — `trucksim_profiles` and `trucksim_lots`.
+- Contracts: coordinates are metres, Y up, right-handed (`scene.useRightHandedSystem = true`, so Rapier and Babylon share numbers); heading `h` faces `(sin h, 0, cos h)`; a vehicle frame has its origin on the ground under the front axle (trucks) or kingpin (trailers), +Z forward, +X the driver's left, so a positive heading change and a positive steer are left turns. Render code parents everything under the `parent`/`frameRoot` it is given, sim code talks to a `PhysicsHost`, rules read a `HaulWorld`. No custom shaders; Babylon imported by path.
 
 ### county — Kestrel County (`modules-src/county/`, PlayCanvas, in `modules.ts` with `public/images/modules/county.webp`)
 A separate 4 × 4 km world (airport and helicopters to come) in a glossy realistic-clipart style. Phase 1 streams the county with graded terrain, a generated road network and a town of houses, with Fox Plains 2's walking and driving imported unchanged; `?lookdev=1` keeps the Phase 0 look-development scene. It imports Fox Plains 2's `MeshBuilder`/`meshEntity`, physics (`Physics`, `Vehicle`, `VehicleModels`, `Character`), `Assets`, `AvatarKits` and `CameraRig`, and Fox Plains' `Input`, `store`, `Wardrobe`, `Economy` and vehicle registry (`CustomVehicles`, `Vehicles`) rather than copying them. Details in `modules-src/county/README.md`.

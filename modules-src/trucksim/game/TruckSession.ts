@@ -793,7 +793,7 @@ export class TruckSession {
     const result = await this.host.progress.act({ action: 'complete-job', job: runner.job.id, damage: runner.damage })
     this.completing = false
     if (result.ok) {
-      const pay = result.paid ? result.paid.pay + result.paid.bonus - result.paid.penalty : result.delta
+      const pay = result.paid ? result.paid.pay : result.delta
       this.events.jobDone(result.message || 'Delivered', pay)
       this.trailerCargo = null
     } else this.host.toast(result.message || 'The delivery could not be recorded. Try again in a moment.', 'warn')
