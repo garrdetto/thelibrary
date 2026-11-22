@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { RefObject } from 'react'
 
 /** Modules whose play frame fills the whole screen on its own on phones and tablets; any other module can be put there with the frame bar's Full screen button. */
-export const MOBILE_FULL_MODULES: ReadonlySet<string> = new Set(['shorttrack', 'darts', 'sunvault', 'beanstalk', 'modollaz'])
+export const MOBILE_FULL_MODULES: ReadonlySet<string> = new Set(['shorttrack', 'darts', 'sunvault', 'beanstalk', 'modollaz', 'bridge'])
 /** Phones in either orientation and touch tablets up to 1024 px wide. */
 export const MOBILE_FULL_QUERY = '(max-width: 650px), (pointer: coarse) and (max-width: 1024px), (pointer: coarse) and (max-height: 600px)'
 

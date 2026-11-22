@@ -37,6 +37,7 @@ This file loads into every session, so it holds only what applies everywhere. De
 | Vector Arena | `modules-src/arena/`, `server/arena/` | `docs/agents/modules/arena.md` |
 | Kestrel County | `modules-src/county/` | `docs/agents/modules/county.md` |
 | Pro Skater AI | `modules-src/proskater/` | `docs/agents/modules/proskater.md` |
+| Bridge Builder | `modules-src/bridge/` | `docs/agents/modules/bridge.md` |
 | Sun Vault, Beanstalk Bounty, Mo' Dollaz | `modules-src/sunvault/`, `beanstalk/`, `modollaz/` | `docs/agents/modules/slots.md` |
 
 The 3D code index is `docs/ENGINE-MAP.md`; the shared 3D engine is `engine/`.

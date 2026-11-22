@@ -40,6 +40,7 @@ export const scoredModules = {
   'modollaz-win': { title: 'Biggest Wins', metric: 'Win', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000, parent: 'modollaz', label: 'Biggest win', serverOnly: true, note: 'The most won from one spin, counting the Cash Collect, free games and jackpot it led to. Recorded on signed-in vault balances; forced outcomes never count.' },
   'modollaz-multiple': { title: 'Biggest Multipliers', metric: 'Times bet', order: 'desc', unit: 'multiple', min: 1, max: 100_000_000, parent: 'modollaz', label: 'Biggest ×', serverOnly: true, note: "One spin's total win divided by its bet, so a small bet can top this board. Recorded on signed-in vault balances." },
   'modollaz-total': { title: 'Biggest Total Wins', metric: 'Total won', order: 'desc', unit: 'cents', min: 1, max: 1_000_000_000_000, parent: 'modollaz', label: 'Total won', serverOnly: true, note: "Everything you have won in Mo' Dollaz, added up across every spin. Bets are not subtracted." },
+  bridge: { title: 'Top Engineers', metric: 'Points', order: 'desc', unit: 'points', min: 1, max: 100_000, serverOnly: true, note: 'Every level solved within budget scores 100 points a star plus one point for each percent of the budget left over, added up across all 100 levels. Saved whenever you beat your cheapest bridge on a level.' },
 } as const
 
 export type ScoredModuleId = keyof typeof scoredModules
