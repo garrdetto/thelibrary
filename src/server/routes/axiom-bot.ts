@@ -13,8 +13,8 @@ const futureStampMs = 60_000
 
 const finite = z.number().finite()
 const maybe = finite.nullable()
-const text = (max: number) => z.string().max(max)
-const dialValues = z.record(z.string().max(60), z.union([finite, z.boolean(), text(40)]))
+const text = (max: number) => z.string().transform(value => value.slice(0, max))
+const dialValues = z.record(z.string().max(60), z.union([finite, z.boolean(), z.string().max(40)]))
 
 const reportInput = z.object({
   version: text(20),
@@ -48,7 +48,7 @@ const reportInput = z.object({
     costSol: finite.optional(), proceedsSol: finite.optional(), pnlSol: finite.optional(),
   })).max(80),
   equity: z.array(z.object({ t: finite, equity: finite, sol: finite.optional() })).max(200),
-  events: z.array(z.object({ id: finite, t: finite, kind: text(20), text: text(400) })).max(60),
+  events: z.array(z.object({ id: finite, t: finite, kind: text(20), text: text(1000) })).max(60),
   candidates: z.array(z.object({ mint: text(60), symbol: text(40), score: finite, dex: maybe.optional(), quality: maybe.optional(), reason: text(200) })).max(20),
   learning: z.object({
     enabled: z.boolean(), timing: z.boolean(), watched: finite, following: finite, trades: finite, avgPct: maybe, winPct: maybe, adjust: finite,
@@ -86,7 +86,10 @@ async function sync(request: Request, env: Env) {
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   if (!await tokenMatches(request, env)) return json({ error: 'Unauthorized.' }, 401)
   const parsed = syncInput.safeParse(JSON.parse(await readText(request, syncLimit)))
-  if (!parsed.success) return json({ error: 'The bot update could not be read.' }, 400)
+  if (!parsed.success) {
+    const where = parsed.error.issues[0]?.path.join('.')
+    return json({ error: where ? `The bot update could not be read (${where}).` : 'The bot update could not be read.' }, 400)
+  }
   const input = parsed.data
   const now = Date.now()
   if (input.fast) await markRadarViewed(env, now)

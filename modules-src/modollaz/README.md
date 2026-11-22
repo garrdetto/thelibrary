@@ -8,12 +8,12 @@ An original cash-and-bling slot: five reels, three rows, 20 lines, bets of $0.25
 - `engine/simulate.ts`: return and feature rates.
 - `render/art.ts`: procedural symbol art (money bag, cash bills, coins, gold-bar wild, vault scatter, supercar, ring, watch, champagne, shades, royals).
 - `render/stage.ts`: the Canvas 2D reels and the 5×5 Cash Collect board.
-- `ui/`: the React + Tailwind HUD (`App.tsx`, `Bars.tsx`, `PickBoard.tsx`, `Paytable.tsx`).
+- `ui/`: the React + Tailwind HUD (`App.tsx`, `Bars.tsx`, `CollectLadder.tsx`, `PickBoard.tsx`, `Paytable.tsx`).
 - `net/api.ts`: `/api/modollaz` (`src/server/routes/modollaz.ts`, `src/server/modollaz.ts`).
 
 ## Features
 
-- **Cash Collect.** A money bag on reel 1 with any cash bill on reels 2 to 5 starts it, and any bill may also start it on its own. The bills are paid and copied onto a 5×5 board. The bag is a 2×2 collector zone with 5 spins: coins that land inside it are collected, then it hops to every new bill and grabs it. Five, nine and twelve bills grow it to 3×3 (+3 spins), 4×4 (+2) and 5×5 (+1; no more bills land then).
+- **Cash Collect.** A money bag on reel 1 with any cash bill on reels 2 to 5 starts it, and any bill may also start it on its own. The bills are paid and copied onto a 5×5 board. The bag is a 2×2 collector zone with 5 spins: coins that land inside it are collected, then it hops to every new bill and grabs it. Five, nine and twelve bills grow it to 3×3 (+3 spins), 4×4 (+2) and 5×5 (+1; no more bills land then). While it plays, the collect ladder (`ui/CollectLadder.tsx`, beside the board on wide screens and above it on tall ones; the stage keeps that space clear with `setBoardReserve`) shows the bag, spins left, the bills collected so far as bill symbols toward 12, and how many more bills unlock the next size and its extra spins.
 - **Free games.** Three or more vaults pay and give 8 free games without the royals. Three more add 8, and Cash Collect can start inside them.
 - **Jackpot pick.** Any wild may start it: crack 15 safes, and the first jackpot shown three times wins. Jackpots are fixed: Mini 20×, Minor 60×, Maxi 100×, Major 200×, Grand 2,000× the bet.
 - **Meters.** Every bill, vault and wild that lands fills its meter (levels 1 to 5). A full meter guarantees its feature.
@@ -21,7 +21,7 @@ An original cash-and-bling slot: five reels, three rows, 20 lines, bets of $0.25
 
 ## Accounts
 
-Signed-in members spin on the shared vault wallet (Sun Vault's balance) with the daily collect and three high-score boards. The server runs every spin; a whole round, features included, resolves in one call. Guests and practice mode run the same engine in the page.
+Signed-in members spin on the shared vault wallet (Sun Vault's balance) with the daily collect and three high-score boards. The server runs every spin; a whole round, features included, resolves in one call. Guests and practice mode run the same engine in the page; guests who run out of play credits get another $1,000 automatically. The developer panel (forcing features, practice mode, the simulator) is shown only to site administrators.
 
 ## Tuning
 

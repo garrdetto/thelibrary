@@ -79,7 +79,7 @@ class Site:
                 raise SiteError("The site refused the key. AXIOM_RADAR_TOKEN must match the site's secret.") from None
             if error.code == 404:
                 raise SiteError("The site does not have the bot's sync route yet. Deploy the latest site.") from None
-            raise SiteError(f"The site answered with an error ({error.code}).") from None
+            raise SiteError(f"The site answered with an error ({error.code}){_reason(error)}.") from None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             raise SiteError(f"Could not reach the site ({getattr(error, 'reason', error)}).") from None
         try:
@@ -160,3 +160,14 @@ class LocalFeedSite:
             reply["payloadAt"] = int(generated) if isinstance(generated, (int, float)) else int(now * 1000)
             reply["now"] = int(now * 1000)
         return reply
+
+
+def _reason(error: urllib.error.HTTPError) -> str:
+    try:
+        raw = error.read(20_000)
+        if error.headers.get("Content-Encoding") == "gzip":
+            raw = gzip.decompress(raw)
+        message = json.loads(raw).get("error")
+    except Exception:
+        return ""
+    return f": {str(message)[:200]}" if isinstance(message, str) and message else ""

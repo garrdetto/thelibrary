@@ -16,14 +16,16 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'assets-src/brand/fox-dollar-source.jpg'
 FAMILY = 'TL Fox Dollar'
-UPM = 1000
-TOP, BOTTOM = 790, -100
-SIDE = 40
-SCALE_UP = 4
+UPM = 2048
+TOP, BOTTOM = 1618, -205
+SIDE = 82
+SCALE_UP = 8
+SMOOTH = 7
+TOLERANCE = 0.18
 
 gray = cv2.imread(str(SOURCE), cv2.IMREAD_GRAYSCALE)
 gray = cv2.resize(gray, None, fx=SCALE_UP, fy=SCALE_UP, interpolation=cv2.INTER_CUBIC)
-gray = cv2.GaussianBlur(gray, (5, 5), 0)
+gray = cv2.GaussianBlur(gray, (9, 9), 0)
 _, ink = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV)
 contours, hierarchy = cv2.findContours(ink, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
 min_area = 30 * SCALE_UP * SCALE_UP
@@ -35,8 +37,21 @@ scale = (TOP - BOTTOM) / float(y1 - y0)
 width = (x1 - x0) * scale
 
 
+def smooth(c):
+    pts = c.reshape(-1, 2).astype(np.float64)
+    if len(pts) < SMOOTH * 3:
+        return pts.astype(np.float32).reshape(-1, 1, 2)
+    kernel = np.ones(SMOOTH) / SMOOTH
+    pad = SMOOTH // 2
+    out = np.empty_like(pts)
+    for axis in range(2):
+        ring = np.concatenate([pts[-pad:, axis], pts[:, axis], pts[:pad, axis]])
+        out[:, axis] = np.convolve(ring, kernel, mode='valid')
+    return out.astype(np.float32).reshape(-1, 1, 2)
+
+
 def to_font(c):
-    poly = cv2.approxPolyDP(c, 0.6 * SCALE_UP, True).reshape(-1, 2)
+    poly = cv2.approxPolyDP(smooth(c), TOLERANCE * SCALE_UP, True).reshape(-1, 2)
     return [(round(SIDE + (x - x0) * scale), round(TOP - (y - y0) * scale)) for x, y in poly]
 
 
@@ -69,10 +84,10 @@ fb = FontBuilder(UPM, isTTF=True)
 fb.setupGlyphOrder(['.notdef', 'dollar'])
 fb.setupCharacterMap({0x24: 'dollar'})
 fb.setupGlyf({'.notdef': empty, 'dollar': glyph})
-fb.setupHorizontalMetrics({'.notdef': (500, 0), 'dollar': (advance, SIDE)})
-fb.setupHorizontalHeader(ascent=900, descent=-200)
+fb.setupHorizontalMetrics({'.notdef': (1024, 0), 'dollar': (advance, SIDE)})
+fb.setupHorizontalHeader(ascent=1843, descent=-410)
 fb.setupNameTable({'familyName': FAMILY, 'styleName': 'Regular'})
-fb.setupOS2(sTypoAscender=900, sTypoDescender=-200, usWinAscent=900, usWinDescent=200)
+fb.setupOS2(sTypoAscender=1843, sTypoDescender=-410, usWinAscent=1843, usWinDescent=410)
 fb.setupPost()
 fb.font.flavor = 'woff2'
 font_path = ROOT / 'public/fonts/fox-dollar.woff2'

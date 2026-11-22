@@ -99,7 +99,7 @@ interface HudIconsProps {
   debugOpen: boolean
   onToggleMute: () => void
   onOpenPaytable: () => void
-  onToggleDebug: () => void
+  onToggleDebug: (() => void) | null
 }
 
 export function HudIcons({ muted, debugOpen, onToggleMute, onOpenPaytable, onToggleDebug }: HudIconsProps) {
@@ -111,9 +111,11 @@ export function HudIcons({ muted, debugOpen, onToggleMute, onOpenPaytable, onTog
       <IconButton label={muted ? 'Turn sound on' : 'Turn sound off'} onClick={onToggleMute} pressed={!muted}>
         {muted ? <VolumeX className="h-[18px] w-[18px]" aria-hidden /> : <Volume2 className="h-[18px] w-[18px]" aria-hidden />}
       </IconButton>
-      <IconButton label="Developer panel" onClick={onToggleDebug} pressed={debugOpen}>
-        <Bug className="h-[18px] w-[18px]" aria-hidden />
-      </IconButton>
+      {onToggleDebug && (
+        <IconButton label="Developer panel" onClick={onToggleDebug} pressed={debugOpen}>
+          <Bug className="h-[18px] w-[18px]" aria-hidden />
+        </IconButton>
+      )}
     </>
   )
 }

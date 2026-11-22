@@ -189,9 +189,14 @@ export function App() {
     audio.unlock()
     const level = BET_LEVELS_CENTS[betIndexRef.current]
     const inFeature = (remoteRef.current ? snapshotRef.current.mode : engine.snapshot().mode) === 'free'
+    if (!inFeature && !remoteRef.current && engine.snapshot().balance < level) {
+      engine.addCredits(100000)
+      setBalance(engine.snapshot().balance)
+      setSnapshot(engine.snapshot())
+    }
     const available = remoteRef.current ? snapshotRef.current.balance : engine.snapshot().balance
     if (!inFeature && available < level) {
-      setNotice(remoteRef.current ? 'Not enough in your vault for this bet. Lower the bet or collect your daily credits.' : 'Out of practice credits. Use the refill in the developer panel or lower the bet.')
+      setNotice('Not enough in your vault for this bet. Lower the bet or collect your daily credits.')
       autoRef.current = false
       setAuto(false)
       return
@@ -362,9 +367,9 @@ export function App() {
     setPendingForce(force)
   }
 
-  const canForce = !remote || admin
+  const canForce = admin
   const free = snapshot.mode === 'free'
-  const showDebug = debugOpen && (account.status !== 'member' || admin || practice)
+  const showDebug = debugOpen && admin
   const creditLabel = remote ? 'Vault balance' : account.status === 'member' ? 'Practice credits' : 'Play credits'
 
   return (
@@ -377,7 +382,7 @@ export function App() {
         </div>
         <div className="flex items-center gap-0.5 narrow:ml-auto short:justify-center">
           <button type="button" onClick={() => setPaytableOpen(true)} className={ICON_BUTTON} aria-label="How Beanstalk Bounty pays"><Info className="h-5 w-5" aria-hidden /></button>
-          {(account.status !== 'member' || admin) && <button type="button" onClick={() => setDebugOpen((open) => !open)} className={ICON_BUTTON} aria-label="Developer panel" aria-pressed={debugOpen}><Bug className="h-5 w-5" aria-hidden /></button>}
+          {admin && <button type="button" onClick={() => setDebugOpen((open) => !open)} className={ICON_BUTTON} aria-label="Developer panel" aria-pressed={debugOpen}><Bug className="h-5 w-5" aria-hidden /></button>}
           <button type="button" onClick={toggleMute} className={ICON_BUTTON} aria-label={muted ? 'Turn sound on' : 'Turn sound off'}>{muted ? <VolumeX className="h-5 w-5" aria-hidden /> : <Volume2 className="h-5 w-5" aria-hidden />}</button>
           <button type="button" className={`tl-full-only ${ICON_BUTTON}`} data-tl-exit-full aria-label="Exit full screen" title="Exit full screen"><Minimize2 className="h-5 w-5" aria-hidden /></button>
         </div>

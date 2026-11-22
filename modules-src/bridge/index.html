@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Bridge Builder · the library</title>
+    <meta name="description" content="Design trusses from beams joined flat, at 45° and at 90°, and see how loads flow through tension and compression as vehicles cross." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;700;800&display=swap" />
+  </head>
+  <body>
+    <div id="app" class="bb">
+      <canvas id="stage" aria-label="Bridge building area"></canvas>
+
+      <header class="bb-top" id="buildTop" hidden>
+        <button class="bb-btn ghost" id="backBtn" type="button" aria-label="Back to levels">◀ Levels</button>
+        <div class="bb-title"><span id="levelNum">1</span><strong id="levelName">First Crossing</strong><small id="levelVehicles"></small></div>
+        <div class="bb-cost" id="costBox" title="Money spent against the budget">
+          <div class="bb-cost-text"><span id="costText">$0</span><small> / <span id="budgetText">$0</span></small></div>
+          <div class="bb-cost-bar"><i id="costBar"></i><b class="mark m3"></b><b class="mark m2"></b></div>
+        </div>
+      </header>
+
+      <div class="bb-tip" id="tip" hidden></div>
+      <div class="bb-status" id="status" role="status" aria-live="polite"></div>
+
+      <footer class="bb-tools" id="tools" hidden>
+        <div class="bb-materials" id="materials" role="radiogroup" aria-label="Material"></div>
+        <div class="bb-actions">
+          <button class="bb-btn icon" id="deleteBtn" type="button" title="Delete beams (D, or right-click)" aria-pressed="false">✕<span>Delete</span></button>
+          <button class="bb-btn icon" id="undoBtn" type="button" title="Undo (Ctrl+Z)">↶<span>Undo</span></button>
+          <button class="bb-btn icon" id="redoBtn" type="button" title="Redo (Ctrl+Y)">↷<span>Redo</span></button>
+          <button class="bb-btn icon" id="clearBtn" type="button" title="Remove every beam">⌫<span>Clear</span></button>
+          <button class="bb-btn icon" id="stressBtn" type="button" title="Show stress colours while testing (S)" aria-pressed="true">◐<span>Stress</span></button>
+          <button class="bb-btn icon" id="speedBtn" type="button" title="Test speed (F)">×1<span>Speed</span></button>
+          <button class="bb-btn go" id="testBtn" type="button" title="Send the vehicles (Space)">▶ Test</button>
+        </div>
+      </footer>
+
+      <section class="bb-menu" id="menu" aria-label="Choose a level">
+        <div class="bb-menu-head">
+          <div>
+            <h1>Bridge Builder</h1>
+            <p>Join beams flat, at 45° or at 90°. Triangles carry the load; the vehicles test it.</p>
+          </div>
+          <div class="bb-total"><span id="totalStars">★ 0</span><small>of 300</small><span id="totalPoints" class="pts"></span></div>
+        </div>
+        <div class="bb-chapters" id="chapters"></div>
+      </section>
+
+      <div class="bb-result" id="result" hidden>
+        <div class="bb-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+          <h2 id="resultTitle">Bridge held!</h2>
+          <div class="bb-stars" id="resultStars"></div>
+          <p id="resultText"></p>
+          <div class="bb-card-actions">
+            <button class="bb-btn ghost" id="retryBtn" type="button">Keep building</button>
+            <button class="bb-btn go" id="nextBtn" type="button">Next level ▶</button>
+          </div>
+        </div>
+      </div>
+      <button class="bb-btn ghost tl-full-only bb-exit" type="button" data-tl-exit-full>Exit full screen</button>
+    </div>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

@@ -95,6 +95,7 @@ export function App() {
   const bet = BET_LEVELS_CENTS[betIndex]
   const shownBet = snapshot.mode === 'base' ? bet : snapshot.bet
   const member = account.status === 'member'
+  const admin = member && account.admin
   const remote = member && !practice
   betIndexRef.current = betIndex
   autoRef.current = auto
@@ -225,11 +226,10 @@ export function App() {
       return
     }
     const currentBet = BET_LEVELS_CENTS[betIndexRef.current]
+    if (!remoteRef.current && currentSnapshot().mode === 'base' && currentSnapshot().balance < currentBet) showSnapshot(engine.addCredits(100000))
     const start = currentSnapshot()
     if (start.mode === 'base' && start.balance < currentBet) {
-      setNotice(remoteRef.current
-        ? 'Not enough credits for this bet. Lower the bet, collect your daily credits, or turn on practice mode in the developer panel.'
-        : 'Not enough practice credits for this bet. Lower the bet or add credits from the developer panel.')
+      setNotice('Not enough credits for this bet. Lower the bet or collect your daily credits.')
       setAuto(false)
       return
     }
@@ -436,7 +436,7 @@ export function App() {
         setMuted(!muted)
       }}
       onOpenPaytable={() => setPaytableOpen(true)}
-      onToggleDebug={() => setDebugOpen((open) => !open)}
+      onToggleDebug={admin ? () => setDebugOpen((open) => !open) : null}
     />
   )
   const daily = (
@@ -524,7 +524,7 @@ export function App() {
           </div>
         )}
         <DebugPanel
-          open={debugOpen}
+          open={debugOpen && admin}
           snapshot={snapshot}
           options={renderOptions}
           fps={fps}
