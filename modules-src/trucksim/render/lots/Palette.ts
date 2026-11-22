@@ -10,6 +10,8 @@ import type { Material } from '@babylonjs/core/Materials/material'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import type { MaterialLibrary, MaterialName } from '../Materials'
+import { createPavingTexture } from './PavingTexture'
+import type { PavingKind } from './PavingTexture'
 
 /** Matte finishes: concrete, brick, roofing, wood, gravel, dirt and rock never shine. */
 export const MATTE_COLORS: Record<string, string> = {
@@ -65,6 +67,12 @@ export const METAL_COLORS: Record<string, string> = {
   safetyOrange: '#d9631c',
 }
 
+/** Textured paving tops: the material key, its texture and its colour when no texture can be painted. */
+export const PAVING_KEYS: Record<string, { kind: PavingKind; fallback: string }> = {
+  paveGravel: { kind: 'gravel', fallback: '#8a847a' },
+  paveAsphalt: { kind: 'asphalt', fallback: '#2f3134' },
+}
+
 const LIBRARY_NAMES = new Set<string>(['chrome', 'steel', 'darkSteel', 'aluminum', 'rubber', 'glass', 'glassTint', 'plastic', 'lampWhite', 'lampRed', 'lampAmber', 'deck'])
 
 function linear(hex: string): Color3 {
@@ -95,6 +103,7 @@ export class SceneryMaterials {
     for (const key of Object.keys(MATTE_COLORS)) this.get(key)
     for (const key of Object.keys(METAL_COLORS)) this.get(key)
     for (const key of LIBRARY_NAMES) this.get(key)
+    for (const key of Object.keys(PAVING_KEYS)) this.get(key)
   }
 
   private make(key: string): Material {
@@ -109,6 +118,14 @@ export class SceneryMaterials {
     if (metal) {
       const material = this.library.paint(metal, 'gloss')
       this.held.push(material)
+      return material
+    }
+    const paving = PAVING_KEYS[key]
+    if (paving) {
+      const texture = createPavingTexture(this.scene, paving.kind)
+      const material = this.own(key, texture ? '#ffffff' : paving.fallback, 1, 0.05)
+      if (texture) material.albedoTexture = texture
+      material.specularIntensity = 0
       return material
     }
     if (key.startsWith('p:')) return this.own(key, key.slice(2), 0.55, 0.45)

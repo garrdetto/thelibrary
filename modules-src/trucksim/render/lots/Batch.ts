@@ -274,6 +274,24 @@ export class SceneryBatch {
     return this
   }
 
+  /**
+   * A paving slab: an axis-aligned box whose four sides use `sideKey` and whose top uses `topKey` with UVs in world metres, so
+   * a tiling texture runs on across neighbouring slabs. Assumes the frame has no yaw.
+   */
+  slab(sideKey: string, topKey: string, x: number, y: number, z: number, sx: number, sy: number, sz: number): this {
+    const x0 = x - sx / 2
+    const x1 = x + sx / 2
+    const z0 = z - sz / 2
+    const z1 = z + sz / 2
+    const y1 = y + sy
+    this.quad(sideKey, [x0, y, z1], [x1, y, z1], [x1, y1, z1], [x0, y1, z1])
+    this.quad(sideKey, [x1, y, z0], [x0, y, z0], [x0, y1, z0], [x1, y1, z0])
+    this.quad(sideKey, [x1, y, z1], [x1, y, z0], [x1, y1, z0], [x1, y1, z1])
+    this.quad(sideKey, [x0, y, z0], [x0, y, z1], [x0, y1, z1], [x0, y1, z0])
+    const uv: UvRect = { u0: this.ox + x0, u1: this.ox + x1, v0: this.oz + z1, v1: this.oz + z0 }
+    return this.quad(topKey, [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], uv)
+  }
+
   /** A box between two corners (local frame). */
   boxBetween(key: string, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, bottom = false): this {
     return this.box(key, (x0 + x1) / 2, y0, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, bottom)
@@ -395,7 +413,7 @@ export class SceneryBatch {
     return out
   }
 
-  /** Merges every key into one mesh (translucent ghosts). Clears the batch. */
+  /** Merges every key into one movable mesh (translucent ghosts) whose world matrix follows its parent. Clears the batch. */
   buildSingle(scene: Scene, name: string, parent: TransformNode, material: Material): Mesh | null {
     const merged: Group = { positions: [], normals: [], uvs: [], indices: [] }
     for (const group of this.groups.values()) {
@@ -407,7 +425,10 @@ export class SceneryBatch {
     }
     this.groups.clear()
     if (merged.indices.length === 0) return null
-    return this.makeMesh(scene, name, parent, merged, material, false)
+    const mesh = this.makeMesh(scene, name, parent, merged, material, false)
+    mesh.unfreezeWorldMatrix()
+    mesh.doNotSyncBoundingInfo = false
+    return mesh
   }
 
   private makeMesh(scene: Scene, name: string, parent: TransformNode, group: Group, material: Material, shadows: boolean): Mesh {

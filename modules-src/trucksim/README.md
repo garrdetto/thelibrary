@@ -42,7 +42,14 @@ then open `/modules/trucksim.html` (the library embeds it as module id `trucksim
 | Y | Build mode on your lot |
 | Esc | Pause menu |
 
-In build mode: middle-drag turns, right-drag pans, wheel zooms, Q/E spin the view, R rotates the piece.
+In build mode: middle-drag turns, right-drag pans, wheel zooms, Q/E spin the view, R rotates the piece. Gravel and asphalt are
+textured (`render/lots/PavingTexture.ts`), and the Land tab buys the next 30 m strip of land (up to four, `landStripPrice`), shading
+it while the button is hovered; the lot grows away from its gate.
+
+Trucks gather grime as they drive (`DIRT_PER_KM`, shown by `render/models/DirtLayer.ts`). Stop in the Crossroads Travel Center wash
+lane ($60) or inside your own wash bay (water only) and press E: the camera circles the truck, hold the left mouse button to spray
+the mud off with the wand, and E, Esc or Done finishes (`game/WashMode.ts`). The `wash` action takes off the share you cleaned, and
+a truck under `CLEAN_DIRT_LIMIT` earns `CLEAN_BONUS` on its next delivery.
 
 ## Architecture
 

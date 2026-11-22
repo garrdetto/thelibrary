@@ -3,7 +3,7 @@
  * zoom, Q/E to spin), a 1 m grid, three tools by definition (drag a rectangle for paving and buildings, click to place an
  * add-on, drag a straight run for fences), R to rotate, colour pickers, demolish, and a translucent green or red ghost that
  * shows whether the shared `validateItem` rule accepts it. Every placement is one `build` action, so the server stays the
- * authority; the lot is redrawn from the saved profile.
+ * authority; the lot is redrawn from the saved profile. The Land tab buys the next 30 m strip (`buy-land`), shading it while hovered.
  */
 import type { ArcRotateCameraPointersInput } from '@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput'
 import '@babylonjs/core/Culling/ray'
@@ -11,12 +11,15 @@ import { Matrix } from '@babylonjs/core/Maths/math.vector'
 import type { Scene } from '@babylonjs/core/scene'
 import type { ProgressClient } from '../net/Progress'
 import type { LotRenderer } from '../render/Lots'
-import { BUILDING_BY_ID } from '../shared/Catalog'
+import { BUILDING_BY_ID, landStripPrice } from '../shared/Catalog'
 import type { BuildDef } from '../shared/Catalog'
 import { itemCost, itemFootprint, validateItem } from '../shared/Lots'
 import type { BuildItem, BuildRotation } from '../shared/Lots'
+import { LAND_STRIP_M, LOT_D, MAX_LAND_STRIPS } from '../shared/WorldLayout'
 import type { LotSpec } from '../shared/WorldLayout'
+
 import { BuilderBar } from '../ui/BuilderBar'
+import type { LandOffer } from '../ui/BuilderBar'
 import type { CameraRig } from './Cameras'
 
 export interface BuildModeOptions {
@@ -27,6 +30,7 @@ export interface BuildModeOptions {
   progress: ProgressClient
   uiRoot: HTMLElement
   lot: LotSpec
+  currentLot?(): LotSpec
   heightAt(x: number, z: number): number
   toast(text: string, kind?: 'info' | 'good' | 'warn' | 'bad'): void
   onExit(): void
@@ -80,6 +84,9 @@ export class BuildMode {
         this.refresh()
       },
       onDone: () => this.exit(),
+      land: this.landOffer(),
+      onBuyLand: () => void this.buyLand(),
+      onPreviewLand: (on) => options.lots.previewLand(on ? this.nextStrip() : null),
     })
     this.bar.setHint('Pick something to build. Middle-drag turns the view, right-drag pans, the wheel zooms.')
     const down = (e: PointerEvent) => {
@@ -116,7 +123,11 @@ export class BuildMode {
     canvas.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('keydown', key)
-    const unsubscribe = options.progress.onChange((profile) => this.bar.setCash(profile.cash))
+    const unsubscribe = options.progress.onChange((profile) => {
+      this.bar.setCash(profile.cash)
+      this.bar.setLand(this.landOffer())
+      this.refresh()
+    })
     this.cleanup.push(() => {
       canvas.removeEventListener('pointerdown', down)
       canvas.removeEventListener('pointermove', move)
@@ -124,6 +135,34 @@ export class BuildMode {
       window.removeEventListener('keydown', key)
       unsubscribe()
     })
+  }
+
+  private get lot(): LotSpec {
+    return this.options.currentLot?.() ?? this.options.lot
+  }
+
+  private landOffer(): LandOffer {
+    const strips = this.options.progress.profile.land
+    return { strips, max: MAX_LAND_STRIPS, stripM: LAND_STRIP_M, width: this.lot.w, depth: LOT_D, price: strips >= MAX_LAND_STRIPS ? null : landStripPrice(strips) }
+  }
+
+  private nextStrip(): { x: number; z: number; w: number; d: number } | null {
+    if (this.options.progress.profile.land >= MAX_LAND_STRIPS) return null
+    const lot = this.lot
+    return { x: lot.side === 'west' ? lot.x - LAND_STRIP_M : lot.x + lot.w, z: lot.z, w: LAND_STRIP_M, d: lot.d }
+  }
+
+  private async buyLand(): Promise<void> {
+    if (this.busy) return
+    this.busy = true
+    const result = await this.options.progress.act({ action: 'buy-land' })
+    this.busy = false
+    this.options.lots.previewLand(null)
+    this.options.toast(result.message || (result.ok ? 'Land bought' : 'Could not buy land'), result.ok ? 'good' : 'warn')
+    if (result.ok) {
+      const lot = this.lot
+      this.options.cameras.focusBuild(lot.x + lot.w / 2, lot.z + lot.d / 2, Math.max(lot.w, lot.d))
+    }
   }
 
   private pick(id: string): void {
@@ -147,7 +186,8 @@ export class BuildMode {
 
   /** Where the pointer meets the lot's level ground, in lot-local metres snapped to the 1 m grid. */
   private groundPoint(e: PointerEvent): { x: number; z: number } | null {
-    const { scene, cameras, lot } = this.options
+    const { scene, cameras } = this.options
+    const lot = this.lot
     const rect = this.options.canvas.getBoundingClientRect()
     const ray = scene.createPickingRay(e.clientX - rect.left, e.clientY - rect.top, Matrix.Identity(), cameras.build, false)
     if (Math.abs(ray.direction.y) < 1e-4) return null
@@ -182,7 +222,8 @@ export class BuildMode {
 
   private refresh(): void {
     if (this.disposed) return
-    const { lots, lot, progress } = this.options
+    const { lots, progress } = this.options
+    const lot = this.lot
     if (!this.def || this.demolish || !this.cursor) {
       lots.preview(null, null, false)
       return
@@ -197,7 +238,8 @@ export class BuildMode {
 
   private async commit(item: BuildItem): Promise<void> {
     if (this.busy) return
-    const { progress, lot, toast } = this.options
+    const { progress, toast } = this.options
+    const lot = this.lot
     const error = validateItem(item, progress.profile.build, { w: lot.w, d: lot.d })
     if (error) {
       toast(error, 'warn')
@@ -241,6 +283,7 @@ export class BuildMode {
     this.disposed = true
     for (const fn of this.cleanup) fn()
     this.options.lots.preview(null, null, false)
+    this.options.lots.previewLand(null)
     const pointers = this.options.cameras.build.inputs.attached.pointers as ArcRotateCameraPointersInput | undefined
     if (pointers) pointers.buttons = [0, 1, 2]
     this.bar.dispose()

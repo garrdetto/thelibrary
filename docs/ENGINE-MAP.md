@@ -487,15 +487,16 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `sim/ExcavatorRig.ts` — the drivable tracked excavator for lowboy jobs, chained to the deck as trailer payload.
 - `sim/LoaderAI.ts` — the timed dig, swing, dump cycle of the quarry excavator and wheel loader.
 - `systems/Keys.ts` — key state by `KeyboardEvent.code` (same shape as Life Sim's `GameHost.keys`), edges, and `BINDINGS`.
-- `systems/Audio.ts` — synthesised diesel, turbo, jake brake, air hiss, beeper, horns and hydraulics with Web Audio only.
+- `systems/Audio.ts` — synthesised diesel, turbo, jake brake, air hiss, beeper, horns, hydraulics and the pressure-wash spray with Web Audio only.
 - `systems/Scope.ts` — ownership scopes that dispose children first and items in reverse order.
 - `systems/Streamer.ts` — `ChunkStreamer`: nearest-first chunk loading within a time budget and a maximum count.
 - `systems/Pool.ts` — a small object pool for particles, piles and markers.
 - `systems/MemoryGuard.ts` — samples counts, draw calls and heap, feeds `ResourceTrend`, raises pressure, `window.__truckMem()` and the `?perf=1` overlay.
 - `render/Materials.ts` — `MaterialLibrary`: shared PBR materials under the gloss rule, ref-counted paints and cargo colours.
 - `render/Quality.ts` — the four graphics tiers (`?quality=`) and what each enables (shadows, stream radius, tree density, AA, bloom, SSAO).
-- `render/Lots.ts` — `LotRenderer`: draws a lot from its build items, the gate sign, the translucent ghost, and collision boxes.
+- `render/Lots.ts` — `LotRenderer`: draws a lot (its grown extent) from its build items, survey stakes on its edge, the gate sign, the translucent ghost, the for-sale land shading (`previewLand`), and collision boxes.
 - `render/models/TruckVisual.ts` — `buildTruckVisual`: a drawable truck with moving wheels, lift axles, dump bed, tailgate, hoist, heap and lamps.
+- `render/models/DirtLayer.ts` — `createDirtLayer`: road grime decals on the cab, hood, wheel arches and mudflaps from a mud-cell texture; `setDirt` fades it with the truck's dirt, `scrub` sprays cells off along a ray, `remaining` scores the wash.
 - `render/models/TruckParts.ts` — assembles a truck's static body from the `truck/` part builders into one batch.
 - `render/models/Wheels.ts` — thin-instanced truck tyres, rims, hubs and steer knuckles.
 - `render/models/TrailerVisual.ts` — `buildTrailerVisual` for the five trailers with pose, cargo, straps and doors.
@@ -528,26 +529,28 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `render/world/Props.ts`, `PropsModels.ts`, `PropsPlacement.ts`, `PropsSigns.ts` — thin-instanced trees, utility poles and wires, their pure placement, and the site sign atlas.
 - `render/world/Sites.ts` — the site scenery layer (buildings per chunk, `siteStaticBoxes`, `DEALER_DISPLAY_SPOTS`).
 - `render/world/sites/Plan.ts` — `SitePlanner`: placement rules that keep pieces off zones, lanes and roads.
-- `render/world/sites/Layouts.ts`, `LayoutKit.ts` — what stands on each kind of site and the helpers layouts share.
+- `render/world/sites/Layouts.ts`, `LayoutKit.ts` — what stands on each kind of site and the helpers layouts share (fuel canopies, the travel center's wash canopy `washCanopy`).
 - `render/world/sites/Parts.ts`, `FarmParts.ts`, `TownParts.ts`, `Town.ts` — commercial, industrial, farm and Millbrook building models and the town layout.
 - `render/world/sites/Hash.ts` — a deterministic integer hash for building variety.
 - `render/world/Atmosphere.ts`, `AtmosphereSky.ts`, `AtmosphereEnvironment.ts` — sky dome, sun, moon, lights, fog and shadows by tier; the sky as plain numbers; the CPU-baked environment cube.
 - `render/world/Pipeline.ts` — the HDR post chain (ACES or neutral tone map, bloom, FXAA or MSAA, sharpen, SSAO).
 - `render/lots/Batch.ts` — `SceneryBatch`: boxes, cylinders, roofs and quads merged per material key.
 - `render/lots/Items.ts` — lot builder piece models and their collision boxes.
-- `render/lots/Palette.ts` — scenery material keys (matte, painted metal, chain-link) with owned materials.
+- `render/lots/Palette.ts` — scenery material keys (matte, painted metal, chain-link, textured `paveGravel`/`paveAsphalt`) with owned materials.
+- `render/lots/PavingTexture.ts` — the tiling gravel and asphalt textures (seeded canvas painting, UVs in world metres; null without a canvas).
 - `render/lots/Signs.ts` — `SignAtlas`: one dynamic texture of block lettering split into cells.
 - `game/TruckHost.ts` — what a session needs from its world (scene, `frameRoot`, `PhysicsHost`, `HaulWorld`, keys, toasts).
 - `game/TruckSession.ts` — the reusable core: rigs, driving, coupling, dump, jobs, procedures, loaders, fuel, repairs, dealer.
 - `game/Standalone.ts` — the standalone page as a `TruckHost`: engine, scene, world, lots, session, cameras, HUD, sound, memory guard.
 - `game/Procedures.ts` — the realistic loading and unloading steps per haul, as data plus checks over a `ProcedureContext`.
 - `game/JobRunner.ts` — follows one job from pickup to drop, runs the procedures and accumulates cargo damage.
-- `game/BuildMode.ts` — the lot builder's controls, ghost and batched `build` actions.
+- `game/BuildMode.ts` — the lot builder's controls, ghost, batched `build` actions and the Land tab (`buy-land`).
+- `game/WashMode.ts` — the interactive pressure wash: orbit camera round the truck, hold the mouse to spray the `DirtLayer`, then the `wash` action with the share cleaned.
 - `game/Cameras.ts` — chase, cab and build cameras.
 - `game/MapDraw.ts` — the county map and minimap drawing.
 - `net/Progress.ts` — the career client: `/api/trucksim` when signed in, local `applyAction` for guests, `?world=`.
-- `ui/Hud.ts`, `Panels.ts`, `Shop.ts`, `BuilderBar.ts`, `dom.ts`, `index.ts`, `styles.css` — the HUD, start/job/map/pause/help panels, dealer, garage and fleet screens, the builder toolbar, DOM helpers, the barrel and the stylesheet.
-- `tests/` — Node tests run by `scripts/trucksim-tests.mjs`: `economy`, `jobs`, `lots`, `procedures`, `roadgraph`, `layout` (shared rules and world), `sim-dump`, `sim-excavator`, `sim-trailer`, `sim-truck`, `sim-world` (Rapier rigs), `groups` (collision groups equal Life Sim's), `scope`, `streamer`, `memory` (ownership, streaming, guard), `visual-sites`, `visual-trailer`, `visual-truck`, `visual-world` (build and dispose on a `NullEngine` and require counts to return to baseline).
+- `ui/Hud.ts`, `Panels.ts`, `Shop.ts`, `BuilderBar.ts`, `WashHud.ts`, `dom.ts`, `index.ts`, `styles.css` — the HUD, start/job/map/pause/help panels, dealer, garage and fleet screens, the builder toolbar (with the Land tab), the wash toolbar, DOM helpers, the barrel and the stylesheet.
+- `tests/` — Node tests run by `scripts/trucksim-tests.mjs`: `economy`, `jobs`, `lots`, `procedures`, `roadgraph`, `layout` (shared rules and world), `sim-dump`, `sim-excavator`, `sim-trailer`, `sim-truck`, `sim-world` (Rapier rigs), `groups` (collision groups equal Life Sim's), `scope`, `streamer`, `memory` (ownership, streaming, guard), `visual-sites`, `visual-trailer`, `visual-truck`, `visual-world`, `wash`, `land-wash` (build and dispose on a `NullEngine` and require counts to return to baseline).
 - `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` — `/api/trucksim` (see Worker API); `migrations/0048_trucksim.sql` — `trucksim_profiles` and `trucksim_lots`.
 - Contracts: coordinates are metres, Y up, right-handed (`scene.useRightHandedSystem = true`, so Rapier and Babylon share numbers); heading `h` faces `(sin h, 0, cos h)`; a vehicle frame has its origin on the ground under the front axle (trucks) or kingpin (trailers), +Z forward, +X the driver's left, so a positive heading change and a positive steer are left turns. Render code parents everything under the `parent`/`frameRoot` it is given, sim code talks to a `PhysicsHost`, rules read a `HaulWorld`. No custom shaders; Babylon imported by path.
 

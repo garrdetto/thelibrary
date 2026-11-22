@@ -12,12 +12,14 @@ import { buildTrailerVisual } from '../render/models/TrailerVisual'
 import type { TrailerVisual } from '../render/models/TrailerVisual'
 import { buildTruckVisual } from '../render/models/TruckVisual'
 import type { TruckVisual } from '../render/models/TruckVisual'
+import { createDirtLayer } from '../render/models/DirtLayer'
+import type { DirtLayer } from '../render/models/DirtLayer'
 import type { WorkZoneActivity } from '../render/work/WorkZones'
-import { CARGO_BY_ID, FUEL_PRICE_PER_L, REPAIR_COST_PER_POINT, TRAILER_BY_ID, TRUCK_BY_ID, haulFor } from '../shared/Catalog'
+import { CARGO_BY_ID, DIRT_PER_KM, FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, TRAILER_BY_ID, TRUCK_BY_ID, haulFor } from '../shared/Catalog'
 import type { TrailerModel, TruckLook, TruckModel } from '../shared/Catalog'
 import { FUEL_STATION_MARKUP, REPAIR_LABOUR_MARKUP } from '../shared/Economy'
 import type { OwnedTruck, Profile } from '../shared/Economy'
-import { hasService } from '../shared/Lots'
+import { hasService, itemFootprint } from '../shared/Lots'
 import { route } from '../shared/RoadGraph'
 import { getTerrain } from '../shared/Terrain'
 import { SITE_BY_ID, SITES, headingDelta, inRect, inZone, lotSpawn } from '../shared/WorldLayout'
@@ -45,7 +47,11 @@ export interface SessionEvents {
   jobDone(message: string, pay: number): void
   horn(on: boolean): void
   airBrake(): void
+  startWash(place: WashPlace): void
 }
+
+/** Where a wash happens: the travel center's lane or your own wash bay. */
+export type WashPlace = 'own' | 'public'
 
 export interface SessionView {
   gauges: GaugeValues
@@ -252,6 +258,10 @@ export class TruckSession {
   private trailerModel: TrailerModel | null = null
   private ownedTruck: OwnedTruck | null = null
   private truckVisual: TruckVisual | null = null
+  private dirt: DirtLayer | null = null
+  private dirtTimer = 0
+  private washing = false
+  private washReadyAt = 0
   private trailerVisual: TrailerVisual | null = null
   private machineVisual: ExcavatorVisual | null = null
   private readonly casters: AbstractMesh[] = []
@@ -375,6 +385,8 @@ export class TruckSession {
     if (!model) return
     const coupled = this.coupledTrailer
     if (coupled && this.truck) uncouple(this.truck, coupled)
+    this.dirt?.dispose()
+    this.dirt = null
     if (this.truckVisual) {
       this.untrackCasters(this.truckVisual.meshes)
       this.truckVisual.dispose()
@@ -391,6 +403,8 @@ export class TruckSession {
     this.parkingBrake = true
     this.truckVisual = buildTruckVisual(this.host.scene, this.host.frameRoot, model, owned.look, this.host.mats)
     this.trackCasters(this.truckVisual.meshes)
+    this.dirt = createDirtLayer(this.host.scene, this.truckVisual.root, this.truckVisual.layout)
+    this.dirt.setDirt(owned.dirt)
     this.lastDumpShown = -1
     if (this.trailer && this.trailerModel) this.parkTrailerBehind()
   }
@@ -705,7 +719,7 @@ export class TruckSession {
     if (!truck) return null
     const p = truck.pose().position
     for (const zone of this.host.world.zones) {
-      if ((zone.kind === 'fuel' || zone.kind === 'service' || zone.kind === 'dealer') && inZone(zone, p.x, p.z, 4)) return zone
+      if ((zone.kind === 'fuel' || zone.kind === 'service' || zone.kind === 'dealer' || zone.kind === 'wash') && inZone(zone, p.x, p.z, 4)) return zone
     }
     return null
   }
@@ -720,8 +734,24 @@ export class TruckSession {
     const zone = this.zoneUnderTruck()
     const lot = this.lot
     const atShop = Boolean(lot && hasService(profile.build) && p.x >= lot.x && p.x <= lot.x + lot.w && p.z >= lot.z && p.z <= lot.z + lot.d)
-    if (!zone && !atShop) return null
+    const atBay = this.inOwnWashBay(p.x, p.z)
+    if (!zone && !atShop && !atBay) return null
     const press = this.pressed('interact') && owned !== 'interact'
+    if (zone?.kind === 'wash' || atBay) {
+      const place: WashPlace = atBay ? 'own' : 'public'
+      const cost = place === 'own' ? OWN_WASH_WATER : PUBLIC_WASH_PRICE
+      if (this.washing || performance.now() < this.washReadyAt) return null
+      const dirt = this.dirt?.level ?? owner.dirt
+      if (dirt < 3) return place === 'own' ? 'Your wash bay: the truck is already clean' : 'Truck wash: your truck is already clean'
+      if (press) {
+        if (cost > profile.cash) this.host.toast(`A wash costs $${cost.toLocaleString()}`, 'warn')
+        else {
+          this.washing = true
+          this.events.startWash(place)
+        }
+      }
+      return `Press E to pressure-wash the truck ($${cost.toLocaleString()} water)`
+    }
     const missing = Math.max(0, truck.model.fuelTankL - truck.fuelL)
     const damage = owner.damage
     if (zone?.kind === 'dealer') {
@@ -742,6 +772,56 @@ export class TruckSession {
       return missing > 1 ? `Press E to fill up: ${Math.round(missing)} L for $${cost.toLocaleString()}` : 'Tank is full'
     }
     return null
+  }
+
+  private inOwnWashBay(x: number, z: number): boolean {
+    const lot = this.lot
+    if (!lot) return false
+    for (const item of this.host.progress.profile.build) {
+      if (item.def !== 'wash-bay') continue
+      const f = itemFootprint(item)
+      if (x >= lot.x + f.x - 1 && x <= lot.x + f.x + f.w + 1 && z >= lot.z + f.z - 1 && z <= lot.z + f.z + f.d + 1) return true
+    }
+    return false
+  }
+
+  private refreshDirt(): void {
+    const owner = this.ownedTruck
+    const truck = this.truck
+    if (!this.dirt || !owner || !truck || this.washing) return
+    const fresh = this.host.progress.profile.trucks.find((t) => t.uid === owner.uid)
+    const unsent = Math.max(0, truck.odometerM - this.sentOdometerM) / 1000
+    this.dirt.setDirt((fresh?.dirt ?? owner.dirt) + unsent * DIRT_PER_KM)
+  }
+
+  /** The active truck's grime, for the wash. */
+  get dirtLayer(): DirtLayer | null {
+    return this.dirt
+  }
+
+  /** Where the active truck stands (the wash camera's target). */
+  truckCentre(): { x: number; y: number; z: number } {
+    const p = this.truck?.pose().position
+    return p ? { x: p.x, y: p.y, z: p.z } : { x: 0, y: 0, z: 0 }
+  }
+
+  /** Records a finished wash: syncs the trip first so the grime it adds is counted, then sends the `wash` action. */
+  async finishWash(place: WashPlace, cleaned: number): Promise<void> {
+    const owner = this.ownedTruck
+    try {
+      if (!owner || cleaned <= 0.01) {
+        this.host.toast('No water used: the wash is free when nothing comes off', 'info')
+        return
+      }
+      await this.syncOdometer()
+      const result = await this.host.progress.act({ action: 'wash', uid: owner.uid, cleaned, place })
+      this.host.toast(result.message || (result.ok ? 'Washed' : 'Could not wash'), result.ok ? 'good' : 'warn')
+    } finally {
+      this.washing = false
+      this.washReadyAt = performance.now() + 1500
+      this.dirt?.resetMud()
+      this.refreshDirt()
+    }
   }
 
   private async syncOdometer(): Promise<void> {
@@ -941,6 +1021,11 @@ export class TruckSession {
     }
     this.updateVisuals()
     this.updateParked()
+    this.dirtTimer += dt
+    if (this.dirtTimer > 1) {
+      this.dirtTimer = 0
+      this.refreshDirt()
+    }
     this.odometerTimer += dt
     if (this.odometerTimer > ODOMETER_SECONDS) {
       this.odometerTimer = 0
@@ -1100,6 +1185,8 @@ export class TruckSession {
     this.rebuildParked()
     this.despawnExcavator()
     if (this.trailerVisual) this.trailerVisual.dispose()
+    this.dirt?.dispose()
+    this.dirt = null
     if (this.truckVisual) this.truckVisual.dispose()
     for (const mesh of this.casters) this.host.removeCaster(mesh)
     this.casters.length = 0

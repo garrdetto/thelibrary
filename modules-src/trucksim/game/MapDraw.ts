@@ -3,7 +3,7 @@
  * offscreen canvas, then each frame a heading-up (minimap) or north-up (map) view of it with the rig, the job target and the
  * GPS route on top. Nothing is allocated per draw except what canvas calls need.
  */
-import { FIELDS, LOTS, ROADS, SITES, WORLD_HALF, WORLD_SIZE } from '../shared/WorldLayout'
+import { FIELDS, LOTS, ROADS, SITES, WORLD_HALF, WORLD_SIZE, lotExtent } from '../shared/WorldLayout'
 import type { SiteKind } from '../shared/WorldLayout'
 
 export const MAP_PIXELS = 1024
@@ -20,6 +20,7 @@ export interface MapMarkers {
   target?: { x: number; z: number; label: string } | null
   route?: readonly [number, number][] | null
   ownLot?: number | null
+  ownLand?: number
   others?: readonly { x: number; z: number }[]
 }
 
@@ -83,7 +84,8 @@ export class CountyMap {
 
   private overlay(ctx: CanvasRenderingContext2D, markers: MapMarkers, unit: number): void {
     if (markers.ownLot !== undefined && markers.ownLot !== null) {
-      const lot = LOTS[markers.ownLot]
+      const spec = LOTS[markers.ownLot]
+      const lot = spec ? lotExtent(spec, markers.ownLand ?? 0) : null
       if (lot) {
         ctx.strokeStyle = '#f2a33a'
         ctx.lineWidth = 2 * unit

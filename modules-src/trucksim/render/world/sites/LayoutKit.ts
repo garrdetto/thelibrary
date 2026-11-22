@@ -1,5 +1,6 @@
 /**
- * Small helpers the site layouts share: lettered pieces, perimeter fences, light poles and the common dock warehouse.
+ * Small helpers the site layouts share: lettered pieces, perimeter fences, light poles, fuel and wash canopies and the common dock
+ * warehouse.
  */
 
 import { BUILDING_BY_ID } from '../../../shared/Catalog'
@@ -52,6 +53,45 @@ export function lightPoles(p: SitePlanner, points: readonly (readonly [number, n
   for (const [x, z] of points) {
     p.scan({ name: 'light pole', wl: 1.2, dl: 1.2, region: around(x, z, 14), near: [x, z], step: 2, gap: 4, build: (b) => lightPole(b) })
   }
+}
+
+/**
+ * A canopy over a wash lane with two spray arches and side brushes inside it, kept just outside the lane so a truck drives
+ * straight through; only the canopy columns are solid.
+ */
+export function washCanopy(p: SitePlanner, zoneId: string, label: string, color: string): void {
+  const zone = p.site.zones.find((z) => z.id === zoneId)
+  if (!zone) return
+  const wl = zone.w + 2 * (ZONE_MARGIN + 2)
+  const dl = zone.d + 2 * (ZONE_MARGIN + 2)
+  const along = zone.w >= zone.d
+  const length = along ? zone.w : zone.d
+  const width = along ? zone.d : zone.w
+  const columns = canopyColumns(wl, dl).filter(([lx, lz]) => p.fits([{ x0: zone.x + lx - 0.4, z0: zone.z + lz - 0.4, x1: zone.x + lx + 0.4, z1: zone.z + lz + 0.4 }], true, 0))
+  const areas = columns.map(([lx, lz]) => ({ x0: zone.x + lx - 0.4, z0: zone.z + lz - 0.4, x1: zone.x + lx + 0.4, z1: zone.z + lz + 0.4 }))
+  p.place({
+    name: `canopy ${zone.id}`, x: zone.x, z: zone.z, wl, dl, overhead: true, areas,
+    build: (b, env) => {
+      const boxes = canopy(b, wl, dl, color, env.sign(label), columns)
+      const box = (key: string, u: number, y: number, v: number, su: number, sy: number, sv: number): void => {
+        if (along) b.box(key, u, y, v, su, sy, sv)
+        else b.box(key, v, y, u, sv, sy, su)
+      }
+      const post = width / 2 + 0.6
+      for (const u of [-length / 4, length / 4]) {
+        for (const v of [-post, post]) box('steel', u, 0, v, 0.3, 4.6, 0.3)
+        box('steel', u, 4.5, 0, 0.3, 0.3, post * 2 + 0.3)
+        for (let v = -width / 2 + 0.8; v < width / 2 - 0.5; v += 1.1) box('metalBlue', u, 4.2, v, 0.2, 0.3, 0.2)
+      }
+      for (const v of [-post + 0.45, post - 0.45]) {
+        box('metalBlue', 0, 0.3, v, 0.6, 3.4, 0.6)
+        box('darkSteel', 0, 3.7, v, 0.2, 0.6, 0.2)
+      }
+      box('concreteDark', 0, 0.02, 0, length, 0.02, width)
+      for (let u = -length / 2 + 2; u < length / 2; u += 4) box('darkSteel', u, 0.045, 0, 0.3, 0.01, width - 1.6)
+      return boxes
+    },
+  })
 }
 
 /** A canopy over a fuel zone with pump islands on both outer sides; columns and islands that would block a lane are left out. */

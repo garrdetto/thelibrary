@@ -1,6 +1,7 @@
 /**
  * The bottom toolbar of the lot builder: category tabs, a button per build definition with its cost unit, Rotate, colour inputs for
- * colourable definitions, a Demolish toggle, the cash on hand, a hint line and Done. The game owns the placing; this only reports picks.
+ * colourable definitions, a Demolish toggle, the cash on hand, a hint line and Done, plus a Land tab that shows the lot's size and
+ * sells the next strip of land. The game owns the placing and buying; this only reports picks.
  */
 import { BUILDINGS } from '../shared/Catalog'
 import type { BuildCategory, BuildDef } from '../shared/Catalog'
@@ -14,9 +15,24 @@ export interface BuilderBarOptions {
   onColor(color: string, color2: string | undefined): void
   onDemolish(on: boolean): void
   onDone(): void
+  land?: LandOffer
+  onBuyLand?(): void
+  onPreviewLand?(on: boolean): void
 }
 
-const CATEGORIES: readonly [BuildCategory, string][] = [['paving', 'Paving'], ['structure', 'Buildings'], ['addon', 'Add-ons'], ['fence', 'Fences']]
+/** The lot's land as the Land tab shows it. */
+export interface LandOffer {
+  strips: number
+  max: number
+  stripM: number
+  width: number
+  depth: number
+  price: number | null
+}
+
+type BarTab = BuildCategory | 'land'
+
+const CATEGORIES: readonly [BarTab, string][] = [['paving', 'Paving'], ['structure', 'Buildings'], ['addon', 'Add-ons'], ['fence', 'Fences'], ['land', 'Land']]
 
 /** The cost unit shown beside a definition's price. */
 export function costUnit(def: BuildDef): string {
@@ -36,13 +52,15 @@ export class BuilderBar {
   private readonly colorTwo = h('input', { class: 'ts-color', attrs: { type: 'color', 'aria-label': 'Trim colour', value: '#2b4f7a' } })
   private readonly colors = h('div', { class: 'ts-build-colors' })
   private readonly demolish = h('button', { class: 'ts-btn', text: 'Demolish', attrs: { type: 'button', 'aria-pressed': 'false' } })
-  private category: BuildCategory = 'paving'
+  private category: BarTab = 'paving'
+  private land: LandOffer | null
   private selected: string | null = null
   private demolishing = false
 
   constructor(root: HTMLElement, options: BuilderBarOptions) {
     prepareRoot(root)
     this.options = options
+    this.land = options.land ?? null
     this.defs = options.defs ?? BUILDINGS
     const rotate = h('button', { class: 'ts-btn', attrs: { type: 'button' }, on: { click: () => options.onRotate() } }, 'Rotate ', h('kbd', { text: 'R' }))
     const done = h('button', { class: 'ts-btn primary', text: 'Done', attrs: { type: 'button' }, on: { click: () => options.onDone() } })
@@ -83,6 +101,12 @@ export class BuilderBar {
     this.renderItems()
   }
 
+  /** Updates the Land tab after a purchase. */
+  setLand(land: LandOffer): void {
+    this.land = land
+    if (this.category === 'land') this.renderItems()
+  }
+
   setHint(text: string): void {
     this.hint.textContent = text
   }
@@ -100,12 +124,17 @@ export class BuilderBar {
   private renderTabs(): void {
     this.tabs.replaceChildren()
     for (const [id, label] of CATEGORIES) {
+      if (id === 'land' && !this.land) continue
       this.tabs.appendChild(h('button', { class: `ts-tab${this.category === id ? ' on' : ''}`, text: label, attrs: { type: 'button', role: 'tab', 'aria-selected': this.category === id ? 'true' : 'false' }, on: { click: () => { this.category = id; this.renderTabs(); this.renderItems() } } }))
     }
   }
 
   private renderItems(): void {
     this.items.replaceChildren()
+    if (this.category === 'land') {
+      this.renderLand()
+      return
+    }
     for (const def of this.defs) {
       if (def.category !== this.category) continue
       const on = def.id === this.selected
@@ -115,5 +144,22 @@ export class BuilderBar {
         on: { click: () => this.options.onPick(def.id) },
       }, h('b', { text: def.name }), h('span', { text: `${money(def.cost)} ${costUnit(def)}` })))
     }
+  }
+
+  private renderLand(): void {
+    const land = this.land
+    if (!land) return
+    const size = h('div', { class: 'ts-build-item' }, h('b', { text: `${land.width} × ${land.depth} m` }), h('span', { text: `${land.strips} of ${land.max} extra strips` }))
+    this.items.appendChild(size)
+    if (land.price === null) {
+      this.items.appendChild(h('div', { class: 'ts-build-item' }, h('b', { text: 'Fully grown' }), h('span', { text: 'No more land next to this lot' })))
+      return
+    }
+    const preview = (on: boolean) => () => this.options.onPreviewLand?.(on)
+    this.items.appendChild(h('button', {
+      class: 'ts-build-item',
+      attrs: { type: 'button', title: `Adds a ${land.stripM} m strip along the back of the lot` },
+      on: { click: () => this.options.onBuyLand?.(), mouseenter: preview(true), mouseleave: preview(false), focus: preview(true), blur: preview(false) },
+    }, h('b', { text: `Buy ${land.stripM} m more land` }), h('span', { text: money(land.price) })))
   }
 }

@@ -27,14 +27,14 @@ import type { WorldPipeline } from '../render/world/Pipeline'
 import { DEALER_DISPLAY_SPOTS, createSiteLayer, siteStaticBoxes } from '../render/world/Sites'
 import { createWorldRenderer } from '../render/world/WorldRenderer'
 import { truckResale } from '../shared/Actions'
-import { FUEL_PRICE_PER_L, REPAIR_COST_PER_POINT, RESALE_SHARE, TRAILER_BY_ID, TRUCKS, TRUCK_BY_ID, defaultLook, lookCost } from '../shared/Catalog'
+import { FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, RESALE_SHARE, TRAILER_BY_ID, TRUCKS, TRUCK_BY_ID, defaultLook, lookCost } from '../shared/Catalog'
 import { FUEL_STATION_MARKUP, REPAIR_LABOUR_MARKUP, level } from '../shared/Economy'
 import type { Profile } from '../shared/Economy'
 import { generateJobs, jobSlot } from '../shared/Jobs'
 import { hasService } from '../shared/Lots'
 import { COUNTY } from '../shared/RoadGraph'
 import { getTerrain } from '../shared/Terrain'
-import { ALL_ZONES, DEFAULT_SPAWN, LOTS, SITES, SITE_BY_ID, ZONE_BY_ID } from '../shared/WorldLayout'
+import { ALL_ZONES, DEFAULT_SPAWN, LOTS, SITES, SITE_BY_ID, ZONE_BY_ID, lotExtent } from '../shared/WorldLayout'
 import type { LotSpec } from '../shared/WorldLayout'
 import { SimWorld } from '../sim/SimWorld'
 import { TruckAudio } from '../systems/Audio'
@@ -46,12 +46,13 @@ import { openDealer, openFleet, openGarage } from '../ui/Shop'
 import { openHelp, openJobBoard, openMap, openPause, showStart } from '../ui/Panels'
 import type { PanelHandle } from '../ui/Panels'
 import { BuildMode } from './BuildMode'
+import { WashMode } from './WashMode'
 import { CameraRig } from './Cameras'
 import type { FollowSubject } from './Cameras'
 import { CountyMap } from './MapDraw'
 import type { MapMarkers } from './MapDraw'
 import { TruckSession } from './TruckSession'
-import type { SessionView } from './TruckSession'
+import type { SessionView, WashPlace } from './TruckSession'
 import type { ToastKind, TruckHost } from './TruckHost'
 
 export interface BootProgress {
@@ -83,6 +84,7 @@ export class Standalone implements TruckHost {
   private readonly lotBoxes = new Map<number, number[]>()
   private panel: PanelHandle | null = null
   private building: BuildMode | null = null
+  private washing: WashMode | null = null
   private started = false
   private hours = 8.5
   private audio = new TruckAudio()
@@ -134,7 +136,11 @@ export class Standalone implements TruckHost {
   }
 
   lotFor(index: number | null): LotSpec | null {
-    return index === null ? null : LOTS[index] ?? null
+    const spec = index === null ? null : LOTS[index] ?? null
+    if (!spec) return null
+    const profile = this.progress.profile
+    const land = profile.lot === index ? profile.land : this.progress.lots.find((lot) => lot.index === index)?.land ?? 0
+    return lotExtent(spec, land)
   }
 
   spawnPoint(): { x: number; z: number; heading: number } {
@@ -154,7 +160,7 @@ export class Standalone implements TruckHost {
   }
 
   paused(): boolean {
-    return !this.started || this.panel !== null || this.building !== null
+    return !this.started || this.panel !== null || this.building !== null || this.washing !== null
   }
 
   private async build(report: BootProgress): Promise<void> {
@@ -184,6 +190,7 @@ export class Standalone implements TruckHost {
       },
       horn: (on) => this.audio.setHorn(on ? (this.session.truck && this.progress.profile.trucks.find((t) => t.uid === this.progress.profile.activeTruck)?.look.horn === 'air' ? 'air' : 'stock') : null),
       airBrake: () => this.audio.airBrake(),
+      startWash: (place) => this.startWash(place),
     }))
     this.drawLots(this.progress.profile)
     this.scope.defer(this.progress.onChange((profile) => this.onProfile(profile)))
@@ -225,7 +232,8 @@ export class Standalone implements TruckHost {
       })
       const p = this.session.rigPosition()
       this.physics.stream(this.session.excavator ? [p, this.session.excavator.pose().position] : [p], 2)
-      if (this.building === null) this.cameras.update(dt, this.session.followSubject(this.follow))
+      if (this.building === null && this.washing === null) this.cameras.update(dt, this.session.followSubject(this.follow))
+      this.washing?.update(dt)
       const active = this.cameras.active
       this.cameraPos.copyFrom(active.globalPosition)
       worldRenderer.update(this.cameraPos, now)
@@ -271,24 +279,25 @@ export class Standalone implements TruckHost {
   }
 
   private onProfile(profile: Profile): void {
-    const key = JSON.stringify([profile.lot, profile.company, profile.build])
+    const key = JSON.stringify([profile.lot, profile.land, profile.company, profile.build])
     if (key !== this.lastBuildKey) this.drawLots(profile)
   }
 
   /** Draws every lot on the Row: yours from your profile, the others from the public list, the rest for lease. */
   private drawLots(profile: Profile): void {
-    this.lastBuildKey = JSON.stringify([profile.lot, profile.company, profile.build])
+    this.lastBuildKey = JSON.stringify([profile.lot, profile.land, profile.company, profile.build])
     const others = new Map(this.progress.lots.map((lot) => [lot.index, lot]))
     for (const lot of LOTS) {
       const mine = profile.lot === lot.index
       const other = others.get(lot.index)
       const owner = mine ? { name: this.progress.username ?? 'You', company: profile.company } : other ? { name: other.owner, company: other.company } : null
       const items = mine ? profile.build : other?.build ?? []
-      this.lotsRenderer.setLot(lot, owner, items)
+      this.lotsRenderer.setLot(lotExtent(lot, mine ? profile.land : other?.land ?? 0), owner, items)
       for (const id of this.lotBoxes.get(lot.index) ?? []) this.physics.removeStatic(id)
       this.lotBoxes.set(lot.index, this.lotsRenderer.staticBoxes(lot.index).map((box) => this.physics.addStaticBox(box)))
     }
     this.markers.ownLot = profile.lot
+    this.markers.ownLand = profile.land
   }
 
   private updateDealerDisplay(x: number, z: number): void {
@@ -343,7 +352,7 @@ export class Standalone implements TruckHost {
     this.hud.setPlace(view.place)
     this.hud.setJob(view.job)
     this.hud.setSteps(view.steps)
-    this.hud.prompt(this.started && !this.building ? view.prompt : null)
+    this.hud.prompt(this.started && !this.building && !this.washing ? view.prompt : null)
     this.markers.rig.x = p.x
     this.markers.rig.z = p.z
     this.markers.rig.heading = p.heading
@@ -367,7 +376,7 @@ export class Standalone implements TruckHost {
   }
 
   private openPanel(open: () => PanelHandle): void {
-    if (this.panel || this.building) return
+    if (this.panel || this.building || this.washing) return
     this.keysSource.clear()
     this.panel = open()
   }
@@ -379,7 +388,7 @@ export class Standalone implements TruckHost {
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (!this.started || this.building || this.panel) return
+    if (!this.started || this.building || this.washing || this.panel) return
     switch (e.code) {
       case 'KeyJ': this.openJobBoardPanel(); break
       case 'KeyM': this.openPanel(() => openMap(this.uiRoot, { draw: (ctx, w, h) => this.countyMap.drawFull(ctx, w, h, this.markers), onClose: this.closed })); break
@@ -539,6 +548,33 @@ export class Standalone implements TruckHost {
     }))
   }
 
+  private startWash(place: WashPlace): void {
+    const layer = this.session.dirtLayer
+    if (!layer || this.building || this.panel || this.washing) {
+      void this.session.finishWash(place, 0)
+      return
+    }
+    this.keysSource.clear()
+    this.pipeline?.dispose()
+    this.pipeline = null
+    this.hud.setVisible(false)
+    this.washing = new WashMode({
+      scene: this.scene, canvas: this.canvas, cameras: this.cameras, uiRoot: this.uiRoot, layer, audio: this.audio,
+      center: this.session.truckCentre(),
+      place: place === 'own' ? 'Your wash bay' : 'Crossroads truck wash',
+      cost: place === 'own' ? OWN_WASH_WATER : PUBLIC_WASH_PRICE,
+      onFinish: (cleaned) => {
+        this.washing = null
+        this.keysSource.clear()
+        this.hud.setVisible(true)
+        this.pipeline?.dispose()
+        this.pipeline = createPipeline(this.scene, this.cameras.drive, this.tier)
+        this.canvas.focus()
+        void this.session.finishWash(place, cleaned)
+      },
+    })
+  }
+
   private enterBuildMode(): void {
     const lot = this.lotFor(this.progress.profile.lot)
     if (!lot) {
@@ -551,6 +587,7 @@ export class Standalone implements TruckHost {
     this.hud.setVisible(false)
     this.building = new BuildMode({
       scene: this.scene, canvas: this.canvas, cameras: this.cameras, lots: this.lotsRenderer, progress: this.progress, uiRoot: this.uiRoot, lot,
+      currentLot: () => this.lotFor(this.progress.profile.lot) ?? lot,
       heightAt: (x, z) => this.terrain.heightAt(x, z),
       toast: (text, kind) => this.hud.toast(text, kind),
       onExit: () => {
@@ -569,6 +606,8 @@ export class Standalone implements TruckHost {
     if (this.disposed) return
     this.disposed = true
     this.building?.dispose()
+    this.washing?.dispose()
+    this.washing = null
     this.panel?.close()
     this.clearDealerDisplay()
     this.pipeline?.dispose()

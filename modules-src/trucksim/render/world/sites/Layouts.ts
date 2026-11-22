@@ -8,7 +8,7 @@ import { SITE_BY_ID } from '../../../shared/WorldLayout'
 import type { Site } from '../../../shared/WorldLayout'
 import { airStation, dumpster, flagPole, officeTrailer, partsShed, poleBarn, steelShop, tireRack } from '../../lots/Items'
 import { barn, farmhouse, grainBin, machineShed } from './FarmParts'
-import { around, fuelCanopy, lettered, lightPoles, perimeterFence } from './LayoutKit'
+import { around, fuelCanopy, lettered, lightPoles, perimeterFence, washCanopy } from './LayoutKit'
 import {
   column, condenser, container, crusherPlant, displayPad, flareStack, frameHouse, logPile, lumberStack, millHall, mound, overpass, pipeRack, portaJohn, pylon,
   shopFront, showroom, siloCluster, smokestack, steelYard, stockpile, tank, terrace, towerCrane, warehouse,
@@ -47,6 +47,7 @@ function dealership(p: SitePlanner): void {
 function truckStop(p: SitePlanner): void {
   const s = p.site
   fuelCanopy(p, 'truckstop:fuel', 'Diesel', 'metalRed', 6, 6)
+  washCanopy(p, 'truckstop:wash', 'Truck wash', 'metalBlue')
   scanFirst(p, 'travel store', [
     { name: '', wl: 36, dl: 20, rot: 3, near: [s.x + 70, s.z], build: lettered(s.name, (b, uv) => shopFront(b, 36, 20, 5.5, 'brick', 'awningRed', uv)) },
     { name: '', wl: 36, dl: 20, rot: 1, near: [s.x - 70, s.z + 20], build: lettered(s.name, (b, uv) => shopFront(b, 36, 20, 5.5, 'brick', 'awningRed', uv)) },

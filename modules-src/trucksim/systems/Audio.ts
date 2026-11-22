@@ -39,6 +39,8 @@ export class TruckAudio {
   private hornKind: HornKind | null = null
   private hydraulicOscillator: OscillatorNode | null = null
   private hydraulicGain: GainNode | null = null
+  private sprayGain: GainNode | null = null
+  private sprayOn = false
   private volume = 0.7
   private readonly engine: EngineState = { rpm: 700, load: 0 }
   private jakeOn = false
@@ -116,6 +118,12 @@ export class TruckAudio {
     this.glide(this.hydraulicOscillator?.frequency, 170 + this.hydraulicLevel * 240)
   }
 
+  /** The pressure washer's spray, on while the trigger is held. */
+  setSpray(on: boolean): void {
+    this.sprayOn = on
+    this.glide(this.sprayGain?.gain, on ? 0.12 : 0, 0.04)
+  }
+
   dispose(): void {
     const context = this.context
     if (!context) return
@@ -131,7 +139,7 @@ export class TruckAudio {
     this.sources.length = 0
     this.engineOscillators = []
     this.hornGains = []
-    this.master = this.engineGain = this.turboGain = this.jakeGain = this.hissGain = this.beeperGain = this.hydraulicGain = null
+    this.master = this.engineGain = this.turboGain = this.jakeGain = this.hissGain = this.beeperGain = this.hydraulicGain = this.sprayGain = null
     this.engineFilter = null
     this.turboOscillator = this.jakeOscillator = this.hydraulicOscillator = null
     this.context = null
@@ -224,6 +232,13 @@ export class TruckAudio {
     noise.connect(hissFilter)
     hissFilter.connect(this.hissGain)
     this.hissGain.connect(effectsBus)
+    const sprayFilter = this.add(context.createBiquadFilter())
+    sprayFilter.type = 'highpass'
+    sprayFilter.frequency.value = 1800
+    this.sprayGain = this.gainNode(context, 0)
+    noise.connect(sprayFilter)
+    sprayFilter.connect(this.sprayGain)
+    this.sprayGain.connect(effectsBus)
 
     const beeper = this.oscillator(context, 'square', 1000)
     const beeperGate = this.gainNode(context, 0.5)
@@ -264,5 +279,6 @@ export class TruckAudio {
     this.setBackupBeeper(this.beeperOn)
     this.setHorn(this.hornKind)
     this.setHydraulic(this.hydraulicLevel)
+    this.setSpray(this.sprayOn)
   }
 }

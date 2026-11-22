@@ -43,7 +43,8 @@ export function drawPaving(b: SceneryBatch, def: BuildDef, item: BuildItem, seq:
   const cx = item.x + item.w / 2
   const cz = item.z + item.d / 2
   const key = def.id === 'pave-asphalt' ? 'asphalt' : def.id === 'pave-concrete' ? 'concrete' : 'gravel'
-  b.box(key, cx, -0.06, cz, item.w, top + 0.06, item.d)
+  if (key === 'concrete') b.box(key, cx, -0.06, cz, item.w, top + 0.06, item.d)
+  else b.slab(key, key === 'asphalt' ? 'paveAsphalt' : 'paveGravel', cx, -0.06, cz, item.w, top + 0.06, item.d)
   if (def.id === 'pave-asphalt') {
     const long = item.w >= item.d
     const length = long ? item.w : item.d

@@ -214,3 +214,6 @@ kbd {
   .ts-toast { animation: none; }
   .ts-hud *, .ts-overlay *, .ts-builder * { transition: none !important; scroll-behavior: auto !important; }
 }
+.ts-wash-meter { position: relative; flex: 1 1 160px; min-width: 120px; height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.ts-wash-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #4fb4ff, #9fe3ff); }
+.ts-wash-label { min-width: 84px; }
