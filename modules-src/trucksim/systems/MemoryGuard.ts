@@ -112,6 +112,8 @@ export class MemoryGuard {
   private lastCriticalNotifyMs = 0
   private pressureLevel: PressureLevel = 'ok'
   private lastLogMs = 0
+  private lastDrawTotal = -1
+  private lastFrameId = -1
   private disposed = false
 
   constructor(scene: Scene, options: MemoryGuardOptions = {}) {
@@ -154,6 +156,24 @@ export class MemoryGuard {
     }
   }
 
+  /**
+   * Babylon's draw-call counter keeps adding up unless an instrumentation resets it each frame, so the guard reads how much it
+   * grew since the last sample and divides by the frames rendered in between.
+   */
+  private drawCallsPerFrame(): number {
+    const engine = this.scene.getEngine()
+    const counter = engine._drawCalls
+    if (!counter) return 0
+    const total = counter.current
+    const frame = engine.frameId
+    const previousTotal = this.lastDrawTotal
+    const previousFrame = this.lastFrameId
+    this.lastDrawTotal = total
+    this.lastFrameId = frame
+    if (previousTotal < 0 || frame <= previousFrame || total < previousTotal) return 0
+    return Math.round((total - previousTotal) / (frame - previousFrame))
+  }
+
   /** Takes one sample at `nowMs` (the render hook calls this on a timer; tests call it directly). */
   sample(nowMs: number): void {
     if (this.disposed) return
@@ -164,7 +184,7 @@ export class MemoryGuard {
     slot.meshes = this.scene.meshes.length
     slot.materials = this.scene.materials.length
     slot.geometries = this.scene.geometries.length
-    slot.drawCalls = this.scene.getEngine()._drawCalls?.current ?? 0
+    slot.drawCalls = this.drawCallsPerFrame()
     const heap = (performance as unknown as HeapInformation).memory
     slot.heapMegabytes = heap ? heap.usedJSHeapSize / 1048576 : -1
     this.sampleCount++

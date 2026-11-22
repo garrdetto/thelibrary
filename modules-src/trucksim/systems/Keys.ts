@@ -121,6 +121,13 @@ export class Keys {
     this.releasedEdges.clear()
   }
 
+  /** Lets go of every key (a panel took the keyboard, so their key-ups will never arrive). */
+  clear(): void {
+    this.held.clear()
+    this.pressedEdges.clear()
+    this.releasedEdges.clear()
+  }
+
   dispose(): void {
     this.target.removeEventListener('keydown', this.onKeyDown as EventListener)
     this.target.removeEventListener('keyup', this.onKeyUp as EventListener)

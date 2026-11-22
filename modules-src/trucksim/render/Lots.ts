@@ -139,7 +139,7 @@ export class LotRenderer {
     batch.box('metalDark', 0, 3.4, 0, 0.32, 0.12, 6.3)
     if (uv) {
       batch.face('boardSign', '+x', 0.14, -3.0, 3.0, 1.8, 3.3, uv)
-      batch.face('boardSign', '-x', -0.14, -3.0, 3.0, 1.8, 3.3, { u0: uv.u1, u1: uv.u0, v0: uv.v0, v1: uv.v1 })
+      batch.face('boardSign', '-x', -0.14, -3.0, 3.0, 1.8, 3.3, uv)
     }
   }
 

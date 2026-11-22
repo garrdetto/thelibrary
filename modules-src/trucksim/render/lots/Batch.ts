@@ -175,13 +175,14 @@ export class SceneryBatch {
 
   /**
    * A lettering plate: `face` sized `width` by `width / aspect` (the atlas cell's shape, so text is never stretched), centred at
-   * `a` along the plane and `y` high. `back` flips the texture for the far side of a two-sided sign.
+   * `a` along the plane and `y` high. `face` already lays the text out to read from outside on every side, so the far side of
+   * a two-sided sign needs no flip (`back` is kept for callers and changes nothing).
    */
   placard(key: string, side: '+z' | '-z' | '+x' | '-x', c: number, a: number, y: number, width: number, uv: UvRect, back = false, aspect = 4): this {
     const half = width / 2
     const high = width / aspect / 2
-    const rect = back ? { u0: uv.u1, u1: uv.u0, v0: uv.v0, v1: uv.v1 } : uv
-    return this.face(key, side, c, a - half, a + half, y - high, y + high, rect)
+    void back
+    return this.face(key, side, c, a - half, a + half, y - high, y + high, uv)
   }
 
   /** A quad whose winding is chosen so it faces the side `hint` points to (any four coplanar corners in order). */
