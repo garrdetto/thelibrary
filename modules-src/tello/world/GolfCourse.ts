@@ -1,13 +1,14 @@
 /**
  * White Lake Golf Club (and any other course the bake lays out, `doc.golf`): every hole drawn as a course is, from the
  * bake's hole records. Fairways in their mown shape with alternating stripes across the line of play, greens with a
- * collar of fringe and fine stripes of their own, the flagstick in the cup, level tee boxes with blue and white markers,
+ * collar of fringe and fine stripes of their own, the flagstick in the cup, level tee boxes with one set of
+ * white markers (everyone plays the same tees),
  * sand bunkers, and at each tee a lettered hole sign (number, par and yards), a ball washer and a bench; a sign at the
  * clubhouse. The rough round them is the bake's mown lawn. Parts come from the Blender fields kit (`golf-flag`,
  * `tee-marker`, `ball-washer`, `golf-bench`, `hole-sign`) and go into the merged builders, so the course adds only a few
  * draw calls. Map coordinates in (x east, z north); the town frame is (x, -z).
  */
-import { hexRGB, type RGB } from '../../foxlake/fp/core/Geo'
+import { hexRGB } from '../../foxlake/fp/core/Geo'
 import type { GolfCourseData, GolfHoleData } from '../data/MapData'
 import type { TelloLand } from '../region'
 import type { Decals, PaintKind } from './Decals'
@@ -26,8 +27,7 @@ const GREEN_STRIPE = 2.4
 const FRINGE = 1.6
 const FRONT_NINE_FLAG = hexRGB(0xf2c62e)
 const BACK_NINE_FLAG = hexRGB(0xc8312b)
-const BLUE_TEES = hexRGB(0x2457b5)
-const WHITE_TEES = hexRGB(0xf3f1ea)
+const TEE_MARKERS = hexRGB(0xf3f1ea)
 const WASHER = hexRGB(0x2f6b3a)
 const WOOD = hexRGB(0x7a5b3c)
 const STONE = hexRGB(0xb9b4a8)
@@ -144,13 +144,10 @@ function dressHole(layer: PlaceLayer, signs: Signs, sink: StaticSink, land: Tell
   const right: Pt = [d[1], -d[0]]
   const centre = ringCentre(hole.box)
   const at = (fwd: number, side: number): Pt => [centre[0] + d[0] * fwd + right[0] * side, centre[1] + d[1] * fwd + right[1] * side]
-  const marker = (p: Pt, color: RGB) => {
-    const [mx, mz] = town(p)
-    layer.lay('tee-marker', mx, mz, place(mx, land.heightAt(p[0], p[1]) + 0.07, mz), { paint: color })
-  }
   for (const side of [-2.6, 2.6]) {
-    marker(at(-3, side), BLUE_TEES)
-    marker(at(3.5, side), WHITE_TEES)
+    const p = at(0, side)
+    const [mx, mz] = town(p)
+    layer.lay('tee-marker', mx, mz, place(mx, land.heightAt(p[0], p[1]) + 0.07, mz), { paint: TEE_MARKERS })
   }
   const back = boxReach(hole.box, centre, d)
   const signAt = at(-back - 2.5, -4.5)
