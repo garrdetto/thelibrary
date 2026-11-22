@@ -38,6 +38,7 @@ export const embeddedModules = [
   { id: 'sunvault', title: 'Sun Vault', src: '/modules/sunvault.html' },
   { id: 'beanstalk', title: 'Beanstalk Bounty', src: '/modules/beanstalk.html' },
   { id: 'modollaz', title: "Mo' Dollaz", src: '/modules/modollaz.html' },
+  { id: 'bridge', title: 'Bridge Builder', src: '/modules/bridge.html' },
 ] as const
 
 export type EmbeddedModuleId = typeof embeddedModules[number]['id']
@@ -112,6 +113,7 @@ export const learningModules: LearningModule[] = [
   { id: 'beanstalk', title: 'Beanstalk Bounty', subject: 'Probability & branching growth', group: 'Math', summary: 'Spin a five-reel beanstalk where sprout wilds climb and spread vines, and see how chance compounds across the reels.', modes: ['Solo', 'Play credits'], image: '/images/modules/beanstalk.webp', accent: '#6fd36a', mobile: true },
   { id: 'modollaz', title: "Mo' Dollaz", subject: 'Probability & collection features', group: 'Math', summary: 'Spin five reels of cash where a money bag grabs every bill it can reach, and see how rare bonus rounds carry most of the long-run return.', modes: ['Solo', 'Play credits'], image: '/images/modules/modollaz.webp', accent: '#3ddc84', mobile: true },
   { id: 'hotdog', title: 'Corner Cart', subject: 'Supply, demand & pricing', group: 'Strategy', summary: 'Run a hot-dog cart for thirty days and grow your cash.', modes: ['Solo'], image: '/images/modules/hotdog.webp', accent: '#ff7a3d' },
+  { id: 'bridge', title: 'Bridge Builder', subject: 'Trusses, tension & compression', group: 'Physics', summary: 'Lay road and beams joined flat, at 45° or at 90°, then send cars, buses, tankers and crane trucks across 100 levels.', modes: ['Solo', '100 levels'], image: '/images/modules/bridge.webp', accent: '#ff9f1c', mobile: true },
   { id: 'pingpong', title: 'Spin Rally', subject: 'Spin & the Magnus effect', group: 'Physics', summary: 'Table tennis where topspin, backspin and sidespin really curve the ball.', modes: ['Solo vs CPU', '2 on 1 screen', 'Online room'], image: '/images/modules/pingpong.webp', accent: '#ff5a36' },
   { id: 'arena', title: 'Vector Arena', subject: 'Gravity, collisions & level design', group: 'Physics', summary: 'A symmetrical sci-fi arena with 1v1 duels, 2v2 squads, a scored training range and Rolling Siege, where wheelchair raiders with bats never stop coming.', modes: ['Solo', 'Online', '3D'], image: '/images/modules/arena.webp', accent: '#38e1ff' },
   { id: 'party', title: 'Skill Party', subject: 'Reaction, aim & recall', group: 'Precision', summary: 'Skill contests for up to four players with a running scoreboard.', modes: ['Solo vs CPU', '2–4 on 1 screen', 'Online room'], image: '/images/modules/party.webp', accent: '#ffcf4a', mobile: true },

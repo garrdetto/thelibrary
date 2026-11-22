@@ -101,6 +101,7 @@ export class Stage {
   private winBorn = 0
   private mode: Mode = 'base'
   private board: Board | null = null
+  private boardReserve = { left: 0, top: 0 }
   private particles: Particle[] = []
   private reduced = false
   private destroyed = false
@@ -208,7 +209,7 @@ export class Stage {
 
   // ------------------------------------------------------------ Cash Collect board
 
-  async openBoard(start: CollectCell[], zone: Zone, options: PlayOptions, onCollect: (credits: number) => void): Promise<void> {
+  async openBoard(start: CollectCell[], zone: Zone, options: PlayOptions, onCollect: (credits: number) => void, onBill: () => void = () => undefined): Promise<void> {
     this.reduced = options.reduced
     this.clearWins()
     const now = performance.now()
@@ -223,6 +224,7 @@ export class Stage {
       const item = items.get(cell.cell)
       if (item) item.taken = performance.now()
       onCollect(cell.credits)
+      onBill()
       this.hooks.pop('bill')
       await this.wait(options.turbo ? 160 : 320)
     }
@@ -244,7 +246,7 @@ export class Stage {
     this.board.zoneMs = Math.max(1, ms)
   }
 
-  async boardSpin(step: CollectStep, options: PlayOptions, onCollect: (credits: number) => void): Promise<void> {
+  async boardSpin(step: CollectStep, options: PlayOptions, onCollect: (credits: number) => void, onBill: () => void = () => undefined): Promise<void> {
     const board = this.board
     if (!board) return
     const quick = options.turbo || options.reduced
@@ -284,6 +286,7 @@ export class Stage {
       if (item) item.taken = performance.now()
       this.burst('bill', 8, this.boardCellCentre(target ?? this.currentZone(performance.now())))
       onCollect(step.gems[i].credits)
+      onBill()
       this.hooks.pop('bill')
       await this.wait(quick ? 140 : 260)
     }
@@ -333,10 +336,18 @@ export class Stage {
     return { x: (this.width - cell * 5) / 2, y: (this.height - cell * ROWS) / 2, cell }
   }
 
+  /** Space (CSS pixels) kept clear of the Cash Collect board on its left or top, for the collect ladder. */
+  setBoardReserve(reserve: { left: number; top: number }): void {
+    this.boardReserve = { left: Math.max(0, reserve.left), top: Math.max(0, reserve.top) }
+  }
+
   private boardLayout(): { x: number; y: number; cell: number } {
-    const pad = Math.max(6, Math.min(this.width, this.height) * 0.025)
-    const cell = Math.max(16, Math.min((this.width - pad * 2) / 5, (this.height - pad * 2) / 5))
-    return { x: (this.width - cell * 5) / 2, y: (this.height - cell * 5) / 2, cell }
+    const { left, top } = this.boardReserve
+    const width = Math.max(1, this.width - left)
+    const height = Math.max(1, this.height - top)
+    const pad = Math.max(6, Math.min(width, height) * 0.025)
+    const cell = Math.max(16, Math.min((width - pad * 2) / 5, (height - pad * 2) / 5))
+    return { x: left + (width - cell * 5) / 2, y: top + (height - cell * 5) / 2, cell }
   }
 
   private frame = (now: number) => {
