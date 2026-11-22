@@ -89,7 +89,53 @@ export const radarOutlookPhaseLabels: Record<RadarOutlookPhase, string> = {
   overdue: 'Past the usual crash time',
 }
 
-export type RadarMaker = { chance: number | null; winnerWallets: number; reasons: RadarOutlookReason[]; passes: string[] }
+/** How a live coin's chart is climbing right now: minutes since the low it rose from, gain since then, share of 5-minute steps up, and whether it is still making highs. */
+export type RadarClimb = { minutes: number; gain: number; upShare: number; rising: boolean; averageVolume5m: number | null; maxLiquidity: number | null }
+
+export type RadarMaker = { chance: number | null; winnerWallets: number; reasons: RadarOutlookReason[]; passes: string[]; climb?: RadarClimb | null; climberLike?: number; climberWallets?: number }
+
+/** A saved steady climber's numbers at one point of its climb (start, 15m, 30m, 60m, 120m, peak). */
+export type RadarClimberMilestone = {
+  label: string
+  minutes: number
+  marketCap: number | null
+  liquidity: number | null
+  volume5m: number | null
+  buys5m: number | null
+  buyRatio: number | null
+  viewers: number | null
+  holders: number | null
+  top10: number | null
+  bundlers: number | null
+  insiders: number | null
+  snipers: number | null
+  fresh: number | null
+  dev: number | null
+  proTraders: number | null
+  walletScore: number | null
+  score: number | null
+}
+
+/** A coin that rose steadily for an hour or more with real volume and liquidity to $200K or more, kept permanently. */
+export type RadarClimber = {
+  mint: string
+  symbol: string
+  pairAddress: string | null
+  startAt: number
+  peakAt: number
+  startMcap: number
+  peakMcap: number
+  minutes: number
+  gain: number
+  upShare: number
+  averageVolume5m: number | null
+  maxLiquidity: number | null
+  holdersPeak: number | null
+  outcome: string | null
+  wallets: number
+  milestones: RadarClimberMilestone[]
+  shape: Array<number | null>
+}
 
 export type RadarResearchRule = { key: string; label: string; winnerRate: number; otherRate: number }
 
@@ -138,6 +184,7 @@ export type RadarWinnersSummary = {
   story: string[]
   wallets: RadarWinnerWallet[]
   candidates: string[]
+  climbers?: RadarClimber[]
   updatedAt: number
 }
 

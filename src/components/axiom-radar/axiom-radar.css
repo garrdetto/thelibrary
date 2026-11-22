@@ -621,3 +621,13 @@ div.radar-delta { display: grid; gap: 1px; }
   .radar-ledger-live .radar-live-dot, .radar-ledger-row.flash, .radar-ledger-sum li.flash { animation: none; }
   .radar-ledger-row.flash, .radar-ledger-sum li.flash { outline: 1px solid var(--radar-accent); }
 }
+
+.radar-climbers { display: grid; gap: 10px; }
+.radar-climber-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.radar-climber-list details { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.radar-climber-list summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; cursor: pointer; font-size: 13px; }
+.radar-climber-list summary:focus-visible { outline: 2px solid var(--radar-accent); outline-offset: 2px; }
+.radar-climber-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; min-width: 120px; }
+.radar-climber-curve { width: 90px; height: 24px; flex: none; }
+.radar-climber-curve polyline { fill: none; stroke: var(--green); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.radar-climber-list details[open] { display: grid; gap: 8px; }
