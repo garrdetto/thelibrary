@@ -1,0 +1,6 @@
+{
+  "id": "trucksim",
+  "title": "Truck Simulator",
+  "accent": "#f2a33a",
+  "modes": ["solo", "shared-lots"]
+}
