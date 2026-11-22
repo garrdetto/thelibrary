@@ -10,6 +10,7 @@ import { angler } from './routes/angler'
 import { anglerLake } from './routes/angler-lake'
 import { rackreel } from './routes/rackreel'
 import { rackreelLobbies } from './routes/rackreel-lobbies'
+import { trucksim } from './routes/trucksim'
 import { casino } from './routes/casino'
 import { sunvault } from './routes/sunvault'
 import { beanstalk } from './routes/beanstalk'
@@ -62,6 +63,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/angler-lake': anglerLake,
   '/api/rackreel': rackreel,
   '/api/rackreel-lobbies': rackreelLobbies,
+  '/api/trucksim': trucksim,
   '/api/casino': casino,
   '/api/sunvault': sunvault,
   '/api/beanstalk': beanstalk,

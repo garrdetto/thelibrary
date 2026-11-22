@@ -224,7 +224,8 @@ dispose back to the baseline on a `NullEngine`).
 - `createPipeline(scene, camera, tier)`: `DefaultRenderingPipeline` with HDR, ACES or neutral tone mapping, exposure and contrast
   tuned for daylight, bloom on lamps only, FXAA or MSAA by tier, sharpen, SSAO only on high and ultra (follow Rack & Reel's
   `core/EngineSetup.ts` choices so it works on WebGPU and WebGL2).
-- `WorldRenderer(scene, parent, mats, terrain, guard, tier, layers: ChunkLayer[])`: a `ChunkStreamer` of 256 m chunks;
+- `createWorldRenderer(scene, parent, terrain, guard, tier, layers: ChunkLayer[])`: owns its world materials (terrain, roads,
+  foliage) in its own `Scope`; a `ChunkStreamer` of 256 m chunks;
   `ChunkLayer { build(cx, cz, ctx): Disposable | null }`; built-in layers: `TerrainChunks` (2 m grid near, 8 m far, vertex
   colours from `surfaceAt` with grass, dirt, gravel, field rows and site pads, normals from the height function so chunk edges
   match), `Roads` (ribbon meshes with shoulders, lane lines and edge lines as thin quads, intersections without z-fighting, lifted
@@ -238,7 +239,7 @@ match, a streamer pass over 40 chunk moves and back leaves counts at the baselin
 
 **Owns:** `modules-src/trucksim/render/world/Sites.ts`, `modules-src/trucksim/render/Lots.ts`, `tests/visual-sites.test.ts`.
 
-- `createSiteLayer(scene, mats, terrain): ChunkLayer`: for each site whose rectangle meets the chunk, original buildings by kind:
+- `createSiteLayer(scene, mats: MaterialLibrary, terrain): ChunkLayer`: for each site whose rectangle meets the chunk, original buildings by kind:
   dealership showroom with a glass front and display pad, travel center with a canopy over the pumps and a store, fuel station,
   quarry pit walls, stockpiles and a crusher, construction sites with dirt mounds, fencing and a half-built frame, equipment
   yard with a shed, refinery tanks, columns, pipe racks and a flare stack, farm house, barn and grain bins, the co-op elevator
