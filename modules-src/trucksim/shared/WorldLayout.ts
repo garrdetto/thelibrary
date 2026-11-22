@@ -27,7 +27,7 @@ export type ZoneKind =
   | 'grainLoad' | 'grainUnload'
   | 'reeferDock'
   | 'equipPickup' | 'equipDrop'
-  | 'fuel' | 'service' | 'dealer'
+  | 'fuel' | 'service' | 'dealer' | 'wash'
 
 export type SiteKind =
   | 'dealership' | 'truckStop' | 'fuelStation' | 'quarry' | 'construction' | 'equipmentYard' | 'refinery' | 'farm'
@@ -76,6 +76,11 @@ export const LOT_W = 120
 export const LOT_D = 90
 export const LOT_COUNT = 16
 export const HAULERS_ROW_X = -900
+/** Extra land is bought in strips this deep, added at the back of the lot (away from Haulers Row). */
+export const LAND_STRIP_M = 30
+export const MAX_LAND_STRIPS = 4
+/** The deepest a lot can grow (from the road back). */
+export const LOT_MAX_W = LOT_W + LAND_STRIP_M * MAX_LAND_STRIPS
 
 const HALF_PI = Math.PI / 2
 
@@ -138,6 +143,7 @@ export const SITES: Site[] = [
       zone('truckstop', 'fuel', 'fuel', 'Diesel lanes', -1300, -65, 36, 22, HALF_PI),
       zone('truckstop', 'tank', 'tankUnload', 'Underground tank fill', -1240, -130, 24, 10, HALF_PI, { equipment: { x: -1240, z: -138, heading: 0 } }),
       zone('truckstop', 'service', 'service', 'Truck service bay', -1345, -130, 20, 14, HALF_PI),
+      zone('truckstop', 'wash', 'wash', 'Truck wash lane', -1298, -127, 26, 9, HALF_PI),
     ],
   },
   {
@@ -222,7 +228,7 @@ export const SITES: Site[] = [
     zones: [zone('supply', 'bay', 'flatUnload', 'Receiving yard', 420, -770, 30, 14, HALF_PI, { equipment: { x: 420, z: -786, heading: 0 } })],
   },
   { id: 'town', name: 'Millbrook', kind: 'town', x: 0, z: 40, w: 440, d: 440, zones: [] },
-  { id: 'row', name: 'Haulers Row', kind: 'lotDistrict', x: HAULERS_ROW_X, z: 453, w: 260, d: 786, zones: [] },
+  { id: 'row', name: 'Haulers Row', kind: 'lotDistrict', x: HAULERS_ROW_X, z: 453, w: 2 * (LOT_MAX_W + 12), d: 786, zones: [] },
 ]
 
 export const LOTS: LotSpec[] = Array.from({ length: LOT_COUNT }, (_, index) => {
@@ -234,7 +240,7 @@ export const LOTS: LotSpec[] = Array.from({ length: LOT_COUNT }, (_, index) => {
 })
 
 /** Haulers Row and the elevator share one flattened district so the long row of lots and its road sit level. */
-export const DISTRICT = { x: -1010, z: 550, w: 500, d: 1000 }
+export const DISTRICT = { x: -905, z: 550, w: 710, d: 1000 }
 
 /** Crop fields around the farms (drawn as rows, slower off-road grip). */
 export const FIELDS: { x: number; z: number; w: number; d: number; crop: 'corn' | 'soybeans' | 'wheat' }[] = [
@@ -259,6 +265,17 @@ export function inZone(zone: Zone, x: number, z: number, margin = 0): boolean {
 
 export function inRect(rect: { x: number; z: number; w: number; d: number }, x: number, z: number, margin = 0): boolean {
   return Math.abs(x - rect.x) <= rect.w / 2 + margin && Math.abs(z - rect.z) <= rect.d / 2 + margin
+}
+
+/**
+ * A lot grown by `strips` of bought land at its back. West-side lots grow toward −X, so their minimum corner moves; build items
+ * are kept in road-anchored coordinates by `shared/Actions.ts` (it shifts them when a west lot grows), so this is the one place
+ * that turns a lot and its strips into a rectangle.
+ */
+export function lotExtent(lot: LotSpec, strips: number): LotSpec {
+  const extra = Math.max(0, Math.min(MAX_LAND_STRIPS, Math.floor(strips))) * LAND_STRIP_M
+  if (extra === 0) return lot
+  return { ...lot, x: lot.side === 'west' ? lot.x - extra : lot.x, w: lot.w + extra }
 }
 
 export function lotAt(x: number, z: number): LotSpec | null {

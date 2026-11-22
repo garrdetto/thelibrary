@@ -133,6 +133,19 @@ export const STARTER_TRUCK = 'ridgeline-rd10'
 export const RESALE_SHARE = 0.6
 export const DEMOLISH_REFUND = 0.5
 export const REPAIR_COST_PER_POINT = 90
+/** Dirt points (0–100) a truck picks up per kilometre driven. */
+export const DIRT_PER_KM = 2.2
+/** What the public wash lane at the travel center charges; your own wash bay only uses water. */
+export const PUBLIC_WASH_PRICE = 60
+export const OWN_WASH_WATER = 8
+/** Extra pay for delivering with a clean truck (dirt under `CLEAN_DIRT_LIMIT`). */
+export const CLEAN_BONUS = 0.05
+export const CLEAN_DIRT_LIMIT = 25
+
+/** Price of the next strip of land for a lot that already has `owned` strips. */
+export function landStripPrice(owned: number): number {
+  return Math.round((16000 * Math.pow(1.45, owned)) / 500) * 500
+}
 
 const TEN_SPEED = [12.29, 8.51, 6.05, 4.38, 3.2, 2.29, 1.65, 1.25, 1.0, 0.78]
 const THIRTEEN_SPEED = [12.29, 8.51, 6.05, 4.38, 3.4, 2.79, 2.29, 1.87, 1.53, 1.25, 1.0, 0.86, 0.73]

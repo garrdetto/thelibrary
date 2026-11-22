@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ALL_ZONES, LOTS, ROADS, SITES, WORLD_HALF, inRect, lotSpawn } from '../shared/WorldLayout'
+import { ALL_ZONES, LOTS, MAX_LAND_STRIPS, ROADS, SITES, WORLD_HALF, inRect, lotExtent, lotSpawn } from '../shared/WorldLayout'
 import { Terrain } from '../shared/Terrain'
 import { headingOf, toWorld } from '../sim/types'
 import { BUILDINGS, CARGOS, TRAILERS, TRUCKS, defaultLook, lookCost } from '../shared/Catalog'
@@ -107,4 +107,20 @@ test('catalog is consistent', () => {
   assert.deepEqual([...new Set(TRAILERS.map((t) => t.kind))].sort(), ['flatbed', 'grain', 'lowboy', 'reefer', 'tanker'])
   for (const c of CARGOS) assert.ok(c.minKg <= c.maxKg)
   assert.ok(BUILDINGS.some((b) => b.service))
+})
+
+test('fully grown lots stay clear of sites, roads and each other and sit on level ground', () => {
+  const work = SITES.filter((s) => s.kind !== 'lotDistrict' && s.kind !== 'town')
+  const grown = LOTS.map((lot) => lotExtent(lot, MAX_LAND_STRIPS))
+  for (let i = 0; i < grown.length; i++) {
+    const a = lotRect(grown[i])
+    for (let j = i + 1; j < grown.length; j++) assert.ok(!overlaps(a, lotRect(grown[j])), `grown lots ${i} and ${j}`)
+    for (const site of work) assert.ok(!overlaps(a, site), `grown lot ${i} overlaps ${site.id}`)
+    for (const road of ROADS) for (const [x, z] of road.points) assert.ok(!inRect(a, x, z, -1), `grown lot ${i} covers ${road.id}`)
+    const h0 = terrain.heightAt(a.x, a.z)
+    for (const [fx, fz] of [[-0.48, -0.48], [0.48, -0.48], [-0.48, 0.48], [0.48, 0.48]]) {
+      const h = terrain.heightAt(a.x + fx * a.w, a.z + fz * a.d)
+      assert.ok(Math.abs(h - h0) < 0.6, `grown lot ${i} not level (${(h - h0).toFixed(2)} m)`)
+    }
+  }
 })

@@ -124,6 +124,15 @@ export class Standalone implements TruckHost {
     return this.keysSource.codes
   }
 
+  /** Hooks for checks from the console and automated smoke tests (`window.__trucksim.debug`). */
+  get debug(): { jobs(): ReturnType<typeof generateJobs>; teleport(x: number, z: number, heading: number): void; session: TruckSession } {
+    return {
+      jobs: () => generateJobs(COUNTY, jobSlot(Date.now())),
+      teleport: (x, z, heading) => this.session.truck?.teleport(x, z, heading),
+      session: this.session,
+    }
+  }
+
   lotFor(index: number | null): LotSpec | null {
     return index === null ? null : LOTS[index] ?? null
   }
