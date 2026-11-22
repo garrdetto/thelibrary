@@ -1,9 +1,28 @@
 {
-  "note": "Weights of the Axiom Score's measures (any non-negative number; 0 leaves a measure out). The strategy lab re-tunes these from what made money; see axiom-score.ts.",
+  "note": "Weights of the Axiom Score's measures (any non-negative number; 0 leaves a measure out). Set by the strategy lab: B_joint3 (round 6, 2026-11-20) ranked coins that went on to climb 30%+ before falling 15% better than the first hand-set weights on its own test coins (0.79 vs 0.40) and again on 59 coins it never saw (round 8: 0.74 vs 0.51). It ranks which coins climb; it is not a timing signal.",
   "weights": {
-    "mcapChange30s": 4, "mcapChange1m": 6, "mcapChange5m": 5, "calm": 8,
-    "viewers": 6, "viewersChange1m": 6, "holdersPerMin": 7, "txPerMin": 5, "buyShare1m": 7, "buyVolumeShare": 5, "volumeToMcap": 4,
-    "top10": 4, "dev": 3, "snipers": 4, "insiders": 4, "bundlers": 5, "fresh": 3, "proTraders": 3, "kols": 3, "devCreated": 2, "devMigrated": 2,
-    "socials": 2, "dexPaid": 2
+    "mcapChange30s": 0.0,
+    "mcapChange1m": 0.0,
+    "mcapChange5m": 0.0,
+    "calm": 2.87,
+    "viewers": 10.0,
+    "viewersChange1m": 0.0,
+    "holdersPerMin": 0.0,
+    "txPerMin": 3.55,
+    "buyShare1m": 0.0,
+    "buyVolumeShare": 4.01,
+    "volumeToMcap": 0.0,
+    "top10": 0.0,
+    "dev": 0.01,
+    "snipers": 0.0,
+    "insiders": 4.2,
+    "bundlers": 0.0,
+    "fresh": 4.61,
+    "proTraders": 2.26,
+    "kols": 0.0,
+    "devCreated": 0.0,
+    "devMigrated": 0.0,
+    "socials": 1.38,
+    "dexPaid": 0.0
   }
 }
