@@ -538,6 +538,11 @@ export class Procedure {
     return this.defs[this.index]?.id ?? 'done'
   }
 
+  /** The active step's key hint ('E', 'Hold G', 'T', 'Drive'…), so the session leaves those keys to the procedure. */
+  get activeHint(): string {
+    return this.finished ? '' : this.defs[this.index]?.hint ?? ''
+  }
+
   /** Advances the active step. Steps that need the rig parked pause (with a message) while it isn't. */
   update(ctx: ProcedureContext, dt: number): ProcedureStatus {
     if (!this.finished) {
