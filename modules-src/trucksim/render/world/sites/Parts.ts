@@ -7,7 +7,7 @@
  */
 
 import type { SceneryBatch, UvRect } from '../../lots/Batch'
-import { localBox } from '../../lots/Items'
+import { dieselIsland, localBox } from '../../lots/Items'
 import type { LocalBox } from '../../lots/Items'
 
 /** A shop front: brick or siding box with a glass band, door, slanted awning, parapet and an optional lettered board. */
@@ -137,17 +137,10 @@ export function canopy(b: SceneryBatch, wl: number, dl: number, color: string, u
   return out
 }
 
-/** A pump island: a concrete kerb with dispensers facing both sides. */
+/** A truck-stop diesel island along local z (see `dieselIsland`): one fuelling point per truck length, DEF beside each. */
 export function pumps(b: SceneryBatch, length: number, color: string): LocalBox[] {
-  b.box('concrete', 0, 0, 0, 1.4, 0.2, length)
-  const count = Math.max(1, Math.floor(length / 5))
-  for (let i = 0; i < count; i++) {
-    const z = -length / 2 + ((i + 0.5) * length) / count
-    b.box('metalWhite', 0, 0.2, z, 0.6, 1.6, 0.9)
-    b.box(color, 0, 1.3, z, 0.64, 0.4, 0.94)
-    for (const side of [-1, 1]) b.box('glassTint', side * 0.31, 0.95, z, 0.04, 0.3, 0.5)
-  }
-  return [localBox(-0.7, 0, -length / 2, 0.7, 1.8, length / 2)]
+  dieselIsland(b, false, length, color)
+  return [localBox(-0.7, 0, -length / 2, 0.7, 2.7, length / 2)]
 }
 
 /** A tall pylon with a lettered board on both faces. */

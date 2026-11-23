@@ -74,7 +74,11 @@ export function itemCost(item: BuildItem): number {
 }
 
 /** Cash returned for demolishing an item. */
+/** The id of the free gravel driveway every new lot starts with (demolishing it refunds nothing). */
+export const STARTER_DRIVEWAY_ID = 'driveway'
+
 export function itemRefund(item: BuildItem): number {
+  if (item.id === STARTER_DRIVEWAY_ID) return 0
   return Math.floor(itemCost(item) * DEMOLISH_REFUND)
 }
 

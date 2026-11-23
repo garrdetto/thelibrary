@@ -18,6 +18,8 @@ export const SITE_COLORS: Record<SiteKind, string> = {
 export interface MapMarkers {
   rig: { x: number; z: number; heading: number }
   target?: { x: number; z: number; label: string } | null
+  /** A destination the driver picked on the map (drawn as a flag). */
+  waypoint?: { x: number; z: number } | null
   route?: readonly [number, number][] | null
   ownLot?: number | null
   ownLand?: number
@@ -32,6 +34,18 @@ function px(world: number): number {
 /** World z grows north; the canvas y grows down, so north is up. */
 function py(world: number): number {
   return (WORLD_HALF - world) * SCALE
+}
+
+/**
+ * The world point under (`x`, `y`) on a full map drawn by `drawFull` into a `width` × `height` canvas, or null outside the
+ * county square.
+ */
+export function fullMapToWorld(x: number, y: number, width: number, height: number): { x: number; z: number } | null {
+  const fit = Math.min(width, height) / MAP_PIXELS
+  const mx = (x - (width - MAP_PIXELS * fit) / 2) / fit
+  const my = (y - (height - MAP_PIXELS * fit) / 2) / fit
+  if (mx < 0 || my < 0 || mx > MAP_PIXELS || my > MAP_PIXELS) return null
+  return { x: WORLD_HALF - mx / SCALE, z: WORLD_HALF - my / SCALE }
 }
 
 export class CountyMap {
@@ -107,6 +121,24 @@ export class CountyMap {
         ctx.arc(px(other.x), py(other.z), 3 * unit, 0, Math.PI * 2)
         ctx.fill()
       }
+    }
+    if (markers.waypoint) {
+      const wx = px(markers.waypoint.x)
+      const wy = py(markers.waypoint.z)
+      ctx.strokeStyle = '#14161a'
+      ctx.fillStyle = '#4fb4ff'
+      ctx.lineWidth = 1.5 * unit
+      ctx.beginPath()
+      ctx.moveTo(wx, wy)
+      ctx.lineTo(wx, wy - 14 * unit)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(wx, wy - 14 * unit)
+      ctx.lineTo(wx + 9 * unit, wy - 10.5 * unit)
+      ctx.lineTo(wx, wy - 7 * unit)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
     }
     if (markers.target) {
       ctx.fillStyle = '#f2a33a'

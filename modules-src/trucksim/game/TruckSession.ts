@@ -53,6 +53,9 @@ export interface SessionEvents {
 /** Where a wash happens: the travel center's lane or your own wash bay. */
 export type WashPlace = 'own' | 'public'
 
+/** A map waypoint counts as reached within this many metres. */
+export const WAYPOINT_ARRIVE_M = 30
+
 /** Where on your own lot the truck can be washed: inside a wash bay, or within hose reach of a pressure washer (its reel position). */
 export type OwnWash = { kind: 'bay' } | { kind: 'washer'; reel: { x: number; y: number; z: number } }
 
@@ -284,6 +287,7 @@ export class TruckSession {
   private sentOdometerM = 0
   private sentFuelL = 0
   private routeTimer = 0
+  private picked: { x: number; z: number } | null = null
   private placeTimer = 0
   private routePoints: [number, number][] | null = null
   private routeLength = 0
@@ -801,6 +805,24 @@ export class TruckSession {
     return washer
   }
 
+  /** The destination picked on the map (null clears it); the minimap shows the road route to it until the rig gets there. */
+  setWaypoint(point: { x: number; z: number } | null): void {
+    this.picked = point ? { x: point.x, z: point.z } : null
+    this.routeTimer = 2
+    const p = this.truck?.pose().position
+    this.routePoints = point && p ? route(p.x, p.z, point.x, point.z).points : null
+    if (!point) this.routeTimer = 0
+  }
+
+  /** The GPS route the minimap shows (to the picked waypoint, else the job's next stop). */
+  get route(): readonly [number, number][] | null {
+    return this.routePoints
+  }
+
+  get waypoint(): { x: number; z: number } | null {
+    return this.picked
+  }
+
   /** The own-lot wash where the truck stands now, or null. */
   ownWash(): OwnWash | null {
     const p = this.truck?.pose().position
@@ -1073,12 +1095,18 @@ export class TruckSession {
     }
     this.routeTimer -= dt
     const target = runner && runner.stage !== 'complete' ? runner.target() : null
-    if (target && this.routeTimer <= 0) {
+    if (this.picked && Math.hypot(this.picked.x - px, this.picked.z - pz) < WAYPOINT_ARRIVE_M) {
+      this.picked = null
+      this.routeTimer = 0
+      this.host.toast('You have arrived', 'good')
+    }
+    const goal = this.picked ?? target
+    if (goal && this.routeTimer <= 0) {
       this.routeTimer = 2
-      const path = route(px, pz, target.x, target.z)
+      const path = route(px, pz, goal.x, goal.z)
       this.routePoints = path.points
-      this.routeLength = path.length
-    } else if (!target) {
+      this.routeLength = this.picked ? 0 : path.length
+    } else if (!goal) {
       this.routePoints = null
       this.routeLength = 0
     }

@@ -2,9 +2,10 @@
  * The driver's saved career. Signed in, every action is posted to `/api/trucksim`, which runs the same `applyAction` rules and
  * saves to D1; actions are sent one at a time so they never race. Guests (or when the server can't be reached) run
  * `applyAction` in memory on a fresh profile that is gone when the page closes. A host such as Life Sim can pass its own
- * `world` id for the Worker's haul-world seam.
+ * `world` id for the Worker's haul-world seam. Administrators can switch to a sandbox (`enterSandbox`): a rich copy of the
+ * profile run in memory like a guest's, never saved, for the developer panel.
  */
-import { applyAction } from '../shared/Actions'
+import { applyAction, withStarterDriveway } from '../shared/Actions'
 import type { ActResult, TruckAction } from '../shared/Actions'
 import { defaultProfile, normalizeProfile } from '../shared/Economy'
 import type { Profile } from '../shared/Economy'
@@ -26,6 +27,7 @@ export interface ProgressClient {
 interface ProfileResponse {
   signedIn?: boolean
   username?: string
+  admin?: boolean
   profile?: unknown
   lots?: PublicLot[]
 }
@@ -42,6 +44,9 @@ interface ActResponse {
 export class Progress implements ProgressClient {
   private listeners = new Set<(profile: Profile) => void>()
   private queue: Promise<unknown> = Promise.resolve()
+  private sandbox = false
+  /** True for administrators (the server says so); unlocks the developer panel. */
+  admin = false
 
   private constructor(
     public profile: Profile,
@@ -60,7 +65,11 @@ export class Progress implements ProgressClient {
       if (!response.ok) throw new Error(String(response.status))
       const data = (await response.json()) as ProfileResponse
       const lots = Array.isArray(data.lots) ? data.lots : []
-      if (data.signedIn && data.profile) return new Progress(normalizeProfile(data.profile), true, data.username ?? null, lots, false, world, url)
+      if (data.signedIn && data.profile) {
+        const progress = new Progress(normalizeProfile(data.profile), true, data.username ?? null, lots, false, world, url)
+        progress.admin = data.admin === true
+        return progress
+      }
       return new Progress(guestProfile(lots), false, null, lots, false, world, url)
     } catch {
       return new Progress(guestProfile([]), false, null, [], true, world, url)
@@ -78,9 +87,30 @@ export class Progress implements ProgressClient {
   }
 
   act(action: TruckAction): Promise<ActResult> {
-    const run = this.queue.then(() => (this.signedIn ? this.post(action) : this.local(action)))
+    const run = this.queue.then(() => (this.signedIn && !this.sandbox ? this.post(action) : this.local(action)))
     this.queue = run.catch(() => undefined)
     return run
+  }
+
+  /** True while the career is a sandbox copy that is never saved. */
+  get sandboxed(): boolean {
+    return this.sandbox
+  }
+
+  /** Switches to an unsaved copy of the profile with `cash` (administrators only; a reload brings the real career back). */
+  enterSandbox(cash = 5_000_000): boolean {
+    if (!this.admin) return false
+    this.sandbox = true
+    this.set({ ...normalizeProfile(JSON.parse(JSON.stringify(this.profile))), cash })
+    return true
+  }
+
+  /** Edits the sandbox profile directly (ignored outside the sandbox). */
+  sandboxEdit(edit: (profile: Profile) => void): void {
+    if (!this.sandbox) return
+    const next = normalizeProfile(JSON.parse(JSON.stringify(this.profile)))
+    edit(next)
+    this.set(next)
   }
 
   private local(action: TruckAction): ActResult {
@@ -128,5 +158,5 @@ export class Progress implements ProgressClient {
 function guestProfile(lots: readonly PublicLot[]): Profile {
   const taken = new Set(lots.map((lot) => lot.index))
   const free = LOTS.find((lot) => !taken.has(lot.index))
-  return { ...defaultProfile(), lot: free ? free.index : null }
+  return withStarterDriveway({ ...defaultProfile(), lot: free ? free.index : null })
 }
