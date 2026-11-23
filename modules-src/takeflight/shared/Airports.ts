@@ -211,8 +211,11 @@ export const CRAG_NOTCH = layout({ id: 'cragnotch', name: 'Crag Notch', icao: 'K
 export const AIRPORTS: readonly AirportSpec[] = [HARROW_FIELD, MILLBROOK_STRIP, ASHBY_REGIONAL, FENWICK_FREIGHT, CORRAN_COUNTY, HALVARD_INTERNATIONAL, CRAG_NOTCH]
 
 /** Runway ends a pilot may land on (Crag Notch is one-way: land on 06, depart on 24). */
-export function landingEnds(airport: AirportSpec, runway: RunwaySpec): (0 | 1)[] {
-  return airport.id === 'cragnotch' && runway === airport.runways[0] ? [0] : [0, 1]
+const ONE_WAY: readonly (0 | 1)[] = [0]
+const BOTH_WAYS: readonly (0 | 1)[] = [0, 1]
+
+export function landingEnds(airport: AirportSpec, runway: RunwaySpec): readonly (0 | 1)[] {
+  return airport.id === 'cragnotch' && runway === airport.runways[0] ? ONE_WAY : BOTH_WAYS
 }
 
 /** The airport whose flattened area contains a point, or the nearest by reference point. */

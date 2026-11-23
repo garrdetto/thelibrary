@@ -90,18 +90,18 @@ def build_fuselage(mats, root, collection, lod_segments=SEGMENTS, per_span=5, wi
     for i in range(len(last)):
         bm.faces.new((last[i], last[(i + 1) % len(last)], tail_tip))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    stripe = set(kit.band_faces(bm, sections, lod_segments, -0.30, -0.14, x_max=1.25))
+    for face in bm.faces:
+        if face in stripe:
+            face.material_index = 1
+        elif face.calc_center_median().x > 1.22:
+            face.material_index = 2
     glass = bmesh.new()
     if windows:
         remove = kit.loft_faces(bm, sections, lod_segments, kit.window_picks(WINDOWS))
         for face in remove:
             glass.faces.new([glass.verts.new(v.co + face.normal * 0.004) for v in face.verts])
         bmesh.ops.delete(bm, geom=remove, context='FACES_ONLY')
-    for face in bm.faces:
-        c = face.calc_center_median()
-        if -0.30 < c.z < -0.14 and c.x < 1.25 and abs(face.normal.y) > 0.5:
-            face.material_index = 1
-        elif c.x > 1.22:
-            face.material_index = 2
     body = kit.new_object('fuselage', bm, mats['paint'], parent=root, collection=collection)
     body.data.materials.append(mats['stripe'])
     body.data.materials.append(mats['cowl'])

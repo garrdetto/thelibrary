@@ -592,7 +592,7 @@ A career flight simulator. Built from `modules-src/takeflight/index.html` + `ind
 - `shared/FlightRecord.ts` — compressed flight records: `RecordWriter` (streaming DEFLATE of framed header, delta inputs, byte-plane telemetry, footer), `readRecord`.
 - `shared/Terrain.ts` — seeded terrain with airport flattening, `TERRAIN` ground for the sim, forest and field helpers.
 - `world/AssetManager.ts` — reference-counted glTF containers with an LRU byte budget and the bundled meshopt decoder.
-- `render/Quality.ts` — terrain, tree and gauge settings per tier (sky and post tiers are Truck Simulator's).
+- `render/Quality.ts` — terrain, tree, gauge, render-size cap, traffic range and TAA settings per tier (sky and post tiers are Truck Simulator's). `render/Taa.ts` — TAA while the camera holds still (ultra). `tools/leak-check.cjs` — browser leak suite.
 - `render/TerrainRenderer.ts` — quadtree terrain tiles with skirts, vertex colour, detail texture and thin-instanced trees; tiles from `render/terrain.worker.ts` running `render/TerrainTile.ts` (pure tile data with morph targets); `render/TerrainMorph.ts` — geomorph material plugin (GLSL + WGSL).
 - `render/AirportRenderer.ts` — pavement, geometry markings, lights, PAPI, windsock, hangars, office, tower.
 - `render/TownRenderer.ts` — a place's buildings (thin instances per kind, roofs, night windows) and streets.

@@ -28,6 +28,22 @@ import type { TileRequest } from './terrain.worker'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 
 const ROOT_SIZE = 16384
+
+interface PendingTile {
+  key: number
+  x0: number
+  z0: number
+  size: number
+}
+
+const KEY_OFFSET = 262144
+
+/** A tile's numeric key: its corner (whole metres within ±262 km) and size (a power of two). */
+export function tileKey(x0: number, z0: number, size: number): number {
+  return ((x0 + KEY_OFFSET) * 524288 + (z0 + KEY_OFFSET)) * 32 + Math.round(Math.log2(size))
+}
+
+const largestFirst = (a: PendingTile, b: PendingTile) => b.size - a.size
 const CACHE_LIMIT = 420
 const MAX_INFLIGHT = 8
 const MAX_READY = 64
@@ -35,7 +51,7 @@ const TREE_CELL = 22
 const MAX_TREES = 420
 
 interface Tile {
-  key: string
+  key: number
   x0: number
   z0: number
   size: number
@@ -111,15 +127,17 @@ export class TerrainRenderer {
   private readonly treeMaterial: PBRMaterial
   private readonly treeTemplate: Mesh
   private readonly detail: DynamicTexture | null
-  private readonly tiles = new Map<string, Tile>()
-  private readonly visible = new Set<Tile>()
+  private readonly tiles = new Map<number, Tile>()
+  private visible = new Set<Tile>()
   private readonly wanted: Tile[] = []
-  private readonly pending: { key: string; x0: number; z0: number; size: number }[] = []
+  private readonly pending: PendingTile[] = []
+  private readonly pendingPool: PendingTile[] = []
+  private showing = new Set<Tile>()
   private readonly morph: TerrainMorphPlugin
   private readonly eyeScene = new Vector3()
   private worker: Worker | null = null
-  private readonly inflight = new Set<string>()
-  private readonly ready = new Map<string, TileData>()
+  private readonly inflight = new Set<number>()
+  private readonly ready = new Map<number, TileData>()
   private frame = 0
   private builtThisFrame = 0
   private treeCount = 0
@@ -146,7 +164,7 @@ export class TerrainRenderer {
     if (typeof Worker !== 'undefined') {
       try {
         this.worker = new Worker(new URL('./terrain.worker.ts', import.meta.url), { type: 'module' })
-        this.worker.onmessage = (event: MessageEvent<{ key: string; data: TileData }>) => {
+        this.worker.onmessage = (event: MessageEvent<{ key: number; data: TileData }>) => {
           this.inflight.delete(event.data.key)
           if (this.ready.size < MAX_READY) this.ready.set(event.data.key, event.data.data)
         }
@@ -203,8 +221,9 @@ export class TerrainRenderer {
       for (let j = 0; j < roots; j++) this.select(origin + i * ROOT_SIZE, origin + j * ROOT_SIZE, ROOT_SIZE, cx, cz, height)
     }
     const start = performance.now()
-    this.pending.sort((a, b) => b.size - a.size)
-    const show = new Set<Tile>()
+    this.pending.sort(largestFirst)
+    const show = this.showing
+    show.clear()
     const parent = this.parent?.position
     this.morph.eye = this.eyeScene.set(cx + (parent ? parent.x : 0), cy, cz + (parent ? parent.z : 0))
     const loading = budgetMs === Infinity
@@ -235,7 +254,7 @@ export class TerrainRenderer {
       while (size <= ROOT_SIZE) {
         const ax = Math.floor((want.x0 - origin) / size) * size + origin
         const az = Math.floor((want.z0 - origin) / size) * size + origin
-        const ancestor = this.tiles.get(`${ax}:${az}:${size}`)
+        const ancestor = this.tiles.get(tileKey(ax, az, size))
         if (ancestor) {
           show.add(ancestor)
           break
@@ -260,8 +279,8 @@ export class TerrainRenderer {
         if (near) this.treeCount += tile.trees.thinInstanceCount
       }
     }
-    this.visible.clear()
-    for (const tile of show) this.visible.add(tile)
+    this.showing = this.visible
+    this.visible = show
     if (this.tiles.size > CACHE_LIMIT) this.evict()
   }
 
@@ -279,10 +298,16 @@ export class TerrainRenderer {
       this.select(x0 + half, z0 + half, half, cx, cz, height)
       return
     }
-    this.pending.push({ key: `${x0}:${z0}:${size}`, x0, z0, size })
+    const index = this.pending.length
+    const want = this.pendingPool[index] ?? (this.pendingPool[index] = { key: 0, x0: 0, z0: 0, size: 0 })
+    want.key = tileKey(x0, z0, size)
+    want.x0 = x0
+    want.z0 = z0
+    want.size = size
+    this.pending.push(want)
   }
 
-  private buildTile(key: string, x0: number, z0: number, size: number, data: TileData = buildTileData(x0, z0, size)): Tile {
+  private buildTile(key: number, x0: number, z0: number, size: number, data: TileData = buildTileData(x0, z0, size)): Tile {
     const mesh = new Mesh(`takeflight-terrain-${key}`, this.scene)
     const vertexData = new VertexData()
     vertexData.positions = data.positions
@@ -308,7 +333,7 @@ export class TerrainRenderer {
     return tile
   }
 
-  private plantTrees(key: string, x0: number, z0: number, size: number, parent: Mesh): Mesh | null {
+  private plantTrees(key: number, x0: number, z0: number, size: number, parent: Mesh): Mesh | null {
     const cells = Math.floor(size / TREE_CELL)
     const matrices: number[] = []
     const density = this.quality.treeDensity

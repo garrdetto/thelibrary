@@ -48,15 +48,13 @@ def mats_for(name, paint, stripe):
 def fuselage(spec, mats, root, collection):
     sections = smooth_sections(spec['fuselage'], 4)
     bm = kit.loft(sections, SEGMENTS, cap_front=True, cap_back=True)
+    for face in kit.band_faces(bm, sections, SEGMENTS, spec['stripe'][0], spec['stripe'][1]):
+        face.material_index = 1
     glass = bmesh.new()
     remove = kit.loft_faces(bm, sections, SEGMENTS, kit.window_picks(spec['windows']))
     for face in remove:
         glass.faces.new([glass.verts.new(v.co + face.normal * 0.004) for v in face.verts])
     bmesh.ops.delete(bm, geom=remove, context='FACES_ONLY')
-    for face in bm.faces:
-        c = face.calc_center_median()
-        if spec['stripe'][0] < c.z < spec['stripe'][1] and abs(face.normal.y) > 0.5:
-            face.material_index = 1
     body = kit.new_object('fuselage', bm, mats['paint'], parent=root, collection=collection)
     body.data.materials.append(mats['stripe'])
     kit.new_object('glass', glass, mats['glass'], parent=root, collection=collection)

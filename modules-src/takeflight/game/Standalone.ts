@@ -27,7 +27,7 @@ import { CascadedShadowGenerator } from '@babylonjs/core/Lights/Shadows/cascaded
 import type { AircraftSpec } from '../shared/AircraftSpec'
 import { HARROW_FIELD, airportById, nearestAirport } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
-import { approachFor } from '../shared/Approach'
+import { approachFor, createApproachState } from '../shared/Approach'
 import type { ApproachState } from '../shared/Approach'
 import { CHECKRIDE_SPECS, LICENCE_LABELS, summarizeFlight } from '../shared/Career'
 import { FLEET, fleetSpec } from '../shared/Fleet'
@@ -60,6 +60,7 @@ import { CareerPanel } from '../ui/CareerPanel'
 import { Debrief } from '../ui/Debrief'
 import { DevOverlay } from '../ui/DevOverlay'
 import { Hud } from '../ui/Hud'
+import type { HudExtras } from '../ui/Hud'
 import { Menus, savedLivery } from '../ui/Menus'
 import type { FlightOptions, StartKind } from '../ui/Menus'
 import { CameraRig, VIEW_ORDER } from './Cameras'
@@ -71,6 +72,7 @@ import { TouchdownReplay } from './TouchdownReplay'
 import { Radio } from './Radio'
 import { TrafficView } from '../render/TrafficView'
 import { Boards } from '../ui/Boards'
+import { Taa } from '../render/Taa'
 import type { RadioConditions } from './Radio'
 import { AIRLINES } from '../shared/Airlines'
 
@@ -111,6 +113,10 @@ export class Standalone {
   private world!: World
   private traffic!: TrafficView
   private boards!: Boards
+  private taa!: Taa
+  private readonly approachState = createApproachState()
+  private readonly ilsNeedles = { name: '', localizer: 0, glideslope: 0 }
+  private readonly extras: HudExtras = { view: '', lights: false, parkingBrake: false, glidepath: null, ils: null }
   private weather!: WeatherView
   private towerAirport: AirportSpec = HARROW_FIELD
   private water!: Mesh
@@ -231,7 +237,7 @@ export class Standalone {
   }
 
   /** Console and smoke-test hooks (`window.__takeflight`). */
-  get debug(): { sim: Simulation; session: FlightSession; fly(options?: Partial<FlightOptions>): void; view(mode: 'cockpit' | 'chase' | 'tower'): void; end(): void; replay(): void; phase: Phase } {
+  get debug(): { sim: Simulation; session: FlightSession; fly(options?: Partial<FlightOptions>): void; view(mode: 'cockpit' | 'chase' | 'tower'): void; end(): void; replay(): void; phase: Phase; counts(): Record<string, number> } {
     return {
       sim: this.sim,
       session: this.session,
@@ -240,6 +246,15 @@ export class Standalone {
       end: () => this.endFlight('pilot'),
       replay: () => this.startReplay(),
       phase: this.phase,
+      counts: () => {
+        const s = this.scene
+        const groups: Record<string, number> = {}
+        for (const mesh of s.meshes) {
+          const group = 'mesh:' + mesh.name.replace(/#\d+$/, '').replace(/[-_]?\d.*$/, '').split('/').pop()!.slice(0, 40)
+          groups[group] = (groups[group] ?? 0) + 1
+        }
+        return { meshes: s.meshes.length, materials: s.materials.length, textures: s.textures.length, geometries: s.geometries.length, nodes: s.transformNodes.length, heapMb: Math.round(((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1048576), ...groups }
+      },
     }
   }
 
@@ -256,6 +271,8 @@ export class Standalone {
     } catch (error) {
       console.warn('Take Flight: post-processing unavailable', error)
     }
+    this.taa = this.scope.track(new Taa(scene, this.cameras.camera))
+    this.taa.setEnabled(quality.taa)
     report(0.3, 'Raising the hills…')
     this.weather = new WeatherView(scene, this.atmosphere, this.tier, this.backend === 'webgpu')
     this.scope.defer(() => this.weather.dispose())
@@ -263,6 +280,7 @@ export class Standalone {
     this.scope.defer(() => this.world.dispose())
     this.terrain = this.scope.track(new TerrainRenderer(scene, quality, this.world.root))
     this.traffic = this.scope.track(new TrafficView(scene, this.assets, this.world.root))
+    this.traffic.range = quality.trafficRange
     this.water = this.buildWater()
     report(0.45, 'Painting the runway…')
     this.world.updateAirports(0, 0)
@@ -275,6 +293,7 @@ export class Standalone {
       this.visual.dispose()
     })
     this.resolution = attachResolution(this.engine, this.canvas)
+    this.resolution.setCap(FLIGHT_QUALITY[this.tier].renderLines)
     const onResize = () => {
       this.engine.resize()
       this.resolution.refit()
@@ -324,6 +343,9 @@ export class Standalone {
     this.atmosphere.setQuality(tier)
     this.atmosphere.setFogRange(quality.viewDistance * 0.85)
     this.pipeline?.setTier(tier)
+    this.taa.setEnabled(quality.taa)
+    this.resolution.setCap(quality.renderLines)
+    this.traffic.range = quality.trafficRange
     this.terrain.setQuality(quality)
     this.weather.setQuality(tier)
     this.cameras.camera.maxZ = quality.viewDistance * 1.25
@@ -608,15 +630,24 @@ export class Standalone {
 
   private approach(): ApproachState | null {
     const a = this.sim.aircraft
-    return approachFor(a.px, a.py, a.pz, a.heading)
+    return approachFor(a.px, a.py, a.pz, a.heading, 1.3, this.approachState)
   }
 
-  /** The HUD's approach aids: ILS needles on ILS runways (an instrument, always shown), the glidepath bar with landing guidance. */
-  private guidance(): { glidepath: number | null; ils: { name: string; localizer: number; glideslope: number } | null } {
+  /** The HUD's state: view, lights, brakes, ILS needles on ILS runways (an instrument, always shown), the glidepath bar with landing guidance. */
+  private hudExtras(): HudExtras {
+    const extras = this.extras
+    extras.view = VIEW_NAMES[this.cameras.mode]
+    extras.lights = this.lightsOn
+    extras.parkingBrake = this.parkingBrake
     const approach = this.approach()
-    if (!approach) return { glidepath: null, ils: null }
-    const ils = approach.ils ? { name: approach.end.name, localizer: approach.localizer, glideslope: approach.glideslope } : null
-    return { glidepath: this.options?.assists.landingGuidance && approach.distance < 12000 ? approach.glideslope : null, ils }
+    extras.glidepath = approach && this.options?.assists.landingGuidance && approach.distance < 12000 ? approach.glideslope : null
+    if (approach && approach.ils) {
+      this.ilsNeedles.name = approach.end.name
+      this.ilsNeedles.localizer = approach.localizer
+      this.ilsNeedles.glideslope = approach.glideslope
+      extras.ils = this.ilsNeedles
+    } else extras.ils = null
+    return extras
   }
 
   private frame(): void {
@@ -666,7 +697,7 @@ export class Standalone {
     const eyeZ = camera.position.z + this.world.originZ
     this.world.updateAirports(eyeX, eyeZ)
     this.world.updateTowns(eyeX, eyeZ, this.atmosphere.night)
-    this.traffic.update(eyeX, eyeZ, this.weather.hours * 3600, sim.env.wind.spec.direction, sim.env.wind.spec.speed)
+    this.traffic.update(eyeX, eyeZ, this.weather.hours * 3600, sim.env.wind.spec.direction, sim.env.wind.spec.speed, dt)
     this.terrain.update(eyeX, camera.position.y, eyeZ)
     this.atmosphere.update(camera.position)
     this.weather.update(dt, shown, camera.position, this.world.originX, this.world.originZ, this.phase === 'flying')
@@ -674,15 +705,16 @@ export class Standalone {
     if (shadows instanceof CascadedShadowGenerator) shadows.shadowMaxZ = Math.min(FLIGHT_QUALITY[this.tier].viewDistance, 260 + Math.max(0, aircraft.agl) * 2.5)
     sim.env.wind.sample(10, this.wind)
     this.eyeWorld.set(eyeX, camera.position.y, eyeZ)
-    for (const airport of this.world.loadedAirports) airport.update(this.eyeWorld, this.wind.x, this.wind.z, this.atmosphere.night)
+    const airports = this.world.loadedAirports
+    for (let i = 0; i < airports.length; i++) airports[i].update(this.eyeWorld, this.wind.x, this.wind.z, this.atmosphere.night)
     this.water.position.x = Math.round(camera.position.x / 1000) * 1000
     this.water.position.z = Math.round(camera.position.z / 1000) * 1000
     this.cockpit.update(sim.applied, FLIGHT_QUALITY[this.tier].gaugeHz, dt)
-    if (this.phase === 'flying' || this.phase === 'paused') this.hud.update(aircraft, sim.applied, { view: VIEW_NAMES[this.cameras.mode], lights: this.lightsOn, parkingBrake: this.parkingBrake, ...this.guidance() }, dt)
+    if (this.phase === 'flying' || this.phase === 'paused') this.hud.update(aircraft, sim.applied, this.hudExtras(), dt)
     this.dev.update(frameMs, dt)
     this.resolution.update(performance.now(), this.engine.getFps())
     if (this.phase === 'flying') {
-      this.radio.update(aircraft, this.parkingBrake, this.conditions(), this.traffic.current)
+      this.radio.update(aircraft, this.parkingBrake, this.conditions(), this.traffic.poses, this.traffic.count)
       if (aircraft.failedEngine >= 0 && !this.failureAnnounced) {
         this.failureAnnounced = true
         this.hud.toast(`Engine ${aircraft.failedEngine + 1} failed: rudder toward the live engine, keep the speed, fly the circuit and land`, 7)

@@ -142,6 +142,24 @@ def loft_faces(bm, sections, segments, picks):
     return chosen
 
 
+def band_faces(bm, sections, segments, z_low, z_high, x_max=1e9, x_min=-1e9):
+    """Faces of a `loft` grid in a horizontal paint band: ring columns whose height at the widest section lies between z_low and
+    z_high, for sections between x_min and x_max. Whole columns follow mesh lines, so the band's edges are clean."""
+    widest = max(sections, key=lambda s: s[1])
+    x, half_width, top, bottom = widest[:4]
+    exponent = widest[4] if len(widest) > 4 else 2.6
+    top_exponent = widest[5] if len(widest) > 5 else None
+    ring = superellipse_ring(half_width, top, bottom, segments, exponent, top_exponent)
+    columns = [j for j in range(segments) if z_low < 0.5 * (ring[j][1] + ring[(j + 1) % segments][1]) < z_high]
+    bm.faces.ensure_lookup_table()
+    chosen = []
+    for i in range(len(sections) - 1):
+        mid = 0.5 * (sections[i][0] + sections[i + 1][0])
+        if x_min < mid < x_max:
+            chosen.extend(bm.faces[i * segments + j] for j in columns)
+    return chosen
+
+
 def window_picks(windows):
     """Predicates for `loft_faces` from a window spec: 'front' (x0, x1, half angle about the top), 'side' (x0, x1, low angle,
     high angle) mirrored on both sides, 'posts' [(x0, x1), ...] left solid between side windows, 'roof' (x0, x1, half angle)."""
