@@ -1788,5 +1788,45 @@
   "matsBefore": 8,
   "matsAfter": 8,
   "preset": "aircraft"
+ },
+ "takeflight/duet_lod2.glb": {
+  "hash": "d9f9ed66ca94ef60d12f0661ef915e0944cc61f2",
+  "before": 108352,
+  "after": 73268,
+  "primsBefore": 35,
+  "primsAfter": 27,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "aircraft"
+ },
+ "takeflight/duet_cockpit.glb": {
+  "hash": "68d3eb01fa9a9144b250a2246e2cd3f9142d313d",
+  "before": 43436,
+  "after": 24140,
+  "primsBefore": 9,
+  "primsAfter": 8,
+  "matsBefore": 5,
+  "matsAfter": 5,
+  "preset": "aircraft"
+ },
+ "takeflight/duet_lod1.glb": {
+  "hash": "01f5903e3669e031a9a5918ff8982092468f532e",
+  "before": 161700,
+  "after": 92104,
+  "primsBefore": 35,
+  "primsAfter": 27,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "aircraft"
+ },
+ "takeflight/duet_lod0.glb": {
+  "hash": "d4c896e0ba7d6f48409b5d66cb189ed6ccbf8b6f",
+  "before": 266984,
+  "after": 120976,
+  "primsBefore": 35,
+  "primsAfter": 27,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "aircraft"
  }
 }

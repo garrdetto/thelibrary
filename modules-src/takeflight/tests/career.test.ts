@@ -93,9 +93,10 @@ test('checkrides need their licences, level, hours and an aircraft of their clas
   assert.ok(ppl.reasons.some((r) => r.includes('level 3')))
   assert.equal(checkrideAvailability(withLevel(3, 1), 'ppl', HANGAR_CLASSES).available, true)
   assert.equal(checkrideAvailability(withLevel(30, 30, ['student', 'ppl']), 'instrument', HANGAR_CLASSES).available, true)
-  const multi = checkrideAvailability(withLevel(30, 30, ['student', 'ppl']), 'multi', HANGAR_CLASSES)
-  assert.equal(multi.available, false)
-  assert.ok(multi.reasons.some((r) => r.includes('not in the hangar')))
+  assert.equal(checkrideAvailability(withLevel(30, 30, ['student', 'ppl']), 'multi', HANGAR_CLASSES).available, true, 'the Duet makes the multi-engine checkride available')
+  const atp = checkrideAvailability(withLevel(60, 60, ['student', 'ppl', 'instrument', 'multi', 'commercial']), 'atp', HANGAR_CLASSES)
+  assert.equal(atp.available, false)
+  assert.ok(atp.reasons.some((r) => r.includes('not in the hangar')))
 })
 
 test('passing a checkride earns its licence and a bonus; failing records the attempt', () => {

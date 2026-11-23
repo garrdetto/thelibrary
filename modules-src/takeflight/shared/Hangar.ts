@@ -4,15 +4,20 @@
  */
 import type { AircraftSpec } from './AircraftSpec'
 import { pilotClassOf } from './Career'
-import type { PilotClass } from './Career'
+import type { LicenceId, PilotClass } from './Career'
 
 export interface HangarEntry {
   id: string
   family: string
   category: AircraftSpec['category']
+  /** Licence needed to fly it outside a checkride. */
+  requires: LicenceId
 }
 
-export const HANGAR: readonly HangarEntry[] = [{ id: 'halden-wren', family: 'wren', category: 'trainer' }]
+export const HANGAR: readonly HangarEntry[] = [
+  { id: 'halden-wren', family: 'wren', category: 'trainer', requires: 'student' },
+  { id: 'arden-duet', family: 'duet', category: 'twin', requires: 'ppl' },
+]
 
 export function hangarEntry(id: string): HangarEntry | undefined {
   return HANGAR.find((entry) => entry.id === id)

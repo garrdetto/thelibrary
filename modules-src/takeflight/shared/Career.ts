@@ -93,6 +93,8 @@ export interface FlightSummary {
   assists: AssistSettings
   /** True when the HUD showed only the essentials and no glidepath guidance (instrument checkride). */
   instrumentsOnly: boolean
+  /** True when an engine failed during the flight. */
+  engineFailure?: boolean
   /** Scores of the categories flown, 0..100. */
   categories: Partial<Record<CategoryId, number>>
   /** Metric scores 0..1 keyed `category.metric`. */
@@ -104,6 +106,10 @@ export interface FlightSummary {
 export interface CheckrideSetup {
   /** Checkrides are flown from Harrow Field. */
   airport: string
+  /** The aircraft flown (the Wren unless given). */
+  aircraft?: string
+  /** An engine failure during the climb (multi-engine checkride). */
+  failure?: { engine: number; agl: number }
   start: StartKind
   wind: WindKind
   weather: WeatherKind
@@ -163,13 +169,13 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
   multi: {
     id: 'multi',
     title: 'Multi-engine checkride',
-    brief: 'A circuit in a twin with an engine failure after take-off.',
+    brief: 'A circuit in the Duet twin: an engine fails in the climb after take-off. Keep straight with rudder, fly the circuit on one engine and land on the runway.',
     needs: ['ppl'],
     level: 12,
     hours: 5,
     pilotClass: 'multi',
-    setup: { airport: 'harrow', start: 'runway1', wind: 'light', weather: 'fair', time: 'noon', instrumentsOnly: false },
-    criteria: [noAssists, noCrash, onRunway, category('landing', 75, 'Landing'), category('procedure', 85, 'Procedure')],
+    setup: { airport: 'harrow', aircraft: 'arden-duet', failure: { engine: 1, agl: 120 }, start: 'runway1', wind: 'light', weather: 'fair', time: 'noon', instrumentsOnly: false },
+    criteria: [noAssists, noCrash, onRunway, { label: 'Flew the engine failure', test: (s) => s.engineFailure === true }, category('landing', 70, 'Landing'), category('procedure', 80, 'Procedure')],
   },
   commercial: {
     id: 'commercial',
@@ -393,7 +399,7 @@ export function applyFlight(profile: CareerProfile, summary: FlightSummary, cont
 }
 
 /** Builds the summary the career and the Worker read from a scored flight. */
-export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; weather: WeatherKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; checkride: CheckrideId | null }): FlightSummary {
+export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; weather: WeatherKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; engineFailure?: boolean; checkride: CheckrideId | null }): FlightSummary {
   const categories: Partial<Record<CategoryId, number>> = {}
   const metrics: Record<string, number> = {}
   for (const c of score.categories) {

@@ -4,7 +4,7 @@ Career flight simulator (`modules-src/takeflight/`, module id `takeflight`, page
 
 ## Status
 
-Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is in, delivered in four parts: seven airports, floating origin, airport streaming and ILS; weather, clouds, rain and time of day; towns and the city; CDLOD geomorphing with tiles built in a worker. Milestones 5–8 (more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is in, delivered in four parts: seven airports, floating origin, airport streaming and ILS; weather, clouds, rain and time of day; towns and the city; CDLOD geomorphing with tiles built in a worker. Milestone 5 (more aircraft, the cargo career, liveries) is under way in parts: part 1 (the Arden Duet D2 twin, the hangar, retracting gear, engine failures and the multi-engine checkride) is in. Milestones 6–8 (airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
 
 **Milestones run back to back (owner, 2026-11-23).** When a milestone's pull request merges, start the next one in the plan without waiting for a prompt, and mark it done in `docs/takeflight/PLAN.md` and here when it merges.
 
@@ -39,6 +39,14 @@ Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, c
 
 - `render/TerrainTile.ts` builds a tile's vertex data (pure; heights, normals, colours, UVs, skirt, and `tfMorph`, each vertex's height on the parent's twice-as-coarse grid). `render/terrain.worker.ts` runs it off the main thread; the renderer builds synchronously only while loading (`update(..., Infinity)`) or where workers are missing (tests). At most 8 tiles are in flight.
 - `render/TerrainMorph.ts` is a material plugin on the terrain material (GLSL and WGSL): the vertex height blends toward `tfMorph` from 62 % to 94 % of the tile's hand-over distance (2 × size × `terrainSplit`, where the parent stops splitting), so a tile matches its parent when they swap. The eye is passed in the tile's own coordinates. A compile error turns the plugin off (`disable()`) rather than losing the terrain.
+
+## Fleet
+
+- `shared/Fleet.ts` (page and tests) parses every aircraft JSON; `shared/Hangar.ts` (Worker) lists id, family, category and the licence needed to fly it outside a checkride. Add both when adding an aircraft, plus its models and a row in `tests/fleet.test.ts` (rest on the wheels with no structure touching, ground roll, climb with gear up, full-power level speed, stall near Vs1).
+- New aircraft are built by `tools/blender/build_fleet.py` from parameter dicts (fuselage sections with a top exponent, wing, tail or T-tail, nose prop / wing nacelles / rear-fuselage fans, retractable tricycle gear, doors, a generic cockpit with `panel_screen`): `python wrapper build_fleet.py -- assets-src/models/takeflight [name ...]`. Contacts in the JSON use body axes (x fwd, y up, z right) = Blender (x, z, -y), at the tyre bottoms and prop tips.
+- `Simulation.setAircraft` swaps the flight model between flights; `Standalone.useAircraft` swaps the visual and cockpit. Flying an aircraft needs its hangar licence (checkrides bring their own aircraft). The record header's `aircraft` picks the spec for replays.
+- Retractable gear (`controls.retractable`, `gearTime`) folds in `AircraftVisual`: mains forward, nose aft, hidden when stowed. Contacts marked `retracts` stop touching when up.
+- Engine failures: `FlightSetup.failure` (`{ engine, agl }`) fails that engine once the aircraft climbs through `agl` after take-off; `FlightModel.failedEngine` is part of the snapshot, the dead engine gives windmill drag and its thrust moment goes, and the record header carries it. The multi-engine checkride flies the Duet with engine 2 failing at 120 m and needs `engineFailure` in the summary.
 
 ## Careers
 

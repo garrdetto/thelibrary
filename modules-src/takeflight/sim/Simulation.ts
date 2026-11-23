@@ -31,6 +31,8 @@ export interface FlightSetup {
   assists: AssistSettings
   /** Weather over the base `wind` (default clear). */
   weather?: WeatherKind
+  /** An engine that fails once the aircraft has climbed through `agl` metres after take-off (multi-engine checkride). */
+  failure?: { engine: number; agl: number } | null
 }
 
 export interface TickListener {
@@ -53,8 +55,8 @@ export interface InterpolatedState {
 }
 
 export class Simulation {
-  readonly aircraft: FlightModel
-  readonly previous: FlightModel
+  aircraft: FlightModel
+  previous: FlightModel
   readonly env: FlightEnvironment
   readonly setup: FlightSetup
   /** Raw pilot input; the sim copies, assists and quantises it each tick. */
@@ -81,13 +83,28 @@ export class Simulation {
     weatherWind(this.setup.wind, this.weather, this.env.wind.spec)
   }
 
+  private stepFailure(): void {
+    const failure = this.setup.failure
+    const a = this.aircraft
+    if (failure && a.failedEngine < 0 && a.wheelLoad <= 0 && a.agl > failure.agl && a.vy > 0) a.failedEngine = failure.engine
+  }
+
   private stepWeather(): void {
     if (this.setup.weather === 'changing' && this.aircraft.tick % SIM_HZ === 0) this.applyWeather(this.aircraft.tick)
   }
 
+  /** Changes the aircraft type (between flights); the caller resets and places it afterwards. */
+  setAircraft(spec: AircraftSpec): void {
+    if (spec === this.setup.aircraft) return
+    this.setup.aircraft = spec
+    this.aircraft = new FlightModel(spec)
+    this.previous = new FlightModel(spec)
+  }
+
   /** Starts a new flight with new conditions on the same aircraft; the caller places it afterwards. */
-  reset(conditions: Pick<FlightSetup, 'wind' | 'seed' | 'temperatureOffset' | 'seaLevelPressure' | 'assists' | 'weather'>): void {
+  reset(conditions: Pick<FlightSetup, 'wind' | 'seed' | 'temperatureOffset' | 'seaLevelPressure' | 'assists' | 'weather' | 'failure'>): void {
     Object.assign(this.setup, conditions)
+    this.setup.failure = conditions.failure ?? null
     this.setup.weather = conditions.weather ?? 'clear'
     this.env.wind = new WindField(conditions.wind, conditions.seed)
     this.applyWeather(0)
@@ -130,6 +147,7 @@ export class Simulation {
     quantizeInput(this.applied)
     this.previous.copyFrom(this.aircraft)
     this.stepWeather()
+    this.stepFailure()
     this.aircraft.step(this.applied, SIM_DT, this.env)
     for (let i = 0; i < this.listeners.length; i++) this.listeners[i](this.aircraft.tick, this.applied, this.aircraft)
   }
@@ -141,6 +159,7 @@ export class Simulation {
     quantizeInput(this.applied)
     this.previous.copyFrom(this.aircraft)
     this.stepWeather()
+    this.stepFailure()
     this.aircraft.step(this.applied, SIM_DT, this.env)
     for (let i = 0; i < this.listeners.length; i++) this.listeners[i](this.aircraft.tick, this.applied, this.aircraft)
   }

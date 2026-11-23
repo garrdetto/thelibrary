@@ -415,3 +415,6 @@
 @media (prefers-reduced-motion: reduce) {
   .tf-hud .tf-toast { transition: none; }
 }
+
+.tf-card p.tf-notice { color: var(--tf-warn); margin: -4px 0 10px; }
+.tf-card p.tf-notice[hidden] { display: none; }

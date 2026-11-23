@@ -24,6 +24,8 @@ export type TimeKind = 'morning' | 'noon' | 'evening' | 'night'
 export interface FlightOptions {
   /** Airport id. */
   airport: string
+  /** Aircraft id. */
+  aircraft: string
   start: StartKind
   wind: WindKind
   weather: WeatherKind
@@ -102,9 +104,10 @@ export class Menus {
   private readonly multiplierText: HTMLSpanElement
   private returnTo: 'start' | 'pause' = 'start'
   private readonly startSlot = make('div')
+  private readonly noticeLine = make('p', { className: 'tf-notice' })
 
-  constructor(private readonly parent: HTMLElement, private readonly input: InputManager, private readonly handlers: MenuHandlers, tier: QualityTier, private readonly aircraftName: string, private readonly career: HTMLElement) {
-    this.options = { airport: 'harrow', start: 'runway1', wind: 'light', weather: 'fair', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
+  constructor(private readonly parent: HTMLElement, private readonly input: InputManager, private readonly handlers: MenuHandlers, tier: QualityTier, private readonly aircraftName: string, private readonly career: HTMLElement, private readonly aircraftLabels: Record<string, string>) {
+    this.options = { airport: 'harrow', aircraft: 'halden-wren', start: 'runway1', wind: 'light', weather: 'fair', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
     this.multiplierText = make('span')
     this.start = this.buildStart()
     this.pause = this.buildPause()
@@ -163,9 +166,11 @@ export class Menus {
     }
     const card = make('div', { className: 'tf-card' },
       make('h1', { textContent: 'Take Flight' }),
-      make('p', { textContent: `${this.aircraftName}. Seven airports across a 200 km region, from a grass strip to an international hub. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
+      make('p', { textContent: `${this.aircraftName} and more as your licences grow. Seven airports across a 200 km region, from a grass strip to an international hub. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
       this.career,
       make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides())),
+      choice('Aircraft', this.aircraftLabels, this.options.aircraft, (v) => (this.options.aircraft = v)),
+      this.noticeLine,
       this.airportField(),
       this.startSlot,
       choice('Wind', WIND_LABELS, o.wind, (v) => (o.wind = v)),
@@ -306,6 +311,12 @@ export class Menus {
     this.start.hidden = true
     this.pause.hidden = true
     this.controls.hidden = true
+  }
+
+  /** A line under the aircraft choice (why an aircraft cannot be flown yet); empty hides it. */
+  notice(text: string): void {
+    this.noticeLine.textContent = text
+    this.noticeLine.hidden = text === ''
   }
 
   showStart(): void {
