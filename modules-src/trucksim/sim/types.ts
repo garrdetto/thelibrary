@@ -73,6 +73,8 @@ export interface ExcavatorPose extends BodyPose {
   bucket: number
   trackL: number
   trackR: number
+  /** How full the bucket is (0 … 1), so the load shows in it. */
+  fill?: number
 }
 
 export interface LoaderPose extends BodyPose {

@@ -169,10 +169,26 @@ export abstract class StepWorld implements PhysicsHost {
   }
 }
 
-/** The county host: streamed terrain heightfields, world-edge walls and grip from `SURFACE_GRIP`. */
+/** A solid thing standing on the ground (a tree trunk): centre, trunk radius and height, in metres. */
+export interface Obstacle {
+  x: number
+  z: number
+  radius: number
+  height: number
+}
+
+/** The obstacles standing in chunk (cx, cz); must give the same answer every time for a chunk (trees on a fixed grid). */
+export type ObstacleSource = (cx: number, cz: number) => readonly Obstacle[]
+
+/**
+ * The county host: streamed terrain heightfields, world-edge walls and grip from `SURFACE_GRIP`. With an obstacle source, each
+ * loaded chunk also gets a fixed cylinder per obstacle (tree trunks), removed with the chunk.
+ */
 export class SimWorld extends StepWorld {
   readonly terrain: Terrain
   private readonly chunks = new Map<number, RAPIER.Collider>()
+  private readonly obstacles = new Map<number, RAPIER.Collider[]>()
+  private obstacleSource: ObstacleSource | null = null
   private readonly walls: RAPIER.Collider[] = []
   private readonly grid = new Float32Array(SAMPLES * SAMPLES)
   private readonly columns = new Float32Array(SAMPLES * SAMPLES)
@@ -195,6 +211,44 @@ export class SimWorld extends StepWorld {
 
   gripAt(x: number, z: number): number {
     return SURFACE_GRIP[this.terrain.surfaceAt(x, z)]
+  }
+
+  /** Uses `source` for every loaded chunk's obstacles from now on (rebuilding the loaded ones); null removes them all. */
+  setObstacleSource(source: ObstacleSource | null): void {
+    this.obstacleSource = source
+    for (const key of [...this.chunks.keys()]) {
+      this.dropObstacles(key)
+      const cx = Math.floor(key / 128) - 64
+      const cz = (key % 128) - 64
+      this.addObstacles(key, cx, cz)
+    }
+  }
+
+  get obstacleCount(): number {
+    let n = 0
+    for (const list of this.obstacles.values()) n += list.length
+    return n
+  }
+
+  private addObstacles(key: number, cx: number, cz: number): void {
+    if (!this.obstacleSource) return
+    const list: RAPIER.Collider[] = []
+    for (const o of this.obstacleSource(cx, cz)) {
+      const ground = this.terrain.heightAt(o.x, o.z)
+      const desc = RAPIER.ColliderDesc.cylinder(o.height / 2, o.radius)
+        .setTranslation(o.x, ground + o.height / 2, o.z)
+        .setFriction(STATIC_FRICTION)
+        .setCollisionGroups(MASK.static)
+      list.push(this.world.createCollider(desc))
+    }
+    if (list.length) this.obstacles.set(key, list)
+  }
+
+  private dropObstacles(key: number): void {
+    const list = this.obstacles.get(key)
+    if (!list) return
+    for (const collider of list) this.world.removeCollider(collider, false)
+    this.obstacles.delete(key)
   }
 
   get loadedChunks(): number {
@@ -258,6 +312,7 @@ export class SimWorld extends StepWorld {
       .setFriction(GROUND_FRICTION)
       .setCollisionGroups(MASK.ground)
     this.chunks.set(key, this.world.createCollider(desc))
+    this.addObstacles(key, cx, cz)
     return true
   }
 
@@ -267,6 +322,7 @@ export class SimWorld extends StepWorld {
     if (!collider) return
     this.world.removeCollider(collider, false)
     this.chunks.delete(key)
+    this.dropObstacles(key)
   }
 
   private addWalls(): void {

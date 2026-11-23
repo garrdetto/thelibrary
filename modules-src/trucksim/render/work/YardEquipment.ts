@@ -6,7 +6,7 @@
 
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { BodyPose, ExcavatorPose, LoaderPose } from '../../sim/types'
-import { Matrix } from '@babylonjs/core/Maths/math.vector'
+import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { at, boxAt, cylinder, sphere, tube } from '../models/truck/Geometry'
 import { FallingMaterial } from '../models/CargoVisual'
 import { buildExcavator, buildForklift, buildWheelLoader } from '../models/MachineVisual'
@@ -204,7 +204,8 @@ export function buildDumpBay(env: EquipmentEnv): ZoneEquipment {
   const idleLoader: LoaderPose = { ...idleBase, arm: 0.15, bucket: 0, spin: 0, steer: 0 }
   const excavator = isExcavator ? buildExcavator(env.scene, env.parent, env.mats) : null
   const loader = isExcavator ? null : buildWheelLoader(env.scene, env.parent, env.mats)
-  const fall = new FallingMaterial(env.scene, env.parent, env.mats, '#8d877d', 40, 0.1)
+  const fall = new FallingMaterial(env.scene, env.parent, env.mats, '#8d877d', 60, 0.1)
+  const lip = new Vector3()
   const ground = env.heightAt(zone.x, zone.z)
   const apply = (machine: ExcavatorPose | LoaderPose | undefined) => {
     if (excavator) excavator.update(machine && 'swing' in machine ? machine : idleExcavator)
@@ -214,7 +215,13 @@ export function buildDumpBay(env: EquipmentEnv): ZoneEquipment {
   return {
     update(dt, activity) {
       apply(activity?.machine)
-      if (activity?.phase === 'loading') fall.pour(dt, zone.x, ground + 3.4, zone.z, clamp(activity.flow ?? 0.6, 0, 1), 40, 0.8)
+      if (activity?.phase === 'loading') {
+        const flow = clamp(activity.flow ?? 0.6, 0, 1)
+        if (excavator) {
+          excavator.bucketLip(lip)
+          fall.pour(dt, lip.x, lip.y, lip.z, flow, 60, 0.35)
+        } else fall.pour(dt, zone.x, ground + 3.4, zone.z, flow, 40, 0.8)
+      }
       fall.update(dt, ground + 1.0)
     },
     dispose() {

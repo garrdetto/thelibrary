@@ -169,6 +169,24 @@ export interface ChunkProps {
   signs: SignSpot[]
 }
 
+/**
+ * The tree trunks of a chunk as solid obstacles for the physics world, at the given prop density (so exactly the trees that are
+ * drawn): oaks and pines, trunk radius from each tree's scale.
+ */
+export function chunkTreeObstacles(terrain: Terrain, chunkX: number, chunkZ: number, density: number): { x: number; z: number; radius: number; height: number }[] {
+  const props = placeChunkProps(terrain, chunkX, chunkZ, density)
+  const out: { x: number; z: number; radius: number; height: number }[] = []
+  for (const [batch, trunk] of [[props.oak, 0.32], [props.pine, 0.24]] as const) {
+    const m = batch.matrices
+    for (let i = 0; i < batch.count; i++) {
+      const o = i * 16
+      const scale = Math.hypot(m[o], m[o + 1], m[o + 2])
+      out.push({ x: m[o + 12], z: m[o + 14], radius: Math.min(0.7, Math.max(0.18, trunk * scale)), height: 4 })
+    }
+  }
+  return out
+}
+
 export function createChunkProps(): ChunkProps {
   return { oak: new InstanceBatch(), pine: new InstanceBatch(), pole: new InstanceBatch(), wires: [], signs: [] }
 }

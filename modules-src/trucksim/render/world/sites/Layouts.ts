@@ -11,7 +11,7 @@ import { barn, farmhouse, grainBin, machineShed } from './FarmParts'
 import { around, fuelCanopy, lettered, lightPoles, perimeterFence, washCanopy } from './LayoutKit'
 import {
   column, condenser, container, crusherPlant, displayPad, flareStack, frameHouse, logPile, lumberStack, millHall, mound, overpass, pipeRack, portaJohn, pylon,
-  shopFront, showroom, siloCluster, smokestack, steelYard, stockpile, tank, terrace, towerCrane, warehouse,
+  shopFront, showroom, siloCluster, smokestack, steelYard, stacker, stockpile, tank, terrace, towerCrane, warehouse,
 } from './Parts'
 import type { SitePlanner } from './Plan'
 import { layoutTown } from './Town'
@@ -85,12 +85,18 @@ function quarry(p: SitePlanner): void {
   const wallX = x0 + 20 + wallLength / 2
   p.place({ name: 'pit wall north', x: wallX, z: z1 - 14, rot: 2, wl: wallLength, dl: 28, build: (b) => terrace(b, wallLength, 28, 3, 4) })
   p.place({ name: 'pit wall south', x: wallX, z: z0 + 14, rot: 0, wl: wallLength, dl: 28, build: (b) => terrace(b, wallLength, 28, 3, 4) })
-  const piles: [number, string, number][] = [[260, 'rock', 12], [330, 'sand', 10], [400, 'gravel', 11], [290, 'rockDark', 9], [380, 'rock', 12]]
-  piles.forEach(([x, key, r], i) => {
-    const z = i < 3 ? 1228 : 1088
-    scanFirst(p, 'stockpile', [{ name: '', wl: r * 2, dl: r * 2, near: [x, z], build: (b) => stockpile(b, r, r * 0.8, key) }])
+  const piles: [number, string, number][] = [[-100, 'rock', 12], [-30, 'sand', 10], [40, 'gravel', 11], [-70, 'rockDark', 9], [20, 'rock', 12]]
+  piles.forEach(([dx, key, r], i) => {
+    const dz = i < 3 ? 68 : -72
+    scanFirst(p, 'stockpile', [{ name: '', wl: r * 2, dl: r * 2, near: [s.x + dx, s.z + dz], build: (b) => stockpile(b, r, r * 0.72, key) }])
   })
   p.scan({ name: 'crusher plant', wl: 44, dl: 18, near: [x0 + 70, z0 + 70], build: (b) => crusherPlant(b, 44, 18) })
+  const crusher = p.pieces.find((piece) => piece.name === 'crusher plant')
+  if (crusher) {
+    const run = 26
+    p.place({ name: 'stacker', x: crusher.x + 22 + run / 2, z: crusher.z, wl: run, dl: 6, overhead: true, areas: [], quiet: true, build: (b) => stacker(b, run, 9) })
+    p.place({ name: 'stacker pile', x: crusher.x + 22 + run + 3, z: crusher.z, wl: 20, dl: 20, quiet: true, build: (b) => stockpile(b, 9, 6.5, 'gravel') })
+  }
   p.scan({ name: 'scale office', wl: 4, dl: 12, near: [x0 + 20, z1 - 60], build: (b) => officeTrailer(b, 4, 12, 'metalWhite') })
   p.scan({ name: 'equipment shed', wl: 28, dl: 16, near: [x0 + 45, z1 - 45], build: (b) => steelShop(b, 28, 16, 'metalGrey', 'metalYellow') })
   lightPoles(p, [[x0 + 30, z0 + 50], [x0 + 30, z1 - 50], [s.x, z1 - 50], [s.x, z0 + 50]])
