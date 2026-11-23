@@ -2,7 +2,7 @@
  * Truck Simulator's four graphics tiers and what each one turns on: the render-line cap the page's resolution control applies,
  * sun shadows (none, one fitted map, or cascades with soft contact-hardening edges on ultra), how far the world streams and how
  * dense its trees are, anti-aliasing (FXAA or 4× MSAA, the most WebGPU allows), bloom, sharpening and SSAO. `resolveTier` picks a
- * tier from `?quality=` or, without it, from the backend and the device. Renderer-free.
+ * tier from `?quality=`, the driver's saved pick, or the device (medium, low on weak devices). Renderer-free apart from `localStorage`.
  */
 import type { Backend } from '../../rackreel/core/Backend'
 
@@ -96,18 +96,36 @@ function parseTier(value: string | null): QualityTier | null {
   return (QUALITY_TIERS as readonly string[]).includes(lower) ? (lower as QualityTier) : null
 }
 
+/** Where the page remembers the tier the driver picked in the pause menu (this browser only). */
+export const TIER_STORAGE_KEY = 'trucksim:quality'
+
 /**
- * `?quality=low|medium|high|ultra` (also `med`, `max`) wins. Otherwise WebGPU starts on high and WebGL2 on medium, phones and
- * devices reporting under 4 GB or 4 cores go one tier lower, and 16 GB with 12+ cores on WebGPU goes to ultra.
+ * `?quality=low|medium|high|ultra` (also `med`, `max`) wins, then the tier this driver picked before (`saved`). Otherwise every
+ * driver starts on medium, and phones and devices reporting under 4 GB or 4 cores on low; higher tiers are a pick in the pause menu.
  */
-export function resolveTier(search: string, backend: Backend, hints: DeviceHints = deviceHints()): QualityTier {
-  const asked = parseTier(new URLSearchParams(search).get('quality'))
+export function resolveTier(search: string, _backend: Backend, hints: DeviceHints = deviceHints(), saved: string | null = savedTier()): QualityTier {
+  const asked = parseTier(new URLSearchParams(search).get('quality')) ?? parseTier(saved)
   if (asked) return asked
-  let tier: QualityTier = backend === 'webgpu' ? 'high' : 'medium'
   const weak = hints.mobile === true || (hints.memoryGb !== undefined && hints.memoryGb < 4) || (hints.cores !== undefined && hints.cores < 4)
-  if (weak) return lowerTier(tier)
-  if (backend === 'webgpu' && (hints.memoryGb ?? 0) >= 16 && (hints.cores ?? 0) >= 12) tier = 'ultra'
-  return tier
+  return weak ? 'low' : 'medium'
+}
+
+/** The tier saved in this browser, or null (no storage, private window, nothing saved). */
+export function savedTier(): string | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage.getItem(TIER_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+/** Remembers the driver's pick for their next visit; silently skipped when storage is unavailable. */
+export function saveTier(tier: QualityTier): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(TIER_STORAGE_KEY, tier)
+  } catch {
+    return
+  }
 }
 
 /** A tier's settings (a fresh copy, safe to adjust). */

@@ -10,16 +10,19 @@ import type { Profile } from './Economy'
 import type { HaulWorld } from './HaulWorld'
 import { findJob, jobPayout, jobSlot, minimumMs } from './Jobs'
 import type { JobPayout } from './Jobs'
-import { COLOR_PATTERN, MAX_ITEMS, hasService, itemCost, itemRefund, validateItem, washSpots } from './Lots'
+import { COLOR_PATTERN, MAX_ITEMS, STARTER_DRIVEWAY_ID, hasService, itemCost, itemRefund, validateItem, washSpots } from './Lots'
 import type { BuildItem, LotSize } from './Lots'
 import { LAND_STRIP_M, LOTS, LOT_D, LOT_W, MAX_LAND_STRIPS, lotExtent } from './WorldLayout'
 
+/** A look as a client sends it: saves from before grilles, roof fairings and skirts may leave them out (`normalizeLook` fills them in). */
+export type SentLook = Omit<TruckLook, 'grille' | 'roof' | 'skirts'> & Partial<Pick<TruckLook, 'grille' | 'roof' | 'skirts'>>
+
 export type TruckAction =
-  | { action: 'buy-truck'; model: string; look?: TruckLook }
+  | { action: 'buy-truck'; model: string; look?: SentLook }
   | { action: 'buy-trailer'; model: string; color?: string }
   | { action: 'sell-truck'; uid: string }
   | { action: 'sell-trailer'; uid: string }
-  | { action: 'customize'; uid: string; look: TruckLook }
+  | { action: 'customize'; uid: string; look: SentLook }
   | { action: 'select'; truck: string; trailer: string | null }
   | { action: 'accept-job'; job: string }
   | { action: 'complete-job'; job: string; damage: number }
@@ -125,7 +128,7 @@ function sellTrailer(profile: Profile, uid: string): ActResult {
   return accept(profile, value, `Sold the trailer for ${money(value)}.`)
 }
 
-function customize(profile: Profile, uid: string, rawLook: TruckLook): ActResult {
+function customize(profile: Profile, uid: string, rawLook: SentLook): ActResult {
   const truck = profile.trucks.find((entry) => entry.uid === uid)
   if (!truck) return refuse(profile, 'You do not own that truck.')
   const look = normalizeLook(rawLook, TRUCK_BY_ID[truck.model])
@@ -248,6 +251,24 @@ function demolish(profile: Profile, ids: string[]): ActResult {
  * Moves a driver's lot to `index`, keeping the land they bought (it grows the new lot) and their build: a west lot grows away from
  * its gate toward -x, so items shifted for bought land on one side are shifted back when the new lot is on the other side.
  */
+/** The free gravel driveway a new driver's lot starts with: 10 m wide, running 40 m in from the gate along the lot's middle. */
+export function starterDriveway(index: number): BuildItem | null {
+  const lot = LOTS[index]
+  if (!lot) return null
+  const length = 40
+  const width = 10
+  const x = lot.side === 'west' ? lot.w - length : 0
+  const z = Math.round(lot.gate.z - lot.z - width / 2)
+  return { id: STARTER_DRIVEWAY_ID, def: 'pave-gravel', x, z, w: length, d: width, rot: 0, color: '#8a847a' }
+}
+
+/** A brand-new driver (a lot, nothing built, no kilometres or jobs yet) gets the starter driveway; anyone else is returned as is. */
+export function withStarterDriveway(profile: Profile): Profile {
+  if (profile.lot === null || profile.build.length > 0 || profile.stats.km > 0 || profile.stats.jobs > 0) return profile
+  const driveway = starterDriveway(profile.lot)
+  return driveway ? { ...profile, build: [driveway] } : profile
+}
+
 export function moveToLot(profile: Profile, index: number): Profile {
   if (profile.lot === index) return profile
   const fromWest = profile.lot !== null && LOTS[profile.lot]?.side === 'west'

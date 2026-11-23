@@ -23,6 +23,7 @@ interface EngineState {
 export class TruckAudio {
   private context: AudioContext | null = null
   private readonly nodes: AudioNode[] = []
+  private readonly lastTargets = new Map<AudioParam, number>()
   private readonly sources: AudioScheduledSourceNode[] = []
   private master: GainNode | null = null
   private engineGain: GainNode | null = null
@@ -136,6 +137,7 @@ export class TruckAudio {
     }
     for (const node of this.nodes) node.disconnect()
     this.nodes.length = 0
+    this.lastTargets.clear()
     this.sources.length = 0
     this.engineOscillators = []
     this.hornGains = []
@@ -146,8 +148,12 @@ export class TruckAudio {
     void context.close()
   }
 
+  /** Glides `param` to `value`, skipping changes under 0.5 % so a steady engine schedules no new automation every frame. */
   private glide(param: AudioParam | undefined, value: number, timeConstant = SMOOTHING): void {
     if (!param || !this.context) return
+    const last = this.lastTargets.get(param)
+    if (last !== undefined && Math.abs(value - last) <= Math.max(1e-4, Math.abs(last) * 0.005)) return
+    this.lastTargets.set(param, value)
     param.setTargetAtTime(value, this.context.currentTime, timeConstant)
   }
 
