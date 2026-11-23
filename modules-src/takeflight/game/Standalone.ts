@@ -45,8 +45,8 @@ import { Simulation } from '../sim/Simulation'
 import type { InterpolatedState } from '../sim/Simulation'
 import { placeStart } from '../sim/Starts'
 import type { TouchdownEvent } from '../sim/Telemetry'
-import type { WindSpec } from '../sim/Wind'
 import { CALM } from '../sim/Wind'
+import { HOURS, WINDS } from '../shared/Conditions'
 import { InputManager } from '../input/InputManager'
 import type { PilotAction } from '../input/InputManager'
 import { AircraftVisual } from '../render/AircraftVisual'
@@ -61,7 +61,7 @@ import { Debrief } from '../ui/Debrief'
 import { DevOverlay } from '../ui/DevOverlay'
 import { Hud } from '../ui/Hud'
 import { Menus, savedLivery } from '../ui/Menus'
-import type { FlightOptions, StartKind, TimeKind, WindKind } from '../ui/Menus'
+import type { FlightOptions, StartKind } from '../ui/Menus'
 import { CameraRig, VIEW_ORDER } from './Cameras'
 import { CareerStore } from './CareerStore'
 import { allPlaces } from '../shared/Towns'
@@ -70,6 +70,7 @@ import { FlightSession } from './FlightSession'
 import { TouchdownReplay } from './TouchdownReplay'
 import { Radio } from './Radio'
 import { TrafficView } from '../render/TrafficView'
+import { Boards } from '../ui/Boards'
 import type { RadioConditions } from './Radio'
 import { AIRLINES } from '../shared/Airlines'
 
@@ -79,13 +80,6 @@ export interface BootProgress {
 
 type Phase = 'menu' | 'flying' | 'paused' | 'debrief' | 'replay'
 
-const WINDS: Record<WindKind, WindSpec> = {
-  calm: CALM,
-  light: { direction: 90, speed: 3.1, gust: 0, turbulence: 0.12 },
-  crosswind: { direction: 180, speed: 6.2, gust: 1.2, turbulence: 0.25 },
-  gusty: { direction: 240, speed: 7.2, gust: 5.1, turbulence: 0.5 },
-}
-const HOURS: Record<TimeKind, number> = { morning: 8.2, noon: 12.5, evening: 18.9, night: 22.5 }
 const VIEW_NAMES = { cockpit: 'Cockpit', chase: 'Chase', tower: 'Tower' } as const
 
 export class Standalone {
@@ -116,6 +110,7 @@ export class Standalone {
   private terrain!: TerrainRenderer
   private world!: World
   private traffic!: TrafficView
+  private boards!: Boards
   private weather!: WeatherView
   private towerAirport: AirportSpec = HARROW_FIELD
   private water!: Mesh
@@ -159,6 +154,10 @@ export class Standalone {
       backend,
       tier: this.tier,
     }))
+    this.boards = this.scope.track(new Boards(ui, () => {
+      this.boards.hide()
+      this.menus.showStart()
+    }))
     this.careerPanel = this.scope.track(new CareerPanel(ui, {
       checkride: (id) => this.startCheckride(id),
       cargo: (job, aircraft) => {
@@ -200,6 +199,10 @@ export class Standalone {
       airlines: () => {
         this.menus.hide()
         this.careerPanel.showAirlines(this.career.profile)
+      },
+      boards: () => {
+        this.menus.hide()
+        this.boards.show()
       },
     }, this.tier, `${this.spec.maker} ${this.spec.name}`, this.careerPanel.summary, Object.fromEntries(FLEET.map((spec) => [spec.id, `${spec.maker} ${spec.name}`]))))
     this.session = new FlightSession(this.sim)
@@ -411,7 +414,7 @@ export class Standalone {
     this.replay.stop()
     this.debrief.hide()
     if (this.phase === 'flying' || this.phase === 'paused') this.session.abandon()
-    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists }, weather: options.weather, failure: ride?.setup.failure ?? null, payload: options.job ? options.job.kg : options.route ? options.route.passengers * 90 : null, job: options.job ? options.job.id : null, route: options.route ? options.route.id : null }
+    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists }, weather: options.weather, failure: ride?.setup.failure ?? null, payload: options.job ? options.job.kg : options.route ? options.route.passengers * 90 : null, job: options.job ? options.job.id : null, route: options.route ? options.route.id : null, flight: this.flightId(), windKind: options.wind, time: options.time, checkride: options.checkride ?? null }
     this.sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: this.options.assists, weather: header.weather, failure: header.failure, payload: header.payload })
     this.placeAt(airport, options.start)
     this.showAround(airport)
@@ -444,6 +447,12 @@ export class Standalone {
   }
 
   /** Ends the flight and opens its debrief. */
+  private flightId(): string {
+    const bytes = new Uint8Array(10)
+    crypto.getRandomValues(bytes)
+    return Array.from(bytes, (b) => (b % 36).toString(36)).join('')
+  }
+
   private conditions(): RadioConditions {
     const c = this.radioConditions
     c.hours = this.weather.hours
@@ -462,14 +471,14 @@ export class Standalone {
     this.input.enabled = false
     this.menus.hide()
     this.hud.setVisible(false)
-    const { score, record } = this.session.finish(reason, this.sim.aircraft.crashed, this.spec)
+    const { score, record } = this.session.finish(reason, this.sim.aircraft.crashed, this.spec, this.instrumentsOnly)
     const options = this.options
     const checkride = options?.checkride ?? null
     this.debrief.show(score, this.session.recorder.telemetryLog(), { canContinue: reason !== 'crash' && !this.sim.aircraft.crashed && checkride === null, aircraft: `${this.spec.maker} ${this.spec.name}`, airport: (airportById(score.landing?.airport ?? options?.airport ?? '') ?? HARROW_FIELD).name, checkride: checkride ? CHECKRIDE_SPECS[checkride].title : null })
     if (options) {
       const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: options.airport, start: options.start, wind: options.wind, weather: options.weather, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, engineFailure: this.sim.aircraft.failedEngine >= 0, checkride, job: options.job && this.submittedSeconds === 0 ? options.job.id : null, route: options.route && this.submittedSeconds === 0 ? options.route.id : null })
       this.submittedSeconds = score.seconds
-      void this.career.record(summary).then((outcome) => {
+      void this.career.record(summary, record.then((result) => (result ? result.bytes : null))).then((outcome) => {
         if (this.session.score === score) this.debrief.setCareer(CareerPanel.outcome(outcome, this.career.mode))
       })
     }

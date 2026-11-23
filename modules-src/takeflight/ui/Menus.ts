@@ -81,6 +81,7 @@ export interface MenuHandlers {
   checkrides(): void
   cargo(): void
   airlines(): void
+  boards(): void
 }
 
 const KIND_LABELS: Record<AirportSpec['kind'], string> = { grass: 'grass strip', ga: 'general aviation', regional: 'regional', cargo: 'cargo', midsize: 'mid-size', hub: 'international hub', challenge: 'mountain field' }
@@ -226,7 +227,7 @@ export class Menus {
       make('h1', { textContent: 'Take Flight' }),
       make('p', { textContent: `${this.aircraftName} and more as your licences grow. Seven airports across a 200 km region, from a grass strip to an international hub. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
       this.career,
-      make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides()), button('Cargo contracts', () => this.handlers.cargo()), button('Airlines', () => this.handlers.airlines())),
+      make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides()), button('Cargo contracts', () => this.handlers.cargo()), button('Airlines', () => this.handlers.airlines()), button('Leaderboards', () => this.handlers.boards())),
       choice('Aircraft', this.aircraftLabels, this.options.aircraft, (v) => {
         this.options.aircraft = v
         this.renderLiveries()

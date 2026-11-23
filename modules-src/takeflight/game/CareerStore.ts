@@ -106,7 +106,11 @@ export class CareerStore {
     }
   }
 
-  async record(summary: FlightSummary): Promise<RecordOutcome> {
+  /**
+   * Adds a flight. Guests apply the page's summary; signed-in pilots send the flight record, which the Worker re-flies and
+   * scores itself (the summary only fills the debrief if the save fails).
+   */
+  async record(summary: FlightSummary, record: Promise<Uint8Array | null>): Promise<RecordOutcome> {
     const entry = hangarEntry(summary.aircraft)
     const context = { now: Date.now(), pilotClass: pilotClassOf(entry?.category ?? 'trainer'), family: entry?.family ?? 'wren', classes: HANGAR_CLASSES, payload: entry?.payload }
     const local = applyFlight(this.profile, summary, context)
@@ -116,8 +120,10 @@ export class CareerStore {
       this.changed()
       return { result: local, saved, message: saved ? null : 'This browser would not keep the career.' }
     }
+    const bytes = await record
+    if (!bytes) return { result: local, saved: false, message: 'The flight record could not be made, so the flight was not saved.' }
     try {
-      const response = await fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'flight', summary }) })
+      const response = await fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/octet-stream' }, body: new Blob([bytes as Uint8Array<ArrayBuffer>]) })
       const body = (await response.json().catch(() => ({}))) as { ok?: boolean; result?: FlightResult; error?: string }
       if (response.ok && body.ok && body.result) {
         this.profile = normalizeCareer(body.result.profile)

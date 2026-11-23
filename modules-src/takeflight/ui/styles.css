@@ -450,3 +450,13 @@
   .tf-hud .tf-radio { top: auto; bottom: 120px; width: calc(100vw - 32px); }
   .tf-hud .tf-radio p { font-size: 12px; }
 }
+
+.tf-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.tf-tabs .tf-chip { cursor: pointer; font: inherit; color: inherit; }
+.tf-tabs .tf-chip:focus-visible { outline: 2px solid var(--tf-accent); outline-offset: 2px; }
+.tf-board { min-height: 120px; }
+.tf-board-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tf-board-table caption { text-align: left; color: var(--tf-muted); font-size: 12px; padding-bottom: 6px; }
+.tf-board-table th, .tf-board-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--tf-line); }
+.tf-board-table td:first-child, .tf-board-table th:first-child { width: 3em; color: var(--tf-muted); }
+.tf-board-table td:last-child, .tf-board-table th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
