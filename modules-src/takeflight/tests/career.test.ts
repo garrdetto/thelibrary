@@ -17,7 +17,7 @@ const NO_ASSISTS = { autoTrim: false, stallProtection: false, landingGuidance: f
 
 function summary(overrides: Partial<FlightSummary> = {}): FlightSummary {
   return {
-    aircraft: 'halden-wren', airport: 'harrow', start: 'runway1', wind: 'crosswind', time: 'noon', seconds: 300, resumed: false, total: 82, crashed: false,
+    aircraft: 'halden-wren', airport: 'harrow', start: 'runway1', wind: 'crosswind', weather: 'fair', time: 'noon', seconds: 300, resumed: false, total: 82, crashed: false,
     assists: { ...NO_ASSISTS }, instrumentsOnly: false,
     categories: { landing: 80, approach: 85, smoothness: 90, procedure: 95, operations: 100 },
     metrics: { 'approach.glidepath': 0.9, 'approach.tracking': 0.9 },
@@ -133,7 +133,7 @@ test('a real scored landing passes the Private Pilot criteria', () => {
     sim.stepPilot()
   }
   const score = scoreFlight({ spec: WREN, assists: NO_ASSISTS, telemetry: recorder.telemetryLog(), samples: recorder.samples, touchdowns: recorder.touchdowns, crashed: sim.aircraft.crashed, ended: 'stopped' })
-  const s = summarizeFlight(score, { aircraft: WREN.id, airport: HARROW_FIELD.id, start: 'final1', wind: 'crosswind', time: 'noon', seconds: score.seconds, resumed: false, assists: NO_ASSISTS, instrumentsOnly: false, checkride: 'ppl' as CheckrideId })
+  const s = summarizeFlight(score, { aircraft: WREN.id, airport: HARROW_FIELD.id, start: 'final1', wind: 'crosswind', weather: 'fair', time: 'noon', seconds: score.seconds, resumed: false, assists: NO_ASSISTS, instrumentsOnly: false, checkride: 'ppl' as CheckrideId })
   const evaluation = evaluateCheckride('ppl', s)
   assert.equal(evaluation.passed, true, JSON.stringify(evaluation.criteria.filter((c) => !c.passed)))
 })

@@ -18,6 +18,7 @@ import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { hash2 } from '../sim/SimMath'
 import { REGION_HALF, WATER_LEVEL, WORLD_SEED, fieldShade, forestDensity, naturalHeight, terrainHeight } from '../shared/Terrain'
+import { townWeight } from '../shared/Towns'
 import type { FlightQuality } from './Quality'
 
 const GRID = 32
@@ -398,6 +399,7 @@ export class TerrainRenderer {
         const r3 = hash2(gx, gz, WORLD_SEED + 73) / 4294967296
         const x = x0 + (i + r2) * TREE_CELL
         const z = z0 + (j + r3) * TREE_CELL
+        if (townWeight(x, z) > 0.2) continue
         const forest = forestDensity(x, z)
         const hedge = fieldShade(x + 9, z) > 0.94 ? 0.5 : 0
         if (forest + hedge < 0.35 + r1 * 0.5) continue

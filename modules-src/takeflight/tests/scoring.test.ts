@@ -23,7 +23,7 @@ function fly(start: StartKind, seconds: number, options: { flareHeight?: number;
     sim.pilot.throttle = 1
     for (let i = 0; i < SIM_HZ * 20; i++) sim.stepPilot()
   }
-  const header: RecordHeader = { version: RECORD_VERSION, aircraft: WREN.id, airport: HARROW_FIELD.id, start, wind: LIGHT, seed: 2024, temperatureOffset: 0, seaLevelPressure: sim.setup.seaLevelPressure, assists: { ...sim.setup.assists } }
+  const header: RecordHeader = { version: RECORD_VERSION, aircraft: WREN.id, airport: HARROW_FIELD.id, start, wind: LIGHT, seed: 2024, temperatureOffset: 0, seaLevelPressure: sim.setup.seaLevelPressure, assists: { ...sim.setup.assists }, weather: 'clear' }
   sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: 0, seaLevelPressure: header.seaLevelPressure, assists: header.assists })
   placeStart(sim.aircraft, sim.pilot, HARROW_FIELD, TERRAIN, start)
   sim.settle()

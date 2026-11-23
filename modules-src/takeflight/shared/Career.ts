@@ -10,6 +10,8 @@ import type { AssistSettings } from '../sim/Assists'
 import type { CategoryId, FlightScore } from '../sim/Scoring'
 import { pow } from '../sim/SimMath'
 import type { StartKind } from '../sim/Starts'
+import { WEATHER_XP } from './Weather'
+import type { WeatherKind } from './Weather'
 
 export const CAREER_VERSION = 1
 export const MAX_LEVEL = 100
@@ -80,6 +82,7 @@ export interface FlightSummary {
   airport: string
   start: StartKind
   wind: WindKind
+  weather: WeatherKind
   time: TimeKind
   /** Seconds flown since the last summary of this flight (all of it for a first summary). */
   seconds: number
@@ -103,6 +106,7 @@ export interface CheckrideSetup {
   airport: string
   start: StartKind
   wind: WindKind
+  weather: WeatherKind
   time: TimeKind
   instrumentsOnly: boolean
 }
@@ -142,18 +146,18 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 3,
     hours: 0.5,
     pilotClass: 'single',
-    setup: { airport: 'harrow', start: 'runway1', wind: 'crosswind', time: 'noon', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway1', wind: 'crosswind', weather: 'fair', time: 'noon', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, category('landing', 70, 'Landing'), category('procedure', 75, 'Procedure'), { label: 'Total 70 or better', test: (s) => s.total >= 70 }, { label: 'At least 2 minutes flown', test: (s) => s.seconds >= 120 }],
   },
   instrument: {
     id: 'instrument',
     title: 'Instrument Rating checkride',
-    brief: 'A 3-mile final to runway 09 on the gauges: only the essential HUD figures, no glidepath guidance. Hold the glidepath and centreline to touchdown.',
+    brief: 'A 3-mile final to runway 09 in fog, on the gauges: only the essential HUD figures, no glidepath guidance. Hold the glidepath and centreline to touchdown.',
     needs: ['ppl'],
     level: 8,
     hours: 2,
     pilotClass: 'single',
-    setup: { airport: 'harrow', start: 'final1', wind: 'light', time: 'evening', instrumentsOnly: true },
+    setup: { airport: 'harrow', start: 'final1', wind: 'light', weather: 'fog', time: 'evening', instrumentsOnly: true },
     criteria: [noAssists, noCrash, onRunway, { label: 'Flown on instruments', test: (s) => s.instrumentsOnly }, category('approach', 80, 'Approach'), metricAtLeast('approach.glidepath', 0.75, 'Glidepath within about 0.8 dots'), metricAtLeast('approach.tracking', 0.75, 'Centreline tracking within about 1.3°'), category('landing', 65, 'Landing')],
   },
   multi: {
@@ -164,7 +168,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 12,
     hours: 5,
     pilotClass: 'multi',
-    setup: { airport: 'harrow', start: 'runway1', wind: 'light', time: 'noon', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway1', wind: 'light', weather: 'fair', time: 'noon', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, category('landing', 75, 'Landing'), category('procedure', 85, 'Procedure')],
   },
   commercial: {
@@ -175,7 +179,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 20,
     hours: 10,
     pilotClass: 'single',
-    setup: { airport: 'harrow', start: 'runway2', wind: 'gusty', time: 'morning', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway2', wind: 'gusty', weather: 'overcast', time: 'morning', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, noBounce, category('landing', 80, 'Landing'), category('smoothness', 80, 'Smoothness'), category('procedure', 90, 'Procedure'), { label: 'Total 85 or better', test: (s) => s.total >= 85 }],
   },
   atp: {
@@ -186,7 +190,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 35,
     hours: 25,
     pilotClass: 'jet',
-    setup: { airport: 'harrow', start: 'runway1', wind: 'crosswind', time: 'noon', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway1', wind: 'crosswind', weather: 'fair', time: 'noon', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, noBounce, category('landing', 85, 'Landing'), category('approach', 85, 'Approach'), category('smoothness', 85, 'Smoothness'), { label: 'Total 90 or better', test: (s) => s.total >= 90 }],
   },
 }
@@ -312,7 +316,7 @@ export function flightXp(summary: FlightSummary): number {
   const minutes = summary.seconds / 60
   const duration = Math.min(3, 0.5 + minutes / 10)
   const night = summary.time === 'night' ? 1.2 : 1
-  let xp = summary.total * 2 * duration * WIND_FACTOR[summary.wind] * night
+  let xp = summary.total * 2 * duration * WIND_FACTOR[summary.wind] * (WEATHER_XP[summary.weather] ?? 1) * night
   if (summary.landing && summary.landing.onRunway) xp += 20 + (summary.categories.landing ?? 0)
   return Math.min(MAX_FLIGHT_XP, Math.round(xp))
 }
@@ -389,7 +393,7 @@ export function applyFlight(profile: CareerProfile, summary: FlightSummary, cont
 }
 
 /** Builds the summary the career and the Worker read from a scored flight. */
-export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; checkride: CheckrideId | null }): FlightSummary {
+export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; weather: WeatherKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; checkride: CheckrideId | null }): FlightSummary {
   const categories: Partial<Record<CategoryId, number>> = {}
   const metrics: Record<string, number> = {}
   for (const c of score.categories) {
