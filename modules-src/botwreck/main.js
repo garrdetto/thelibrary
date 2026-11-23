@@ -69,9 +69,25 @@ let selected = 'rocket', paint = PAINTS[0];
 
 /* ---------------- Renderer, scene, camera ---------------- */
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+/* Graphics setting: low (the default) renders one pixel per CSS pixel with no shadows; high is the full picture. */
+const GRAPHICS = (() => {
+  const asked = new URLSearchParams(location.search).get('quality');
+  if (asked === 'low' || asked === 'high') return asked;
+  try { return localStorage.getItem('botwreck/graphics') === 'high' ? 'high' : 'low'; } catch { return 'low'; }
+})();
+const graphicsButton = document.getElementById('gfxBtn');
+if (graphicsButton) {
+  graphicsButton.textContent = `GRAPHICS: ${GRAPHICS === 'high' ? 'HIGH' : 'LOW'}`;
+  graphicsButton.addEventListener('click', () => {
+    try { localStorage.setItem('botwreck/graphics', GRAPHICS === 'high' ? 'low' : 'high'); } catch { return; }
+    const url = new URL(location.href);
+    url.searchParams.delete('quality');
+    location.replace(url.toString());
+  });
+}
+renderer.setPixelRatio(GRAPHICS === 'high' ? Math.min(2, window.devicePixelRatio || 1) : 1);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = GRAPHICS === 'high';
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;

@@ -1,5 +1,5 @@
 /** Northwoods Angler entry: boots the PlayCanvas world and the game screens. */
-import { pickQuality } from './config'
+import { pickQuality, saveQuality, type QualityTier } from './config'
 import { setClockOffset } from './shared/Clock'
 import { Game } from './game/Game'
 
@@ -17,7 +17,18 @@ async function boot(): Promise<void> {
     const at = Date.parse(preview)
     if (Number.isFinite(at)) setClockOffset(at - Date.now())
   }
-  const game = new Game(canvas, pickQuality())
+  const quality = pickQuality()
+  const graphics = document.getElementById('graphics-select') as HTMLSelectElement | null
+  if (graphics) {
+    graphics.value = quality
+    graphics.addEventListener('change', () => {
+      saveQuality(graphics.value as QualityTier)
+      const url = new URL(location.href)
+      url.searchParams.delete('quality')
+      location.replace(url.toString())
+    })
+  }
+  const game = new Game(canvas, quality)
   window.__angler = game
   await game.start()
 }

@@ -18,6 +18,7 @@ import { RangeMode } from './modes/RangeMode'
 import { HordeMode } from './modes/HordeMode'
 import { PracticeMode } from './modes/PracticeMode'
 import type { ActiveMode, ModeContext, ModeRequest, PlayModeId } from './modes/types'
+import { loadGraphics } from './ui/Settings'
 import { HubBridge } from '../../../engine/net/HubBridge'
 import { Scores } from '../../../engine/net/Scores'
 import { ARENA_MAX_HEALTH } from '../../../server/arena/protocol.mjs'
@@ -56,14 +57,15 @@ export async function startArena(stage: HTMLElement): Promise<void> {
   stage.prepend(canvas)
 
   const engine = new Engine(canvas, true, { stencil: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' }, true)
-  engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2))
+  const graphics = loadGraphics()
+  engine.setHardwareScalingLevel(graphics === 'high' ? 1 / Math.min(window.devicePixelRatio || 1, 2) : 1)
 
   const scene = new Scene(engine)
   scene.collisionsEnabled = true
   scene.gravity = new Vector3(0, GRAVITY, 0)
   scene.skipPointerMovePicking = true
 
-  const environment = createEnvironment(scene)
+  const environment = createEnvironment(scene, graphics === 'high')
   const materials = createMaterials(scene)
   const arena = buildArena(scene, materials, environment.shadows)
   createTerrain(scene, ARENA_HALF_WIDTH, ARENA_HALF_LENGTH)

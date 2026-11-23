@@ -555,7 +555,7 @@ function freshProfile() {
     equippedDeck: 'maple',
     records: { blitz: {}, showdown: {}, story: {} },
     stats: { runs: 0, tricksLanded: 0, bails: 0, lettersCollected: 0, bestCombo: 0, grindMeters: 0 },
-    settings: { quality: 'high', volume: 0.7, fps: false, rank: 'officer', keys: true },
+    settings: { quality: 'low', volume: 0.7, fps: false, rank: 'officer', keys: true },
   };
 }
 
@@ -579,7 +579,7 @@ function normalizeProfile(raw) {
     records: { blitz: recs(raw.records?.blitz), showdown: recs(raw.records?.showdown), story: recs(raw.records?.story) },
     stats: { ...base.stats, ...Object.fromEntries(Object.entries(raw.stats ?? {}).filter(([k, v]) => k in base.stats && Number.isFinite(v))) },
     settings: {
-      quality: ['low', 'high', 'ultra'].includes(raw.settings?.quality) ? raw.settings.quality : 'high',
+      quality: ['low', 'high', 'ultra'].includes(raw.settings?.quality) ? raw.settings.quality : 'low',
       volume: clamp(Number(raw.settings?.volume ?? 0.7) || 0, 0, 1),
       fps: Boolean(raw.settings?.fps),
       rank: raw.settings?.rank === 'sergeant' ? 'sergeant' : 'officer',

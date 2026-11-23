@@ -24,6 +24,23 @@ export function requestedQuality(): ParkQuality | null {
   return q === 'low' || q === 'medium' || q === 'high' ? q : null
 }
 
+const QUALITY_KEY = 'park/quality'
+
+export function savedQuality(): ParkQuality | null {
+  try {
+    const q = typeof localStorage === 'undefined' ? null : localStorage.getItem(QUALITY_KEY)
+    return q === 'low' || q === 'medium' || q === 'high' ? q : null
+  } catch {
+    return null
+  }
+}
+
+export function saveQuality(tier: ParkQuality) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(QUALITY_KEY, tier)
+  } catch {}
+}
+
 const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render/i
 
 export function rendererName(gl: WebGL2RenderingContext) {

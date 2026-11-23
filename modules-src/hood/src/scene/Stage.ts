@@ -1,6 +1,6 @@
 /** Everything both scenes share: the renderer, camera rig, daylight, pointer gestures and the label layer. */
 import * as THREE from 'three/webgpu'
-import type { App, LightingRig } from '../../../../engine'
+import type { App, LightingRig, QualityTier } from '../../../../engine'
 import { CameraRig } from './CameraRig'
 
 export interface PointerTarget {
@@ -41,7 +41,7 @@ export class Stage {
   private viewHeight = 0
   private readonly sizeObserver: ResizeObserver | null
 
-  constructor(readonly app: App, readonly lighting: LightingRig, readonly ui: HTMLElement) {
+  constructor(readonly app: App, readonly lighting: LightingRig, readonly ui: HTMLElement, readonly qualityTier: QualityTier = 'low') {
     this.rig = new CameraRig(app.camera, app.container)
     this.labels = document.createElement('div')
     this.labels.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden'
