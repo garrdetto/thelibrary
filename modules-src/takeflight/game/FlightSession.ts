@@ -3,7 +3,6 @@
  * start from the nearest one), streaming the record to the compression worker a minute at a time, touchdown notices for the HUD,
  * spotting the end of a flight (stopped on the ground after a landing) and the final score.
  */
-import type { AirportSpec } from '../shared/Airports'
 import { RecordWriter } from '../shared/FlightRecord'
 import type { RecordFooter, RecordHeader } from '../shared/FlightRecord'
 import type { CrashReason, FlightModel } from '../sim/FlightModel'
@@ -40,7 +39,7 @@ export class FlightSession {
   private stoppedFor = 0
   private readonly offTick: () => void
 
-  constructor(private readonly sim: Simulation, private readonly airport: AirportSpec) {
+  constructor(private readonly sim: Simulation) {
     this.recorder.attach(sim)
     this.offTick = sim.onTick((tick) => {
       if (tick % SNAPSHOT_TICKS === 0) this.snapshots.push(sim.saveState())
@@ -140,7 +139,7 @@ export class FlightSession {
   /** Ends the flight: scores it and finishes the compressed record (resolves to null if compression is unavailable). */
   finish(ended: EndReason, crashed: CrashReason | null, spec: FlightModel['spec']): { score: FlightScore; record: Promise<FinishedRecord | null> } {
     const r = this.recorder
-    const score = scoreFlight({ spec, airport: this.airport, assists: this.header?.assists ?? { autoTrim: false, stallProtection: false, landingGuidance: false }, telemetry: r.telemetryLog(), samples: r.samples, touchdowns: r.touchdowns, crashed, ended })
+    const score = scoreFlight({ spec, assists: this.header?.assists ?? { autoTrim: false, stallProtection: false, landingGuidance: false }, telemetry: r.telemetryLog(), samples: r.samples, touchdowns: r.touchdowns, crashed, ended })
     this.score = score
     this.pump()
     this.send(r.takeTail())

@@ -4,7 +4,6 @@
  * after, at half or full speed, and loops. The page renders `sim`'s aircraft instead of the live one while it runs.
  */
 import type { AircraftSpec } from '../shared/AircraftSpec'
-import type { AirportSpec } from '../shared/Airports'
 import type { RecordHeader } from '../shared/FlightRecord'
 import type { Ground } from '../shared/Terrain'
 import { Reflight } from '../sim/Reflight'
@@ -24,7 +23,7 @@ export class TouchdownReplay {
   private accumulator = 0
   private hold = 0
 
-  constructor(private readonly spec: AircraftSpec, private readonly ground: Ground, private readonly airport: AirportSpec) {}
+  constructor(private readonly spec: AircraftSpec, private readonly ground: Ground) {}
 
   get sim(): Simulation | null {
     return this.reflight?.sim ?? null
@@ -43,7 +42,7 @@ export class TouchdownReplay {
 
   start(header: RecordHeader, inputs: Uint8Array, snapshots: readonly SimSnapshot[], touchdownTick: number): void {
     this.reflight?.dispose()
-    this.reflight = new Reflight(this.spec, this.ground, this.airport, header, inputs)
+    this.reflight = new Reflight(this.spec, this.ground, header, inputs)
     const ticks = this.reflight.ticks
     this.from = Math.max(0, touchdownTick - BEFORE)
     this.to = Math.min(ticks, touchdownTick + AFTER)

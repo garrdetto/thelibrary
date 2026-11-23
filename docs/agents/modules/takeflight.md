@@ -4,7 +4,7 @@ Career flight simulator (`modules-src/takeflight/`, module id `takeflight`, page
 
 ## Status
 
-Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestones 4–8 (the 200 km region, more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is being delivered in parts: part 1 (seven airports, floating origin, airport streaming, ILS) is in; weather, clouds and time of day, then towns and cities, then CDLOD geomorphing in a worker follow. Milestones 5–8 (more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
 
 **Milestones run back to back (owner, 2026-11-23).** When a milestone's pull request merges, start the next one in the plan without waiting for a prompt, and mark it done in `docs/takeflight/PLAN.md` and here when it merges.
 
@@ -16,6 +16,13 @@ Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, c
 - `game/FlightSession.ts` takes a snapshot every 5 s, streams finished minutes to `game/record.worker.ts`, toasts each touchdown, and ends the flight 2.5 s after the aircraft stops on its wheels following a landing (also Pause → End flight, or 2 s after a crash). `game/TouchdownReplay.ts` re-flies 10 s before to 6 s after the touchdown from the nearest snapshot; the camera sits beside the runway (the Camera button swaps to chase; Escape returns to the debrief).
 - Flight records (`shared/FlightRecord.ts`): `TFR1` + raw DEFLATE of framed JSON header, XOR-delta inputs, delta-coded byte-plane telemetry and JSON footer. Bump `RECORD_VERSION` when the layout or anything that changes a re-flown result changes.
 - The sim costs about 20 µs a tick in Node (bundled, unminified), so a replay never re-flies from the start of a long flight; milestone 7 has to measure the Worker's budget against that.
+
+## The region
+
+- `shared/Airports.ts`: Harrow Field (hand laid out) plus six airports from `layout()`: Millbrook Strip (grass 14/32), Ashby Regional (15/33, ILS), Fenwick Freight Field (cargo, 04/22, ILS), Corran County (14/32, ILS), Halvard International (hub, parallel 12L/30R and 12R/30L, ILS) and Crag Notch (mountain field at 1,065 m, land on 06 only: `landingEnds`). Sites were picked by searching the seeded terrain for clear approaches; `tests/airports.test.ts` keeps every airport flat, every landing end clear below a 2° slope (3.5° at Crag Notch) out to 5 km (10 km with ILS), airports apart, and every start valid. Moving an airport means re-running that search: the natural ground decides where approaches are clear.
+- Starts are generic per airport (`runway1`/`runway2`/`final1`/`final2` on `runways[0]`, `stand`, `cruise` 9 km out at least 450 m above the highest ground on the way in). Scoring finds the landing runway at whichever airport the wheels touch (`nearestAirport`).
+- `shared/Approach.ts` (`approachFor`) gives glideslope and localizer dots for the landing runway end the aircraft is lined up with; ILS ends drive the HUD needles (an instrument, always on), any end drives the landing-guidance bar.
+- `game/World.ts` is the floating origin: terrain and airports hang under `world.root` at minus the origin; the aircraft, camera and tower are drawn at world minus origin; when the aircraft strays 3 km the origin jumps to the kilometre under it and frozen world matrices and bounding boxes under the root are recomputed. Anything new that is placed in world metres goes under `world.root` (and through `world.refresh` if it is frozen before the next rebase) or is converted with the origin. Airports build within 26 km of the camera and are released beyond 34 km. Airport geometry is still in absolute metres (static millimetre rounding far from Harrow); moving it to airport-relative coordinates is milestone 8 polish.
 
 ## Careers
 

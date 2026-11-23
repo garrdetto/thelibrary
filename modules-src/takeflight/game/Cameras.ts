@@ -1,7 +1,7 @@
 /**
  * The three views: cockpit (pilot's eye point with mouse-drag look-around and a slight head lag under G), chase (behind and above,
  * following heading smoothly and pitch partly, orbit with drag and zoom with the wheel) and tower (the airport's tower cab tracking
- * the aircraft with a zoom that keeps it a steady size). One `FreeCamera` is moved by hand each frame; reverse depth keeps the 0.1 m
+ * the aircraft with a zoom that keeps it a steady size). `state` is in scene coordinates (world minus the floating origin). One `FreeCamera` is moved by hand each frame; reverse depth keeps the 0.1 m
  * to 90 km range precise.
  */
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
@@ -39,6 +39,10 @@ export class CameraRig {
   private headLagY = 0
   private readonly orientation = new Quaternion()
   private tower: Vector3 = new Vector3()
+  private readonly towerLocal = new Vector3()
+  /** World position of the scene origin (floating origin); the tower is given in world metres. */
+  originX = 0
+  originZ = 0
 
   constructor(scene: Scene) {
     this.camera = new FreeCamera('takeflight-camera', new Vector3(0, 200, -30), scene)
@@ -50,6 +54,7 @@ export class CameraRig {
     scene.activeCamera = this.camera
   }
 
+  /** The tower cab (or replay camera) position in world metres. */
   setTower(x: number, y: number, z: number): void {
     this.tower.set(x, y, z)
   }
@@ -103,9 +108,10 @@ export class CameraRig {
       this.aim(tmpForward.normalize(), tmpUp)
       return
     }
-    this.camera.position.copyFrom(this.tower)
+    this.towerLocal.set(this.tower.x - this.originX, this.tower.y, this.tower.z - this.originZ)
+    this.camera.position.copyFrom(this.towerLocal)
     tmpTarget.set(state.x, state.y, state.z)
-    tmpTarget.subtractToRef(this.tower, tmpForward)
+    tmpTarget.subtractToRef(this.towerLocal, tmpForward)
     const distance = tmpForward.length()
     this.camera.fov = Math.max(0.02, Math.min(1.1, 2 * Math.atan(18 / Math.max(1, distance))))
     tmpUp.set(0, 1, 0)

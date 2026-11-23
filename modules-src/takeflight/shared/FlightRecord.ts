@@ -13,7 +13,7 @@ import { INPUT_BYTES } from '../sim/Controls'
 import { CHANNELS } from '../sim/Telemetry'
 import type { TouchdownEvent } from '../sim/Telemetry'
 
-export const RECORD_VERSION = 1
+export const RECORD_VERSION = 2
 const MAGIC = [0x54, 0x46, 0x52, 0x31]
 const FRAME_HEADER = 1
 const FRAME_INPUTS = 2

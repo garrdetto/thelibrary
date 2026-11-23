@@ -10,7 +10,7 @@
  * flight early never pays. The total is multiplied by the assists multiplier; a crash scores zero. Renderer-free and exact, so the Worker can re-score a re-flown flight.
  */
 import type { AirportSpec, RunwayEnd, RunwaySpec } from '../shared/Airports'
-import { aimDistance, pavementAt, runwayEndFor } from '../shared/Airports'
+import { aimDistance, nearestAirport, pavementAt, runwayEndFor } from '../shared/Airports'
 import type { AircraftSpec } from '../shared/AircraftSpec'
 import type { AssistSettings } from './Assists'
 import { assistMultiplier } from './Assists'
@@ -25,7 +25,6 @@ export type EndReason = 'stopped' | 'pilot' | 'crash'
 
 export interface FlightData {
   spec: AircraftSpec
-  airport: AirportSpec
   assists: AssistSettings
   telemetry: Float32Array
   samples: number
@@ -54,6 +53,8 @@ export interface CategoryScore {
 }
 
 export interface LandingSummary {
+  /** Airport id and runway end landed on. */
+  airport: string
   runway: string
   tick: number
   sinkFpm: number
@@ -142,6 +143,7 @@ export function gradeFor(total: number, crashed: boolean, landed = true): string
 }
 
 interface Landing {
+  airport: AirportSpec
   touchdown: TouchdownEvent
   bounces: number
   runway: RunwaySpec | null
@@ -156,7 +158,7 @@ export interface RunwayContact {
   cross: number
 }
 
-/** The runway (and the end flown on `track`) nearest a point on or near the airport, or null when none is close. */
+/** The runway (and the end flown on `track`) nearest a point on or near an airport, or null when none is close. */
 export function runwayContact(airport: AirportSpec, x: number, z: number, track: number): RunwayContact | null {
   let best: RunwayContact | null = null
   for (const runway of airport.runways) {
@@ -181,8 +183,9 @@ function findLanding(data: FlightData): Landing | null {
     const next = data.touchdowns[i]
     if ((next.tick - touchdown.tick) / 120 <= BOUNCE_WINDOW && next.airborne < LANDING_AIRBORNE) bounces++
   }
-  const contact = runwayContact(data.airport, touchdown.x, touchdown.z, touchdown.track)
-  return { touchdown, bounces, runway: contact ? contact.runway : null, end: contact ? contact.end : null }
+  const airport = nearestAirport(touchdown.x, touchdown.z)
+  const contact = runwayContact(airport, touchdown.x, touchdown.z, touchdown.track)
+  return { airport, touchdown, bounces, runway: contact ? contact.runway : null, end: contact ? contact.end : null }
 }
 
 function sample(t: Float32Array, index: number, channel: number): number {
@@ -219,7 +222,7 @@ function landingCategory(landing: Landing): { metrics: MetricScore[]; summary: L
   ]
   return {
     metrics,
-    summary: { runway: end ? end.name : '—', tick: td.tick, sinkFpm: round(sinkFpm), g: round(td.g, 2), centreline: round(centreline, 1), fromThreshold: round(fromThreshold), fromAim: round(fromAim), bounces: landing.bounces, crab: round(crab, 1), bank: round(td.bank, 1), iasKt: round(td.ias / KNOT), surface: onRunway ? 'runway' : surface },
+    summary: { airport: landing.airport.id, runway: end ? end.name : '—', tick: td.tick, sinkFpm: round(sinkFpm), g: round(td.g, 2), centreline: round(centreline, 1), fromThreshold: round(fromThreshold), fromAim: round(fromAim), bounces: landing.bounces, crab: round(crab, 1), bank: round(td.bank, 1), iasKt: round(td.ias / KNOT), surface: onRunway ? 'runway' : surface },
   }
 }
 
@@ -228,7 +231,7 @@ function approachCategory(data: FlightData, landing: Landing): MetricScore[] | n
   const end = landing.end
   if (!runway || !end) return null
   const t = data.telemetry
-  const elevation = data.airport.elevation
+  const elevation = landing.airport.elevation
   const aimX = end.x + end.dx * aimDistance(runway)
   const aimZ = end.z + end.dz * aimDistance(runway)
   const vapp = data.spec.vSpeeds.vapp

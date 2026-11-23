@@ -130,8 +130,9 @@ export class AirportRenderer {
   private readonly white = new Color3(4, 3.8, 3.4)
   private readonly coords = { along: 0, cross: 0 }
 
-  constructor(private readonly scene: Scene, readonly airport: AirportSpec) {
+  constructor(private readonly scene: Scene, readonly airport: AirportSpec, parent: TransformNode | null = null) {
     this.root = new TransformNode(`takeflight-airport-${airport.id}`, scene)
+    this.root.parent = parent
     const asphalt = this.track(matte('takeflight-asphalt', scene, new Color3(0.085, 0.087, 0.09)))
     const concrete = this.track(matte('takeflight-apron', scene, new Color3(0.2, 0.2, 0.19)))
     const white = this.track(matte('takeflight-marking-white', scene, new Color3(0.78, 0.78, 0.76)))
@@ -356,24 +357,46 @@ export class AirportRenderer {
     const static_: Mesh[] = []
     const apron = this.airport.aprons[0]
     if (apron) {
+      const runway = this.airport.runways[0]
+      const h = runway.heading * DEG
+      const px = Math.cos(h)
+      const pz = Math.sin(h)
+      const ax = (apron.x0 + apron.x1) / 2
+      const az = (apron.z0 + apron.z1) / 2
+      const side = (ax - runway.cx) * px + (az - runway.cz) * pz >= 0 ? 1 : -1
+      const nx = px * side
+      const nz = pz * side
+      const extent = Math.abs(nx) * (apron.x1 - apron.x0) / 2 + Math.abs(nz) * (apron.z1 - apron.z0) / 2
+      const ux = Math.sin(h)
+      const uz = -Math.cos(h)
+      const yaw = Math.atan2(-uz, ux)
+      const place = (name: string, along: number, out: number): TransformNode => {
+        const node = new TransformNode(name, this.scene)
+        node.position.set(ax + ux * along + nx * out, y0, az + uz * along + nz * out)
+        node.rotation.y = yaw
+        node.parent = this.root
+        return node
+      }
       for (let i = 0; i < 3; i++) {
-        const cx = apron.x0 + 30 + i * 46
-        const cz = apron.z0 - 22
+        const node = place(`takeflight-hangar-${i}`, (i - 1) * 46, extent + 22)
         const body = CreateBox(`takeflight-hangar-${i}`, { width: 38, height: 10, depth: 30 }, this.scene)
-        body.position.set(cx, y0 + 5, cz)
+        body.position.set(0, 5, 0)
         body.material = wall
+        body.parent = node
         const cap = CreateCylinder(`takeflight-hangar-roof-${i}`, { height: 38.4, diameter: 30.4, tessellation: 18, arc: 0.5 }, this.scene)
         cap.rotation.z = Math.PI / 2
         cap.rotation.x = Math.PI / 2
-        cap.scaling.y = 1
-        cap.position.set(cx, y0 + 10, cz)
+        cap.position.set(0, 10, 0)
         cap.scaling.set(1, 1, 0.35)
         cap.material = roof
+        cap.parent = node
         static_.push(body, cap)
       }
+      const officeNode = place('takeflight-office', 46 * 1.5 + 32, extent + 14)
       const office = CreateBox('takeflight-office', { width: 26, height: 7, depth: 14 }, this.scene)
-      office.position.set(apron.x1 - 18, y0 + 3.5, apron.z0 - 14)
+      office.position.set(0, 3.5, 0)
       office.material = brick
+      office.parent = officeNode
       static_.push(office)
     }
     const [tx, ty, tz] = this.airport.tower
@@ -388,7 +411,7 @@ export class AirportRenderer {
     lid.material = roof
     static_.push(shaft, cab, lid)
     for (const mesh of static_) {
-      mesh.parent = this.root
+      if (!mesh.parent) mesh.parent = this.root
       mesh.isPickable = false
       mesh.receiveShadows = true
       mesh.freezeWorldMatrix()

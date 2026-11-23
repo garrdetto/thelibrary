@@ -14,6 +14,7 @@ import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder'
 import '@babylonjs/core/Meshes/thinInstanceMesh'
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { hash2 } from '../sim/SimMath'
 import { REGION_HALF, WATER_LEVEL, WORLD_SEED, fieldShade, forestDensity, naturalHeight, terrainHeight } from '../shared/Terrain'
@@ -158,7 +159,7 @@ export class TerrainRenderer {
   private quality: FlightQuality
   private readonly heights = new Float32Array((GRID + 3) * (GRID + 3))
 
-  constructor(private readonly scene: Scene, quality: FlightQuality) {
+  constructor(private readonly scene: Scene, quality: FlightQuality, private readonly parent: TransformNode | null = null) {
     this.quality = quality
     this.detail = typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined' ? detailTexture(scene) : null
     const material = new PBRMaterial('takeflight-ground', scene)
@@ -371,6 +372,7 @@ export class TerrainRenderer {
     data.indices = indices
     data.applyToMesh(mesh, false)
     mesh.position.set(x0, 0, z0)
+    mesh.parent = this.parent
     mesh.material = this.material
     mesh.isPickable = false
     mesh.receiveShadows = true

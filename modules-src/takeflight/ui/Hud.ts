@@ -1,7 +1,7 @@
 /**
  * The in-flight overlay: airspeed, altitude, vertical speed, heading, ground speed, AGL and G in a corner block; chips for flaps,
  * gear, trim, brakes, lights and the active view; a throttle bar; stall, overspeed and crash warnings; the landing-guidance
- * glidepath bar when that assist is on; and short toasts. DOM nodes are made once and only their text and styles change, at most
+ * glidepath bar when that assist is on; ILS localizer and glideslope needles on ILS approaches; and short toasts. DOM nodes are made once and only their text and styles change, at most
  * 15 times a second. `minimal` keeps only the four essentials.
  */
 import { FOOT, FPM, KNOT } from '../sim/Atmosphere'
@@ -24,6 +24,8 @@ export interface HudExtras {
   parkingBrake: boolean
   /** Glidepath deviation in dots (-2..2, positive = above) or null when no guidance. */
   glidepath: number | null
+  /** ILS needles when flying an ILS approach: runway end name, localizer and glideslope dots (positive = right, above). */
+  ils: { name: string; localizer: number; glideslope: number } | null
 }
 
 export class Hud {
@@ -35,6 +37,9 @@ export class Hud {
   private readonly guide: HTMLElement
   private readonly guideMarker: HTMLElement
   private readonly toastNode: HTMLElement
+  private readonly ils: HTMLElement
+  private readonly ilsLabel: HTMLElement
+  private readonly locMarker: HTMLElement
   private since = 0
   private toastTimer = 0
 
@@ -57,6 +62,12 @@ export class Hud {
     this.guide = el('div', 'tf-guide', this.root)
     this.guide.hidden = true
     this.guideMarker = el('b', '', this.guide)
+    this.ils = el('div', 'tf-ils', this.root)
+    this.ils.hidden = true
+    this.ilsLabel = el('span', '', this.ils, 'ILS')
+    const loc = el('div', 'tf-loc', this.ils)
+    loc.setAttribute('aria-label', 'Localizer')
+    this.locMarker = el('b', '', loc)
     this.toastNode = el('div', 'tf-toast', this.root)
     this.toastNode.style.opacity = '0'
     this.toastNode.setAttribute('role', 'status')
@@ -112,10 +123,18 @@ export class Hud {
     else if (a.flap > 0.05 && a.ias / KNOT > spec.vSpeeds.vfe + 3) warning = 'FLAP OVERSPEED'
     this.warning.hidden = warning === ''
     if (warning) this.warning.textContent = warning
-    this.guide.hidden = extras.glidepath === null
-    if (extras.glidepath !== null) {
-      const dots = Math.max(-2, Math.min(2, extras.glidepath))
+    const glidepath = extras.ils ? extras.ils.glideslope : extras.glidepath
+    this.guide.hidden = glidepath === null
+    if (glidepath !== null) {
+      const dots = Math.max(-2, Math.min(2, glidepath))
       this.guideMarker.style.top = `${50 - dots * 22}%`
+    }
+    this.ils.hidden = extras.ils === null
+    if (extras.ils) {
+      const label = `ILS ${extras.ils.name}`
+      if (this.ilsLabel.textContent !== label) this.ilsLabel.textContent = label
+      const dots = Math.max(-2, Math.min(2, extras.ils.localizer))
+      this.locMarker.style.left = `${50 + dots * 22}%`
     }
   }
 
