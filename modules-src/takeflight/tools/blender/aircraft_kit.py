@@ -124,6 +124,47 @@ def loft(sections, segments, cap_front=True, cap_back=True):
     return bm
 
 
+def loft_faces(bm, sections, segments, picks):
+    """Faces of a `loft` grid chosen in its own parameters: `picks` are predicates of (x, angle), where x is the mid-section
+    position and angle the ring angle (0 = left side, pi/2 = top, pi = right, -pi/2 = bottom). Openings chosen this way follow
+    mesh lines, so window edges are clean curves rather than face-by-face steps. Only faces of the grid itself are considered.
+    """
+    bm.faces.ensure_lookup_table()
+    chosen = []
+    for i in range(len(sections) - 1):
+        x = 0.5 * (sections[i][0] + sections[i + 1][0])
+        for j in range(segments):
+            angle = 2 * math.pi * (j + 0.5) / segments
+            if angle > math.pi:
+                angle -= 2 * math.pi
+            if any(pick(x, angle) for pick in picks):
+                chosen.append(bm.faces[i * segments + j])
+    return chosen
+
+
+def window_picks(windows):
+    """Predicates for `loft_faces` from a window spec: 'front' (x0, x1, half angle about the top), 'side' (x0, x1, low angle,
+    high angle) mirrored on both sides, 'posts' [(x0, x1), ...] left solid between side windows, 'roof' (x0, x1, half angle)."""
+    picks = []
+    if 'front' in windows:
+        fx0, fx1, fhalf = windows['front']
+        picks.append(lambda x, a: fx0 < x < fx1 and abs(a - math.pi / 2) < fhalf)
+    if 'side' in windows:
+        sx0, sx1, lo, hi = windows['side']
+        posts = windows.get('posts', [])
+
+        def side(x, a):
+            if not (sx0 < x < sx1) or any(p0 < x < p1 for p0, p1 in posts):
+                return False
+            mirrored = math.pi - a if a > math.pi / 2 else (-math.pi - a if a < -math.pi / 2 else a)
+            return lo < a < hi or lo < mirrored < hi
+        picks.append(side)
+    if 'roof' in windows:
+        rx0, rx1, rhalf = windows['roof']
+        picks.append(lambda x, a: rx0 < x < rx1 and abs(a - math.pi / 2) < rhalf)
+    return picks
+
+
 def naca4(code, points):
     """Upper and lower surface (x, z) of a NACA 4-digit airfoil at unit chord, from leading to trailing edge."""
     m = int(code[0]) / 100

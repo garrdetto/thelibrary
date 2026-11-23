@@ -1750,9 +1750,9 @@
   "preset": "character"
  },
  "takeflight/wren_cockpit.glb": {
-  "hash": "c816d64c0365beb5e080815ad93dfcea4e933c2b",
-  "before": 64384,
-  "after": 32784,
+  "hash": "55e2d8ddb1f3437f8d6235c6683c5eb8972a99f0",
+  "before": 225976,
+  "after": 80988,
   "primsBefore": 11,
   "primsAfter": 11,
   "matsBefore": 5,
@@ -1760,8 +1760,8 @@
   "preset": "aircraft"
  },
  "takeflight/wren_lod2.glb": {
-  "hash": "d00e7a1fd5073338b50f92713cb51ae6700f6aa8",
-  "before": 115500,
+  "hash": "510c3e0cc4ceeeb3598f5cb733f020e9373f8502",
+  "before": 115596,
   "after": 79620,
   "primsBefore": 31,
   "primsAfter": 28,
@@ -1770,9 +1770,9 @@
   "preset": "aircraft"
  },
  "takeflight/wren_lod1.glb": {
-  "hash": "29ac15d72e4d3669330bd4f873e3a0b5e0dd9385",
-  "before": 184768,
-  "after": 104768,
+  "hash": "6bca66762aafbf5cf0ad0f9a5e7546f219774b23",
+  "before": 186108,
+  "after": 105268,
   "primsBefore": 31,
   "primsAfter": 28,
   "matsBefore": 8,
@@ -1780,9 +1780,9 @@
   "preset": "aircraft"
  },
  "takeflight/wren_lod0.glb": {
-  "hash": "1e9a4cb6f3597cfe803d57d1227d978f9ed4d749",
-  "before": 326384,
-  "after": 147456,
+  "hash": "87ae5cbf377a3b5511ce2ba67785ab41dac9ec38",
+  "before": 329648,
+  "after": 148340,
   "primsBefore": 31,
   "primsAfter": 28,
   "matsBefore": 8,
@@ -1790,9 +1790,9 @@
   "preset": "aircraft"
  },
  "takeflight/duet_lod2.glb": {
-  "hash": "d9f9ed66ca94ef60d12f0661ef915e0944cc61f2",
-  "before": 108352,
-  "after": 73268,
+  "hash": "ad1391ce62542f596cb7b394ae991a6539b7d8b6",
+  "before": 108748,
+  "after": 73356,
   "primsBefore": 35,
   "primsAfter": 27,
   "matsBefore": 8,
@@ -1800,9 +1800,9 @@
   "preset": "aircraft"
  },
  "takeflight/duet_cockpit.glb": {
-  "hash": "2f825eacad2349e47dbf8c2431abf2aa6035166f",
-  "before": 40424,
-  "after": 23040,
+  "hash": "e6f3be1ad06019ce4245fc1d38fa2a42dc4526cd",
+  "before": 135392,
+  "after": 51776,
   "primsBefore": 9,
   "primsAfter": 8,
   "matsBefore": 5,
@@ -1810,9 +1810,9 @@
   "preset": "aircraft"
  },
  "takeflight/duet_lod1.glb": {
-  "hash": "01f5903e3669e031a9a5918ff8982092468f532e",
-  "before": 161700,
-  "after": 92104,
+  "hash": "6cd32f54f6c5e6dd741b4f92cfaf0a449b948f0c",
+  "before": 162944,
+  "after": 92624,
   "primsBefore": 35,
   "primsAfter": 27,
   "matsBefore": 8,
@@ -1820,9 +1820,9 @@
   "preset": "aircraft"
  },
  "takeflight/duet_lod0.glb": {
-  "hash": "d4c896e0ba7d6f48409b5d66cb189ed6ccbf8b6f",
-  "before": 266984,
-  "after": 120976,
+  "hash": "bafa3faf8bfb6e85ab9b611e231f1d9f4394d047",
+  "before": 269736,
+  "after": 121904,
   "primsBefore": 35,
   "primsAfter": 27,
   "matsBefore": 8,
@@ -1830,9 +1830,9 @@
   "preset": "aircraft"
  },
  "takeflight/sprite_cockpit.glb": {
-  "hash": "2098774d9e60258ac7211adafaf7ee6b24861a2e",
-  "before": 38800,
-  "after": 22400,
+  "hash": "9ebab471383040fa97dc46ccc70ab653e9baed80",
+  "before": 123468,
+  "after": 47460,
   "primsBefore": 9,
   "primsAfter": 8,
   "matsBefore": 5,
@@ -1840,9 +1840,9 @@
   "preset": "aircraft"
  },
  "takeflight/sprite_lod1.glb": {
-  "hash": "82761b5cda472f12535312574c31e1b6a6c4a9f6",
-  "before": 153908,
-  "after": 97864,
+  "hash": "ad14bc1fc3df1f36a178445a1d02f912bc3eeda4",
+  "before": 154800,
+  "after": 98120,
   "primsBefore": 31,
   "primsAfter": 29,
   "matsBefore": 7,
@@ -1850,9 +1850,9 @@
   "preset": "aircraft"
  },
  "takeflight/sprite_lod2.glb": {
-  "hash": "bf40b09a7e81e2c1cbc1aa457f49dc44c13bf9a5",
-  "before": 103600,
-  "after": 77740,
+  "hash": "6f74ca82875654a2c7679d8276cd9bd07c8c127d",
+  "before": 103800,
+  "after": 77772,
   "primsBefore": 31,
   "primsAfter": 29,
   "matsBefore": 7,
@@ -1860,9 +1860,9 @@
   "preset": "aircraft"
  },
  "takeflight/sprite_lod0.glb": {
-  "hash": "0a7d06091f7a2b34371f4e6cdeaf2bd857670435",
-  "before": 253588,
-  "after": 126020,
+  "hash": "db805e80e1bdc5074e318d492833f31d99e2fd47",
+  "before": 255888,
+  "after": 126704,
   "primsBefore": 31,
   "primsAfter": 29,
   "matsBefore": 7,
@@ -1870,9 +1870,9 @@
   "preset": "aircraft"
  },
  "takeflight/vesta_cockpit.glb": {
-  "hash": "c0e5020a17f91e7fb30d33c52679d10dab20d876",
-  "before": 29644,
-  "after": 19100,
+  "hash": "285102636f0446fb57920d294c772446b89b85d2",
+  "before": 70796,
+  "after": 31652,
   "primsBefore": 9,
   "primsAfter": 8,
   "matsBefore": 5,
@@ -1880,9 +1880,9 @@
   "preset": "aircraft"
  },
  "takeflight/vesta_lod0.glb": {
-  "hash": "d8e836c1b436b5e7d81105d5d64f2a7aac48ddf5",
-  "before": 239852,
-  "after": 112352,
+  "hash": "7a1f382589796816424a78645cdf504f97ea84e3",
+  "before": 241516,
+  "after": 112772,
   "primsBefore": 34,
   "primsAfter": 30,
   "matsBefore": 7,
@@ -1890,9 +1890,9 @@
   "preset": "aircraft"
  },
  "takeflight/vesta_lod2.glb": {
-  "hash": "efacf921917e41f7d6c724e99c9ecc2b21d8177b",
-  "before": 108368,
-  "after": 71188,
+  "hash": "3016e4ea52a015586596f05d4ffc76f66a8e0614",
+  "before": 108600,
+  "after": 71212,
   "primsBefore": 34,
   "primsAfter": 30,
   "matsBefore": 7,
@@ -1900,9 +1900,9 @@
   "preset": "aircraft"
  },
  "takeflight/vesta_lod1.glb": {
-  "hash": "cb415ea05bd207843958b39d182947f13a28f40d",
-  "before": 152888,
-  "after": 87172,
+  "hash": "5f4d377363f6b9d95e5e6c89c9166f03ba7773e6",
+  "before": 153592,
+  "after": 87344,
   "primsBefore": 34,
   "primsAfter": 30,
   "matsBefore": 7,
@@ -1910,9 +1910,9 @@
   "preset": "aircraft"
  },
  "takeflight/haulmaster_lod2.glb": {
-  "hash": "da17d1be42a632d3662bb66f9e2f3bfde0e56698",
-  "before": 120188,
-  "after": 82360,
+  "hash": "a587f56c6f5a8d33d65d7ab2da8be3313b8e8d78",
+  "before": 120488,
+  "after": 82476,
   "primsBefore": 43,
   "primsAfter": 35,
   "matsBefore": 8,
@@ -1920,9 +1920,9 @@
   "preset": "aircraft"
  },
  "takeflight/haulmaster_lod1.glb": {
-  "hash": "2c79754aba219451d7028e6308b9b543bcd9af79",
-  "before": 172348,
-  "after": 100568,
+  "hash": "c65c7af7331ed9afa8aec176c1155b4341fcaebd",
+  "before": 172820,
+  "after": 100696,
   "primsBefore": 43,
   "primsAfter": 35,
   "matsBefore": 8,
@@ -1930,9 +1930,9 @@
   "preset": "aircraft"
  },
  "takeflight/haulmaster_cockpit.glb": {
-  "hash": "d262fcf4203ca92f964a616b42029c7653b88adf",
-  "before": 29192,
-  "after": 19196,
+  "hash": "30a7bd4bd29528e6f727a738884d65b74c3337c5",
+  "before": 64360,
+  "after": 30532,
   "primsBefore": 9,
   "primsAfter": 9,
   "matsBefore": 5,
@@ -1940,9 +1940,9 @@
   "preset": "aircraft"
  },
  "takeflight/haulmaster_lod0.glb": {
-  "hash": "7c289739aa85d022b816996d0988c3b32e59b305",
-  "before": 273240,
-  "after": 126716,
+  "hash": "ffa1687cf2e89e25f7bb6a51d464775fd39e855c",
+  "before": 274164,
+  "after": 127140,
   "primsBefore": 43,
   "primsAfter": 35,
   "matsBefore": 8,

@@ -12,6 +12,33 @@ import type { QualityTier } from '../render/Quality'
 import type { CheckrideId } from '../shared/Career'
 import { WEATHER_LABELS } from '../shared/Weather'
 import type { CargoJob } from '../shared/Cargo'
+import { fleetSpec } from '../shared/Fleet'
+import { liveriesFor } from '../shared/Liveries'
+
+const LIVERY_KEY = 'takeflight.liveries.v1'
+
+function readLiveries(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LIVERY_KEY)
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** The paint scheme saved in this browser for an aircraft family. */
+export function savedLivery(family: string): string | undefined {
+  return readLiveries()[family]
+}
+
+function writeLiveries(value: Record<string, string>): void {
+  try {
+    localStorage.setItem(LIVERY_KEY, JSON.stringify(value))
+  } catch {
+    return
+  }
+}
 import type { WeatherKind } from '../shared/Weather'
 import { AIRPORTS, airportById } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
@@ -27,6 +54,8 @@ export interface FlightOptions {
   airport: string
   /** Aircraft id. */
   aircraft: string
+  /** Livery id for the chosen aircraft's family. */
+  livery?: string
   start: StartKind
   wind: WindKind
   weather: WeatherKind
@@ -109,10 +138,12 @@ export class Menus {
   private returnTo: 'start' | 'pause' = 'start'
   private readonly startSlot = make('div')
   private readonly noticeLine = make('p', { className: 'tf-notice' })
+  private readonly liverySlot = make('div')
 
   constructor(private readonly parent: HTMLElement, private readonly input: InputManager, private readonly handlers: MenuHandlers, tier: QualityTier, private readonly aircraftName: string, private readonly career: HTMLElement, private readonly aircraftLabels: Record<string, string>) {
     this.options = { airport: 'harrow', aircraft: 'halden-wren', start: 'runway1', wind: 'light', weather: 'fair', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
     this.multiplierText = make('span')
+    this.renderLiveries()
     this.start = this.buildStart()
     this.pause = this.buildPause()
     this.controls = this.screen(make('div'))
@@ -138,6 +169,25 @@ export class Menus {
     })
     this.renderStarts()
     return make('label', { className: 'tf-field' }, make('span', { textContent: 'Airport' }), select)
+  }
+
+  private renderLiveries(): void {
+    const spec = fleetSpec(this.options.aircraft)
+    const list = spec ? liveriesFor(spec.family) : []
+    if (!spec || list.length === 0) {
+      this.liverySlot.replaceChildren()
+      return
+    }
+    const saved = readLiveries()[spec.family]
+    const current = list.find((l) => l.id === saved)?.id ?? list[0].id
+    this.options.livery = current
+    const labels = Object.fromEntries(list.map((l) => [l.id, l.name])) as Record<string, string>
+    this.liverySlot.replaceChildren(choice('Paint', labels, current, (v) => {
+      this.options.livery = v
+      const all = readLiveries()
+      all[spec.family] = v
+      writeLiveries(all)
+    }))
   }
 
   private renderStarts(): void {
@@ -173,7 +223,11 @@ export class Menus {
       make('p', { textContent: `${this.aircraftName} and more as your licences grow. Seven airports across a 200 km region, from a grass strip to an international hub. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
       this.career,
       make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides()), button('Cargo contracts', () => this.handlers.cargo())),
-      choice('Aircraft', this.aircraftLabels, this.options.aircraft, (v) => (this.options.aircraft = v)),
+      choice('Aircraft', this.aircraftLabels, this.options.aircraft, (v) => {
+        this.options.aircraft = v
+        this.renderLiveries()
+      }),
+      this.liverySlot,
       this.noticeLine,
       this.airportField(),
       this.startSlot,

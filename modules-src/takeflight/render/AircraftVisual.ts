@@ -12,8 +12,10 @@ import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Node } from '@babylonjs/core/node'
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import type { Scene } from '@babylonjs/core/scene'
 import type { FlightModel } from '../sim/FlightModel'
+import type { Livery } from '../shared/Liveries'
 import type { InterpolatedState } from '../sim/Simulation'
 import type { AssetManager, ModelInstance } from '../world/AssetManager'
 
@@ -188,6 +190,20 @@ export class AircraftVisual {
    * Places and animates the aircraft. `pixels` is its approximate on-screen size (picks the LOD), `lightsOn` turns on landing
    * lights, `dt` real seconds since the last frame.
    */
+  /** Repaints every LOD with a livery (paint, stripe and cowl materials); null restores nothing and keeps the current paint. */
+  applyLivery(livery: Livery | null): void {
+    if (!livery) return
+    const cowl = livery.cowl ?? [livery.paint[0] * 0.92, livery.paint[1] * 0.92, livery.paint[2] * 0.92]
+    for (const lod of this.lods) {
+      for (const mesh of lod.meshes) {
+        const material = mesh.material
+        if (!(material instanceof PBRMaterial)) continue
+        const colour = material.name.endsWith('_paint') ? livery.paint : material.name.endsWith('_stripe') ? livery.stripe : material.name.endsWith('_cowl') ? cowl : null
+        if (colour) material.albedoColor.set(colour[0], colour[1], colour[2])
+      }
+    }
+  }
+
   update(state: InterpolatedState, aircraft: FlightModel, pixels: number, lightsOn: boolean, dt: number): void {
     this.root.position.set(state.x, state.y, state.z)
     ;(this.root.rotationQuaternion as Quaternion).set(state.qx, state.qy, state.qz, state.qw)

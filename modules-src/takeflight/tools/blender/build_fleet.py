@@ -22,6 +22,8 @@ import export_aircraft  # noqa: E402
 from build_wren import smooth_sections, wheel  # noqa: E402
 
 SEGMENTS = 40
+# The cockpit shell is lofted much finer than the outside so window openings cut face by face have smooth edges.
+COCKPIT_SEGMENTS = 96
 
 
 def mats_for(name, paint, stripe):
@@ -46,19 +48,10 @@ def mats_for(name, paint, stripe):
 def fuselage(spec, mats, root, collection):
     sections = smooth_sections(spec['fuselage'], 4)
     bm = kit.loft(sections, SEGMENTS, cap_front=True, cap_back=True)
-    w = spec['windows']
     glass = bmesh.new()
-    remove = []
-    bm.faces.ensure_lookup_table()
-    for face in bm.faces:
-        c = face.calc_center_median()
-        n = face.normal
-        front = w['front'][0] < c.x < w['front'][1] and c.z > w['front'][2] and n.z > 0.1 and n.x > 0.05 and abs(c.y) < w['front'][3]
-        side = w['side'][0] < c.x < w['side'][1] and w['side'][2] < c.z < w['side'][3] and abs(n.y) > 0.55
-        if front or side:
-            verts = [glass.verts.new(v.co + n * 0.004) for v in face.verts]
-            glass.faces.new(verts)
-            remove.append(face)
+    remove = kit.loft_faces(bm, sections, SEGMENTS, kit.window_picks(spec['windows']))
+    for face in remove:
+        glass.faces.new([glass.verts.new(v.co + face.normal * 0.004) for v in face.verts])
     bmesh.ops.delete(bm, geom=remove, context='FACES_ONLY')
     for face in bm.faces:
         c = face.calc_center_median()
@@ -277,19 +270,11 @@ def cockpit(spec, mats, collection):
     root = bpy.data.objects.new(f"{spec['name']}_cockpit", None)
     collection.objects.link(root)
     c = spec['cabin']
-    sections = [s for s in smooth_sections(spec['fuselage'], 3) if c['aft'] < s[0] < c['fore']]
+    sections = [s for s in smooth_sections(spec['fuselage'], 8) if c['aft'] < s[0] < c['fore']]
     inner = [(x, hw - 0.035, top - 0.035, bottom + 0.05, e, te) for (x, hw, top, bottom, e, te) in sections]
-    bm = kit.loft(inner, SEGMENTS, cap_front=False, cap_back=True)
+    bm = kit.loft(inner, COCKPIT_SEGMENTS, cap_front=False, cap_back=True)
     bmesh.ops.reverse_faces(bm, faces=bm.faces)
-    w = spec['windows']
-    remove = []
-    for f in bm.faces:
-        ctr = f.calc_center_median()
-        n = -f.normal
-        front = w['front'][0] < ctr.x < w['front'][1] and ctr.z > w['front'][2] - 0.04 and n.z > 0.1 and n.x > 0.05 and abs(ctr.y) < w['front'][3]
-        side = w['side'][0] < ctr.x < w['side'][1] and w['side'][2] < ctr.z < w['side'][3] and abs(n.y) > 0.55
-        if front or side:
-            remove.append(f)
+    remove = kit.loft_faces(bm, inner, COCKPIT_SEGMENTS, kit.window_picks(spec['windows']))
     bmesh.ops.delete(bm, geom=remove, context='FACES_ONLY')
     kit.new_object('cabin', bm, mats['interior'], parent=root, collection=collection)
     px, pz, half = c['panel']
@@ -345,7 +330,7 @@ DUET = {
         (-4.90, 0.17, 0.55, 0.18, 2.3, 2.3),
         (-5.70, 0.07, 0.52, 0.30, 2.2, 2.2),
     ],
-    'windows': {'front': (0.72, 1.32, 0.62, 0.48), 'side': (-1.6, 0.55, 0.42, 0.92)},
+    'windows': {'front': (0.72, 1.32, 1.0), 'side': (-1.6, 0.55, 0.2, 0.95), 'posts': [(-0.45, -0.32)]},
     'stripe': (-0.12, 0.02),
     'wing': {'span': 11.6, 'root': 1.95, 'tip': 1.1, 'le': 0.95, 'sweep': 2.0, 'z': -0.40, 'dihedral': 6.0, 'flap_start': 0.7, 'flap_end': 3.3, 'airfoil': '2415', 'twist': 1.5},
     'tail': {'t_tail': False, 'fin_x': -4.55, 'fin_base': 0.5, 'fin_height': 1.55, 'fin_root': 1.5, 'fin_tip': 0.75, 'fin_sweep': 0.95, 'stab_x': -4.9, 'stab_z': 0.42, 'stab_span': 4.4, 'stab_root': 1.0, 'stab_tip': 0.62, 'stab_sweep': 0.2},
@@ -372,7 +357,7 @@ SPRITE = {
         (-5.40, 0.24, 0.66, 0.10, 2.4, 2.4),
         (-6.40, 0.08, 0.58, 0.28, 2.2, 2.2),
     ],
-    'windows': {'front': (1.05, 1.75, 0.70, 0.5), 'side': (-2.2, 0.95, 0.45, 0.98)},
+    'windows': {'front': (1.05, 1.75, 1.0), 'side': (-2.2, 0.95, 0.2, 0.95), 'posts': [(-0.75, -0.62)]},
     'stripe': (-0.1, 0.06),
     'wing': {'span': 14.4, 'root': 2.15, 'tip': 1.15, 'le': 0.85, 'sweep': 1.5, 'z': -0.42, 'dihedral': 5.0, 'flap_start': 0.75, 'flap_end': 4.1, 'airfoil': '2415', 'twist': 1.5},
     'tail': {'t_tail': False, 'fin_x': -5.05, 'fin_base': 0.6, 'fin_height': 1.9, 'fin_root': 1.75, 'fin_tip': 0.85, 'fin_sweep': 1.2, 'stab_x': -5.35, 'stab_z': 0.5, 'stab_span': 5.4, 'stab_root': 1.15, 'stab_tip': 0.7, 'stab_sweep': 0.25},
@@ -398,7 +383,7 @@ VESTA = {
         (-6.40, 0.32, 0.86, 0.12, 2.2, 2.2),
         (-7.20, 0.10, 0.84, 0.48, 2.0, 2.0),
     ],
-    'windows': {'front': (4.9, 6.35, 0.06, 0.64), 'side': (-2.6, 3.9, 0.12, 0.55)},
+    'windows': {'front': (4.9, 6.35, 1.25), 'side': (-2.6, 3.9, 0.05, 0.55), 'posts': [(-2.6 + 0.8 * k + 0.45, -2.6 + 0.8 * k + 0.8) for k in range(8)]},
     'stripe': (-0.32, -0.18),
     'wing': {'span': 15.6, 'root': 2.7, 'tip': 1.05, 'le': 1.3, 'sweep': 14.0, 'z': -0.72, 'dihedral': 3.0, 'flap_start': 0.95, 'flap_end': 4.7, 'airfoil': '2412', 'twist': 1.0},
     'spoilers': (1.6, 4.4),
@@ -425,7 +410,7 @@ HAULMASTER = {
         (-7.80, 0.30, 1.55, 0.95, 2.4, 2.4),
         (-8.40, 0.08, 1.52, 1.25, 2.0, 2.0),
     ],
-    'windows': {'front': (6.2, 7.6, 0.75, 0.85), 'side': (5.6, 6.6, 0.75, 1.35)},
+    'windows': {'front': (6.2, 7.6, 1.1), 'side': (5.0, 6.1, 0.3, 1.0)},
     'stripe': (-0.4, -0.15),
     'wing': {'span': 19.6, 'root': 2.3, 'tip': 1.35, 'le': 1.55, 'sweep': 1.0, 'z': 1.85, 'dihedral': 1.5, 'flap_start': 1.3, 'flap_end': 6.0, 'airfoil': '4415', 'twist': 1.5},
     'spoilers': (2.6, 5.4),

@@ -32,6 +32,7 @@ import type { ApproachState } from '../shared/Approach'
 import { CHECKRIDE_SPECS, LICENCE_LABELS, summarizeFlight } from '../shared/Career'
 import { FLEET, fleetSpec } from '../shared/Fleet'
 import { hangarEntry } from '../shared/Hangar'
+import { liveryFor } from '../shared/Liveries'
 import type { CheckrideId } from '../shared/Career'
 import { RECORD_VERSION } from '../shared/FlightRecord'
 import type { RecordHeader } from '../shared/FlightRecord'
@@ -59,7 +60,7 @@ import { CareerPanel } from '../ui/CareerPanel'
 import { Debrief } from '../ui/Debrief'
 import { DevOverlay } from '../ui/DevOverlay'
 import { Hud } from '../ui/Hud'
-import { Menus } from '../ui/Menus'
+import { Menus, savedLivery } from '../ui/Menus'
 import type { FlightOptions, StartKind, TimeKind, WindKind } from '../ui/Menus'
 import { CameraRig, VIEW_ORDER } from './Cameras'
 import { CareerStore } from './CareerStore'
@@ -374,6 +375,7 @@ export class Standalone {
       return
     }
     this.options = { ...options, assists: { ...options.assists } }
+    this.visual.applyLivery(liveryFor(spec.family, savedLivery(spec.family)))
     this.careerPanel.hide()
     this.submittedSeconds = 0
     this.failureAnnounced = false
@@ -402,7 +404,7 @@ export class Standalone {
     this.setView(options.start === 'stand' ? 'cockpit' : 'chase')
     if (options.job) this.hud.toast(`Cargo: ${options.job.kg.toLocaleString('en-US')} kg of ${options.job.goods} to ${airportById(options.job.to)?.name ?? options.job.to}. Release the parking brake (P) and go.`, 8)
     else if (ride) this.hud.toast(`${ride.title}: ${ride.brief}`, 8)
-    else this.hud.toast(options.start === 'stand' ? `Parking brake set: P releases it. Taxi to runway ${airport.runways[0].ends[0]} via A.` : options.start.startsWith('final') ? 'On a 3-mile final: follow the PAPI, two white and two red.' : 'Cleared for take-off: full throttle, rotate at 55 kt.', 5)
+    else this.hud.toast(options.start === 'stand' ? `Parking brake set: P releases it. Taxi to runway ${airport.runways[0].ends[0]} via A.` : options.start.startsWith('final') ? 'On a 3-mile final: follow the PAPI, two white and two red.' : `Cleared for take-off: full throttle, rotate at ${this.sim.aircraft.spec.vSpeeds.vr} kt.`, 5)
     this.canvas.focus()
   }
 
