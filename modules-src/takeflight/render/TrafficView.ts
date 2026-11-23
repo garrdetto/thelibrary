@@ -1,6 +1,6 @@
 /**
  * Draws the AI traffic (`shared/Traffic.ts`) near the camera with each family's LOD1 model under the world root, so floating
- * origin moves it with the terrain. Models are pooled per family and acquired on first need; a pose keeps its model while its
+ * origin moves it with the terrain. Models are pooled per family, acquired on first need and released after 30 s unused; a pose keeps its model while its
  * movement lasts. Gear nodes hide when the pose's gear is up, and props spin as discs. Purely visual.
  */
 import { Quaternion } from '@babylonjs/core/Maths/math.vector'
@@ -14,6 +14,7 @@ import { FLEET } from '../shared/Fleet'
 import type { AssetManager, ModelInstance } from '../world/AssetManager'
 
 const DEG = Math.PI / 180
+const IDLE_RELEASE = 30
 
 interface Slot {
   family: string
@@ -23,6 +24,7 @@ interface Slot {
   key: string
   used: boolean
   gearDown: boolean
+  idle: number
 }
 
 const clearance = new Map<string, number>()
@@ -54,7 +56,7 @@ export class TrafficView {
     return this.written
   }
 
-  update(eyeX: number, eyeZ: number, seconds: number, windFrom: number, windSpeed: number): void {
+  update(eyeX: number, eyeZ: number, seconds: number, windFrom: number, windSpeed: number, dt = 0): void {
     if (this.disposed) return
     this.written = this.enabled ? trafficNear(eyeX, eyeZ, this.range, seconds, windFrom, windSpeed, this.list) : 0
     const slots = this.slots
@@ -89,11 +91,19 @@ export class TrafficView {
       slot.key = pose.key
       this.place(slot, pose)
     }
-    for (let s = 0; s < slots.length; s++) {
+    for (let s = slots.length - 1; s >= 0; s--) {
       const slot = slots[s]
-      if (!slot.used) {
-        slot.key = ''
-        if (slot.node.isEnabled(false)) slot.node.setEnabled(false)
+      if (slot.used) {
+        slot.idle = 0
+        continue
+      }
+      slot.key = ''
+      if (slot.node.isEnabled(false)) slot.node.setEnabled(false)
+      slot.idle += dt
+      if (slot.idle > IDLE_RELEASE && slot.instance) {
+        this.assets.release(slot.instance)
+        slot.node.dispose()
+        slots.splice(s, 1)
       }
     }
   }
@@ -110,7 +120,7 @@ export class TrafficView {
     node.parent = this.parent
     node.rotationQuaternion = new Quaternion()
     node.setEnabled(false)
-    const slot: Slot = { family, node, instance: null, gear: [], key: '', used: false, gearDown: true }
+    const slot: Slot = { family, node, instance: null, gear: [], key: '', used: false, gearDown: true, idle: 0 }
     this.slots.push(slot)
     void this.assets.acquire(`/models/takeflight/${model}_lod1.glb`).then((instance) => {
       if (this.disposed) {

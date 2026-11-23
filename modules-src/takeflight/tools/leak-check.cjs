@@ -1,7 +1,7 @@
 /**
- * Browser leak suite: loads the page, then flies every aircraft from every airport in turn (50 aircraft and airport loads
- * in all) and checks that scene meshes, materials, textures, geometries and nodes return to the same counts each time the
- * same aircraft and airport come round. Usage: node modules-src/takeflight/tools/leak-check.cjs <page url> [cycles]
+ * Browser leak suite: loads the page, flies every aircraft and airport pair once to warm the caches and pools, then flies
+ * `cycles` more loads (50 by default) and checks that scene meshes, materials, textures, geometries and nodes never exceed
+ * what the same aircraft and airport needed in the warm-up round. Usage: node modules-src/takeflight/tools/leak-check.cjs <page url> [cycles]
  * (Playwright; WebGL through SwiftShader works headless).
  */
 const { chromium } = require('playwright')
@@ -21,7 +21,8 @@ const AIRPORTS = ['harrow', 'millbrook', 'ashby', 'fenwick', 'corran', 'halvard'
   await page.waitForFunction(() => window.__takeflight, null, { timeout: 180000 })
   const seen = new Map()
   let failures = 0
-  for (let i = 0; i < cycles; i++) {
+  const warmup = AIRCRAFT.length * AIRPORTS.length
+  for (let i = 0; i < warmup + cycles; i++) {
     const aircraft = AIRCRAFT[i % AIRCRAFT.length]
     const airport = AIRPORTS[i % AIRPORTS.length]
     await page.evaluate(({ aircraft, airport }) => window.__takeflight.debug.fly({ aircraft, airport, start: 'runway1', weather: 'clear', time: 'noon', checkride: null, job: null, route: null }), { aircraft, airport })
@@ -30,7 +31,7 @@ const AIRPORTS = ['harrow', 'millbrook', 'ashby', 'fenwick', 'corran', 'halvard'
     const counts = await page.evaluate(() => window.__takeflight.debug.counts())
     const key = `${aircraft}@${airport}`
     const before = seen.get(key)
-    if (before) {
+    if (i >= warmup && before) {
       for (const name of ['meshes', 'materials', 'textures', 'geometries', 'nodes']) {
         if (counts[name] > before[name]) {
           failures++
@@ -38,7 +39,7 @@ const AIRPORTS = ['harrow', 'millbrook', 'ashby', 'fenwick', 'corran', 'halvard'
         }
       }
     }
-    seen.set(key, counts)
+    if (i < warmup) seen.set(key, counts)
     if (i % 10 === 9) console.log(`cycle ${i + 1}: ${JSON.stringify(counts)}`)
   }
   await browser.close()

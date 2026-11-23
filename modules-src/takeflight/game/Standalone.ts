@@ -692,7 +692,7 @@ export class Standalone {
     const eyeZ = camera.position.z + this.world.originZ
     this.world.updateAirports(eyeX, eyeZ)
     this.world.updateTowns(eyeX, eyeZ, this.atmosphere.night)
-    this.traffic.update(eyeX, eyeZ, this.weather.hours * 3600, sim.env.wind.spec.direction, sim.env.wind.spec.speed)
+    this.traffic.update(eyeX, eyeZ, this.weather.hours * 3600, sim.env.wind.spec.direction, sim.env.wind.spec.speed, dt)
     this.terrain.update(eyeX, camera.position.y, eyeZ)
     this.atmosphere.update(camera.position)
     this.weather.update(dt, shown, camera.position, this.world.originX, this.world.originZ, this.phase === 'flying')
