@@ -2,7 +2,10 @@
  * The concrete retaining wall along Main Street where it runs beside the Montello River (renderer-free, made at load
  * like the other street fixes). Wherever the river comes within ten feet of the street's edge the street is levelled
  * from its far edge out to the wall's face, the bank past the face is dug down under the river, and the wall stands on
- * the river side with its top just over the street, so the guardrail runs straight and level along it.
+ * the river side with its top just over the street, so the guardrail runs straight and level along it. Stretches where the
+ * river is near and the bank already falls away from the street's edge are walled too, so the road never drops off toward
+ * the water, and the whole run lies on one straight grade between the street's heights at its two ends (low spots are
+ * built up, bumps cut), so the street and the rail on the wall are perfectly even from end to end.
  *
  * The ground grid is 4 m, too coarse for a vertical face, so three things keep the ground out of sight: the strip from
  * the street's centre to the face is a deck (`riverWallDecks`, read by `TelloLand.heightAt`, so you stand and drive on
@@ -21,6 +24,10 @@ export const WALL_OFFSET = 2
 export const WALL_CURB = 0.15
 /** River within this far of the street's edge (ten feet, plus the 4 m grid's reach) calls for the wall. */
 const WALL_NEAR = 3.05 + 1.5
+/** Where the river is this near, a bank that falls `FALL_DROP` within `FALL_LOOK` of the street's edge is walled too. */
+const FALL_NEAR = 14
+const FALL_LOOK = 5
+const FALL_DROP = 0.3
 /** Gaps up to this many stations between close stretches are walled too; shorter stretches are left alone. */
 const GAP = 10
 const MIN_RUN = 8
@@ -32,6 +39,9 @@ const SINK_IN = 3
 const BED_DEPTH = 1.2
 /** How far past the face the bank is dug down. */
 const DIG = 8
+/** The far side is set to the wall's grade this far past the street's edge (its ten-foot sidewalk and a grid cell), then eased back. */
+const FAR_SIDE = 7
+const FAR_FADE = 4
 
 export interface RiverWallRun {
   /** The street's centre line at each station (flat x, z pairs). */
@@ -150,7 +160,14 @@ export function fixRiverWalls(doc: MapDoc, grids: MapGrids): RiverWallData {
     }
     const s = votes >= 0 ? 1 : -1
     const near = Array.from({ length: n }, (_v, i) => reach(i, s))
-    const flag = near.map((r) => !!r && r.d <= half + WALL_NEAR)
+    const falls = (i: number): boolean => {
+      const [nx, nz] = normal(i)
+      const x = pts[i * 2], z = pts[i * 2 + 1]
+      const centre = groundAt(x, z)
+      for (let d = half + 1; d <= half + FALL_LOOK; d += 1) if (centre - groundAt(x + nx * s * d, z + nz * s * d) >= FALL_DROP) return true
+      return false
+    }
+    const flag = near.map((r, i) => !!r && (r.d <= half + WALL_NEAR || (r.d <= half + FALL_NEAR && falls(i))))
     for (let i = 0; i < n; i++) {
       if (flag[i]) continue
       let a = i
@@ -184,7 +201,8 @@ export function fixRiverWalls(doc: MapDoc, grids: MapGrids): RiverWallData {
         levels.push(near[k]?.level ?? null)
       }
       const m = raw.length
-      run.y = smooth(smooth(raw, 3), 3)
+      const ends = smooth(smooth(raw, 3), 3)
+      run.y = ends.map((_v, k) => ends[0] + ((ends[m - 1] - ends[0]) * k) / Math.max(1, m - 1))
       for (let k = 0; k < m; k++) {
         if (levels[k] !== null) continue
         let best: number | null = null, gap = Infinity
@@ -196,6 +214,7 @@ export function fixRiverWalls(doc: MapDoc, grids: MapGrids): RiverWallData {
       return run
     }
   }
+  landFootbridges(doc, data)
   return data
 
   function shapeGround(run: RiverWallRun, levels: (number | null)[]): void {
@@ -206,7 +225,7 @@ export function fixRiverWalls(doc: MapDoc, grids: MapGrids): RiverWallData {
       x0 = Math.min(x0, run.pts[k * 2]); x1 = Math.max(x1, run.pts[k * 2])
       z0 = Math.min(z0, run.pts[k * 2 + 1]); z1 = Math.max(z1, run.pts[k * 2 + 1])
     }
-    const pad = face + DIG + 4
+    const pad = Math.max(face + DIG, run.half + FAR_SIDE + FAR_FADE) + 4
     for (let j = Math.floor((z0 - pad - f.z0) / f.cell); j <= Math.ceil((z1 + pad - f.z0) / f.cell); j++) {
       for (let i = Math.floor((x0 - pad - f.x0) / f.cell); i <= Math.ceil((x1 + pad - f.x0) / f.cell); i++) {
         if (i < 0 || j < 0 || i >= side || j >= side) continue
@@ -223,14 +242,19 @@ export function fixRiverWalls(doc: MapDoc, grids: MapGrids): RiverWallData {
         const k = j * side + i
         const y = run.y[at]
         const level = levels[at]
-        if (across >= -run.half - 1 && across <= face) {
+        if (across < -run.half - FAR_SIDE && across >= -run.half - FAR_SIDE - FAR_FADE) {
+          const t = (-run.half - FAR_SIDE - across) / FAR_FADE
+          grids.ground[k] = Math.round((y * (1 - t) + (grids.ground[k] / 100) * t) * 100)
+        } else if (across >= -run.half - FAR_SIDE && across <= face) {
           grids.ground[k] = Math.round(y * 100)
           if (grids.cover[k] === COVER.water) grids.cover[k] = COVER.bare
           if (across > 0 && at >= SINK_IN && at <= m - 1 - SINK_IN) {
             data.drop.set(k, run.depth[at])
             if (level !== null) grids.water[k] = Math.round(level * 100)
           }
-        } else if (across > face && across <= face + DIG && level !== null) {
+        } else if (across > face && across <= face + DIG) {
+          if (grids.ground[k] > Math.round(y * 100)) grids.ground[k] = Math.round(y * 100)
+          if (level === null) continue
           const g = grids.ground[k] / 100
           if (wet(k) || g < level + 1) {
             grids.ground[k] = Math.round(Math.min(g, level - BED_DEPTH) * 100)
@@ -238,6 +262,28 @@ export function fixRiverWalls(doc: MapDoc, grids: MapGrids): RiverWallData {
             grids.cover[k] = COVER.water
           }
         }
+      }
+    }
+  }
+}
+
+/** Footbridges whose end lands on a wall's strip are set to the wall's height there, so they meet the street without a step. */
+function landFootbridges(doc: MapDoc, data: RiverWallData): void {
+  for (const bridge of doc.bridges) {
+    if (bridge.k < 4) continue
+    const ends = [[bridge.p[0], bridge.p[1]], [bridge.p[bridge.p.length - 2], bridge.p[bridge.p.length - 1]]]
+    for (const run of data.runs) {
+      const face = run.half + WALL_OFFSET
+      for (const [x, z] of ends) {
+        let at = -1, best = Infinity
+        for (let k = 0; k < run.y.length; k++) {
+          const d = (run.pts[k * 2] - x) ** 2 + (run.pts[k * 2 + 1] - z) ** 2
+          if (d < best) { best = d; at = k }
+        }
+        const dx = x - run.pts[at * 2], dz = z - run.pts[at * 2 + 1]
+        const across = dx * run.nx[at] + dz * run.nz[at]
+        const along = Math.abs(dx * run.nz[at] - dz * run.nx[at])
+        if (along <= WALL_STEP && across >= run.half - 1 && across <= face + 3) bridge.y = Math.round(run.y[at] * 100) / 100
       }
     }
   }
