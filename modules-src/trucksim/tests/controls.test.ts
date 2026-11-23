@@ -61,20 +61,20 @@ test('a click on the full map lands on the world point drawn there', () => {
 
 test('a new driver starts with a free gravel driveway at the gate, under the spawn point', () => {
   for (const lot of LOTS) {
-    const driveway = starterDriveway(lot.index)!
+    const driveway = starterDriveway(COUNTY, lot.index)!
     assert.equal(driveway.id, STARTER_DRIVEWAY_ID)
     assert.equal(validateItem(driveway, [], { w: lot.w, d: lot.d }), null, `lot ${lot.index}`)
     const f = itemFootprint(driveway)
     const spawn = lotSpawn(lot)
     assert.ok(spawn.x >= lot.x + f.x && spawn.x <= lot.x + f.x + f.w && spawn.z >= lot.z + f.z && spawn.z <= lot.z + f.z + f.d, `lot ${lot.index} spawn on the gravel`)
   }
-  const fresh = withStarterDriveway({ ...defaultProfile(), lot: 3 })
+  const fresh = withStarterDriveway({ ...defaultProfile(), lot: 3 }, COUNTY)
   assert.deepEqual(fresh.build.map((item) => item.id), [STARTER_DRIVEWAY_ID])
-  assert.equal(withStarterDriveway(fresh), fresh, 'only once')
+  assert.equal(withStarterDriveway(fresh, COUNTY), fresh, 'only once')
   const driven = { ...defaultProfile(), lot: 3, stats: { jobs: 0, earned: 0, km: 12, tonnes: 0 } }
-  assert.equal(withStarterDriveway(driven), driven, 'existing drivers keep their lot as it is')
+  assert.equal(withStarterDriveway(driven, COUNTY), driven, 'existing drivers keep their lot as it is')
   const noLot = { ...defaultProfile() }
-  assert.equal(withStarterDriveway(noLot), noLot)
+  assert.equal(withStarterDriveway(noLot, COUNTY), noLot)
   const demolished = applyAction({ ...fresh, cash: 100 }, { action: 'demolish', ids: [STARTER_DRIVEWAY_ID] }, { now: 0, world: COUNTY })
   assert.equal(demolished.ok, true)
   assert.equal(demolished.delta, 0, 'the free driveway refunds nothing')

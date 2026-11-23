@@ -82,19 +82,20 @@ export async function trucksim(request: Request, env: Env) {
   if (request.method === 'GET') {
     const params = new URL(request.url).searchParams
     const now = Date.now()
-    if (params.has('lots')) return json({ lots: await loadPublicLots(env, now) })
+    const lots = entry.world.lots
+    if (params.has('lots')) return json({ lots: await loadPublicLots(env, now, lots) })
     const user = await currentUser(request, env)
-    if (!user) return json({ signedIn: false, lots: await loadPublicLots(env, now) })
+    if (!user) return json({ signedIn: false, lots: await loadPublicLots(env, now, lots) })
     const key = entry.profileKey(user.id)
     const loaded = await loadTrucksimProfile(env, key, user.username)
-    const lot = await assignLot(env, user.id, user.username, now)
+    const lot = await assignLot(env, key, user.username, now, lots)
     let profile = loaded.profile
-    const fresh = lot === null ? profile : withStarterDriveway(profile.lot === lot ? profile : moveToLot(profile, lot))
+    const fresh = lot === null ? profile : withStarterDriveway(profile.lot === lot ? profile : moveToLot(profile, lot, entry.world), entry.world)
     if (profile.lot !== lot || fresh !== profile) {
       profile = lot === null ? { ...profile, lot } : fresh
       await saveTrucksimProfileIfUnchanged(env, key, user.username, profile, loaded.updatedAt, Math.max(now, loaded.updatedAt + 1))
     }
-    return json({ signedIn: true, username: user.username, admin: user.isAdmin, profile, lots: await loadPublicLots(env, now) })
+    return json({ signedIn: true, username: user.username, admin: user.isAdmin, profile, lots: await loadPublicLots(env, now, lots) })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   requireSameOrigin(request)
@@ -103,13 +104,13 @@ export async function trucksim(request: Request, env: Env) {
   const now = Date.now()
   const key = entry.profileKey(user.id)
   const loaded = await loadTrucksimProfile(env, key, user.username)
-  const lot = await assignLot(env, user.id, user.username, now)
+  const lot = await assignLot(env, key, user.username, now, entry.world.lots)
   const profile = { ...loaded.profile, lot }
   const claimIndex = input.action === 'claim-lot' ? input.index : -1
-  const claimFree = claimIndex >= 0 ? await lotIsFree(env, user.id, claimIndex) : false
+  const claimFree = claimIndex >= 0 ? await lotIsFree(env, key, claimIndex) : false
   const result = applyAction(profile, input, { now, world: entry.world, lotFree: (index) => index === claimIndex && claimFree })
   if (!result.ok) return json({ ok: false, message: result.message, delta: 0, profile: result.profile })
-  if (claimIndex >= 0 && result.profile.lot === claimIndex && !await claimLot(env, user.id, user.username, claimIndex, now)) {
+  if (claimIndex >= 0 && result.profile.lot === claimIndex && !await claimLot(env, key, user.username, claimIndex, now)) {
     return json({ ok: false, message: 'Someone already has that lot.', delta: 0, profile })
   }
   const saved = await saveTrucksimProfileIfUnchanged(env, key, user.username, result.profile, loaded.updatedAt, Math.max(now, loaded.updatedAt + 1))

@@ -5,7 +5,8 @@ import type { Profile } from '../../modules-src/trucksim/shared/Economy'
 import { COUNTY } from '../../modules-src/trucksim/shared/RoadGraph'
 import type { HaulWorld } from '../../modules-src/trucksim/shared/HaulWorld'
 import type { PublicLot } from '../../modules-src/trucksim/shared/Lots'
-import { LOTS } from '../../modules-src/trucksim/shared/WorldLayout'
+import type { LotSpec } from '../../modules-src/trucksim/shared/WorldLayout'
+import { MONTELLO } from '../../modules-src/trucksim/shared/montello/MontelloWorld'
 
 export const LOT_RELEASE_MS = 45 * 24 * 60 * 60 * 1000
 
@@ -25,6 +26,7 @@ export function ensureTrucksimTables(env: Env) {
 /** The haul worlds the Worker knows. Life Sim will add `lifesim` here with its own profile key and shared wallet. */
 export const HAUL_WORLDS: Record<string, { world: HaulWorld; profileKey(userId: string): string }> = {
   county: { world: COUNTY, profileKey: (userId) => userId },
+  montello: { world: MONTELLO, profileKey: (userId) => `montello:${userId}` },
 }
 
 export async function loadTrucksimProfile(env: Env, key: string, username: string): Promise<{ profile: Profile; updatedAt: number }> {
@@ -51,10 +53,11 @@ async function releaseStaleLots(env: Env, now: number) {
 }
 
 /**
- * Marks the player as seen and returns their lot, giving the first free one when they have none (lots unseen for 45 days
- * are released first). Returns null when every lot is taken.
+ * Marks the player as seen and returns their lot in a world, giving the first free one of `lots` when they have none (lots unseen
+ * for 45 days are released first). `userId` is the world's profile key, so a driver holds one lot per world. Returns null when
+ * every lot is taken.
  */
-export async function assignLot(env: Env, userId: string, username: string, now: number): Promise<number | null> {
+export async function assignLot(env: Env, userId: string, username: string, now: number, lots: readonly LotSpec[]): Promise<number | null> {
   await releaseStaleLots(env, now)
   const own = await env.DB.prepare('UPDATE trucksim_lots SET seen_at = ?, username = ? WHERE user_id = ?').bind(now, username, userId).run()
   if ((own.meta?.changes ?? 0) > 0) {
@@ -64,7 +67,7 @@ export async function assignLot(env: Env, userId: string, username: string, now:
   for (let attempt = 0; attempt < 4; attempt++) {
     const { results } = await env.DB.prepare('SELECT lot_index FROM trucksim_lots').all<{ lot_index: number }>()
     const taken = new Set((results ?? []).map((row) => row.lot_index))
-    const free = LOTS.find((lot) => !taken.has(lot.index))
+    const free = lots.find((lot) => !taken.has(lot.index))
     if (!free) return null
     const inserted = await env.DB.prepare('INSERT OR IGNORE INTO trucksim_lots (lot_index, user_id, username, seen_at) VALUES (?, ?, ?, ?)').bind(free.index, userId, username, now).run()
     if ((inserted.meta?.changes ?? 0) > 0) return free.index
@@ -90,12 +93,13 @@ export async function claimLot(env: Env, userId: string, username: string, index
   return (inserted.meta?.changes ?? 0) > 0
 }
 
-/** Every claimed, recently seen lot with its owner's company and build. User ids are never included. */
-export async function loadPublicLots(env: Env, now: number): Promise<PublicLot[]> {
+/** Every claimed, recently seen lot of a world with its owner's company and build. User ids are never included. */
+export async function loadPublicLots(env: Env, now: number, lots: readonly LotSpec[]): Promise<PublicLot[]> {
+  const wanted = new Set(lots.map((lot) => lot.index))
   const { results } = await env.DB.prepare(
     'SELECT l.lot_index AS lot_index, l.username AS username, p.data AS data FROM trucksim_lots l LEFT JOIN trucksim_profiles p ON p.user_id = l.user_id WHERE l.seen_at >= ? ORDER BY l.lot_index',
   ).bind(now - LOT_RELEASE_MS).all<{ lot_index: number; username: string; data: string | null }>()
-  return (results ?? []).map((row) => {
+  return (results ?? []).filter((row) => wanted.has(row.lot_index)).map((row) => {
     const profile = normalizeProfile(parseStored(row.data, {}))
     return { index: row.lot_index, owner: row.username, company: profile.company, land: profile.land, build: profile.build }
   })

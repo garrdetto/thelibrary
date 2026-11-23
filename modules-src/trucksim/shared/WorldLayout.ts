@@ -75,6 +75,14 @@ export interface LotSpec {
 export const LOT_W = 120
 export const LOT_D = 90
 export const LOT_COUNT = 16
+/** Montello's lots (Haulers Lane, `shared/montello/MontelloWorld.ts`) are numbered from here, so lot numbers never clash between worlds. */
+export const MONTELLO_LOT_BASE = 100
+export const MONTELLO_LOT_COUNT = 16
+
+/** True for a lot number some world has: Haulers Row's 0–15 or Haulers Lane's 100–115. */
+export function knownLotIndex(index: number): boolean {
+  return Number.isInteger(index) && ((index >= 0 && index < LOT_COUNT) || (index >= MONTELLO_LOT_BASE && index < MONTELLO_LOT_BASE + MONTELLO_LOT_COUNT))
+}
 export const HAULERS_ROW_X = -900
 /** Extra land is bought in strips this deep, added at the back of the lot (away from Haulers Row). */
 export const LAND_STRIP_M = 30
