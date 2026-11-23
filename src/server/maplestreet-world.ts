@@ -14,10 +14,10 @@ declare const WebSocketPair: { new (): { 0: WebSocket; 1: ServerSocket } }
 
 const PUT_BATCH = 50
 
-/** Whether any saved lot or account of the current world mentions `text` (such as a quoted `custom:<id>` catalog id). */
+/** Whether any saved lot or account of Life Sim's current world mentions `text` (such as a quoted `custom:<id>` catalog id). */
 export async function worldMentions(env: Env, text: string) {
-  await env.DB.prepare('CREATE TABLE IF NOT EXISTS maplestreet_world (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)').run()
-  const row = await env.DB.prepare('SELECT key FROM maplestreet_world WHERE key LIKE ? AND instr(value, ?) > 0 LIMIT 1').bind(`${WORLD_GENERATION}%`, text).first<{ key: string }>()
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS foxlake_world (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)').run()
+  const row = await env.DB.prepare('SELECT key FROM foxlake_world WHERE key LIKE ? AND instr(value, ?) > 0 LIMIT 1').bind(`${WORLD_GENERATION}%`, text).first<{ key: string }>()
   return row !== null
 }
 

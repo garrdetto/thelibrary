@@ -294,11 +294,6 @@ export function turnedCenter(c: { x: number; z: number }, yaw: number) {
   return { x: c.x * cos + c.z * sin, z: -c.x * sin + c.z * cos }
 }
 
-/** A record the in-game test drive can install as-is. */
-export function draftRecord(spec: CustomVehicleSpec, name: string, modelUrl: string, wheelUrl: string | null): CustomVehicleRecord {
-  return { ...spec, id: 'draft-0000-test-drive', name: name.trim() || 'Draft vehicle', modelUrl, wheelUrl, active: true, updatedAt: Date.now() }
-}
-
 export const LIMITS = VEHICLE_LIMITS
 export const mph = (ms: number) => ms / MPH_TO_MS
 export const feet = (m: number) => m * 3.28084

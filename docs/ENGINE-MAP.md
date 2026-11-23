@@ -74,7 +74,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/darts-settings.ts` + `src/server/darts-settings.ts` — `/api/darts-settings`: the administrator's Darts settings (`modules-src/darts/shared/Settings.ts`) in D1 `library_settings` key `darts-settings` (table created on first use). GET (public): settings merged over the defaults, `updatedAt`, `admin`; POST (admin, same-origin, Zod, then `sanitizeSettings`) `save {settings}` and `reset` — `api.ts`, `darts-room.ts`, `src/components/darts/DartsSettings.tsx` (admin console → Module settings → Darts, `#admin/darts`: throw meter with a zone preview, classic meter mode, board colours with canvas previews, dart colours and finishes, setup defaults).
 - `src/server/darts-room.ts` — Durable Object `DartsRoom` (binding `DARTS_ROOM`, one per `room:<code>`, up to four seats; saves signed-in players' finished legs and match averages through `darts-records.ts`): Zod-checked ROOM_CREATE/ROOM_JOIN/GAME_START/THROW_MADE/REMATCH/RESTART_REQUEST/PING; restart votes (RESTART_VOTES; the match restarts once every connected player asks, votes lapse after 30 s); rolls each dart's release error itself, flies it with `shared/Physics`, scores it with `shared/Rules`, broadcasts THROW_MADE/TURN_SWITCH/GAME_OVER, turn timeout and 90 s seat hold; reads the admin's meter settings (`readDartsSettings`) when a room opens and calls `applyMeterSettings` right before each launch, so online throws use the same zones as the players' meters — `server.ts`, `routes/darts.ts`.
 - `src/server/routes/park.ts` — `/api/park` tickets, gzip saves (slots 0–6), company-value boards with park screenshots (`?shot=`) — `api.ts`.
-- `src/server/routes/maplestreet.ts` — `/api/maplestreet` WebSocket upgrade to the shared world — `api.ts`.
+- `src/server/routes/maplestreet.ts` — `/api/maplestreet?world=foxlake` WebSocket upgrade to Life Sim's shared world (other worlds answer 404) — `api.ts`.
 - `src/server/routes/angler.ts` + `src/server/angler.ts` — `/api/angler`, Northwoods Angler profiles, anchored sessions, server-rolled catches and record boards (D1 `angler_*`); `start`/`tick`/`stop` carry the shared-lake `room`, so landed fish are announced to that lake instance and the Boat Party progress is checked against the instance's crew — `api.ts`.
 - `src/server/routes/angler-lake.ts` — `/api/angler-lake`: GET counts boats out per lake; a WebSocket upgrade (same origin; members by session, guests by a zod-checked key) joins the invited instance or the first of eight per lake with room — `api.ts`.
 - `src/server/angler-lake.ts` — Durable Object `AnglerLake` (binding `ANGLER_LAKE`, one per `<lake>:<instance>`): in-memory peers only (nothing stored), up to 4 boats and 8 connections, positions relayed at 4 Hz, fishing phases, crews of two (`board`, `leave`, `lock`, `kick`), member gear read from the saved profile and guest gear checked against the starter kit, internal `/catch` (delayed to the end of the fight) and `/crew` for the REST route — `server.ts`.
@@ -82,7 +82,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/hood.ts` — `/api/hood`: GET a street of The Hood (`?street=`, owners, home/visitor presence, public shells; `?town=1` returns just the street's service calls from the last hour and who is on a shift), POST `claim` (signed in, Zod) to move a household in, WebSocket upgrade (same origin; members by session, guests by a key) to walk onto a lot — `api.ts`.
 - `src/server/hood.ts` — D1 `hood_lots` (migration 0023) and `hood_requests` (service calls, migration 0024), both also created on first use: load/save a lot's state and public shell, presence, homes, claims, `townRequests`/`addTownRequest`, `streetWorkers` — `routes/hood.ts`, `hood-lot.ts`.
 - `src/server/hood-lot.ts` — Durable Object `HoodLot` (binding `HOOD_LOT`, one per `<street>:<lot>`): runs `modules-src/hood/shared/Room.ts` for everyone on the lot, Zod-checks commands, ticks at 10 Hz, sends state at 5 Hz, saves to D1, borrows visiting Sims from their home lot (`/depart`) and hands them back (`/return`), records service calls in `hood_requests` and refreshes the street's calls into the Room every 20 s — `server.ts`.
-- `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world`; registers published items and vehicles before loading the world and again on `POST /catalog` — `server.ts`.
+- `src/server/maplestreet-world.ts` — `MapleStreetWorld` base class (its own world is retired) and Life Sim's `FoxLakeWorld` running `shared/WorldServer.ts`, saving to D1 `foxlake_world`; registers published items and vehicles before loading the world and again on `POST /catalog` — `server.ts`.
 - `src/server/routes/maplestreet-items.ts` — `/api/maplestreet-items`: public list (drafts only for the admin with `?drafts=1`), `?model=<id>` serves the .glb from KV, admin multipart publish (POST, `status` draft or published) and status changes (PATCH `status`, or the older `active`) — `api.ts`. Helpers in `src/server/maplestreet-items.ts` and `src/server/gltf-check.ts`.
 - `src/server/maplestreet-assets.ts` — D1 `maplestreet_assets` (migration 0016, also created on first use and back-filled from `maplestreet_items` / `maplestreet_vehicles` with `INSERT OR IGNORE`): one row per published asset with `kind`, `status`, JSON `spec` and `files`; list/get/insert/update and the admin-only draft check — `maplestreet-items.ts`, `maplestreet-vehicles.ts`.
 - `src/server/routes/maplestreet-vehicles.ts` — `/api/maplestreet-vehicles`: public list (retired included with `active: false`), `?model=<id>` / `?wheel=<id>` serve KV `maplestreet-vehicle/<id>[/wheel]`, admin multipart publish (`name`, `spec` JSON, `model`, optional `wheel`; with `id` it saves over an existing vehicle and bumps the `&v=` on its model URL) and PATCH (`active`, `name`, `spec`) — `api.ts`. Zod `vehicleSpecSchema` and D1 `maplestreet_vehicles` (migration 0014) in `src/server/maplestreet-vehicles.ts`; `requireMapleAdmin` / `refreshWorldCatalog` in `src/server/maplestreet-admin.ts`.
@@ -104,13 +104,12 @@ Pinned exactly in `package.json`, bundled by Vite, never loaded from a CDN (Phas
 
 | Package | Version | Used by |
 | --- | --- | --- |
-| `three` (+ `three/addons/*`, `three/webgpu`, `three/tsl`) | **0.186.1** | sandlot3d, botwreck, shorttrack, maplestreet |
+| `three` (+ `three/addons/*`, `three/webgpu`, `three/tsl`) | **0.186.1** | sandlot3d, botwreck, shorttrack, demoderby, fairway, darts and others |
 | `@types/three` | 0.186.0 | type checking |
-| `@dimforge/rapier3d-compat` | 0.14.0 | maplestreet, demoderby |
+| `@dimforge/rapier3d-compat` | 0.14.0 | engine, county, trucksim, demoderby |
 | `postprocessing` | 6.39.5 | any module (peer range `three >=0.168 <0.187`, hence three 0.186.1, not 0.187.0) |
 | `cannon-es` | 0.20.0 | botwreck |
 | `peerjs` | 1.5.4 | sandlot, chess, checkers, shorttrack |
-| `colyseus.js` | 0.15.28 | (no longer used by a module; maplestreet's optional `colyseus-server/` is server-side) |
 
 Vendor chunks, each emitted once and cached across modules: `vendor` (three core + addons + postprocessing), `vendor-webgpu` (three's WebGPU/TSL build and the addons that need it), `vendor-rapier`, `vendor-net` (PeerJS).
 
@@ -162,7 +161,6 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `sandlot3d` | three.js 0.186.1 WebGL behind an r128-compatible global `THREE` | `modules-src/sandlot3d/` |
 | `botwreck` | three.js 0.186.1 ESM + cannon-es 0.20 | `modules-src/botwreck/` |
 | `shorttrack` | three.js 0.186.1 ESM + addons (Sky, RoomEnvironment, bloom) | `modules-src/shorttrack/` |
-| `maplestreet` | three.js 0.186.1 WebGPU build (WebGL2 fallback), Rapier 0.14 | `modules-src/maplestreet/` |
 | `fairway` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, TSL node materials | `modules-src/fairway/` |
 | `demoderby` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, Rapier 0.14 raycast vehicles | `modules-src/demoderby/` |
 | `darts` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`; canvas-drawn board maps; deterministic rules and flight in `shared/` | `modules-src/darts/` |
@@ -176,7 +174,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `party` | DOM + 2D canvas, bundled PeerJS | `modules-src/party/` |
 | `pingpong` | 2D canvas (projected 3D), bundled PeerJS | `modules-src/pingpong/` |
 
-Known baseline issues: `shorttrack` is too busy under software WebGL for Playwright screenshots (gate note, not failure). The `maplestreet` `Buffer is not defined` error is gone now that colyseus.js is bundled.
+Known baseline issues: `shorttrack` is too busy under software WebGL for Playwright screenshots (gate note, not failure).
 
 ### demoderby — Demo Derby (`modules-src/demoderby/`)
 - `modules-src/demoderby/module.json` — id, title, accent `#ff8c2a`, modes — `config.ts`.
@@ -330,66 +328,18 @@ A fishing and hunting module on one 1,024 m square of northern Wisconsin (lake w
 - `modules-src/sandlot3d/tools/build-athlete.py` — Blender script for the athlete body (pelvis, belt and loops, abdomen, chest, placket and buttons, neck, arms, legs; game UVs and named material slots; bones `hips`, `chest`, `neck`, `upperarm_L/R`, `forearm_L/R`, `thigh_L/R`, `shin_L/R` whose local axes are x = along × front, y = along, z = front) → `assets-src/models/sandlot3d/athlete.glb` → `pnpm assets` (preset `skinned`) → `public/models/sandlot3d/athlete.glb`.
 - `public/modules/sprites/` (34 WebP files) — roster and batter-card art — `main.js` at runtime.
 
-### maplestreet — Fox Plains (`modules-src/maplestreet/`)
-- `modules-src/maplestreet/index.html` — page shell (start screen, HUD markup, styles), no CDN scripts — `vite.modules.ts` (→ `public/modules/maplestreet.html`).
-- `modules-src/maplestreet/index.ts` — entry; imports `src/main.ts` — `index.html`.
-- `modules-src/maplestreet/README.md` — module notes — developers.
-- `src/main.ts` — boot: locked name (library username, or a fixed guest name), two modes (shared world, solo with unlimited money); waits for the published-item catalog and published vehicles before starting; `?vehicleTest=1` opens the admin test drive instead — `index.ts`.
-- `src/core/Engine.ts` — renderer, scene, camera, resize (WebGPU/WebGL2) — `Game`, `BuildController`, `DayNight`, `Neighborhood`, `RemoteEntities`.
-- `src/core/Loop.ts` — fixed-step update/render loop — `Game`.
-- `src/core/Input.ts` — keyboard, mouse, touch — `Game`, `CameraRig`, `BuildController`.
-- `src/core/Materials.ts` — shared PBR materials, procedural textures — `Game`, `Mesher`, `Neighborhood`, `Downtown`.
-- `src/core/Merge.ts` — geometry merge helpers — `Downtown`, `RemoteEntities`, `Vehicle`, `VehiclePresets`.
-- `src/core/DevMode.ts` — developer instance flag (`?dev=1`), its save key and draft counts — `main`, `OfflineTransport`, `CustomModels`, `CustomVehicleModels`.
-- `src/core/Storage.ts` — per-device settings — `main`, `Game`, `BuildController`, `Host`, `WorldTransport`.
-- `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch; vehicles are parked at home (never brought to you), Go Home every 15 minutes, the parked-vehicle unstack watchdog and the right-click vehicle menu — `main`.
-- `src/game/ContextMenu.ts` — right-click menu panel (title + actions, Escape/outside click closes, arrow keys) — `Game`.
-- `src/game/CameraRig.ts` — third-person and build cameras — `Game`.
-- `src/game/Hud.ts` — HUD, menus, notifications — `Game`.
-- `src/game/PlotMap.ts` — town map overlay (bounds from `MAP_BOUNDS`, civic buildings included) — `Hud`.
-- `src/game/MiniMap.ts` — heading-up corner minimap with the street route to the current objective — `Game`.
-- `src/game/RoadRoute.ts` — A* street routing on a 2 m road grid — `MiniMap`.
-- `src/build/BuildController.ts` — build/buy tools, batched `builds` gestures — `Game`, `Hud`.
-- `src/build/Mesher.ts` — walls, floors, roofs, pools to meshes — `Game`, `BuildController`, `HouseManager`.
-- `src/build/Openings.ts` — door and window geometry per wall segment (door, glass entry door, French doors, sliding patio door, garage door, window, tall shuttered window, picture, clerestory, frosted); sliders, garage doors and clerestories join across adjacent segments — `Mesher`, `BuildController`, `Hud`.
-- `src/build/HouseManager.ts` — per-lot house meshes — `Game`, `BuildController`.
-- `src/build/Furniture.ts` — furniture and fixture models; hands `custom:` items to `CustomModels` — `Game`, `BuildController`, `Mesher`, `Thumbs`.
-- `src/build/CustomModels.ts` — admin-published items: fetches `/api/maplestreet-items` (cached for offline), registers them, loads each .glb with `GLTFLoader` and clones it per placement with the published `{x,y,z}` scale; custom items are added to the lot group unmerged — `main`, `Furniture`, `Thumbs`.
-- `src/build/Thumbs.ts` — off-screen catalog thumbnails — `Game`.
-- `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps; hands its scenery to `WorldChunks` — `Game`.
-- `src/world/WorldChunks.ts` — distance-based world chunking: 64 m grid, per-object view distance from its size (160/320/480/720 m), world-wide instanced trees and lamps split per 256 m cell, async (`compileAsync`, whole part regardless of view, only with AO off) attach queue with hysteresis, then each new part is drawn once off-screen (`beginWarm`/`endWarm`, `WARM_PER_FRAME`) so its pipelines exist before the camera turns to it; houses are tracked per lot — `Game`, `Neighborhood`, `HouseManager`.
-- `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear; the curved Willow Bend streets as ribbons with curbs, gutters, center dashes and stop signs — `Neighborhood`.
-- `src/world/TownSquare.ts` — Maple Commons: lawn, paths, gazebo, clock tower, benches, beds, trees, lamps, plaque — `Downtown`.
-- `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), fire and police stations (apparatus bays, bay lights, flagpoles), depot, streetscape, showroom cars — `Neighborhood`.
-- `src/world/Facades.ts` — facade styles and window/storefront layouts shared by the painted textures (albedo, night glow, roughness/metalness) and the 3D trim — `Downtown`.
-- `src/world/GasStation.ts` — Gas & Go forecourt, canopy, islands, dispensers, pylon price sign, canopy light — `Downtown`.
-- `src/world/Lawn.ts` — mowable lawns: per-lot data texture (blade lean + growth, 4 texels/m) and the view-dependent stripe shader; diamond patterns from crossed passes; grass grows back over five in-game days — `Neighborhood`, `Grass`.
-- `src/world/Grass.ts` — instanced grass: thin four-blade clumps; on lawns they follow the lawn's growth (≈4 → 11 cm) and lean the way they were mowed, shaded by lean vs. camera so stripes read in 3D; short verges along the curves, meadow elsewhere — `Game`.
-- `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
-- `src/physics/Physics.ts` — Rapier world and colliders; rounded vehicle colliders (`vehicleShape`); wheel rays hit trailer beds (`CG.DECK`) but never other cars — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
-- `src/physics/Parking.ts` — free-spot search for placing vehicles (buildings, props, every vehicle) and the stacked-vehicle check — `Game`.
-- `src/physics/VehicleDoors.ts` — hinged door leaves for enclosed built-ins (`DOOR_SPECS`), driver-door pulse on getting in/out, open/close all — `Vehicle`, `RemoteEntities`.
-- `src/physics/Character.ts` — kinematic character controller and `Avatar` (scanned model, stand-in while loading) — `Game`, `RemoteEntities`.
-- `src/physics/Vehicle.ts` — raycast vehicle: grip-limited, rate-limited steering with Ackermann front wheels, pedal ramps, torque curve, handbrake rear slide; built from any `PRESETS` entry, built-in or published — `Game`, `Dyno`, `VehicleTestDrive`.
-- `src/physics/CustomVehicleModels.ts` — published vehicles: fetches `/api/maplestreet-vehicles` (cached for offline), registers them with `shared/CustomVehicles.ts`, adds `PRESETS` entries whose body is the .glb in the chassis frame with game wheels, lamps and paint (material or color-mask recolor) — `main`, `VehicleTestDrive`.
-- `src/physics/Dyno.ts` — full-throttle pull on the real physics (0–target time, top speed) — `VehicleTestDrive`, `tests/vehicles.test.ts`.
-- `src/game/VehicleTestDrive.ts` — `?vehicleTest=1`: the admin editor posts a draft record; runs the dyno, reports `tl-vehicle-test-result`, then lets the admin drive on a flat pad — `main`.
-- `src/avatar/AvatarAssets.ts` — loads `public/modules/maplestreet/{male,female}.glb` + region masks, flattened-hair variant — `Character.ts`.
-- `src/avatar/AvatarMaterial.ts` — TSL wardrobe recolor shader — `AvatarModel`.
-- `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/run/idle/seated pose — `Character.ts`.
+### maplestreet — Fox Plains shared code (`modules-src/maplestreet/`; the Fox Plains page is retired, only imported code remains)
+- `modules-src/maplestreet/README.md` — what remains and who imports it — developers.
+- `src/core/Input.ts` — keyboard, mouse, touch — Kestrel County `Game`, Fox Plains 2's `CameraRig`.
+- `src/core/DevMode.ts` — developer instance flag (`?dev=1`) and its save key — `OfflineTransport`.
+- `src/core/Storage.ts` — per-device settings — `Host`, `WorldTransport`, Life Sim (`vehicles/TuningClient.ts` and others).
 - `src/avatar/Gait.ts` — speed-matched walk and run cycles (cadence from stride length so planted feet don't slide; running lean, swing-knee tuck, arm pump) — `AvatarModel`, `Character.ts` stand-in.
-- `src/avatar/HairAndHats.ts` — long hair, buns, hats on the head bone — `AvatarModel`.
-- `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids).
-- `src/game/DevPanel.ts` — developer instance panel (F8): published and draft items and vehicles with Place and Drive — `main` (only with `?dev=1`), `Game.devPlace` / `devDrive`.
-- `src/game/WardrobeUI.ts` — one-time character creator (male/female, hair, face, starter outfit), wardrobe (hair and face only; outfit locked) and the Maple Threads shop panel — `Game`.
+- `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids) — Fox Plains 2's `Avatar.ts`.
 - `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation, `keepOutfit` (clothes only change at Maple Threads) — `RoomLogic`, `Economy`, `Npc`, client.
-- `tools/build-characters.mjs` — offline scan → rigged avatar + mask pipeline (not part of the build).
-- `src/physics/VehiclePresets.ts` — procedural bodies of the built-in vehicles (tuning comes from `shared/Vehicles.ts`); `PRESETS` also holds published vehicles; `wheelFor` picks a published wheel model or the procedural wheel; `makePaint`/`paintFor` build the paint for a finish or an owned car's style — `Vehicle`, `Downtown`, `RemoteEntities`, `Hud`.
-- `src/net/Transport.ts` — transport interface — every transport, `Game`.
-- `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
-- `src/net/OfflineTransport.ts` — solo mode (unlimited money, save `maplestreet/solo/v3`) and fallback — `Game`.
+- `src/net/Transport.ts` — transport interface — every transport, Life Sim's `town/FoxLakeTown.ts`.
+- `src/net/WorldTransport.ts` — shared world over `/api/maplestreet?world=foxlake` — Life Sim's `town/FoxLakeTown.ts`.
+- `src/net/OfflineTransport.ts` — solo mode and fallback when the world can't be reached — Life Sim's `town/FoxLakeTown.ts`.
 - `src/net/Host.ts` — in-browser authority for solo mode — `OfflineTransport`.
-- `src/net/RemoteEntities.ts` — remote player and vehicle interpolation; vehicles are data (snapshot buffers) with a pooled 3D view + collider only within 200 m (released past 240 m), neighbor walkers likewise within 110 m; a pooled view is repainted (paint, dents, tint, rims, lift) whenever it shows a car with a different snapshot `style`; remote doors swing when their driver gets in or out; `pickVehicle` for the right-click menu — `Game`.
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs; in Fox Lake (`LogicOptions.foxLake`) Montello alone: its lots (`extraLots` only), shops, pumps, freight-depot deliveries and fire calls from `shared/MontelloPlaces.ts`, no seeded neighbors, and the lake rides sold at the dealership (`Account.rides`, `Economy.LAKE_RIDE_ITEMS`, `shopItems`)); a newer connection for the same account supersedes the old one so its player and vehicles leave the world — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop; storage keys are prefixed with `WORLD_GENERATION` (bump it to reset everyone), or `FOX_LAKE_GENERATION` for Fox Lake's own world (`fl1:`; it has no simulated traffic) — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — sidewalks (with their road side, `residentialSidewalks()`), `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
@@ -404,10 +354,6 @@ A fishing and hunting module on one 1,024 m square of northern Wisconsin (lake w
 - `shared/Economy.ts` — prices, loan cap, pay; `VEHICLES` (built-ins + published, `paintable` false for published vehicles that keep their own colors), `refreshDealer`, `normalizeAccount` keeps `custom:` garage entries and fills `Account.cars` — `RoomLogic`, `WorldServer`, `Game`, `Hud`.
 - `shared/Cars.ts` — each owned car's look (`OwnedCar`: paint color and gloss/metallic/matte finish, crash `damage` 0–1 and up to `MAX_DENTS` dents in chassis space), dealer `PAINT_SWATCHES`, `cleanCar` validation, `crashDamage`/`addCrash` (crashes start at `CRASH_MIN_DV` 4 m/s of horizontal speed change in one step, a ~30 mph wall hit costs about a quarter), `conditionEffects` (up to −35% engine, −20% grip, a slight pull), `carStyleKey` for rebuilds — `Economy`, `RoomLogic` (buy, crash, snapshots), `Vehicle`, `RemoteEntities`, `Hud`.
 - `shared/BodyShop.ts` — Maple Body & Wheel: layout (`BODY_SHOP`, three `BODY_SHOP_BAYS`, `inBay`, `atBodyShop`), the menu (rims, tint, lift, performance parts) and every price (`repairPrice`, `quote`), `cleanOrder`/`applyOrder` — `RoomLogic` (`service`), `BodyShopUI`, `Downtown`, `MiniMap`, `PlotMap`.
-- `src/world/BodyShop.ts` — the three-bay garage building: open bays, dividers, lifts, sign, apron; only walls, dividers and posts collide — `Downtown`.
-- `src/game/BodyShopUI.ts` — the body shop window (repairs, paint, tint, wheels, lift, performance) with a live itemized quote — `Game`.
-- `src/physics/CutParts.ts` — opening doors, hood and trunk for published vehicles: `cutParts` moves the model's triangles inside each `CustomVehicleSpec.parts` box into a hinged leaf (doors at their front edge, mirrored; hood at its back edge; trunk at its front edge, or a `drop` tailgate at its bottom edge), and `PartRig` swings them with the same calls as `VehicleDoors` plus `setHood`/`setTrunk` — `CustomVehicleModels`, `Vehicle`, `RemoteEntities`, `Game` (right-click menu).
-- `src/physics/Dents.ts` — `applyDents` pushes a body's vertices in around each stored dent (geometry cloned first), `impactPoint` finds where a hit landed on the chassis outline — `Vehicle`, `RemoteEntities`.
 - `shared/Vehicles.ts` — `VehicleKind` (built-ins plus `custom:<uuid>`), built-in tuning as plain data, `TUNING` registry, `rideHeight`, `wheelbaseOf`, `vehicleRole`, `BODY_EXTENTS` (reference outlines) — everything that handles vehicles.
 - `shared/CustomVehicles.ts` — published-vehicle records, limits, `BRAND_PATTERN`, `registerCustomVehicles` (tuning, dealer, traffic; always adds the bundled vehicles) — `CustomVehicleModels`, `Npc`, `maplestreet-world.ts`, `src/server/maplestreet-vehicles.ts`, the vehicle editor.
 - `shared/BundledVehicles.ts` — vehicle records that ship with the game (Meridian Sedan, Bulwark 4x4, Ironhorn Crew Cab), models in `public/modules/maplestreet/vehicles/`; a published record with the same id replaces one — `CustomVehicles`.
@@ -415,11 +361,10 @@ A fishing and hunting module on one 1,024 m square of northern Wisconsin (lake w
 - `shared/PaintMask.ts` — color-mask recolor shared by the game and the editor preview.
 - `shared/WindowDetect.ts` — finds a scan's painted-on windows (`detectWindows`, `detectVehicleWindows`: glass-coloured texture, greenhouse band, facing; then lone hits dropped, small patches dropped, small holes filled) and `tidyWindows` (specks and holes only) — the vehicle editor's window tool, Fox Lake's `fp/physics/ScanGlass.ts` and `dev/WindowTrace.ts`.
 - `shared/VehicleGlass.ts` — traced windows saved on a vehicle (`glass` in the spec: per body mesh `{mesh, tris, verts, runs}`, runs in base 36), `encodeGlassRuns`/`decodeGlassRuns`, `tracedFlags`, validation, and the lasso (`pointInPolygon`, `lassoTriangles`) — `src/server/maplestreet-vehicles.ts`, Fox Lake's `VehicleModels` and `WindowTrace`, the editor's `windowTool.ts`; tests in `tests/glass-trace.test.ts`.
-- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building/sidewalk layout and minimap routing; `tests/houses.test.ts` — every house plan on both lot orientations, seeding and the seed upgrade; `tests/movement.test.ts` — gait foot speed and knee timing, NPC gaps and no gridlock, reconnect superseding; `tests/suggest.test.ts` — the vehicle editor's Suggest points wheel finder (`src/components/maplestreet/vehicle/suggest.ts`) and view-to-metre conversion; `tests/cars.test.ts` — car paint on accounts, dealer purchases with a color and finish, snapshots carrying the owner's paint, and crash damage (thresholds, dents, which cars the authority will damage); `tests/bodyshop.test.ts` — the body shop's placement and bays, prices, order validation, upgrade effects and paid service only for a car parked in a bay; `tests/parts.test.ts` — cutting part boxes out of a mesh into hinged leaves, how each part swings, and part validation (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
+- `tests/` — tests for the shared code (registry, drive model, traffic, garages, body shop, cars, world rules, Montello places, glass tracing, vehicle editor tools) — `scripts/maplestreet-tests.mjs` in `pnpm test`.
 - `shared/Mowing.ts` — lawn cells (cut time + blade lean per m²), lean blending, growth (`GROW_DAYS` = 5), mowing pay, run-length encoding — `RoomLogic`, `Game`, `Lawn`, `Grass`.
 - `shared/Protocol.ts` — message protocol types (jobs: `delivery` or `fire`, `area: 'montello'`, `JobOffer`) — every transport, `RoomLogic`, `WorldServer`.
 - `shared/MontelloPlaces.ts` — generated by `scripts/montello-places.mjs` from `public/modules/tello/montello.json` (never hand-edit; a test checks it is current): Montello's shop doors (bars, bank, diners, the candy store, Dollar General, Kwik Trip, Mobil, BP, Freitag's Food Center, the dealership, Maple Threads, the body shop, the feed mill's hardware counter, the outfitter's counter at Rendezvous Paddle & Sports, the sheriff's office; `MontelloKind`), `MONTELLO_CASINO` (where the casino stands, `casinoSite`), fuel pumps, fire station, the freight depot behind Freitag's, the sheriff's office and the dealer, every house's front step and Fox Lake's lots (the house parcels and vacant parcels across the map), in Fox Lake's town frame (Montello's map with z turned) — `RoomLogic`, Fox Lake's `places/`.
-- `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.
 
 ### tello — Montello's builder (`modules-src/tello/`, Babylon.js 9.34 WebGPU, WebGL2 fallback)
 Montello, Wisconsin at 1:1 as Fox Lake's (Life Sim's) town, with Fox Lake's town builders, physics and vehicles; the standalone Tello page was removed (details in `modules-src/tello/README.md`).
@@ -968,15 +913,15 @@ Every phase keeps these exactly (sources: `AGENTS.md`, `docs/AUDIT.md` §1, veri
 - `postMessage` child → parent `{type:'tl-score-saved', module, saved}` — refreshes `ModuleScoreboard`.
 - `postMessage` child → parent `{type:'tl-lap', track, mode}` — refreshes `LapRecordBoard`.
 - `postMessage` child → parent `{type:'tl-fairway', board}` (`round`, `pin`, `match`) — refreshes `FairwayRecordBoard`.
-- `postMessage` parent → child `{type:'tl-host'}`; child answers `{type:'tl-room', code}` — sandlot, chess, checkers, shorttrack, maplestreet, fairway.
-- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet, fairway; fairway falls back to a fixed `Guest-xxxxx` per browser), `?track=shorttrack|dells|dellswide|prison|dirt` (Short Track Showdown), `?world=`, `?solo=` (Fox Plains).
+- `postMessage` parent → child `{type:'tl-host'}`; child answers `{type:'tl-room', code}` — sandlot, chess, checkers, shorttrack, fairway.
+- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, fairway; fairway falls back to a fixed `Guest-xxxxx` per browser), `?track=shorttrack|dells|dellswide|prison|dirt` (Short Track Showdown), `?solo=` (Life Sim).
 - PeerJS room codes: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (Fox Plains also allows `L`), shown upper-case; peer ids lower-case the code: `sandlot-`, `tl-chess-`, `tl-checkers-`, `tl-fairway-` (host plus up to three guests). Short Track Showdown: 5 letters A–Z without I/O, peer id `sts-oval-race-<CODE>`.
 - Group-chat invites `meta.invite = {module, label, code}`.
 - `/api/*`: `pool-account`, `workspace-access`, `workspace-admin`, `site-changes`, `account-settings`, `pool-practice`, `pool-preferences`, `pool-cue-overlay`, `racing`, `fairway`, `park`, `maplestreet`, `maplestreet-items`, `maplestreet-vehicles`, `meshy`, `group-chat`, `module-scores`, `studio`, `library`, `asset`, `learning`, `lyric-presets`.
 - Railway service: socket.io default namespace (pool), `/racing`, `/park`; tickets from `/api/pool-account?action=ticket`, `/api/racing`, `/api/park`; client URL env `VITE_POOL_SERVER_URL`; pool header `X-Pool-Player`.
 - Ticket redeem: `/api/pool-account?action=redeem`, `/api/racing?action=redeem`, `/api/park?action=redeem` (server-to-server).
 - Server-shared files: `server/racing-engine.mjs`, `server/park/` (deterministic commands); changes redeploy Railway and bump `/version` in `server/index.mjs`.
-- Fox Plains: `shared/RoomLogic.ts` is the only rules authority; Durable Object binding `MAPLE_WORLD`, D1 table `maplestreet_world`.
+- Life Sim's world: `modules-src/maplestreet/shared/RoomLogic.ts` is the only rules authority; Durable Object binding `FOX_LAKE_WORLD`, D1 table `foxlake_world`. `MAPLE_WORLD` stays bound only because `FoxLakeWorld` extends its class.
 
 ## Conventions
 

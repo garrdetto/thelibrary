@@ -1,6 +1,5 @@
 export const embeddedModules = [
   { id: 'sandlot3d', title: 'Sandlot Sluggers 3D', src: '/modules/sandlot3d.html' },
-  { id: 'maplestreet', title: 'Fox Plains', src: '/modules/maplestreet.html' },
   { id: 'foxlake', title: 'Life Sim', src: '/modules/foxlake.html' },
   { id: 'sandlot', title: 'Sandlot Sluggers', src: '/modules/sandlot.html' },
   { id: 'botwreck', title: 'BotWreck 3D', src: '/modules/botwreck.html' },
@@ -73,7 +72,6 @@ export const moduleGroups: ModuleSubject[] = ['Strategy', 'Physics', 'Math', 'Pr
 
 export const learningModules: LearningModule[] = [
   { id: 'sandlot3d', title: 'Sandlot Sluggers 3D', subject: 'Sports science', group: 'Physics', summary: 'Hit, pitch, field and run the bases in full 3D across four ballparks.', modes: ['Solo', '3D'], image: '/images/modules/sandlot3d.webp?v=2', accent: '#f4bf3a', mobile: true },
-  { id: 'maplestreet', title: 'Fox Plains', subject: 'Economics & engineering', group: 'Strategy', summary: 'Build a house, drive, mow lawns and shop in a shared, always-open town.', modes: ['Shared world', 'Solo', 'Online room', '3D'], image: '/images/modules/maplestreet.webp?v=2', accent: '#7cc46a' },
   { id: 'foxlake', title: 'Life Sim', subject: 'Economics, engineering & wildlife biology', group: 'Strategy', summary: 'Live in Montello, Wisconsin: shared lots and neighbors, gas stations, a grocery, bars and a dealership, and Lake Montello for fishing, hunting and bowfishing with Wisco Wild Man. One wallet for the town and the lake.', modes: ['Shared world', 'Solo', '3D', 'Fishing & hunting'], image: '/images/modules/foxlake.webp?v=1', accent: '#7fae5a' },
   { id: 'sandlot', title: 'Sandlot Sluggers', subject: 'Sports science', group: 'Physics', summary: 'Draft a roster and play a full season on a neighborhood diamond.', modes: ['Solo', '2 on 1 screen', 'Online room'], image: '/images/modules/sandlot.webp', accent: '#ffb547' },
   { id: 'shorttrack', title: 'Short Track Showdown', subject: 'Friction & banking', group: 'Physics', summary: 'Paint your ride and race AI or friends on five short ovals, asphalt or dirt.', modes: ['Solo', 'Online room'], image: '/images/modules/shorttrack.webp?v=4', accent: '#ff7a1a', mobile: true },

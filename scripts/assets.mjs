@@ -39,9 +39,8 @@ const KEEP_NODE_NAMES = /^(Wheel_|Tire_|RaceNumber_|Hitch|Trailer|Prop_)/i
  * untextured materials whose textures the module paints at runtime.
  */
 const PRESETS = [
-  { match: /^maplestreet\/houses\//, name: 'house', join: true, simplify: 0.0005, textureQuality: 92 },
   { match: /^shorttrack\/(truck_race_|pace_car_|props_kit)/, name: 'vehicle', join: true, flatten: false, palette: false, simplify: 0, textureQuality: 92 },
-  { match: /^(maplestreet\/town|sandlot3d\/ballpark_|shorttrack\/track_|botwreck\/arena|botwreck\/crates)/, name: 'static', join: true, simplify: 0, textureQuality: 92 },
+  { match: /^(sandlot3d\/ballpark_|shorttrack\/track_|botwreck\/arena|botwreck\/crates)/, name: 'static', join: true, simplify: 0, textureQuality: 92 },
   { match: /^shorttrack\/(crowd|trees)_/, name: 'instanced', join: false, simplify: 0, textureQuality: 92, compress: false },
   { match: /^hood\/furniture\.glb$/, name: 'props', join: true, flatten: false, palette: false, simplify: 0, textureQuality: 92 },
   { match: /^(sandlot3d\/(athlete|field_detail)|hood\/(sim|vehicles)|proskater\/board)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },

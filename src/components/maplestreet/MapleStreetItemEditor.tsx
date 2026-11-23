@@ -7,7 +7,7 @@ import type { CatalogFunc, CatalogRoom } from '../../../modules-src/maplestreet/
 import { CUSTOM_LIMITS, footprintFromSize } from '../../../modules-src/maplestreet/shared/CustomItems'
 import { deleteStoreItem, fetchStoreItems, publishStoreItem, updateStoreItem } from '@/lib/maplestreet-items'
 import type { AssetStatus, CustomItemRecord, Vector3Like } from '@/lib/maplestreet-items'
-import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from './AssetStatusActions'
+import { AssetStatusActions, AssetStatusBadge, DraftsNote, statusOf, submitStatus } from './AssetStatusActions'
 import { DeleteAssetButton } from './DeleteAssetButton'
 import { DevModeCanvas } from './DevModeCanvas'
 import type { DevModeState } from './DevModeCanvas'
@@ -124,7 +124,7 @@ export default function MapleStreetItemEditor() {
       setItems(current => [...(current ?? []), item])
       setStatus({ tone: 'ok', text: target === 'draft'
         ? `Saved “${item.name}” as a draft. Try it in the developer instance, then publish it from the list below.`
-        : `Published “${item.name}”. It appears in Fox Plains's Buy catalog the next time players load the module.` })
+        : `Published “${item.name}”. It appears in Life Sim's Buy catalog the next time players load the module.` })
     } catch (error) {
       setStatus({ tone: 'error', text: (error as Error).message })
     } finally {
@@ -222,7 +222,7 @@ export default function MapleStreetItemEditor() {
 
     <h2>Your items</h2>
     <p>Retiring takes an item out of the Buy catalog. Houses that already own it keep it. Drafts can always be deleted; a published or retired item can be deleted only while no house has placed one.</p>
-    <DevInstanceNote/>
+    <DraftsNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadItems()}>Retry</button></p>}
     {listNotice && <p role="status" className="ms-items-ok">{listNotice}</p>}
     {items === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading items…</p>}

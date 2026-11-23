@@ -10,7 +10,7 @@ const OWNED_MESSAGE = {
 } as const
 
 /**
- * Deletes a Fox Plains item or vehicle with its KV files. Drafts never reached
+ * Deletes a Life Sim item or vehicle with its KV files. Drafts never reached
  * players, so they always go. A published or retired one goes only when no saved
  * lot or account in the shared world refers to it, checked after the world has
  * saved what it holds in memory.
