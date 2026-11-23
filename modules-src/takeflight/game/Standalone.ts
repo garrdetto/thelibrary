@@ -27,6 +27,8 @@ import wren from '../shared/aircraft/wren.json'
 import { parseAircraft } from '../shared/AircraftSpec'
 import type { AircraftSpec } from '../shared/AircraftSpec'
 import { HARROW_FIELD, runwayFrame } from '../shared/Airports'
+import { CHECKRIDE_SPECS, summarizeFlight } from '../shared/Career'
+import type { CheckrideId } from '../shared/Career'
 import { RECORD_VERSION } from '../shared/FlightRecord'
 import type { RecordHeader } from '../shared/FlightRecord'
 import { TERRAIN, WATER_LEVEL } from '../shared/Terrain'
@@ -50,12 +52,14 @@ import { FLIGHT_QUALITY } from '../render/Quality'
 import type { QualityTier } from '../render/Quality'
 import { TerrainRenderer } from '../render/TerrainRenderer'
 import { AssetManager } from '../world/AssetManager'
+import { CareerPanel } from '../ui/CareerPanel'
 import { Debrief } from '../ui/Debrief'
 import { DevOverlay } from '../ui/DevOverlay'
 import { Hud } from '../ui/Hud'
 import { Menus } from '../ui/Menus'
 import type { FlightOptions, StartKind, TimeKind, WindKind } from '../ui/Menus'
 import { CameraRig, VIEW_ORDER } from './Cameras'
+import { CareerStore } from './CareerStore'
 import { FlightSession } from './FlightSession'
 import { TouchdownReplay } from './TouchdownReplay'
 
@@ -90,6 +94,10 @@ export class Standalone {
   private readonly session: FlightSession
   private readonly replay: TouchdownReplay
   private readonly debrief: Debrief
+  private readonly career = new CareerStore()
+  private readonly careerPanel: CareerPanel
+  private instrumentsOnly = false
+  private submittedSeconds = 0
   private atmosphere!: Atmosphere
   private pipeline: WorldPipeline | null = null
   private terrain!: TerrainRenderer
@@ -133,6 +141,15 @@ export class Standalone {
       backend,
       tier: this.tier,
     }))
+    this.careerPanel = this.scope.track(new CareerPanel(ui, {
+      checkride: (id) => this.startCheckride(id),
+      back: () => {
+        this.careerPanel.hide()
+        this.menus.showStart()
+      },
+    }))
+    this.scope.defer(this.career.onChange(() => this.careerPanel.render(this.career.profile, this.career.mode, this.career.username)))
+    this.careerPanel.render(this.career.profile, this.career.mode, this.career.username)
     this.menus = this.scope.track(new Menus(ui, this.input, {
       fly: (options) => this.startFlight(options),
       resume: () => this.resume(),
@@ -140,7 +157,11 @@ export class Standalone {
       end: () => this.endFlight('pilot'),
       quit: () => this.toMenu(),
       quality: (tier) => this.setTier(tier),
-    }, this.tier, `${this.spec.maker} ${this.spec.name}`))
+      checkrides: () => {
+        this.menus.hide()
+        this.careerPanel.showCheckrides(this.career.profile)
+      },
+    }, this.tier, `${this.spec.maker} ${this.spec.name}`, this.careerPanel.summary))
     this.session = new FlightSession(this.sim, HARROW_FIELD)
     this.scope.defer(() => this.session.dispose())
     this.replay = new TouchdownReplay(this.spec, TERRAIN, HARROW_FIELD)
@@ -219,6 +240,8 @@ export class Standalone {
     this.cameras.mode = 'chase'
     this.cameras.update(this.state, this.sim.aircraft, 0.4, 0.15, 0, 0)
     this.terrain.update(this.cameras.camera.position.x, this.cameras.camera.position.y, this.cameras.camera.position.z, Infinity)
+    report(0.9, 'Opening your logbook…')
+    await this.career.load()
     report(0.95, 'Ready')
     if (new URLSearchParams(location.search).get('perf') === '1') this.dev.setVisible(true)
     const observer = scene.onBeforeRenderObservable.add(() => this.frame())
@@ -264,8 +287,20 @@ export class Standalone {
     this.sim.settle()
   }
 
+  private startCheckride(id: CheckrideId): void {
+    const setup = CHECKRIDE_SPECS[id].setup
+    this.careerPanel.hide()
+    this.startFlight({ ...this.menus.options, start: setup.start, wind: setup.wind, time: setup.time, assists: { autoTrim: false, stallProtection: false, landingGuidance: false }, checkride: id })
+  }
+
   private startFlight(options: FlightOptions): void {
     this.options = { ...options, assists: { ...options.assists } }
+    this.careerPanel.hide()
+    this.submittedSeconds = 0
+    const ride = options.checkride ? CHECKRIDE_SPECS[options.checkride] : null
+    if (ride?.setup.instrumentsOnly) this.minimalHud = true
+    this.hud.setMinimal(this.minimalHud)
+    this.instrumentsOnly = this.minimalHud && !options.assists.landingGuidance
     this.setTier(options.tier)
     this.replay.stop()
     this.debrief.hide()
@@ -283,7 +318,8 @@ export class Standalone {
     this.menus.hide()
     this.hud.setVisible(true)
     this.setView(options.start === 'stand' ? 'cockpit' : 'chase')
-    this.hud.toast(options.start === 'stand' ? 'Parking brake set: P releases it. Taxi to runway 09 via A.' : options.start.startsWith('final') ? 'On a 3-mile final: follow the PAPI, two white and two red.' : 'Cleared for take-off: full throttle, rotate at 55 kt.', 5)
+    if (ride) this.hud.toast(`${ride.title}: ${ride.brief}`, 8)
+    else this.hud.toast(options.start === 'stand' ? 'Parking brake set: P releases it. Taxi to runway 09 via A.' : options.start.startsWith('final') ? 'On a 3-mile final: follow the PAPI, two white and two red.' : 'Cleared for take-off: full throttle, rotate at 55 kt.', 5)
     this.canvas.focus()
   }
 
@@ -305,7 +341,16 @@ export class Standalone {
     this.menus.hide()
     this.hud.setVisible(false)
     const { score, record } = this.session.finish(reason, this.sim.aircraft.crashed, this.spec)
-    this.debrief.show(score, this.session.recorder.telemetryLog(), { canContinue: reason !== 'crash' && !this.sim.aircraft.crashed, aircraft: `${this.spec.maker} ${this.spec.name}`, airport: HARROW_FIELD.name })
+    const options = this.options
+    const checkride = options?.checkride ?? null
+    this.debrief.show(score, this.session.recorder.telemetryLog(), { canContinue: reason !== 'crash' && !this.sim.aircraft.crashed && checkride === null, aircraft: `${this.spec.maker} ${this.spec.name}`, airport: HARROW_FIELD.name, checkride: checkride ? CHECKRIDE_SPECS[checkride].title : null })
+    if (options) {
+      const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: HARROW_FIELD.id, start: options.start, wind: options.wind, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, checkride })
+      this.submittedSeconds = score.seconds
+      void this.career.record(summary).then((outcome) => {
+        if (this.session.score === score) this.debrief.setCareer(CareerPanel.outcome(outcome, this.career.mode))
+      })
+    }
     void record.then((result) => {
       if (this.session.score === score) this.debrief.setRecord(result ? result.bytes : null, result ? result.raw : 0)
     })
@@ -416,8 +461,13 @@ export class Standalone {
       this.setView(next)
     } else if (action === 'lights') this.lightsOn = !this.lightsOn
     else if (action === 'hud') {
+      if (this.options?.checkride && CHECKRIDE_SPECS[this.options.checkride].setup.instrumentsOnly) {
+        this.hud.toast('Instrument checkride: the HUD stays on the essentials')
+        return
+      }
       this.minimalHud = !this.minimalHud
       this.hud.setMinimal(this.minimalHud)
+      if (!this.minimalHud) this.instrumentsOnly = false
     }
   }
 
