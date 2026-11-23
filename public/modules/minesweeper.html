@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Minesweeper</title>
@@ -34,13 +35,28 @@
   .status.bad { color: var(--bad); } .status.ok { color: var(--good); }
   @media (max-width: 480px) { .lcd { font-size: 20px; min-width: 64px; } .face { width: 46px; height: 46px; } .panel { padding: 10px; } }
   @media (prefers-reduced-motion: reduce) { .board { transition: none; } }
+  html:root[data-tl-theme="wics"] { --n1: #1f5fd6; --n2: #12784a; --n3: #c8344f; --n4: #5b2fb0; --n5: #a54f08; --n6: #087873; --n7: #13203a; --n8: #5c6a82; --hid: #bcc6dc; --hidhi: #d2d9e9; --open: #f6f6f1; }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--wics-text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #fff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .panel { box-shadow: 0 1px 3px rgba(19, 32, 58, .08); }
+  html:root[data-tl-theme="wics"] .overlay p { color: #dfe5f2; }
+  html:root[data-tl-theme="wics"] .size button.on { background: #5a70a8; border-color: #5a70a8; color: #fff; }
+  html:root[data-tl-theme="wics"] .bar .mode.on { background: #fff4d6; border-color: var(--warn); color: #7a5900; }
+  html:root[data-tl-theme="wics"] .lcd { background: #13203a; border-color: #13203a; color: #ff8a9e; }
+  html:root[data-tl-theme="wics"] .face { background: var(--cell); }
+  html:root[data-tl-theme="wics"] .board { background: #aab4cc; }
+  html:root[data-tl-theme="wics"] .c { box-shadow: inset 0 2px 0 var(--hidhi), inset 0 -2px 0 rgba(19, 32, 58, .16); }
+  html:root[data-tl-theme="wics"] .c.o { box-shadow: inset 0 0 0 1px #d4d6cc; }
+  html:root[data-tl-theme="wics"] .c.boom { background: var(--bad); color: #fff; }
+  [data-tl-theme-toggle] .tl-theme-toggle { font: 600 13px 'TL Fox Dollar', Inter, sans-serif; padding: 9px 14px; border-radius: 9px; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header class="top"><h1>Minesweeper</h1><div class="stats"><div class="stat"><span>BEST</span><b id="best">—</b></div><div class="stat"><span>WINS</span><b id="wins">0</b></div></div></header>
-  <div class="bar"><div class="size" id="size" role="group" aria-label="Board size"><button data-s="beginner">Beginner</button><button data-s="intermediate">Intermediate</button><button data-s="expert">Expert</button></div><div><button class="mode" id="flagmode" aria-pressed="false">Flag mode</button></div></div>
+  <div class="bar"><div class="size" id="size" role="group" aria-label="Board size"><button data-s="beginner">Beginner</button><button data-s="intermediate">Intermediate</button><button data-s="expert">Expert</button></div><div data-tl-theme-toggle><button class="mode" id="flagmode" aria-pressed="false">Flag mode</button></div></div>
   <section class="panel" id="panel">
     <div class="hud" id="hud"><div class="lcd" id="count" aria-label="Mines left">040</div><button class="face" id="face" aria-label="New board"></button><div class="lcd" id="clock" aria-label="Time">000</div></div>
     <div class="scroller" id="scroller"><div class="board" id="board" tabindex="0" role="grid" aria-label="Minefield"></div></div>
