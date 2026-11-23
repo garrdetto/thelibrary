@@ -2,8 +2,9 @@
  * The region's terrain as a quadtree of tiles around the camera. Each frame the tree is walked from 16 km roots; a tile splits
  * while the camera is within `terrainSplit` times its size and stops at `minTile`. Every tile is a 33 × 33 grid with a skirt that
  * hides cracks against coarser neighbours, coloured per vertex (farmland patchwork, woods, rock, snow, shore) under one shared
- * matte material with a tiling detail texture. Tiles are built within a per-frame time budget; until a tile is ready its nearest
- * built ancestor stands in. Finest tiles also carry thin-instanced trees. Unused tiles are kept in a small cache and disposed
+ * matte material with a tiling detail texture. Tile data is built in `terrain.worker.ts` (synchronously while loading, and where
+ * workers are unavailable); until a tile is ready its nearest built ancestor stands in. Vertices geomorph toward their parent's
+ * grid before the hand-over (`TerrainMorph.ts`), so LOD changes do not pop. Finest tiles also carry thin-instanced trees. Unused tiles are kept in a small cache and disposed
  * oldest first. Heights come from `shared/Terrain`, so the ground the wheels roll on is the ground you see.
  */
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
@@ -17,13 +18,19 @@ import '@babylonjs/core/Meshes/thinInstanceMesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { hash2 } from '../sim/SimMath'
-import { REGION_HALF, WATER_LEVEL, WORLD_SEED, fieldShade, forestDensity, naturalHeight, terrainHeight } from '../shared/Terrain'
+import { REGION_HALF, WATER_LEVEL, WORLD_SEED, fieldShade, forestDensity, terrainHeight } from '../shared/Terrain'
+import { MORPH_ATTRIBUTE, TILE_INDICES, buildTileData } from './TerrainTile'
+import type { Rgb, TileData } from './TerrainTile'
 import { townWeight } from '../shared/Towns'
 import type { FlightQuality } from './Quality'
+import { TerrainMorphPlugin } from './TerrainMorph'
+import type { TileRequest } from './terrain.worker'
+import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 
-const GRID = 32
 const ROOT_SIZE = 16384
 const CACHE_LIMIT = 420
+const MAX_INFLIGHT = 8
+const MAX_READY = 64
 const TREE_CELL = 22
 const MAX_TREES = 420
 
@@ -37,52 +44,6 @@ interface Tile {
   lastUsed: number
   minY: number
   maxY: number
-}
-
-type Rgb = [number, number, number]
-
-const GRASS_A: Rgb = [0.25, 0.34, 0.12]
-const GRASS_B: Rgb = [0.36, 0.40, 0.17]
-const CROP: Rgb = [0.52, 0.47, 0.25]
-const PLOUGH: Rgb = [0.33, 0.25, 0.17]
-const FOREST: Rgb = [0.10, 0.17, 0.07]
-const ROCK: Rgb = [0.38, 0.36, 0.33]
-const SNOW: Rgb = [0.86, 0.88, 0.9]
-const SHORE: Rgb = [0.5, 0.46, 0.34]
-const AIRFIELD: Rgb = [0.27, 0.36, 0.14]
-
-function mix(a: Rgb, b: Rgb, t: number, out: Rgb): Rgb {
-  out[0] = a[0] + (b[0] - a[0]) * t
-  out[1] = a[1] + (b[1] - a[1]) * t
-  out[2] = a[2] + (b[2] - a[2]) * t
-  return out
-}
-
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v
-}
-
-const fieldColour: Rgb = [0, 0, 0]
-const colour: Rgb = [0, 0, 0]
-
-/** Ground colour (linear) for a point with height `h` and slope `steep` (1 - normal.y). */
-export function groundColour(x: number, z: number, h: number, steep: number, out: Rgb): Rgb {
-  const shade = fieldShade(x, z)
-  const natural = naturalHeight(x, z)
-  if (shade < 0.45) mix(GRASS_A, GRASS_B, shade / 0.45, fieldColour)
-  else if (shade < 0.7) mix(GRASS_B, CROP, (shade - 0.45) / 0.25, fieldColour)
-  else if (shade < 0.85) mix(CROP, PLOUGH, (shade - 0.7) / 0.15, fieldColour)
-  else mix(PLOUGH, GRASS_A, (shade - 0.85) / 0.15, fieldColour)
-  mix(fieldColour, AIRFIELD, clamp01(Math.abs(h - natural) / 6), out)
-  const forest = forestDensity(x, z)
-  if (forest > 0) mix(out, FOREST, forest, out)
-  const rockiness = clamp01((steep - 0.12) / 0.14) + clamp01((h - 900) / 500) * 0.6
-  if (rockiness > 0) mix(out, ROCK, clamp01(rockiness), out)
-  const snow = clamp01((h - 1300 - (fieldShade(x * 3, z * 3) - 0.5) * 160) / 160) * (1 - clamp01((steep - 0.3) / 0.2))
-  if (snow > 0) mix(out, SNOW, snow, out)
-  const shore = clamp01(1 - (h - WATER_LEVEL) / 4)
-  if (shore > 0) mix(out, SHORE, shore, out)
-  return out
 }
 
 function detailTexture(scene: Scene): DynamicTexture {
@@ -154,11 +115,15 @@ export class TerrainRenderer {
   private readonly visible = new Set<Tile>()
   private readonly wanted: Tile[] = []
   private readonly pending: { key: string; x0: number; z0: number; size: number }[] = []
+  private readonly morph: TerrainMorphPlugin
+  private readonly eyeScene = new Vector3()
+  private worker: Worker | null = null
+  private readonly inflight = new Set<string>()
+  private readonly ready = new Map<string, TileData>()
   private frame = 0
   private builtThisFrame = 0
   private treeCount = 0
   private quality: FlightQuality
-  private readonly heights = new Float32Array((GRID + 3) * (GRID + 3))
 
   constructor(private readonly scene: Scene, quality: FlightQuality, private readonly parent: TransformNode | null = null) {
     this.quality = quality
@@ -172,6 +137,28 @@ export class TerrainRenderer {
     material.environmentIntensity = 0.55
     material.maxSimultaneousLights = 2
     this.material = material
+    this.morph = new TerrainMorphPlugin(material)
+    this.morph.split = quality.terrainSplit
+    material.onError = (_effect, errors) => {
+      console.warn('Take Flight: terrain morphing unavailable', errors)
+      this.morph.disable()
+    }
+    if (typeof Worker !== 'undefined') {
+      try {
+        this.worker = new Worker(new URL('./terrain.worker.ts', import.meta.url), { type: 'module' })
+        this.worker.onmessage = (event: MessageEvent<{ key: string; data: TileData }>) => {
+          this.inflight.delete(event.data.key)
+          if (this.ready.size < MAX_READY) this.ready.set(event.data.key, event.data.data)
+        }
+        this.worker.onerror = () => {
+          this.worker?.terminate()
+          this.worker = null
+          this.inflight.clear()
+        }
+      } catch {
+        this.worker = null
+      }
+    }
     const treeMaterial = new PBRMaterial('takeflight-trees', scene)
     treeMaterial.albedoColor = new Color3(1, 1, 1)
     treeMaterial.metallic = 0
@@ -184,6 +171,7 @@ export class TerrainRenderer {
 
   setQuality(quality: FlightQuality): void {
     this.quality = quality
+    this.morph.split = quality.terrainSplit
     for (const tile of this.tiles.values()) this.disposeTile(tile)
     this.tiles.clear()
     this.visible.clear()
@@ -217,11 +205,27 @@ export class TerrainRenderer {
     const start = performance.now()
     this.pending.sort((a, b) => b.size - a.size)
     const show = new Set<Tile>()
+    const parent = this.parent?.position
+    this.morph.eye = this.eyeScene.set(cx + (parent ? parent.x : 0), cy, cz + (parent ? parent.z : 0))
+    const loading = budgetMs === Infinity
     for (const want of this.pending) {
       let tile = this.tiles.get(want.key)
-      if (!tile && performance.now() - start < budgetMs) {
-        tile = this.buildTile(want.key, want.x0, want.z0, want.size)
-        this.builtThisFrame++
+      if (!tile) {
+        const data = this.ready.get(want.key)
+        if (data) {
+          this.ready.delete(want.key)
+          tile = this.buildTile(want.key, want.x0, want.z0, want.size, data)
+          this.builtThisFrame++
+        } else if (this.worker && !loading) {
+          if (!this.inflight.has(want.key) && this.inflight.size < MAX_INFLIGHT) {
+            this.inflight.add(want.key)
+            const request: TileRequest = { key: want.key, x0: want.x0, z0: want.z0, size: want.size }
+            this.worker.postMessage(request)
+          }
+        } else if (performance.now() - start < budgetMs) {
+          tile = this.buildTile(want.key, want.x0, want.z0, want.size)
+          this.builtThisFrame++
+        }
       }
       if (tile) {
         show.add(tile)
@@ -278,100 +282,19 @@ export class TerrainRenderer {
     this.pending.push({ key: `${x0}:${z0}:${size}`, x0, z0, size })
   }
 
-  private buildTile(key: string, x0: number, z0: number, size: number): Tile {
-    const step = size / GRID
-    const stride = GRID + 3
-    const heights = this.heights
-    for (let j = 0; j < stride; j++) {
-      for (let i = 0; i < stride; i++) heights[j * stride + i] = terrainHeight(x0 + (i - 1) * step, z0 + (j - 1) * step)
-    }
-    const verts = (GRID + 1) * (GRID + 1)
-    const skirt = GRID * 4
-    const positions = new Float32Array((verts + skirt) * 3)
-    const normals = new Float32Array((verts + skirt) * 3)
-    const colors = new Float32Array((verts + skirt) * 4)
-    const uvs = new Float32Array((verts + skirt) * 2)
-    let minY = Infinity
-    let maxY = -Infinity
-    for (let j = 0; j <= GRID; j++) {
-      for (let i = 0; i <= GRID; i++) {
-        const index = j * (GRID + 1) + i
-        const h = heights[(j + 1) * stride + i + 1]
-        const hx = heights[(j + 1) * stride + i + 2] - heights[(j + 1) * stride + i]
-        const hz = heights[(j + 2) * stride + i + 1] - heights[j * stride + i + 1]
-        let nx = -hx
-        let ny = 2 * step
-        let nz = -hz
-        const length = Math.sqrt(nx * nx + ny * ny + nz * nz)
-        nx /= length
-        ny /= length
-        nz /= length
-        const wx = x0 + i * step
-        const wz = z0 + j * step
-        positions[index * 3] = i * step
-        positions[index * 3 + 1] = h
-        positions[index * 3 + 2] = j * step
-        normals[index * 3] = nx
-        normals[index * 3 + 1] = ny
-        normals[index * 3 + 2] = nz
-        groundColour(wx, wz, h, 1 - ny, colour)
-        colors[index * 4] = colour[0]
-        colors[index * 4 + 1] = colour[1]
-        colors[index * 4 + 2] = colour[2]
-        colors[index * 4 + 3] = 1
-        uvs[index * 2] = wx / 40
-        uvs[index * 2 + 1] = wz / 40
-        if (h < minY) minY = h
-        if (h > maxY) maxY = h
-      }
-    }
-    const indices: number[] = []
-    for (let j = 0; j < GRID; j++) {
-      for (let i = 0; i < GRID; i++) {
-        const a = j * (GRID + 1) + i
-        const b = a + 1
-        const c = a + GRID + 1
-        const d = c + 1
-        indices.push(a, b, c, b, d, c)
-      }
-    }
-    const depth = Math.max(4, size * 0.02)
-    const edge: number[] = []
-    for (let i = 0; i < GRID; i++) edge.push(i)
-    for (let j = 0; j < GRID; j++) edge.push(j * (GRID + 1) + GRID)
-    for (let i = GRID; i > 0; i--) edge.push(GRID * (GRID + 1) + i)
-    for (let j = GRID; j > 0; j--) edge.push(j * (GRID + 1))
-    for (let k = 0; k < edge.length; k++) {
-      const src = edge[k]
-      const dst = verts + k
-      positions[dst * 3] = positions[src * 3]
-      positions[dst * 3 + 1] = positions[src * 3 + 1] - depth
-      positions[dst * 3 + 2] = positions[src * 3 + 2]
-      normals[dst * 3] = normals[src * 3]
-      normals[dst * 3 + 1] = normals[src * 3 + 1]
-      normals[dst * 3 + 2] = normals[src * 3 + 2]
-      colors[dst * 4] = colors[src * 4]
-      colors[dst * 4 + 1] = colors[src * 4 + 1]
-      colors[dst * 4 + 2] = colors[src * 4 + 2]
-      colors[dst * 4 + 3] = 1
-      uvs[dst * 2] = uvs[src * 2]
-      uvs[dst * 2 + 1] = uvs[src * 2 + 1]
-    }
-    for (let k = 0; k < edge.length; k++) {
-      const a = edge[k]
-      const b = edge[(k + 1) % edge.length]
-      const sa = verts + k
-      const sb = verts + ((k + 1) % edge.length)
-      indices.push(a, b, sa, b, sb, sa, a, sa, b, b, sa, sb)
-    }
+  private buildTile(key: string, x0: number, z0: number, size: number, data: TileData = buildTileData(x0, z0, size)): Tile {
     const mesh = new Mesh(`takeflight-terrain-${key}`, this.scene)
-    const data = new VertexData()
-    data.positions = positions
-    data.normals = normals
-    data.colors = colors
-    data.uvs = uvs
-    data.indices = indices
-    data.applyToMesh(mesh, false)
+    const vertexData = new VertexData()
+    vertexData.positions = data.positions
+    vertexData.normals = data.normals
+    vertexData.colors = data.colors
+    vertexData.uvs = data.uvs
+    vertexData.indices = TILE_INDICES
+    vertexData.applyToMesh(mesh, false)
+    mesh.setVerticesData(MORPH_ATTRIBUTE, data.morph, false, 1)
+    mesh.metadata = { morphSize: size }
+    const minY = data.minY
+    const maxY = data.maxY
     mesh.position.set(x0, 0, z0)
     mesh.parent = this.parent
     mesh.material = this.material
@@ -442,6 +365,10 @@ export class TerrainRenderer {
     for (const tile of this.tiles.values()) this.disposeTile(tile)
     this.tiles.clear()
     this.visible.clear()
+    this.worker?.terminate()
+    this.worker = null
+    this.ready.clear()
+    this.inflight.clear()
     this.treeTemplate.dispose()
     this.treeMaterial.dispose()
     this.material.dispose()

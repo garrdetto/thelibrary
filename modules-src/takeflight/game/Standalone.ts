@@ -24,14 +24,14 @@ import type { Atmosphere } from '../../trucksim/render/world/Atmosphere'
 import { createPipeline } from '../../trucksim/render/world/Pipeline'
 import type { WorldPipeline } from '../../trucksim/render/world/Pipeline'
 import { CascadedShadowGenerator } from '@babylonjs/core/Lights/Shadows/cascadedShadowGenerator'
-import wren from '../shared/aircraft/wren.json'
-import { parseAircraft } from '../shared/AircraftSpec'
 import type { AircraftSpec } from '../shared/AircraftSpec'
 import { HARROW_FIELD, airportById, nearestAirport } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
 import { approachFor } from '../shared/Approach'
 import type { ApproachState } from '../shared/Approach'
-import { CHECKRIDE_SPECS, summarizeFlight } from '../shared/Career'
+import { CHECKRIDE_SPECS, LICENCE_LABELS, summarizeFlight } from '../shared/Career'
+import { FLEET, fleetSpec } from '../shared/Fleet'
+import { hangarEntry } from '../shared/Hangar'
 import type { CheckrideId } from '../shared/Career'
 import { RECORD_VERSION } from '../shared/FlightRecord'
 import type { RecordHeader } from '../shared/FlightRecord'
@@ -85,7 +85,7 @@ const VIEW_NAMES = { cockpit: 'Cockpit', chase: 'Chase', tower: 'Tower' } as con
 
 export class Standalone {
   readonly scene: Scene
-  readonly spec: AircraftSpec
+  spec: AircraftSpec
   readonly sim: Simulation
   private readonly scope = new Scope('takeflight')
   private readonly engine: AbstractEngine
@@ -102,6 +102,7 @@ export class Standalone {
   private readonly career = new CareerStore()
   private readonly careerPanel: CareerPanel
   private instrumentsOnly = false
+  private failureAnnounced = false
   private submittedSeconds = 0
   private atmosphere!: Atmosphere
   private pipeline: WorldPipeline | null = null
@@ -133,7 +134,7 @@ export class Standalone {
     this.scene.clearColor = new Color4(0.6, 0.72, 0.86, 1)
     this.scene.skipPointerMovePicking = true
     this.scene.autoClear = true
-    this.spec = parseAircraft(wren)
+    this.spec = FLEET[0]
     this.tier = resolveTier(location.search, backend)
     this.sim = new Simulation({ aircraft: this.spec, ground: TERRAIN, wind: CALM, seed: 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...NO_ASSISTS } })
     this.assets = new AssetManager(this.scene)
@@ -169,10 +170,10 @@ export class Standalone {
         this.menus.hide()
         this.careerPanel.showCheckrides(this.career.profile)
       },
-    }, this.tier, `${this.spec.maker} ${this.spec.name}`, this.careerPanel.summary))
+    }, this.tier, `${this.spec.maker} ${this.spec.name}`, this.careerPanel.summary, Object.fromEntries(FLEET.map((spec) => [spec.id, `${spec.maker} ${spec.name}`]))))
     this.session = new FlightSession(this.sim)
     this.scope.defer(() => this.session.dispose())
-    this.replay = new TouchdownReplay(this.spec, TERRAIN)
+    this.replay = new TouchdownReplay(TERRAIN)
     this.scope.defer(() => this.replay.stop())
     this.debrief = this.scope.track(new Debrief(ui, {
       replay: () => this.startReplay(),
@@ -232,9 +233,12 @@ export class Standalone {
     this.world.updateAirports(0, 0)
     report(0.6, 'Rolling the Wren out of the hangar…')
     this.visual = await AircraftVisual.load(scene, this.assets, this.spec.model)
-    this.scope.track(this.visual)
     for (const mesh of this.visual.detailMeshes) this.atmosphere.addCaster(mesh)
-    this.cockpit = this.scope.track(new Cockpit(scene, this.assets, this.visual.root, this.sim.aircraft))
+    this.cockpit = new Cockpit(scene, this.assets, this.visual.root, this.sim.aircraft)
+    this.scope.defer(() => {
+      this.cockpit.dispose()
+      this.visual.dispose()
+    })
     this.resolution = attachResolution(this.engine, this.canvas)
     const onResize = () => {
       this.engine.resize()
@@ -323,16 +327,48 @@ export class Standalone {
     this.sim.settle()
   }
 
+  /** Swaps in another aircraft type between flights: model, cockpit and flight model. */
+  private async useAircraft(spec: AircraftSpec): Promise<void> {
+    if (spec === this.spec) return
+    for (const mesh of this.visual.detailMeshes) this.atmosphere.removeCaster(mesh)
+    this.cockpit.dispose()
+    this.visual.dispose()
+    this.spec = spec
+    this.sim.setAircraft(spec)
+    this.visual = await AircraftVisual.load(this.scene, this.assets, spec.model)
+    for (const mesh of this.visual.detailMeshes) this.atmosphere.addCaster(mesh)
+    this.cockpit = new Cockpit(this.scene, this.assets, this.visual.root, this.sim.aircraft)
+  }
+
   private startCheckride(id: CheckrideId): void {
     const setup = CHECKRIDE_SPECS[id].setup
     this.careerPanel.hide()
-    this.startFlight({ ...this.menus.options, airport: setup.airport, start: setup.start, wind: setup.wind, weather: setup.weather, time: setup.time, assists: { autoTrim: false, stallProtection: false, landingGuidance: false }, checkride: id })
+    this.startFlight({ ...this.menus.options, aircraft: setup.aircraft ?? 'halden-wren', airport: setup.airport, start: setup.start, wind: setup.wind, weather: setup.weather, time: setup.time, assists: { autoTrim: false, stallProtection: false, landingGuidance: false }, checkride: id })
   }
 
   private startFlight(options: FlightOptions): void {
+    const spec = fleetSpec(options.aircraft) ?? FLEET[0]
+    if (!options.checkride) {
+      const entry = hangarEntry(spec.id)
+      if (entry && !this.career.profile.licences.includes(entry.requires)) {
+        this.menus.notice(`The ${spec.name} needs the ${LICENCE_LABELS[entry.requires]}. Earn it with a checkride first.`)
+        this.menus.showStart()
+        return
+      }
+    }
+    this.menus.notice('')
+    if (spec !== this.spec) {
+      void this.useAircraft(spec).then(() => this.startFlight(options), (error) => {
+        console.error(error)
+        this.menus.notice('That aircraft could not be loaded.')
+        this.menus.showStart()
+      })
+      return
+    }
     this.options = { ...options, assists: { ...options.assists } }
     this.careerPanel.hide()
     this.submittedSeconds = 0
+    this.failureAnnounced = false
     const ride = options.checkride ? CHECKRIDE_SPECS[options.checkride] : null
     const airport = airportById(options.airport) ?? HARROW_FIELD
     if (ride?.setup.instrumentsOnly) this.minimalHud = true
@@ -342,8 +378,8 @@ export class Standalone {
     this.replay.stop()
     this.debrief.hide()
     if (this.phase === 'flying' || this.phase === 'paused') this.session.abandon()
-    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists }, weather: options.weather }
-    this.sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: this.options.assists, weather: header.weather })
+    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists }, weather: options.weather, failure: ride?.setup.failure ?? null }
+    this.sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: this.options.assists, weather: header.weather, failure: header.failure })
     this.placeAt(airport, options.start)
     this.showAround(airport)
     this.session.begin(header)
@@ -383,7 +419,7 @@ export class Standalone {
     const checkride = options?.checkride ?? null
     this.debrief.show(score, this.session.recorder.telemetryLog(), { canContinue: reason !== 'crash' && !this.sim.aircraft.crashed && checkride === null, aircraft: `${this.spec.maker} ${this.spec.name}`, airport: (airportById(score.landing?.airport ?? options?.airport ?? '') ?? HARROW_FIELD).name, checkride: checkride ? CHECKRIDE_SPECS[checkride].title : null })
     if (options) {
-      const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: options.airport, start: options.start, wind: options.wind, weather: options.weather, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, checkride })
+      const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: options.airport, start: options.start, wind: options.wind, weather: options.weather, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, engineFailure: this.sim.aircraft.failedEngine >= 0, checkride })
       this.submittedSeconds = score.seconds
       void this.career.record(summary).then((outcome) => {
         if (this.session.score === score) this.debrief.setCareer(CareerPanel.outcome(outcome, this.career.mode))
@@ -586,6 +622,10 @@ export class Standalone {
     this.dev.update(frameMs, dt)
     this.resolution.update(performance.now(), this.engine.getFps())
     if (this.phase === 'flying') {
+      if (aircraft.failedEngine >= 0 && !this.failureAnnounced) {
+        this.failureAnnounced = true
+        this.hud.toast(`Engine ${aircraft.failedEngine + 1} failed: rudder toward the live engine, keep the speed, fly the circuit and land`, 7)
+      }
       this.session.pump()
       const touchdown = this.session.takeTouchdown()
       if (touchdown && !aircraft.crashed) this.touchdownToast(touchdown)

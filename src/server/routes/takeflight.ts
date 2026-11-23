@@ -29,6 +29,7 @@ const summarySchema = z.object({
   crashed: z.boolean(),
   assists: z.object({ autoTrim: z.boolean(), stallProtection: z.boolean(), landingGuidance: z.boolean() }),
   instrumentsOnly: z.boolean(),
+  engineFailure: z.boolean().optional(),
   categories: categoryScores,
   metrics: z.record(z.string().max(40), unit).refine((value) => Object.keys(value).length <= 64, 'Too many metrics'),
   landing: z.object({

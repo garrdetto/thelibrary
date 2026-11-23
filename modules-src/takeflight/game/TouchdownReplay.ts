@@ -3,7 +3,7 @@
  * back is the simulation itself, not a recording of poses. It plays from ten seconds before the landing touchdown to six seconds
  * after, at half or full speed, and loops. The page renders `sim`'s aircraft instead of the live one while it runs.
  */
-import type { AircraftSpec } from '../shared/AircraftSpec'
+import { fleetSpec } from '../shared/Fleet'
 import type { RecordHeader } from '../shared/FlightRecord'
 import type { Ground } from '../shared/Terrain'
 import { Reflight } from '../sim/Reflight'
@@ -23,7 +23,7 @@ export class TouchdownReplay {
   private accumulator = 0
   private hold = 0
 
-  constructor(private readonly spec: AircraftSpec, private readonly ground: Ground) {}
+  constructor(private readonly ground: Ground) {}
 
   get sim(): Simulation | null {
     return this.reflight?.sim ?? null
@@ -42,7 +42,9 @@ export class TouchdownReplay {
 
   start(header: RecordHeader, inputs: Uint8Array, snapshots: readonly SimSnapshot[], touchdownTick: number): void {
     this.reflight?.dispose()
-    this.reflight = new Reflight(this.spec, this.ground, header, inputs)
+    const spec = fleetSpec(header.aircraft)
+    if (!spec) return
+    this.reflight = new Reflight(spec, this.ground, header, inputs)
     const ticks = this.reflight.ticks
     this.from = Math.max(0, touchdownTick - BEFORE)
     this.to = Math.min(ticks, touchdownTick + AFTER)

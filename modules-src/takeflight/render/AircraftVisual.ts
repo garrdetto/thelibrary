@@ -41,6 +41,8 @@ interface Lod {
   props: Part[]
   wheels: { part: Part; radius: number }[]
   noseGear: Part | null
+  mainGears: { part: Part }[]
+  gearDoors: Part[]
   disc: AbstractMesh[]
   blades: AbstractMesh[]
   meshes: AbstractMesh[]
@@ -58,6 +60,8 @@ function part(node: Node | undefined): Part | null {
 }
 
 const axisTurn = new Quaternion()
+/** How far retractable gear legs fold (radians): mains forward into the nacelles or wing, the nose leg back into the nose; fully up they are hidden behind closed doors. */
+const GEAR_FOLD = 1.45
 
 function turn(p: Part, axis: 'x' | 'y' | 'z', angle: number): void {
   const half = angle * 0.5
@@ -121,6 +125,8 @@ export class AircraftVisual {
       props: parts(/^(prop|fan)_\d+$/),
       wheels: wheels.map(part).filter((p): p is Part => p !== null).map((p) => ({ part: p, radius: /nose/.test(p.node.name) ? 0.25 : 0.28 })),
       noseGear: part(instance.nodes.get('gear_nose')),
+      mainGears: [...parts(/^gear_main_L$/).map((p) => ({ part: p })), ...parts(/^gear_main_R$/).map((p) => ({ part: p }))],
+      gearDoors: parts(/^gear_door_\w+$/),
       disc: find(/^prop_\d+_disc$/) as AbstractMesh[],
       blades: find(/^prop_\d+_blade_\d+$/) as AbstractMesh[],
       meshes: instance.meshes,
@@ -199,7 +205,18 @@ export class AircraftVisual {
     for (const p of lod.spoilers) turn(p, 'z', -aircraft.spoiler * SURFACE_TRAVEL.spoiler)
     for (const p of lod.props) turn(p, 'x', this.propAngle)
     for (const { part: p, radius } of lod.wheels) turn(p, 'z', (this.wheelAngle * 0.27) / radius)
-    if (lod.noseGear) turn(lod.noseGear, 'y', -aircraft.rudder * aircraft.spec.contacts[0].steer * (Math.PI / 180))
+    const retract = aircraft.spec.controls.retractable ? 1 - aircraft.gear : 0
+    const stowed = retract > 0.98
+    if (lod.noseGear) {
+      if (retract > 0.001) turn(lod.noseGear, 'z', -retract * GEAR_FOLD)
+      else turn(lod.noseGear, 'y', -aircraft.rudder * aircraft.spec.contacts[0].steer * (Math.PI / 180))
+      if (lod.noseGear.node.isEnabled() === stowed) lod.noseGear.node.setEnabled(!stowed)
+    }
+    for (const { part: p } of lod.mainGears) {
+      turn(p, 'z', retract * GEAR_FOLD)
+      if (p.node.isEnabled() === stowed) p.node.setEnabled(!stowed)
+    }
+    for (const p of lod.gearDoors) if (p.node.isEnabled() === stowed) p.node.setEnabled(!stowed)
     const blur = Math.min(1, Math.max(0, (aircraft.rpm - 900) / 900))
     for (const disc of lod.disc) {
       disc.isVisible = blur > 0.02

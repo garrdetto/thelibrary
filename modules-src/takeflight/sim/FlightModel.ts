@@ -55,6 +55,7 @@ const OBSTACLE_CEILING = 260
 /** Everything a `FlightModel` carries from one tick to the next, for exact snapshots (replays start from one). */
 export interface FlightSnapshot {
   values: number[]
+  failedEngine?: number
   crashed: CrashReason | null
   lastTouchdown: Touchdown | null
   touchdownOpen: Touchdown | null
@@ -94,6 +95,8 @@ export class FlightModel {
   spoiler = 0
   power = 0
   crashed: CrashReason | null = null
+  /** Index of the engine that has failed, or -1 (multi-engine checkride). */
+  failedEngine = -1
 
   ias = 0
   tas = 0
@@ -182,6 +185,7 @@ export class FlightModel {
     this.spoiler = 0
     this.power = 0
     this.crashed = null
+    this.failedEngine = -1
     this.touchdowns = 0
     this.strikes = 0
     this.lastTouchdown = null
@@ -287,7 +291,7 @@ export class FlightModel {
     for (const contact of this.contacts) values.push(contact.touching ? 1 : 0, contact.load, contact.compression)
     const open = this.touchdownOpen && { ...this.touchdownOpen }
     const last = this.lastTouchdown === this.touchdownOpen ? open : this.lastTouchdown && { ...this.lastTouchdown }
-    return { values, crashed: this.crashed, lastTouchdown: last, touchdownOpen: open }
+    return { values, crashed: this.crashed, lastTouchdown: last, touchdownOpen: open, failedEngine: this.failedEngine }
   }
 
   /** Restores a `saveState` snapshot taken from a model of the same aircraft. */
@@ -330,6 +334,7 @@ export class FlightModel {
       contact.compression = v[32 + i * 3]
     }
     this.crashed = snapshot.crashed
+    this.failedEngine = snapshot.failedEngine ?? -1
     this.touchdownOpen = snapshot.touchdownOpen && { ...snapshot.touchdownOpen }
     this.lastTouchdown = snapshot.lastTouchdown === snapshot.touchdownOpen ? this.touchdownOpen : snapshot.lastTouchdown && { ...snapshot.lastTouchdown }
     this.updateAttitude()
@@ -581,13 +586,15 @@ export class FlightModel {
       thrust = (engine.propEfficiency * shaft) / Math.sqrt(speed * speed + knee * knee)
     }
     if (spec.controls.reversers && input.reverse >= 0.5 && this.wheelLoad > 0) thrust *= -0.45
-    this.thrust = thrust * engine.count
+    const failed = this.failedEngine >= 0 && this.failedEngine < engine.count ? 1 : 0
+    this.thrust = thrust * (engine.count - failed)
     this.mach = speed / this.air.speedOfSound
     for (let e = 0; e < engine.count; e++) {
       const position = engine.positions[e < engine.positions.length ? e : 0]
-      this.bfx += thrust
-      this.ty += position[2] * thrust
-      this.tz -= position[1] * thrust
+      const t = e === this.failedEngine ? -0.12 * (thrust > 0 ? thrust : 0) : thrust
+      this.bfx += t
+      this.ty += position[2] * t
+      this.tz -= position[1] * t
     }
     const lowSpeed = clamp(1 - speed / 70, 0.25, 1)
     this.ty += engine.torqueYaw * this.thrust * lowSpeed * this.power * (0.6 + 0.4 * clamp(alphaDeg / 12, 0, 1))

@@ -32,6 +32,8 @@ export interface RecordHeader {
   seaLevelPressure: number
   assists: AssistSettings
   weather: WeatherKind
+  /** The engine failure flown, if any (multi-engine checkride). */
+  failure?: { engine: number; agl: number } | null
 }
 
 export interface RecordFooter {
