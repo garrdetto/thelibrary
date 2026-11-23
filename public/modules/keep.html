@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hold the Keep</title>
@@ -24,13 +25,21 @@
   .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay .ov-stats > div { display: block; text-align: center; }
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+  [data-tl-theme-toggle] { display: contents; }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #ffffff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .shop button { background: #ffffff; color: #13203a; border-color: #c5c7bb; }
+  html:root[data-tl-theme="wics"] .shop button:hover { border-color: #0594d0; }
+  html:root[data-tl-theme="wics"] .shop button small { color: #5c6a82; }
+  html:root[data-tl-theme="wics"] .shop button em { color: #8a6400; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header class="top"><h1>Hold the Keep</h1><div class="stats"><div class="stat"><span>SCORE</span><b id="score">0</b></div><div class="stat"><span>WAVE</span><b id="wave">1</b></div><div class="stat"><span>GOLD</span><b id="gold">0</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
-  <div class="bar"><p>Grab attackers, lift them high and let go. Gravity does the rest.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New siege <kbd>R</kbd></button></div></div>
+  <div class="bar"><p>Grab attackers, lift them high and let go. Gravity does the rest.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New siege <kbd>R</kbd></button><span data-tl-theme-toggle></span></div></div>
   <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Keep wall. Press on an attacker, drag and release to throw.">
     <canvas id="cv" width="880" height="480" aria-hidden="true"></canvas>
     <div class="overlay show" id="overlay"><h2 id="ovTitle">Hold the Keep</h2><p id="ovText">Raiders march on your keep in waves. Pick them up, fling them into the sky or into each other, and keep the wall standing. Spend gold between waves on repairs and defenses.</p><div class="ov-stats" id="ovStats"></div><div class="shop" id="shop"></div><div><button class="primary" id="ovBtn">Raise the drawbridge</button></div></div>
@@ -286,7 +295,8 @@ function draw() {
   ctx.save();
   if (S && S.shake) ctx.translate(rand(-S.shake, S.shake) * 0.5, rand(-S.shake, S.shake) * 0.5);
   const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
-  sky.addColorStop(0, '#5aa7e6'); sky.addColorStop(1, '#cfe8f7');
+  const wics = !!(window.TLTheme && TLTheme.isWics());
+  sky.addColorStop(0, wics ? '#7b9cc6' : '#5aa7e6'); sky.addColorStop(1, wics ? '#e3e9ea' : '#cfe8f7');
   ctx.fillStyle = sky; ctx.fillRect(-10, -10, W + 20, H + 20);
   const t = S ? S.t : 0;
   ctx.fillStyle = 'rgba(255,255,255,.85)';
@@ -322,7 +332,7 @@ function draw() {
     ctx.globalAlpha = 1;
     if (mode === 'play') { ctx.fillStyle = 'rgba(10,15,30,.7)'; ctx.font = '600 13px Inter'; ctx.textAlign = 'left'; ctx.fillText('Raiders left: ' + (S.queue.length + S.men.filter(m => m.state !== 'dead').length), 12, 22); }
     if (S.msgT > 0) { ctx.globalAlpha = Math.min(1, S.msgT); ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 4; ctx.font = '700 44px Rajdhani'; ctx.textAlign = 'center'; ctx.strokeText(S.msg, W / 2 - 60, 120); ctx.fillText(S.msg, W / 2 - 60, 120); ctx.globalAlpha = 1; }
-    if (mode === 'pause') { ctx.fillStyle = 'rgba(5,10,20,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '700 48px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText('Paused', W / 2, H / 2); }
+    if (mode === 'pause') { ctx.fillStyle = wics ? 'rgba(19,32,58,.6)' : 'rgba(5,10,20,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '700 48px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText('Paused', W / 2, H / 2); }
   }
   ctx.restore();
 }

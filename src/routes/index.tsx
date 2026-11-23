@@ -2,8 +2,8 @@ import { SignInGate } from '@/components/SignInGate'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, ExternalLink, Coins, Sprout, Banknote, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Minimize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck, Construction, Truck } from 'lucide-react'
-import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
+import { ArrowDown, ExternalLink, Coins, Sprout, Banknote, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Minimize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck, Construction, Truck, Apple } from 'lucide-react'
+import { defaultSiteTheme, isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { usePoolLobby } from '@/components/PoolLobby'
 import { InvitePopups } from '@/components/SitePresence'
@@ -46,7 +46,7 @@ const navigation = [
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
   { id: 'voice', label: 'Voice generator', icon: AudioLines },
 ] as const
-const moduleIcons: Record<ModuleId, typeof Trophy> = { arena: Target, park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxlake: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, gonefishing: Fish, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers, greible: SpellCheck, sunvault: Coins, beanstalk: Sprout, modollaz: Banknote, bridge: Construction, trucksim: Truck }
+const moduleIcons: Record<ModuleId, typeof Trophy> = { arena: Target, park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxlake: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, gonefishing: Fish, appleshot: Apple, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers, greible: SpellCheck, sunvault: Coins, beanstalk: Sprout, modollaz: Banknote, bridge: Construction, trucksim: Truck }
 const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { arena: 'room', sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxlake: 'room', fairway: 'room', party: 'room', angler: 'room', rackreel: 'room', pingpong: 'room', darts: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
@@ -95,7 +95,7 @@ function Studio() {
   const [copied, setCopied] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
-  const [theme, setTheme] = useState<SiteTheme>('midnight')
+  const [theme, setTheme] = useState<SiteTheme>(defaultSiteTheme)
   const [selection, setSelection] = useState<{ start: number; end: number; original: string } | null>(null)
   const [replacement, setReplacement] = useState('')
   const [teach, setTeach] = useState(false)

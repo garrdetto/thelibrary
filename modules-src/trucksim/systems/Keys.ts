@@ -8,7 +8,7 @@
 export type KeyAction =
   | 'throttle' | 'brake' | 'steerLeft' | 'steerRight' | 'parkingBrake' | 'engineBrake' | 'shiftUp' | 'shiftDown'
   | 'interact' | 'coupler' | 'landingGear' | 'dumpRaise' | 'dumpLower' | 'liftAxles' | 'headlights' | 'horn'
-  | 'camera' | 'jobBoard' | 'map' | 'fleet' | 'buildMode' | 'pause'
+  | 'camera' | 'lookLeft' | 'lookRight' | 'lookUp' | 'lookDown' | 'jobBoard' | 'map' | 'fleet' | 'buildMode' | 'pause'
 
 export type KeyGroup = 'drive' | 'rig' | 'menu'
 
@@ -20,10 +20,10 @@ export interface KeyBinding {
 }
 
 export const BINDINGS: readonly KeyBinding[] = [
-  { action: 'throttle', codes: ['KeyW', 'ArrowUp'], label: 'Accelerate', group: 'drive' },
-  { action: 'brake', codes: ['KeyS', 'ArrowDown'], label: 'Brake / reverse', group: 'drive' },
-  { action: 'steerLeft', codes: ['KeyA', 'ArrowLeft'], label: 'Steer left', group: 'drive' },
-  { action: 'steerRight', codes: ['KeyD', 'ArrowRight'], label: 'Steer right', group: 'drive' },
+  { action: 'throttle', codes: ['KeyW'], label: 'Accelerate', group: 'drive' },
+  { action: 'brake', codes: ['KeyS'], label: 'Brake / reverse', group: 'drive' },
+  { action: 'steerLeft', codes: ['KeyA'], label: 'Steer left', group: 'drive' },
+  { action: 'steerRight', codes: ['KeyD'], label: 'Steer right', group: 'drive' },
   { action: 'parkingBrake', codes: ['Space'], label: 'Parking brake', group: 'drive' },
   { action: 'engineBrake', codes: ['KeyB'], label: 'Engine brake', group: 'drive' },
   { action: 'shiftUp', codes: ['ShiftLeft', 'PageUp'], label: 'Shift up', group: 'drive' },
@@ -31,6 +31,10 @@ export const BINDINGS: readonly KeyBinding[] = [
   { action: 'horn', codes: ['KeyH'], label: 'Horn', group: 'drive' },
   { action: 'headlights', codes: ['KeyL'], label: 'Headlights', group: 'drive' },
   { action: 'camera', codes: ['KeyC'], label: 'Change camera', group: 'drive' },
+  { action: 'lookLeft', codes: ['ArrowLeft'], label: 'Look left (let go to look ahead)', group: 'drive' },
+  { action: 'lookRight', codes: ['ArrowRight'], label: 'Look right (let go to look ahead)', group: 'drive' },
+  { action: 'lookUp', codes: ['ArrowUp'], label: 'Look up', group: 'drive' },
+  { action: 'lookDown', codes: ['ArrowDown'], label: 'Look down', group: 'drive' },
   { action: 'interact', codes: ['KeyE'], label: 'Interact / get in or out', group: 'rig' },
   { action: 'coupler', codes: ['KeyT'], label: 'Couple or uncouple trailer', group: 'rig' },
   { action: 'landingGear', codes: ['KeyG'], label: 'Landing gear', group: 'rig' },
@@ -38,10 +42,10 @@ export const BINDINGS: readonly KeyBinding[] = [
   { action: 'dumpLower', codes: ['KeyF'], label: 'Lower dump bed', group: 'rig' },
   { action: 'liftAxles', codes: ['KeyX'], label: 'Lift or lower spare axles', group: 'rig' },
   { action: 'jobBoard', codes: ['KeyJ'], label: 'Job board', group: 'menu' },
-  { action: 'map', codes: ['KeyM'], label: 'Map', group: 'menu' },
+  { action: 'map', codes: ['Escape', 'KeyM'], label: 'Map (click to plan a route)', group: 'menu' },
   { action: 'fleet', codes: ['KeyO'], label: 'Fleet and garage', group: 'menu' },
   { action: 'buildMode', codes: ['KeyY'], label: 'Build mode', group: 'menu' },
-  { action: 'pause', codes: ['Escape'], label: 'Pause menu', group: 'menu' },
+  { action: 'pause', codes: ['KeyP'], label: 'Pause menu', group: 'menu' },
 ]
 
 const BINDING_BY_ACTION = new Map<KeyAction, KeyBinding>(BINDINGS.map((binding) => [binding.action, binding]))

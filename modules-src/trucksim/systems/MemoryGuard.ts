@@ -4,7 +4,9 @@
  * Reel's `ResourceTrend` so a count that keeps setting new highs is flagged as a leak, and turns the trend plus the budgets into a
  * pressure level. Streamers, pools and caches report their own sizes through gauges. Listeners hear about level changes (and again
  * every 30 s while critical) so they can shrink radii, trim caches or drop a quality tier. `window.__truckMem()` returns the
- * report, and `?perf=1` shows a small fixed overlay refreshed once per sample. The render hook only compares two numbers.
+ * report, and `?perf=1` shows a small fixed overlay refreshed once per sample. The render hook only compares two numbers. Draw calls
+ * over budget only ever warn: they cost frame time, not memory, and cascaded shadows on high and ultra multiply them, so they never
+ * make the level critical (which drops a quality tier).
  */
 import type { Observer } from '@babylonjs/core/Misc/observable'
 import type { Scene } from '@babylonjs/core/scene'
@@ -242,7 +244,7 @@ export class MemoryGuard {
       this.reasonBuffer.push(`${key} keep climbing`)
     }
     for (const key of RESOURCE_KEYS) rank = Math.max(rank, this.judge(key, sample[key], this.budget[key]))
-    rank = Math.max(rank, this.judge('draw calls', sample.drawCalls, this.budget.drawCalls))
+    rank = Math.max(rank, Math.min(1, this.judge('draw calls', sample.drawCalls, this.budget.drawCalls)))
     if (sample.heapMegabytes >= 0) rank = Math.max(rank, this.judge('heap', sample.heapMegabytes, this.budget.heapMegabytes))
     for (const gauge of this.gauges) {
       if (gauge.limit !== null) rank = Math.max(rank, this.judge(gauge.name, gauge.read(), gauge.limit))

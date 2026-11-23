@@ -3,8 +3,8 @@
  * and lifetime stats. `normalizeProfile` rebuilds anything stored or sent by a client field by field and never throws, so
  * the Worker, the page and guests all start from the same safe shape. The rules that change a profile live in `Actions.ts`.
  */
-import { CARGO_BY_ID, STARTER_TRUCK, STARTING_CASH, TRAILER_BY_ID, TRUCK_BY_ID, defaultLook } from './Catalog'
-import type { BumperOption, Finish, FlapOption, HaulKind, HornOption, LightOption, StackOption, Stripe, TruckLook, TruckModel, WheelOption } from './Catalog'
+import { CARGO_BY_ID, STARTER_TRUCK, STARTING_CASH, TRAILER_BY_ID, TRUCK_BY_ID, defaultLook, fitLook } from './Catalog'
+import type { BumperOption, Finish, FlapOption, GrilleOption, HaulKind, HornOption, LightOption, RoofOption, StackOption, Stripe, TruckLook, TruckModel, WheelOption } from './Catalog'
 import { MAX_ITEMS, COLOR_PATTERN, normalizeBuildItem } from './Lots'
 import type { BuildItem } from './Lots'
 import type { Job } from './Jobs'
@@ -69,13 +69,15 @@ export const SELL_DAMAGE_DISCOUNT = 0.5
 
 export const LOOK_OPTIONS = {
   finish: ['gloss', 'metallic', 'matte'] as const satisfies readonly Finish[],
-  stripe: ['none', 'pinstripe', 'band', 'swoosh'] as const satisfies readonly Stripe[],
+  stripe: ['none', 'pinstripe', 'band', 'swoosh', 'twoTone', 'chevron'] as const satisfies readonly Stripe[],
   stacks: ['none', 'single', 'dual', 'dualTall'] as const satisfies readonly StackOption[],
   bumper: ['stock', 'chrome', 'heavy'] as const satisfies readonly BumperOption[],
   lights: ['stock', 'cabBar', 'full'] as const satisfies readonly LightOption[],
   wheels: ['steel', 'polished', 'black'] as const satisfies readonly WheelOption[],
   mudflaps: ['plain', 'chrome'] as const satisfies readonly FlapOption[],
   horn: ['stock', 'air'] as const satisfies readonly HornOption[],
+  grille: ['stock', 'bars', 'slats', 'mesh', 'blackout'] as const satisfies readonly GrilleOption[],
+  roof: ['none', 'low', 'tall'] as const satisfies readonly RoofOption[],
 }
 
 const HAULS: readonly HaulKind[] = ['dump', 'tanker', 'flatbed', 'grain', 'reefer', 'lowboy']
@@ -103,7 +105,7 @@ export function normalizeLook(raw: unknown, model: TruckModel): TruckLook {
   if (typeof raw !== 'object' || raw === null) return stock
   const source = raw as Record<string, unknown>
   const paint = typeof source.paint === 'object' && source.paint !== null ? (source.paint as Record<string, unknown>) : {}
-  return {
+  return fitLook({
     paint: {
       primary: colour(paint.primary, stock.paint.primary),
       secondary: colour(paint.secondary, stock.paint.secondary),
@@ -118,7 +120,10 @@ export function normalizeLook(raw: unknown, model: TruckModel): TruckLook {
     wheels: choose(source.wheels, LOOK_OPTIONS.wheels, stock.wheels),
     mudflaps: choose(source.mudflaps, LOOK_OPTIONS.mudflaps, stock.mudflaps),
     horn: choose(source.horn, LOOK_OPTIONS.horn, stock.horn),
-  }
+    grille: choose(source.grille, LOOK_OPTIONS.grille, stock.grille),
+    roof: choose(source.roof, LOOK_OPTIONS.roof, stock.roof),
+    skirts: typeof source.skirts === 'boolean' ? source.skirts : stock.skirts,
+  }, model)
 }
 
 /** A fresh uid with `prefix` that no entry in `used` has. */

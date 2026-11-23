@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Polar Swat · the library</title>
@@ -21,22 +22,19 @@
   .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay .ov-stats > div { display: block; text-align: center; }
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
-  .look { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
-  .look button { border: 0; border-radius: 0; }
-  .look button[aria-pressed="true"] { background: var(--accent); color: #ffffff; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header class="top"><h1>Polar Swat</h1><div class="stats"><div class="stat"><span>FISH</span><b id="fishNo">0/5</b></div><div class="stat"><span>LAST</span><b id="last">—</b></div><div class="stat"><span>ROUND</span><b id="roundBest">—</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div><div class="stat"><span>WIND</span><b id="wind">—</b></div></div></header>
-  <div class="bar"><p>Five fish a round. Swat each one as it leaps from the hole; your longest fish is your score.</p><div><div class="look" role="group" aria-label="Colours"><button id="lookOriginal" aria-pressed="true">Original</button><button id="lookWics" aria-pressed="false">WICS</button></div><button id="soundBtn" aria-pressed="true">Sound on <kbd>M</kbd></button><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button></div></div>
+  <div class="bar"><p>Five fish a round. Swat each one as it leaps from the hole; your longest fish is your score.</p><div><span data-tl-theme-toggle></span><button id="soundBtn" aria-pressed="true">Sound on <kbd>M</kbd></button><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button></div></div>
   <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Frozen lake. Press Space, click or tap to swat the fish when it jumps out of the hole.">
     <canvas id="cv" width="900" height="520" aria-hidden="true"></canvas>
     <div class="overlay show" id="overlay"><h2 id="ovTitle">Polar Swat</h2><p id="ovText">A polar bear, a hole in the ice and fish that just won't stay put. Wait for a fish to leap, then swat it as far across the lake as you can. Catch it square and it flies; catch it high or low and it pops up or skids along the ice.</p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Start the round</button></div></div>
     <p class="sr-only" id="live" aria-live="polite"></p>
   </section>
-  <footer>Press <kbd>Space</kbd>, click or tap to swing. You get one swing per leap. Where the paw meets the fish sets the launch: dead centre is the sweet spot, under the fish sends it high, over the top drives it low along the ice. Speed and launch angle decide how far it flies; a shallow landing skips a couple of times and slides on, a steep landing thuds and stops short. Wind blows toward or against the throw, and pike fly farther than walleye, which fly farther than perch. The distance from the hole to where the fish stops is measured in feet, and your longest fish of each five-fish round is saved to the leaderboard. Press <kbd>T</kbd> to switch between the original colours and the WICS colours.</footer>
+  <footer>Press <kbd>Space</kbd>, click or tap to swing. You get one swing per leap. Where the paw meets the fish sets the launch: dead centre is the sweet spot, under the fish sends it high, over the top drives it low along the ice. Speed and launch angle decide how far it flies; a shallow landing skips a couple of times and slides on, a steep landing thuds and stops short. Wind blows toward or against the throw, and pike fly farther than walleye, which fly farther than perch. The distance from the hole to where the fish stops is measured in feet, and your longest fish of each five-fish round is saved to the leaderboard.</footer>
 </main>
 <script src="module-scores.js"></script>
 <script>
@@ -80,9 +78,8 @@ const LOOKS = {
   },
 };
 
-function siteLook() { try { return window.parent && window.parent !== window && window.parent.document.documentElement.dataset.theme === 'wics' ? 'wics' : null; } catch (e) { return null; } }
-let look = store.get('gonefishing-look') || siteLook() || 'original';
-if (!LOOKS[look]) look = 'original';
+function themeLook() { return window.TLTheme && TLTheme.isWics() ? 'wics' : 'original'; }
+let look = themeLook();
 let P = LOOKS[look];
 let soundOn = store.get('gonefishing-sound') !== 'off';
 let best = +(store.get('gonefishing-best') || 0);
@@ -511,9 +508,8 @@ function frame(now) {
 }
 
 function setLook(next) {
-  look = LOOKS[next] ? next : 'original'; P = LOOKS[look]; store.set('gonefishing-look', look);
+  look = LOOKS[next] ? next : 'original'; P = LOOKS[look];
   document.documentElement.dataset.look = look;
-  $('lookOriginal').setAttribute('aria-pressed', String(look === 'original')); $('lookWics').setAttribute('aria-pressed', String(look === 'wics'));
 }
 function setSound(on) { soundOn = on; store.set('gonefishing-sound', on ? 'on' : 'off'); $('soundBtn').setAttribute('aria-pressed', String(on)); $('soundBtn').firstChild.textContent = on ? 'Sound on ' : 'Sound off '; }
 function togglePause() {
@@ -529,14 +525,12 @@ window.addEventListener('keydown', e => {
   if (k === 'p') togglePause();
   if (k === 'r') start();
   if (k === 'm') setSound(!soundOn);
-  if (k === 't') setLook(look === 'wics' ? 'original' : 'wics');
 });
 $('ovBtn').addEventListener('click', () => { if (mode === 'pause') togglePause(); else start(); });
 $('restart').addEventListener('click', start);
 $('pauseBtn').addEventListener('click', togglePause);
 $('soundBtn').addEventListener('click', () => setSound(!soundOn));
-$('lookOriginal').addEventListener('click', () => setLook('original'));
-$('lookWics').addEventListener('click', () => setLook('wics'));
+if (window.TLTheme) TLTheme.onChange(() => setLook(themeLook()));
 document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') togglePause(); });
 setLook(look); setSound(soundOn); hud();
 $('ovBtn').disabled = true; $('ovBtn').textContent = 'Loading the lake…';

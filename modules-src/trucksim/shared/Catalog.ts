@@ -11,7 +11,7 @@ export type CabKind = 'day' | 'sleeper' | 'raised'
 export type TrailerKind = 'tanker' | 'flatbed' | 'grain' | 'reefer' | 'lowboy'
 export type HaulKind = 'dump' | TrailerKind
 export type Finish = 'gloss' | 'metallic' | 'matte'
-export type Stripe = 'none' | 'pinstripe' | 'band' | 'swoosh'
+export type Stripe = 'none' | 'pinstripe' | 'band' | 'swoosh' | 'twoTone' | 'chevron'
 
 export interface AxleSpec {
   z: number
@@ -141,6 +141,10 @@ export const OWN_WASH_WATER = 8
 /** Extra pay for delivering with a clean truck (dirt under `CLEAN_DIRT_LIMIT`). */
 export const CLEAN_BONUS = 0.05
 export const CLEAN_DIRT_LIMIT = 25
+/** How far (m) the pressure washer's hose reaches from the unit to the middle of the truck. */
+export const WASHER_REACH_M = 11
+/** A pressure washer has to stand within this distance (m) of a steel shop on the same lot. */
+export const WASHER_SHOP_GAP_M = 6
 
 /** Price of the next strip of land for a lot that already has `owned` strips. */
 export function landStripPrice(owned: number): number {
@@ -382,6 +386,8 @@ export type LightOption = 'stock' | 'cabBar' | 'full'
 export type WheelOption = 'steel' | 'polished' | 'black'
 export type FlapOption = 'plain' | 'chrome'
 export type HornOption = 'stock' | 'air'
+export type GrilleOption = 'stock' | 'bars' | 'slats' | 'mesh' | 'blackout'
+export type RoofOption = 'none' | 'low' | 'tall'
 
 export interface TruckLook {
   paint: Paint
@@ -392,12 +398,17 @@ export interface TruckLook {
   wheels: WheelOption
   mudflaps: FlapOption
   horn: HornOption
+  grille: GrilleOption
+  /** Roof fairing over the cab (and a flat-top sleeper); trucks with a raised sleeper or a dump bed never get one. */
+  roof: RoofOption
+  /** Side fairings between the steer axle and the drives; never on dump trucks. */
+  skirts: boolean
 }
 
 export const LOOK_PRICES = {
   repaint: 1200,
   finish: { gloss: 0, metallic: 900, matte: 600 } as Record<Finish, number>,
-  stripe: { none: 0, pinstripe: 350, band: 500, swoosh: 800 } as Record<Stripe, number>,
+  stripe: { none: 0, pinstripe: 350, band: 500, swoosh: 800, twoTone: 1100, chevron: 900 } as Record<Stripe, number>,
   stacks: { none: 0, single: 700, dual: 1400, dualTall: 2200 } as Record<StackOption, number>,
   visor: 650,
   bumper: { stock: 0, chrome: 1600, heavy: 2400 } as Record<BumperOption, number>,
@@ -405,6 +416,26 @@ export const LOOK_PRICES = {
   wheels: { steel: 0, polished: 2600, black: 1500 } as Record<WheelOption, number>,
   mudflaps: { plain: 0, chrome: 300 } as Record<FlapOption, number>,
   horn: { stock: 0, air: 450 } as Record<HornOption, number>,
+  grille: { stock: 0, bars: 900, slats: 900, mesh: 1300, blackout: 700 } as Record<GrilleOption, number>,
+  roof: { none: 0, low: 1400, tall: 2100 } as Record<RoofOption, number>,
+  skirts: 1800,
+}
+
+/** True when this truck can carry a roof fairing (no raised sleeper, no dump bed). */
+export function roofAllowed(model: TruckModel): boolean {
+  return model.style !== 'dump' && model.cab !== 'raised'
+}
+
+/** True when this truck can carry side skirts (every semi tractor). */
+export function skirtsAllowed(model: TruckModel): boolean {
+  return model.style !== 'dump'
+}
+
+/** Clears the parts this truck can't carry. Returns the same object. */
+export function fitLook(look: TruckLook, model: TruckModel): TruckLook {
+  if (!roofAllowed(model)) look.roof = 'none'
+  if (!skirtsAllowed(model)) look.skirts = false
+  return look
 }
 
 export function defaultLook(model: TruckModel): TruckLook {
@@ -419,7 +450,69 @@ export function defaultLook(model: TruckModel): TruckLook {
     wheels: model.style === 'longnose' ? 'polished' : 'steel',
     mudflaps: 'plain',
     horn: 'stock',
+    grille: 'stock',
+    roof: model.style === 'aero' && model.cab === 'day' ? 'low' : 'none',
+    skirts: model.style === 'aero',
   }
+}
+
+/** A factory design: a set of parts and a paint layout the dealer and the garage apply in one click (colours are kept). */
+export interface TruckDesign {
+  id: string
+  name: string
+  blurb: string
+  finish: Finish
+  stripe: Stripe
+  parts: Omit<TruckLook, 'paint'>
+}
+
+export const DESIGNS: TruckDesign[] = [
+  {
+    id: 'heritage', name: 'Heritage', blurb: 'Two-tone paint, a chrome bar grille, visor and tall stacks.', finish: 'gloss', stripe: 'twoTone',
+    parts: { stacks: 'dualTall', visor: true, bumper: 'chrome', lights: 'cabBar', wheels: 'polished', mudflaps: 'chrome', horn: 'air', grille: 'bars', roof: 'none', skirts: false },
+  },
+  {
+    id: 'fleet', name: 'Fleet aero', blurb: 'Tall roof fairing, side skirts and a slatted grille for the lowest fuel burn.', finish: 'gloss', stripe: 'band',
+    parts: { stacks: 'none', visor: false, bumper: 'stock', lights: 'stock', wheels: 'steel', mudflaps: 'plain', horn: 'stock', grille: 'slats', roof: 'tall', skirts: true },
+  },
+  {
+    id: 'workhorse', name: 'Workhorse', blurb: 'Blacked-out grille, heavy bumper, cab-bar lights and matte chevrons.', finish: 'matte', stripe: 'chevron',
+    parts: { stacks: 'single', visor: false, bumper: 'heavy', lights: 'cabBar', wheels: 'black', mudflaps: 'plain', horn: 'air', grille: 'blackout', roof: 'none', skirts: false },
+  },
+  {
+    id: 'showroom', name: 'Showroom', blurb: 'Metallic paint, mesh grille, a full light set and every bit of chrome.', finish: 'metallic', stripe: 'swoosh',
+    parts: { stacks: 'dual', visor: true, bumper: 'chrome', lights: 'full', wheels: 'polished', mudflaps: 'chrome', horn: 'air', grille: 'mesh', roof: 'low', skirts: false },
+  },
+]
+
+export const DESIGN_BY_ID: Record<string, TruckDesign> = Object.fromEntries(DESIGNS.map((d) => [d.id, d]))
+
+/**
+ * `base` with design `id` applied: the design's parts, finish and stripe, keeping the colours. `'factory'` gives the model's stock
+ * parts. Parts the truck can't carry are left off.
+ */
+export function designLook(model: TruckModel, id: string, base: TruckLook = defaultLook(model)): TruckLook {
+  const stock = defaultLook(model)
+  const design = DESIGN_BY_ID[id]
+  const paint = { ...base.paint, finish: design ? design.finish : stock.paint.finish, stripe: design ? design.stripe : stock.paint.stripe }
+  const parts = design ? design.parts : stock
+  const look: TruckLook = {
+    paint, stacks: parts.stacks, visor: parts.visor, bumper: parts.bumper, lights: parts.lights, wheels: parts.wheels,
+    mudflaps: parts.mudflaps, horn: parts.horn, grille: parts.grille, roof: parts.roof, skirts: parts.skirts,
+  }
+  if (design && model.style === 'aero' && look.stacks === 'dualTall') look.stacks = 'dual'
+  return fitLook(look, model)
+}
+
+/** The id of the design `look` matches exactly (parts, finish and stripe), `'factory'` for the stock parts, or null when custom. */
+export function designOf(model: TruckModel, look: TruckLook): string | null {
+  const sameParts = (a: TruckLook, b: TruckLook): boolean =>
+    a.paint.finish === b.paint.finish && a.paint.stripe === b.paint.stripe && a.stacks === b.stacks && a.visor === b.visor && a.bumper === b.bumper &&
+    a.lights === b.lights && a.wheels === b.wheels && a.mudflaps === b.mudflaps && a.horn === b.horn && a.grille === b.grille && a.roof === b.roof && a.skirts === b.skirts
+  for (const id of ['factory', ...DESIGNS.map((d) => d.id)]) {
+    if (sameParts(look, designLook(model, id, look))) return id
+  }
+  return null
 }
 
 /** What the garage charges to go from `from` to `to` (only the parts that change). */
@@ -437,6 +530,9 @@ export function lookCost(from: TruckLook, to: TruckLook): number {
   if (from.wheels !== to.wheels) cost += LOOK_PRICES.wheels[to.wheels]
   if (from.mudflaps !== to.mudflaps) cost += LOOK_PRICES.mudflaps[to.mudflaps]
   if (from.horn !== to.horn) cost += LOOK_PRICES.horn[to.horn]
+  if (from.grille !== to.grille) cost += LOOK_PRICES.grille[to.grille] + (to.grille === 'stock' ? 150 : 0)
+  if (from.roof !== to.roof) cost += LOOK_PRICES.roof[to.roof] + (to.roof === 'none' ? 250 : 0)
+  if (from.skirts !== to.skirts) cost += to.skirts ? LOOK_PRICES.skirts : 200
   return cost
 }
 
@@ -464,6 +560,8 @@ export interface BuildDef {
   blurb: string
   /** A shop where your trucks are refuelled and repaired at cost. */
   service?: boolean
+  /** Where you wash your own trucks by hand (water only). */
+  wash?: boolean
 }
 
 export const BUILDINGS: BuildDef[] = [
@@ -475,7 +573,8 @@ export const BUILDINGS: BuildDef[] = [
   { id: 'office-building', name: 'Office', category: 'structure', mode: 'drag', cost: 240, w: 10, d: 8, minW: 8, minD: 6, maxW: 20, maxD: 15, height: 4, solid: true, colorable: true, defaultColor: '#d8d2c4', defaultColor2: '#3a3f46', blurb: 'Dispatch office with windows facing the yard.' },
   { id: 'office-trailer', name: 'Office trailer', category: 'addon', mode: 'place', cost: 6500, w: 4, d: 12, height: 3, solid: true, colorable: true, defaultColor: '#e7e4dc', blurb: 'A quick dispatch office on blocks.' },
   { id: 'fuel-island', name: 'Fuel island', category: 'addon', mode: 'place', cost: 18000, w: 6, d: 10, height: 5, solid: true, colorable: true, defaultColor: '#c4302b', blurb: 'Your own diesel pumps under a lit canopy.', service: true },
-  { id: 'wash-bay', name: 'Wash bay', category: 'addon', mode: 'place', cost: 22000, w: 8, d: 22, height: 6, solid: true, colorable: true, defaultColor: '#2c6db5', blurb: 'Drive-through truck wash.' },
+  { id: 'wash-bay', name: 'Wash bay', category: 'addon', mode: 'place', cost: 22000, w: 8, d: 22, height: 6, solid: true, colorable: true, defaultColor: '#2c6db5', blurb: 'Drive-through truck wash.', wash: true },
+  { id: 'pressure-washer', name: 'Pressure washer', category: 'addon', mode: 'place', cost: 2800, w: 1, d: 2, height: 1.5, solid: true, colorable: true, defaultColor: '#d8a21c', blurb: 'Hot-water washer on a hose reel. Stand it beside your steel shop, park within reach and spray the truck yourself.', wash: true },
   { id: 'parts-shed', name: 'Parts shed', category: 'addon', mode: 'place', cost: 4200, w: 4, d: 6, height: 3, solid: true, colorable: true, defaultColor: '#6b7a5a', blurb: 'Filters, belts and spare tyres.' },
   { id: 'tire-rack', name: 'Tire rack', category: 'addon', mode: 'place', cost: 1500, w: 2, d: 6, height: 2.4, solid: true, colorable: false, defaultColor: '#1f2124', blurb: 'A rack of spare truck tyres.' },
   { id: 'light-pole', name: 'Light pole', category: 'addon', mode: 'place', cost: 900, w: 1, d: 1, height: 9, solid: true, colorable: false, defaultColor: '#6e747a', blurb: 'Lights the yard after dark.' },

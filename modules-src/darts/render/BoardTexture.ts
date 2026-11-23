@@ -21,10 +21,29 @@ export const BOARD_COLORS: SteelColors & { sisal: string } = { ...DEFAULT_SETTIN
 /** Soft-tip face and housing colours. */
 export const SPIDER_COLORS: SpiderColors = { ...DEFAULT_SETTINGS.spider }
 
-/** Uses the administrator's board colours for every board drawn from now on. */
+/** WICS board colours: navy and pale grey-beige singles, bright blue and slate-blue doubles and trebles, a pale housing with slate trim. */
+export const WICS_STEEL: SteelColors = { black: '#1e2b45', cream: '#e0e2d8', red: '#0594d0', green: '#6f83b5', wire: '#c9ccd2', number: '#ffffff', numberEdge: '#13203a' }
+export const WICS_SPIDER: SpiderColors = { black: '#1e2b45', red: '#0594d0', catch: '#13203a', spider: '#f2f3f5', number: '#ffffff', trim: '#6f83b5', housing: '#e0e2d8', housingTrim: '#6f83b5' }
+
+const adminColors = { steel: { ...DEFAULT_SETTINGS.steel }, spider: { ...DEFAULT_SETTINGS.spider } }
+let wicsBoard = false
+
+function useBoardColors(): void {
+  Object.assign(BOARD_COLORS, wicsBoard ? WICS_STEEL : adminColors.steel)
+  Object.assign(SPIDER_COLORS, wicsBoard ? WICS_SPIDER : adminColors.spider)
+}
+
+/** Uses the administrator's board colours for every board drawn from now on (unless the WICS palette is on). */
 export function applyBoardColors(steel: SteelColors, spider: SpiderColors): void {
-  Object.assign(BOARD_COLORS, steel)
-  Object.assign(SPIDER_COLORS, spider)
+  Object.assign(adminColors.steel, steel)
+  Object.assign(adminColors.spider, spider)
+  useBoardColors()
+}
+
+/** Switches every board drawn from now on between the WICS palette and the administrator's colours. */
+export function setBoardPalette(wics: boolean): void {
+  wicsBoard = wics
+  useBoardColors()
 }
 
 /** Colours for the board's 3D parts (wires, plastic spider, housing). The metal wires and plastic spider are a shade off the face's drawn colours as built, so the built shades stay until the admin picks another colour. */

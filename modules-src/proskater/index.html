@@ -209,7 +209,7 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
       <div class="modes">
         <button class="mode" data-action="open-story"><span class="k">MODE A</span><h3>Story Mode</h3><p>Career chapters with park objectives. Earn cash and unlock the next park.</p></button>
         <button class="mode" data-action="open-parks" data-mode="blitz"><span class="k">MODE B</span><h3>Timed Blitz</h3><p>One minute. Bank as many combo points as you can. Best run is saved.</p></button>
-        <button class="mode" data-action="open-parks" data-mode="showdown"><span class="k">MODE C</span><h3>Half-Pipe Showdown</h3><p>60 seconds of vert. Every trick inside the half-pipe zone scores double.</p></button>
+        <button class="mode" data-action="open-parks" data-mode="showdown"><span class="k">MODE C</span><h3>Half-Pipe Showdown</h3><p>60 seconds of vert in a wall-to-wall half-pipe and nothing else. Every trick inside the pipe scores double.</p></button>
         <button class="mode" data-action="open-parks" data-mode="free"><span class="k">MODE D</span><h3>Free Skate</h3><p>No clock, no pressure. Explore the park and practise lines.</p></button>
       </div>
       <div class="row">
@@ -267,8 +267,9 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
           <li><kbd>W</kbd><kbd>S</kbd> push / brake</li>
           <li><kbd>A</kbd><kbd>D</kbd> carve, spin in the air</li>
           <li><kbd>Space</kbd> hold to crouch and pump, release to ollie</li>
-          <li><kbd>J</kbd> flip trick (+ direction)</li>
-          <li><kbd>K</kbd> grab trick (hold, + direction)</li>
+          <li><kbd>J</kbd> flip trick (+ direction, or two directions for a diagonal: Lockdown Varial, Contraband Tre Flip, Commissary Hardflip, Cell Count Double Flip)</li>
+          <li><kbd>K</kbd> grab trick (hold, + direction or diagonal: Rocket Air, Lights-Out Benihana, Yard Judo, Lockup Crossbone)</li>
+          <li>One trick at a time: taps during a flip or grab are ignored until its animation finishes</li>
           <li><kbd>L</kbd> grind near a rail or ledge, manual on flat</li>
           <li><kbd>J</kbd>+<kbd>K</kbd> or <kbd>I</kbd> special (meter full): K2 Crashout, + <kbd>W</kbd> Suit-Up Slam, + <kbd>S</kbd> Icebox Invert</li>
           <li><kbd>L</kbd> into a wall in the air: Write-Up Wallride</li>
@@ -428,14 +429,18 @@ const CONFIG = Object.freeze({
   wallRestitution: 0.35,
   vertSlope: 1.43,         // tan(55°): launches above this go straight up (vert)
   vertInward: 0.25,        // m/s drift back into the ramp on vert airs
-  landAlign: 0.72,         // rad (~41°): worse landings bail
-  hardLanding: 15,         // m/s into the surface bails
+  landAlign: 1.08,         // rad (~62°): worse landings bail
+  landSketchy: 0.55,       // rad: landings between this and landAlign are sketchy (speed loss, no bail)
+  flipCatch: 0.7,          // a flip at least this far through its animation is caught on landing
+  hardLanding: 19,         // m/s into the surface bails
   bailTime: 1.5,
-  grindSnap: 0.55,         // m horizontal snap distance to a rail
+  grindSnap: 0.85,         // m horizontal snap distance to a rail
+  grindWindow: 420,        // ms a grind press stays live before a rail comes in reach
   grindFriction: 0.45,
   grindMinSpeed: 3.2,
-  balanceDrift: 0.9,
-  balanceControl: 2.8,
+  balanceDrift: 0.7,
+  balanceControl: 3.4,
+  balanceUnstable: 0.8,    // how fast an off-centre grind or manual tips further (1/s)
   bankDelay: 0.35,         // s on the ground before a combo banks
   skaterRadius: 0.6,
   specialFillPerPoint: 1 / 2600,
@@ -454,7 +459,7 @@ const _box = new THREE.Box3();
 const _m4 = new THREE.Matrix4();
 const _sphere = new THREE.Sphere();
 const _grad = { x: 0, z: 0 };                 // height-field gradient output
-const _hit = { d2: 0, t: 0, line: null };      // closest grind line output
+const _hit = { d2: 0, t: 0, y: 0, line: null };      // closest grind line output
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrapAngle = (a) => { a = (a + Math.PI) % TAU; return a < 0 ? a + Math.PI : a - Math.PI; };
@@ -664,7 +669,7 @@ const deckById = (id) => DECKS.find((d) => d.id === id) ?? DECKS[0];
  */
 const PARKS = {
   warehouse: {
-    id: 'warehouse', name: 'Cell Block Yard', tagline: 'The rec yard behind Cell Block C: painted concrete, chain-link, razor wire and a center funbox.',
+    id: 'warehouse', name: 'Cell Block Yard', tagline: 'The rec yard behind Cell Block C: a center funbox, an empty in-ground pool, a stair set with a handrail, benches and razor wire.',
     size: 64, theme: 'prison',
     palette: { ground: 0xaeada6, ramp: 0xbfae8f, side: 0x4f5f73, coping: 0xd9dde3, wall: 0xd5d2c8, sky: [0x86a6cc, 0xe3dccd], fog: 0xd2d2cc, sun: 0xfff1dc, accent: 0xf2c318 },
     spawn: { x: -14, z: 3, heading: Math.PI / 2 },
@@ -678,6 +683,11 @@ const PARKS = {
       { type: 'kicker', x: 12, z: 11, rot: 3, w: 2.6, len: 2.4, h: 0.9, curve: 1.6 },
       { type: 'ledge', x: -14, z: 18, rot: 1, w: 8, d: 0.9, h: 0.45 },
       { type: 'ledge', x: 14, z: -8, rot: 0, w: 7, d: 0.9, h: 0.45 },
+      { type: 'pool', x: 20.5, z: -21.5, rot: 0, a: 5, b: 3.4, rc: 2.8, R: 2.6, cap: 80 },
+      { type: 'stairs', x: -29.5, z: -21, rot: 0, w: 5, h: 1.0, bank: 2.6, plat: 2.8, steps: 5, run: 2.6 },
+      { type: 'bench', x: -2, z: 25, rot: 0, w: 4, d: 0.5, h: 0.46 },
+      { type: 'bench', x: -16, z: 27, rot: 0, w: 3.2, d: 0.5, h: 0.46 },
+      { type: 'ledge', x: 15, z: 23, rot: 0, w: 5.5, d: 2.2, h: 0.3 },
     ],
     letters: [
       { ch: 'S', x: 0, z: 3, y: 2.5 },
@@ -737,6 +747,23 @@ const PARKS = {
   },
 };
 const PARK_ORDER = ['warehouse', 'rooftops', 'canyon'];
+
+/**
+ * Half-Pipe Showdown always runs in a half-pipe and nothing else, whichever park is picked:
+ * that park's look and surroundings around one long vert pipe that runs wall to wall, so there
+ * are no ends to roll off and no other ramps. Records stay per park (same id).
+ */
+function halfPipeArena(def) {
+  const base = def.elements.find((e) => e.type === 'halfpipe') ?? { W: 6, R: 3.6 };
+  const W = Math.max(7, base.W), R = Math.max(4, base.R), cap = 80, size = 30;
+  const q = quarterProfile(R, cap), deck = size / 2 - W / 2 - q.uCap + 0.6;
+  return {
+    ...def, size, wallH: q.hCap + 1.4, arena: 'halfpipe',
+    tagline: `One long vert half-pipe in ${def.name}.`,
+    elements: [{ type: 'halfpipe', x: 0, z: 0, rot: 0, W, R, cap, len: size + 1.2, deck }],
+    letters: [], spawn: { x: -1.5, z: -6, heading: Math.PI / 2 },
+  };
+}
 
 /**
  * Story chapters. Objective types and how Session checks them:
@@ -998,6 +1025,15 @@ function quarterProfile(R, capDeg) {
   return { uCap: R * Math.sin(cap), hCap: R * (1 - Math.cos(cap)), cap };
 }
 
+/** Closed outline of a rounded rectangle (straight half-extents ia × ib, corner radius r), counter-clockwise in (u, v). */
+function roundedRectPath(ia, ib, r, arcSeg = 10) {
+  const pts = [];
+  for (const [cx, cy, a0] of [[ia, ib, 0], [-ia, ib, Math.PI / 2], [-ia, -ib, Math.PI], [ia, -ib, Math.PI * 1.5]]) {
+    for (let i = 0; i <= arcSeg; i++) { const a = a0 + (Math.PI / 2) * i / arcSeg; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  }
+  return pts;
+}
+
 /** Compiles one element: local height function, bounds, grind lines, meshes. */
 function compileElement(def) {
   const theta = (def.rot ?? 0) * Math.PI / 2;
@@ -1061,6 +1097,47 @@ function compileElement(def) {
       el.profile = pts;
       break;
     }
+    case 'pool': {
+      // An empty in-ground pool: flat floor, a transition all the way round, coping flush with
+      // the yard. Pools carve below the slab, so heightAt() checks them before everything else.
+      const q = quarterProfile(def.R, def.cap); el.q = q; el.carve = true;
+      const D = q.hCap, ia = def.a - def.rc, ib = def.b - def.rc;
+      el.depth = D; el.ia = ia; el.ib = ib;
+      const sd = (u, v) => { const qx = Math.abs(u) - ia, qy = Math.abs(v) - ib; return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - def.rc; };
+      el.uMin = -(def.a + q.uCap); el.uMax = def.a + q.uCap; el.vHalf = def.b + q.uCap;
+      el.local = (u, v) => {
+        const d = sd(u, v);
+        if (d <= 0) return -D;
+        if (d < q.uCap) return -D + def.R - Math.sqrt(def.R * def.R - d * d);
+        return NEG;
+      };
+      const rim = roundedRectPath(ia, ib, def.rc + q.uCap, 8);
+      for (let i = 0; i < rim.length; i++) {
+        const [u0, v0] = rim[i], [u1, v1] = rim[(i + 1) % rim.length];
+        if (Math.hypot(u1 - u0, v1 - v0) > 0.01) el.grind.push({ u0, v0, u1, v1, h: 0, kind: 'coping', chain: true });
+      }
+      break;
+    }
+    case 'stairs': {
+      // Bank up to a platform, then a stair set back down with a handrail on one side.
+      const n = def.steps, tr = def.run / n, s0 = def.bank + def.plat;
+      el.uMin = 0; el.uMax = s0 + tr * (n - 1); el.vHalf = def.w / 2; el.s0 = s0; el.tread = tr;
+      el.local = (u, v) => {
+        if (v < -el.vHalf || v > el.vHalf || u < 0 || u > el.uMax) return NEG;
+        if (u < def.bank) return def.h * u / def.bank;
+        if (u <= s0) return def.h;
+        return def.h * (1 - (Math.floor((u - s0) / tr) + 1) / n);
+      };
+      const pts = [[0, 0], [def.bank, def.h], [s0, def.h]];
+      for (let k = 0; k < n - 1; k++) { const hk = def.h * (1 - (k + 1) / n); pts.push([s0 + k * tr, hk], [s0 + (k + 1) * tr, hk]); }
+      el.profile = pts;
+      const rv = el.vHalf - 0.35, top = def.h + 0.78, end = s0 + n * tr;
+      el.rail = { v: rv, u0: s0 - 1.4, u1: s0, u2: end, top, bottom: 0.78 };
+      el.grind.push({ u0: s0 - 1.4, v0: rv, u1: s0, v1: rv, h: top, kind: 'rail', chain: true }, { u0: s0, v0: rv, u1: end, v1: rv, h0: top, h1: 0.78, kind: 'rail', chain: true });
+      el.grind.push({ u0: def.bank, v0: -el.vHalf, u1: s0, v1: -el.vHalf, h: def.h, kind: 'ledge' });
+      break;
+    }
+    case 'bench':
     case 'ledge': {
       el.uMin = -def.w / 2; el.uMax = def.w / 2; el.vHalf = def.d / 2;
       el.local = (u, v) => (Math.abs(u) <= def.w / 2 && Math.abs(v) <= el.vHalf ? def.h : NEG);
@@ -1150,6 +1227,8 @@ class Park {
     this.def = def; this.scope = scope;
     this.half = def.size / 2 - 0.6;               // skateable half-extent
     this.elements = def.elements.map(compileElement);
+    this.carves = this.elements.filter((el) => el.carve);
+    this.solids = this.elements.filter((el) => !el.carve);
     this.group = new THREE.Group(); this.group.name = `park:${def.id}`;
     this.grindLines = [];
     this.halfPipeZone = null;                     // { box: Box3, coping, mesh }
@@ -1163,8 +1242,16 @@ class Park {
 
   /** Ground height at world (x, z): max of 0 and every element profile. */
   heightAt(x, z) {
+    const cv = this.carves;
+    for (let i = 0; i < cv.length; i++) {
+      const el = cv[i];
+      if (x < el.minX || x > el.maxX || z < el.minZ || z > el.maxZ) continue;
+      const dx = x - el.x, dz = z - el.z;
+      const e = el.local(dx * el.cos + dz * el.sin, -dx * el.sin + dz * el.cos);
+      if (e !== -Infinity) return e;
+    }
     let h = 0;
-    const els = this.elements;
+    const els = this.solids;
     for (let i = 0; i < els.length; i++) {
       const el = els[i];
       if (x < el.minX || x > el.maxX || z < el.minZ || z > el.maxZ) continue;
@@ -1192,9 +1279,9 @@ class Park {
     _hit.d2 = Infinity; _hit.line = null;
     for (const line of this.grindLines) {
       const ax = line.a.x, az = line.a.z, dx = line.b.x - ax, dz = line.b.z - az;
-      const t = clamp(((p.x - ax) * dx + (p.z - az) * dz) / (line.len * line.len), 0, 1);
+      const t = clamp(((p.x - ax) * dx + (p.z - az) * dz) / Math.max(1e-6, dx * dx + dz * dz), 0, 1);
       const cx = ax + dx * t - p.x, cz = az + dz * t - p.z, d2 = cx * cx + cz * cz;
-      if (d2 < _hit.d2) { _hit.d2 = d2; _hit.t = t * line.len; _hit.line = line; }
+      if (d2 < _hit.d2) { _hit.d2 = d2; _hit.t = t * line.len; _hit.line = line; _hit.y = line.a.y + (line.b.y - line.a.y) * t; }
     }
     return _hit;
   }
@@ -1215,7 +1302,18 @@ class Park {
   }
   #buildGround() {
     const size = this.def.size + 40;
-    const geo = this.scope.track(new THREE.PlaneGeometry(size, size, 1, 1)); geo.rotateX(-Math.PI / 2);
+    let geo;
+    if (this.carves.length) {
+      // The slab with a hole cut along each pool's coping (shape y = −world z after the rotation).
+      const shape = new THREE.Shape([new THREE.Vector2(-size / 2, -size / 2), new THREE.Vector2(size / 2, -size / 2), new THREE.Vector2(size / 2, size / 2), new THREE.Vector2(-size / 2, size / 2)]);
+      for (const el of this.carves) {
+        const rim = roundedRectPath(el.ia, el.ib, el.rc + el.q.uCap, 12);
+        shape.holes.push(new THREE.Path(rim.map(([u, v]) => { const [x, z] = toWorld(el, u, v); return new THREE.Vector2(x, -z); })));
+      }
+      geo = this.scope.track(new THREE.ShapeGeometry(shape, 12));
+      const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + size / 2) / size, (uv.getY(i) + size / 2) / size);
+    } else geo = this.scope.track(new THREE.PlaneGeometry(size, size, 1, 1));
+    geo.rotateX(-Math.PI / 2);
     this.mats.ground.map.repeat.set(size / 8, size / 8);
     this.mats.ground.roughnessMap.repeat.set(size / 8, size / 8);
     this.mats.ground.normalMap.repeat.set(size / 8, size / 8);
@@ -1230,6 +1328,18 @@ class Park {
       const meshes = buildProfileMeshes(el, this.mats.ramp, this.mats.side, this.scope);
       meshes.position.y = 0.012;                    // sit just above the slab (no z-fighting)
       node.add(meshes);
+    }
+    if (el.type === 'pool') this.#buildPool(el, node);
+    if (el.type === 'stairs') this.#buildStairs(el, node);
+    if (el.type === 'bench') {
+      // Yard bench: concrete legs, a weathered board seat, steel edging you can grind.
+      const s = this.scope, concrete = this.mats.wall;
+      const seat = this.#mat('benchSeat', () => ({ color: 0x8a6a48, roughness: 1, metalness: 0, ...Textures.pbr('plywood', this.texSize, s, 1) }));
+      const legGeo = s.track(new THREE.BoxGeometry(0.34, el.h - 0.07, el.d * 0.85)); legGeo.translate(0, (el.h - 0.07) / 2, 0);
+      for (const u of [-el.w / 2 + 0.35, 0, el.w / 2 - 0.35]) { const m = new THREE.Mesh(legGeo, concrete); m.position.x = u; m.castShadow = m.receiveShadow = true; node.add(m); }
+      const top = new THREE.Mesh(s.track(new THREE.BoxGeometry(el.w, 0.07, el.d)), seat); top.position.y = el.h - 0.035; top.castShadow = top.receiveShadow = true; node.add(top);
+      const capGeo = s.track(new THREE.BoxGeometry(el.w, 0.03, 0.035));
+      for (const sd of [-1, 1]) { const c = new THREE.Mesh(capGeo, this.mats.metal); c.position.set(0, el.h - 0.01, sd * el.d / 2); node.add(c); }
     }
     if (el.type === 'ledge') {
       const geo = this.scope.track(new THREE.BoxGeometry(el.w, el.h, el.d)); geo.translate(0, el.h / 2, 0);
@@ -1257,12 +1367,20 @@ class Park {
       if (el.central) this.funbox = el;
     }
     this.group.add(node);
-    // Grind lines in world space.
+    // Grind lines in world space. Chained lines (pool coping, handrails) hand the grind on to
+    // the next piece instead of dropping the rider at every joint.
+    const chain = [];
     for (const g of el.grind) {
       const [ax, az] = toWorld(el, g.u0, g.v0), [bx, bz] = toWorld(el, g.u1, g.v1);
-      const a = new THREE.Vector3(ax, g.h, az), b = new THREE.Vector3(bx, g.h, bz);
+      const a = new THREE.Vector3(ax, g.h0 ?? g.h, az), b = new THREE.Vector3(bx, g.h1 ?? g.h, bz);
       const len = a.distanceTo(b), dir = b.clone().sub(a).normalize();
-      this.grindLines.push({ a, b, dir, len, kind: g.kind, yaw: Math.atan2(dir.x, dir.z) });
+      const line = { a, b, dir, len, kind: g.kind, yaw: Math.atan2(dir.x, dir.z), next: null, prev: null };
+      this.grindLines.push(line);
+      if (g.chain) chain.push(line);
+    }
+    for (let i = 0; i < chain.length; i++) {
+      const n = chain[(i + 1) % chain.length];
+      if (chain[i].b.distanceTo(n.a) < 0.05) { chain[i].next = n; n.prev = chain[i]; }
     }
     // HALF_PIPE_ZONE: the 2× boundary used by Half-Pipe Showdown.
     if (el.zone && !this.halfPipeZone) {
@@ -1275,6 +1393,104 @@ class Park {
       mesh.visible = false;
       this.group.add(mesh);
       this.halfPipeZone = { box, coping: el.zone.hTop, mesh };
+    }
+  }
+  /** One shared material per key for this park (tracked by the level scope). */
+  #mat(key, make) {
+    this.extraMats ??= new Map();
+    if (!this.extraMats.has(key)) this.extraMats.set(key, this.scope.track(new THREE.MeshStandardMaterial(make())));
+    return this.extraMats.get(key);
+  }
+  /**
+   * The pool: rings of the transition follow the rounded outline from the floor to the coping,
+   * a band of tile under the lip, concrete coping blocks, a drain and a wall light, and
+   * stencilled depth marks on the deck.
+   */
+  #buildPool(el, node) {
+    const s = this.scope, R = el.R, D = el.depth, uCap = el.q.uCap, arc = 12;
+    const plaster = this.#mat('poolPlaster', () => ({ color: 0x9fb8c4, roughness: 1, metalness: 0, ...Textures.pbr('concrete', this.texSize, s, 1), normalScale: new THREE.Vector2(0.5, 0.5) }));
+    macroVariation(plaster);
+    const tileTex = s.track(Textures.finish(new THREE.CanvasTexture(poolTileCanvas()), true, 1));
+    const tile = this.#mat('poolTile', () => ({ map: tileTex, roughness: 0.62, metalness: 0 }));
+    const copingMat = this.#mat('poolCoping', () => ({ color: 0xd9d4c7, roughness: 1, metalness: 0, ...Textures.pbr('concrete', this.texSize, s, 1) }));
+    const hAt = (d) => -D + R - Math.sqrt(Math.max(0, R * R - d * d));
+    const dTile = Math.sqrt(Math.max(0, R * R - (R - D + 0.32) ** 2));
+    const ringMesh = (ds, mat) => {
+      const rings = ds.map((d) => roundedRectPath(el.ia, el.ib, el.rc + d, arc));
+      const n = rings[0].length, pos = [], uv = [], idx = [];
+      for (let j = 0; j < rings.length; j++) {
+        let s0 = 0; const h = hAt(ds[j]), t = j === 0 ? 0 : ds[j];
+        for (let i = 0; i <= n; i++) {
+          const [u, v] = rings[j][i % n];
+          if (i > 0) { const [pu, pv] = rings[j][(i - 1) % n]; s0 += Math.hypot(u - pu, v - pv); }
+          pos.push(u, h, v); uv.push(s0 / 1.2, (h + D) / 1.2 + t * 0.15);
+        }
+      }
+      const row = n + 1;
+      for (let j = 0; j < rings.length - 1; j++) for (let i = 0; i < n; i++) {
+        const a = j * row + i, b = a + 1, c = a + row, d = c + 1;
+        idx.push(a, b, c, b, d, c);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      geo.setIndex(idx); geo.computeVertexNormals();
+      const m = new THREE.Mesh(s.track(geo), mat); m.receiveShadow = true; m.castShadow = false;
+      return m;
+    };
+    const wallDs = [], J = 16;
+    for (let j = 0; j <= J; j++) wallDs.push(dTile * j / J);
+    node.add(ringMesh(wallDs, plaster));
+    node.add(ringMesh([dTile, dTile + (uCap - dTile) * 0.5, uCap], tile));
+    // Floor.
+    const floorPts = roundedRectPath(el.ia, el.ib, el.rc, arc).map(([u, v]) => new THREE.Vector2(u, -v));
+    const floorGeo = new THREE.ShapeGeometry(new THREE.Shape(floorPts), 1); floorGeo.rotateX(-Math.PI / 2); floorGeo.translate(0, -D, 0);
+    const fuv = floorGeo.attributes.uv; for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) / 1.2, fuv.getY(i) / 1.2);
+    const floor = new THREE.Mesh(s.track(floorGeo), plaster); floor.receiveShadow = true; node.add(floor);
+    // Coping blocks: a rounded concrete lip all the way round.
+    const rim = roundedRectPath(el.ia, el.ib, el.rc + uCap, arc).map(([u, v]) => new THREE.Vector3(u, 0.035, v));
+    const curve = new THREE.CatmullRomCurve3(rim, true, 'centripetal');
+    const coping = new THREE.Mesh(s.track(new THREE.TubeGeometry(curve, rim.length * 3, 0.075, 8, true)), copingMat);
+    coping.castShadow = true; coping.receiveShadow = true; node.add(coping);
+    // Drain and wall light.
+    const drain = new THREE.Mesh(s.track(new THREE.CircleGeometry(0.22, 20)), this.#mat('poolDrain', () => ({ color: 0x2c3033, roughness: 0.7, metalness: 0.3 })));
+    drain.rotation.x = -Math.PI / 2; drain.position.set(0, -D + 0.008, 0); node.add(drain);
+    const lampMat = this.#mat('poolLamp', () => ({ color: 0x1f2a30, emissive: 0xcfe8ff, emissiveIntensity: 0.9, roughness: 0.5 }));
+    const lamp = new THREE.Mesh(s.track(new THREE.CircleGeometry(0.2, 18)), lampMat);
+    const dl = dTile * 0.55, hl = hAt(dl);
+    lamp.position.set(0, hl, -(el.ib + el.rc + dl) + 0.04); lamp.rotation.x = -0.35; node.add(lamp);
+    // Depth marks and a no-diving stencil on the deck.
+    const depthFt = Math.round(D * 3.28);
+    const markMat = s.track(new THREE.MeshStandardMaterial({ map: s.track(Textures.finish(new THREE.CanvasTexture(stencilCanvas(`${depthFt} FT`)), true, 1)), transparent: true, depthWrite: false, roughness: 1 }));
+    const noDive = s.track(new THREE.MeshStandardMaterial({ map: s.track(Textures.finish(new THREE.CanvasTexture(stencilCanvas('NO DIVING')), true, 1)), transparent: true, depthWrite: false, roughness: 1 }));
+    const outer = el.rc + uCap + 0.55;
+    const marks = [[el.ia + outer, 0, Math.PI / 2, markMat, 2.2], [-(el.ia + outer), 0, -Math.PI / 2, markMat, 2.2], [0, el.ib + outer, 0, noDive, 3.4]];
+    for (const [u, v, rot, mat, w] of marks) {
+      const m = new THREE.Mesh(s.track(new THREE.PlaneGeometry(w, w * 250 / 1024)), mat);
+      m.rotation.set(-Math.PI / 2, 0, rot); m.position.set(u, 0.01, v); m.renderOrder = 2; node.add(m);
+    }
+  }
+  /** Stair set: metal nosing on every step, a round handrail on posts down one side. */
+  #buildStairs(el, node) {
+    const s = this.scope, r = el.rail;
+    const nosing = s.track(new THREE.BoxGeometry(0.05, 0.03, el.w));
+    for (let k = 0; k < el.steps; k++) {
+      const u = el.s0 + k * el.tread, h = el.h * (1 - k / el.steps);
+      const m = new THREE.Mesh(nosing, this.mats.metal); m.position.set(u, h + 0.012, 0); node.add(m);
+    }
+    const tube = (u0, y0, u1, y1) => {
+      const len = Math.hypot(u1 - u0, y1 - y0);
+      const geo = s.track(new THREE.CylinderGeometry(0.04, 0.04, len, 12)); geo.rotateZ(Math.PI / 2);
+      const m = new THREE.Mesh(geo, this.mats.metal);
+      m.position.set((u0 + u1) / 2, (y0 + y1) / 2, r.v); m.rotation.z = Math.atan2(y1 - y0, u1 - u0); m.castShadow = true; node.add(m);
+    };
+    tube(r.u0, r.top, r.u1, r.top);
+    tube(r.u1, r.top, r.u2, r.bottom);
+    const railY = (u) => (u <= r.u1 ? r.top : r.top + (r.bottom - r.top) * (u - r.u1) / (r.u2 - r.u1));
+    const post = s.track(new THREE.CylinderGeometry(0.03, 0.03, 1, 8)); post.translate(0, 0.5, 0);
+    for (const u of [r.u0 + 0.2, r.u1, (r.u1 + r.u2) / 2, r.u2 - 0.15]) {
+      const ground = this.heightAt(...toWorld(el, u, r.v)), top = railY(u);
+      const m = new THREE.Mesh(post, this.mats.metal); m.position.set(u, ground, r.v); m.scale.y = Math.max(0.1, top - ground); m.castShadow = true; node.add(m);
     }
   }
   /**
@@ -1327,7 +1543,7 @@ class Park {
     // Sliding gate on the east wall.
     const gateTex = s.track(Textures.finish(new THREE.CanvasTexture(gateCanvas()), true, 1));
     const gate = new THREE.Mesh(s.track(new THREE.PlaneGeometry(7, 4.6)), std({ map: gateTex, color: 0x9aa3ad, metalness: 0.8, roughness: 0.4, alphaTest: 0.5, side: THREE.DoubleSide }));
-    gate.position.set(half - 0.02, 2.3, -12); gate.rotation.y = -Math.PI / 2; gate.castShadow = true; g.add(gate);
+    gate.position.set(half - 0.02, 2.3, -Math.min(12, half - 4)); gate.rotation.y = -Math.PI / 2; gate.castShadow = true; g.add(gate);
     const stencil = new THREE.Mesh(s.track(new THREE.PlaneGeometry(9, 2.2)), std({ map: s.track(Textures.finish(new THREE.CanvasTexture(stencilCanvas('YARD C · SKATE ZONE')), true, 1)), transparent: true, depthWrite: false, roughness: 0.9 }));
     stencil.position.set(0, 3.4, half - 0.01); stencil.rotation.y = Math.PI; g.add(stencil);
     const stencil2 = stencil.clone(); stencil2.position.set(0, 3.4, -half + 0.01); stencil2.rotation.y = 0; g.add(stencil2);
@@ -1383,7 +1599,7 @@ class Park {
   }
   /** Perimeter walls, light towers and a skyline (all outside the skateable area). */
   #buildSurroundings() {
-    const S = this.def.size, h = 2.4, t = 0.6;
+    const S = this.def.size, h = this.def.wallH ?? 2.4, t = 0.6;
     const wallGeo = this.scope.track(new THREE.BoxGeometry(S + t * 2, h, t)); wallGeo.translate(0, h / 2, 0);
     const wallGeoSide = this.scope.track(new THREE.BoxGeometry(t, h, S)); wallGeoSide.translate(0, h / 2, 0);
     for (const s of [-1, 1]) {
@@ -1451,6 +1667,17 @@ function stencilCanvas(text) {
   g.fillStyle = 'rgba(30,38,52,0.88)'; g.fillText(text, 512, 128);
   g.globalCompositeOperation = 'destination-out';
   for (let i = 0; i < 900; i++) { g.globalAlpha = Math.random() * 0.5; g.fillRect(Math.random() * 1024, Math.random() * 250, 2 + Math.random() * 6, 2 + Math.random() * 4); }
+  return c;
+}
+/** Glazed pool tile under the coping: blue and white squares with grout lines. */
+function poolTileCanvas() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'); g.fillStyle = '#d8dee0'; g.fillRect(0, 0, 128, 128);
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+    g.fillStyle = (x + y) % 2 ? '#1f6f9c' : (y === 0 ? '#f1f4f2' : '#2a86b8');
+    g.fillRect(x * 32 + 2, y * 32 + 2, 28, 28);
+    g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(x * 32 + 4, y * 32 + 4, 10, 3);
+  }
   return c;
 }
 function cellBlockCanvas() {
@@ -1661,7 +1888,7 @@ class SkaterRig {
       const foot = new THREE.Mesh(scope.track(new THREE.BoxGeometry(0.11, 0.07, 0.27)), mats.shoe); foot.castShadow = true; foot.position.set(0, -this.L2 - 0.02, 0); foot.rotation.y = Math.PI / 2 - side * 0.25; knee.add(foot);
       this.legs.push({ hip, knee, foot, side });
     }
-    this.pose = { crouch: 0, armsOut: 0.2, grab: 0, grabType: 0, lean: 0, bail: 0, push: 0, manual: 0, invert: 0, look: 1, carve: 0 };
+    this.pose = { crouch: 0, armsOut: 0.2, grab: 0, grabType: 0, twoHand: 0, legOut: 0, legOutSide: 0, lean: 0, bail: 0, push: 0, manual: 0, invert: 0, look: 1, carve: 0 };
     this.stand = 0.88; this.ankleH = 0.06; this.footSpread = 0.2;
     this.footAim = { 1: new THREE.Group(), [-1]: new THREE.Group() };
     this.body.add(this.footAim[1], this.footAim[-1]);
@@ -1713,6 +1940,10 @@ class SkaterRig {
         fx = THREE.MathUtils.lerp(fx, -0.26, p.push);
         fz = THREE.MathUtils.lerp(fz, sweep, p.push);
       }
+      if (p.legOut > 0 && leg.side === -p.legOutSide) {
+        // Benihana / judo: one foot kicks off the board while the hand holds it.
+        fy += 0.12 * p.legOut; fx += 0.22 * p.legOut; fz += leg.side * 0.32 * p.legOut;
+      }
       this.#solveLeg(leg, 0, fx - 0.05 * p.crouch, fy, fz);
     }
     this.footAim[1].rotation.y = 0.85 * p.push;               // front foot turns down the board to push
@@ -1722,14 +1953,14 @@ class SkaterRig {
       arm.shoulder.rotation.x = -arm.side * (0.1 + out * 0.8);
       arm.shoulder.rotation.z = -0.08 - 0.25 * p.push * (arm.side > 0 ? 1 : -1) * Math.sin(time * 1.35 * TAU);
       arm.elbow.rotation.z = -0.45 - out * 0.25;
-      if (p.grab > 0 && arm.side === (p.grabType % 2 ? 1 : -1)) {
+      if (p.grab > 0 && (p.twoHand || arm.side === (p.grabType % 2 ? 1 : -1))) {
         arm.shoulder.rotation.z = 0.2 + 1.1 * p.grab;
         arm.shoulder.rotation.x *= 1 - p.grab;
         arm.elbow.rotation.z = -0.1;
       }
     }
-    this.body.rotation.z = p.bail * 1.3 + p.invert * 2.7 - p.carve * 0.16;
-    this.body.position.y = -p.bail * 0.6 + p.invert * 0.9;
+    this.body.rotation.z = p.bail * 1.42 * (p.bailSide ?? 1) + p.invert * 2.7 - p.carve * 0.16;
+    this.body.position.y = p.bail * 0.12 + p.invert * 0.9;
     this.body.rotation.x = p.manual * 0.15;
     if (this.retarget) this.#retargetPose();
   }
@@ -1962,8 +2193,9 @@ class Input {
    * every kickflip into an Impossible. Tap the direction with the button.
    */
   direction(ms = 300) {
-    for (const d of ['up', 'down', 'left', 'right']) if (this.down(d) && this.recent(d, ms)) return d;
-    return 'none';
+    const on = (d) => this.down(d) && this.recent(d, ms);
+    const v = on('up') ? 'up' : on('down') ? 'down' : '', h = on('left') ? 'left' : on('right') ? 'right' : '';
+    return v + h || 'none';
   }
   clear() { this.pressQ.length = 0; this.releaseQ.length = 0; for (const a of [...this.held]) this.release(a); this.releaseQ.length = 0; }
   onUI(action, fn) { this.uiHandlers.set(action, fn); }
@@ -1994,12 +2226,24 @@ const FLIPS = {
   down:  { name: 'Shakedown Shuvit', pts: 80, dur: 0.36, axis: 'yaw', dir: 1 },
   up:    { name: 'Impossible', pts: 150, dur: 0.5, axis: 'pitch', dir: 1 },
   right: { name: 'Solitary Spinner', pts: 160, dur: 0.55, axis: 'spin360', dir: 1 },
+  upleft: { name: 'Lockdown Varial', pts: 190, dur: 0.55, axis: 'varial', dir: 1, kick: true },
+  upright: { name: 'Contraband Tre Flip', pts: 260, dur: 0.62, axis: 'tre', dir: 1, kick: true },
+  downleft: { name: 'Commissary Hardflip', pts: 210, dur: 0.56, axis: 'hard', dir: 1, kick: true },
+  downright: { name: 'Cell Count Double Flip', pts: 240, dur: 0.66, axis: 'double', dir: 1, kick: true },
 };
 const GRABS = {
   none: { name: 'Indy', pts: 120, type: 0 }, up: { name: 'Nosegrab', pts: 130, type: 1 }, down: { name: 'Tailgrab', pts: 130, type: 2 },
   left: { name: 'Melon', pts: 140, type: 3 }, right: { name: 'Stalefish', pts: 150, type: 4 },
+  upleft: { name: 'Rocket Air', pts: 170, type: 1, twoHand: true },
+  upright: { name: 'Lights-Out Benihana', pts: 190, type: 0, legOut: 1 },
+  downleft: { name: 'Yard Judo', pts: 180, type: 3, legOut: -1 },
+  downright: { name: 'Lockup Crossbone', pts: 170, type: 2, twoHand: true },
 };
-const GRINDS = { none: 'Seg-Session', up: 'Nosegrind', down: '5-0 Grind', left: 'Crooked Grind', right: 'Smith Grind' };
+/** A tapped grab still shows its full pose for this long, and no new trick starts until it ends. */
+const GRAB_MIN = 0.42;
+/** A short settle after every flip animation before the next trick can start. */
+const TRICK_SETTLE = 0.06;
+const GRINDS = { none: 'Seg-Session', up: 'Nosegrind', down: '5-0 Grind', left: 'Crooked Grind', right: 'Smith Grind', upleft: 'Overcrook', upright: 'Feeble Grind', downleft: 'Willy Grind', downright: 'Salad Grind' };
 /** Specials need a full meter: J+K (or I) in the air, with a direction for the other two. */
 const SPECIALS = {
   air: { name: 'The K2 Crashout', pts: 1800, dur: 0.95, axis: 'special' },
@@ -2056,7 +2300,7 @@ class Skater {
     this.state = 'ground'; this.groundTime = 1; this.charge = 0;
     this.normal = new THREE.Vector3(0, 1, 0);
     this.air = { time: 0, spin: 0, spinVel: 0, peakY: 0, overFunbox: false, inZone: false, tricks: [], firstTrick: null };
-    this.flip = null; this.grab = null; this.grabEntry = null; this.grabTime = 0; this.pendingSpecial = false;
+    this.flip = null; this.grab = null; this.grabEntry = null; this.grabTime = 0; this.pendingSpecial = false; this.trickLock = 0;
     this.grind = { line: null, t: 0, dir: 1, speed: 0, balance: 0, entry: null, dist: 0, lastLine: null, cooldown: 0 };
     this.manual = { on: false, balance: 0, time: 0, entry: null };
     this.bailTimer = 0; this.boardSpin = 0;
@@ -2109,7 +2353,7 @@ class Skater {
     if (along < -0.15) this.fakie = true; else if (along > 0.15) this.fakie = false;
     this.pushing = input.down('up') && !this.manual.on;
     // Manual (balance on two wheels): L on flattish ground.
-    if (!this.manual.on && input.take('grind') && G2 < 0.04 && this.speed > 1.5) this.#startManual(ctx);
+    if (!this.manual.on && input.take('grind') && G2 < 0.08 && this.speed > 1.2) this.#startManual(ctx);
     else if (this.manual.on && input.take('grind')) this.#endManual(ctx, false);
     if (this.manual.on) this.#stepManual(dt, ctx);
     if (this.state !== 'ground') return;
@@ -2161,13 +2405,16 @@ class Skater {
         vy = Math.sqrt(vy * vy + out * out * 0.35);
       }
     }
-    this.#enterAir(y, vy, ctx);
+    _v6.set(-gx, 1, -gz).normalize();
+    this.#enterAir(y, vy, ctx, _v6, G > CONFIG.vertSlope);
   }
 
-  #enterAir(y, vy, ctx) {
+  #enterAir(y, vy, ctx, launchNormal = null, vert = false) {
+    this.airNormal ??= new THREE.Vector3();
+    this.airNormal.copy(launchNormal ?? this.normal); this.airVert = vert;
     this.state = 'air'; this.pos.y = y; this.vy = vy; this.charge = 0;
     const a = this.air; a.time = 0; a.spin = 0; a.spinVel = 0; a.peakY = y; a.overFunbox = false; a.tricks.length = 0; a.firstTrick = null;
-    a.wallride = false; a.startX = this.pos.x; a.startZ = this.pos.z;
+    a.wallride = false; a.startX = this.pos.x; a.startZ = this.pos.z; this.trickLock = 0;
     a.inZone = this.park.inHalfPipeZone(this.pos);
     this.normal.set(0, 1, 0);
   }
@@ -2181,24 +2428,32 @@ class Skater {
     a.spinVel += clamp(want - a.spinVel, -CONFIG.airSpinAccel * dt, CONFIG.airSpinAccel * dt) * (want === 0 ? 0.35 : 1);
     this.heading += a.spinVel * dt; a.spin += a.spinVel * dt;
     // Tricks.
-    if (input.down('flip') && input.down('grab') && tricks.special >= 1 && !this.flip) { input.take('flip'); input.take('grab'); this.#startSpecial(ctx); }
-    else if (input.take('special') && tricks.special >= 1 && !this.flip) this.#startSpecial(ctx);
-    if (input.take('flip') && !this.flip && !this.grab) {
-      const f = FLIPS[input.direction()];
+    // One trick at a time: while a flip or grab is still animating (plus a short settle),
+    // extra presses are swallowed instead of queuing up behind it.
+    this.trickLock = Math.max(0, (this.trickLock ?? 0) - dt);
+    const busy = !!this.flip || !!this.grab || this.trickLock > 0;
+    if (busy) { input.take('flip'); input.take('grab'); input.take('special'); }
+    else if (input.down('flip') && input.down('grab') && tricks.special >= 1) { input.take('flip'); input.take('grab'); this.#startSpecial(ctx); }
+    else if (input.take('special') && tricks.special >= 1) this.#startSpecial(ctx);
+    else if (input.take('flip')) {
+      const f = FLIPS[input.direction()] ?? FLIPS.none;
       this.flip = { ...f, t: 0 }; a.tricks.push(tricks.add(f.name, f.pts)); a.firstTrick ??= a.tricks[a.tricks.length - 1];
       ctx.sfx.flick();
-    }
-    if (input.take('grab') && !this.flip && !this.grab) {
-      const gdef = GRABS[input.direction()];
+    } else if (input.take('grab')) {
+      const gdef = GRABS[input.direction()] ?? GRABS.none;
       this.grab = gdef; this.grabTime = 0; this.grabEntry = tricks.add(gdef.name, gdef.pts); a.tricks.push(this.grabEntry); a.firstTrick ??= this.grabEntry;
     }
-    if (this.grab) { if (input.down('grab')) { this.grabTime += dt; tricks.grow(this.grabEntry, 60 * dt); } else this.grab = null; }
-    if (this.flip) { this.flip.t += dt; if (this.flip.t >= this.flip.dur) this.flip = null; }
+    if (this.grab) {
+      this.grabTime += dt;
+      if (input.down('grab')) tricks.grow(this.grabEntry, 60 * dt);
+      else if (this.grabTime >= GRAB_MIN) { this.grab = null; this.trickLock = TRICK_SETTLE; }
+    }
+    if (this.flip) { this.flip.t += dt; if (this.flip.t >= this.flip.dur) { this.flip = null; this.trickLock = TRICK_SETTLE; } }
     // Move.
     const ox = this.pos.x, oz = this.pos.z;
     // Write-Up Wallride: hold L into a yard wall in the air to ride up it.
     const lim = park.half - 0.35;
-    if (!a.wallride && (input.down('grind') || input.recent('grind', 250)) && this.speed > 3 && (Math.abs(this.pos.x) > lim || Math.abs(this.pos.z) > lim) && this.pos.y > 0.4) {
+    if (!a.wallride && (input.down('grind') || input.recent('grind', CONFIG.grindWindow)) && this.speed > 3 && (Math.abs(this.pos.x) > lim || Math.abs(this.pos.z) > lim) && this.pos.y > 0.4) {
       a.wallride = true; this.vy = Math.max(this.vy, 3.4); input.take('grind');
       a.tricks.push(tricks.add(WALLRIDE.name, WALLRIDE.pts)); a.firstTrick ??= a.tricks[a.tricks.length - 1];
       ctx.sfx.grind(true); setTimeout(() => ctx.sfx.grind(false), 220);
@@ -2212,9 +2467,9 @@ class Skater {
       if (Math.abs(u) < fb.over.uHalf && Math.abs(v) < fb.over.vHalf && this.pos.y > fb.over.top + 0.2) a.overFunbox = true;
     }
     // Grind snap.
-    if ((input.down('grind') || input.recent('grind', 250)) && this.vy < 2.5 && this.grind.cooldown <= 0) {
-      const hit = park.nearestGrind(this.pos);
-      if (hit.line && hit.d2 < CONFIG.grindSnap * CONFIG.grindSnap && this.pos.y > hit.line.a.y - 0.4 && this.pos.y < hit.line.a.y + 0.9 && !(hit.line === this.grind.lastLine && this.grind.cooldown > 0)) {
+    if ((input.down('grind') || input.recent('grind', CONFIG.grindWindow)) && this.vy < 4 && this.grind.cooldown <= 0) {
+      const hit = park.nearestGrind(_v5.set(this.pos.x + this.vel.x * 0.04, this.pos.y, this.pos.z + this.vel.z * 0.04));
+      if (hit.line && hit.d2 < CONFIG.grindSnap * CONFIG.grindSnap && this.pos.y > hit.y - 0.65 && this.pos.y < hit.y + 1.2 && !(hit.line === this.grind.lastLine && this.grind.cooldown > 0)) {
         input.take('grind'); this.#startGrind(hit.line, hit.t, ctx); return;
       }
     }
@@ -2242,15 +2497,19 @@ class Skater {
     // Bail checks: unfinished flip, bad alignment, too hard.
     const hs = this.speed;
     let reason = null;
-    if (this.flip && this.flip.t < this.flip.dur - 0.06) reason = 'flip';
+    if (this.flip && this.flip.t < this.flip.dur * CONFIG.flipCatch) reason = 'flip';
     if (!reason && impact > CONFIG.hardLanding) reason = 'hard';
-    let d = 0;
+    let d = 0, off = 0;
     if (hs > 1.2) {
       d = wrapAngle(Math.atan2(this.vel.x, this.vel.z) - this.heading);
-      const off = Math.min(Math.abs(d), Math.PI - Math.abs(d));
+      off = Math.min(Math.abs(d), Math.PI - Math.abs(d));
       if (!reason && off > CONFIG.landAlign) reason = 'angle';
     }
     if (reason) { this.#bail(ctx, reason); return; }
+    // Sketchy landings (crooked, or a heavy drop) scrub speed instead of bailing.
+    const sketch = Math.max(clamp((off - CONFIG.landSketchy) / (CONFIG.landAlign - CONFIG.landSketchy), 0, 1), clamp((impact - CONFIG.hardLanding * 0.6) / (CONFIG.hardLanding * 0.4), 0, 1));
+    if (sketch > 0) { const k = 1 - 0.35 * sketch; this.vel.x *= k; this.vel.z *= k; }
+    this.landSquash = clamp(impact / 9, 0.15, 1);
     // Clean landing: auto-straighten onto the rolling direction.
     if (hs > 1.2) { const fak = Math.abs(d) > Math.PI / 2; this.heading = Math.atan2(this.vel.x, this.vel.z) + (fak ? Math.PI : 0); this.fakie = fak; }
     this.vy = grad.x * this.vel.x + grad.z * this.vel.z;
@@ -2270,6 +2529,7 @@ class Skater {
   }
 
   #wall(ox, oz, nx, nz) {
+    if (this.state === 'bail') this.vel.multiplyScalar(0.5);
     const park = this.park, mx = (ox + nx) / 2, mz = (oz + nz) / 2;
     const grad = park.gradient(mx, mz), G = Math.hypot(grad.x, grad.z);
     if (G < 1e-3) { this.vel.multiplyScalar(-CONFIG.wallRestitution); return; }
@@ -2287,7 +2547,7 @@ class Skater {
 
   #startSpecial(ctx) {
     const dir = ctx.input.direction(400);
-    const s = dir === 'up' ? SPECIALS.up : dir === 'down' ? SPECIALS.down : SPECIALS.air;
+    const s = dir.startsWith('up') ? SPECIALS.up : dir.startsWith('down') ? SPECIALS.down : SPECIALS.air;
     this.flip = { name: s.name, pts: s.pts, dur: s.dur, axis: s.axis, dir: 1, t: 0 };
     const e = ctx.tricks.add(s.name, s.pts); this.air.tricks.push(e); this.air.firstTrick ??= e;
     ctx.tricks.special = 0; this.pendingSpecial = true;
@@ -2308,7 +2568,7 @@ class Skater {
     let name;
     if (input.down('flip') && ctx.tricks.special >= 1) { name = SPECIALS.grind.name; ctx.tricks.special = 0; this.pendingSpecial = true; ctx.sfx.special(); }
     else if (perpendicular) name = line.kind === 'coping' ? 'Lipslide' : 'Boardslide';
-    else name = GRINDS[input.direction()];
+    else name = GRINDS[input.direction()] ?? GRINDS.none;
     if (!perpendicular) this.heading = off < Math.PI / 2 ? moveYaw : moveYaw + Math.PI;
     else this.heading = moveYaw + (wrapAngle(this.heading - moveYaw) > 0 ? Math.PI / 2 : -Math.PI / 2);
     gr.entry = ctx.tricks.add(name, name === SPECIALS.grind.name ? SPECIALS.grind.pts : 75);
@@ -2317,18 +2577,24 @@ class Skater {
     ctx.sfx.grind(true);
   }
   #stepGrind(dt, ctx) {
-    const gr = this.grind, line = gr.line, input = ctx.input;
-    gr.speed = Math.max(0.5, gr.speed - CONFIG.grindFriction * dt);
+    const gr = this.grind, input = ctx.input;
+    // Sloped rails (stair handrails) speed you up going down and slow you going up.
+    gr.speed = Math.max(0.5, gr.speed - CONFIG.grindFriction * dt - CONFIG.gravity * gr.line.dir.y * gr.dir * 0.8 * dt);
     const step = gr.speed * dt; gr.t += gr.dir * step; gr.dist += step;
+    // Chained pieces (pool coping, handrail kinks): carry the grind round the joint.
+    if (gr.t > gr.line.len && gr.line.next) { const n = gr.line.next; gr.t -= gr.line.len; this.heading += wrapAngle(n.yaw - gr.line.yaw); gr.line = n; }
+    else if (gr.t < 0 && gr.line.prev) { const pv = gr.line.prev; this.heading += wrapAngle(pv.yaw - gr.line.yaw); gr.line = pv; gr.t += pv.len; }
+    const line = gr.line;
     ctx.tricks.grow(gr.entry, 55 * step);
     ctx.session?.addGrind(step);
     // Balance: unstable equilibrium you correct with left/right.
-    gr.balance += (gr.balance * 1.0 + Math.sin(performance.now() * 0.0021) * CONFIG.balanceDrift * 0.45) * dt - input.axisX() * CONFIG.balanceControl * dt;
+    gr.balance += (gr.balance * CONFIG.balanceUnstable + Math.sin(performance.now() * 0.0021) * CONFIG.balanceDrift * 0.45) * dt - input.axisX() * CONFIG.balanceControl * dt;
     if (Math.abs(gr.balance) > 1) { this.#exitGrind(ctx, false); this.#bail(ctx, 'balance'); return; }
     this.pos.copy(line.a).addScaledVector(line.dir, clamp(gr.t, 0, line.len));
     this.vel.set(line.dir.x * gr.dir * gr.speed, 0, line.dir.z * gr.dir * gr.speed);
+    const railVy = line.dir.y * gr.dir * gr.speed;
     if (input.take('ollie')) { this.#exitGrind(ctx, true); this.#enterAir(this.pos.y + 0.02, CONFIG.ollieBase * 0.9, ctx); ctx.tricks.add('Ollie', 40); ctx.sfx.pop(); return; }
-    if (gr.t < 0 || gr.t > line.len) { this.#exitGrind(ctx, true); this.#enterAir(this.pos.y + 0.02, 1.2, ctx); }
+    if (gr.t < 0 || gr.t > line.len) { this.#exitGrind(ctx, true); this.#enterAir(this.pos.y + 0.02, Math.max(-6, railVy) + 1.2, ctx); }
   }
   #exitGrind(ctx, clean) {
     this.grind.lastLine = this.grind.line; this.grind.cooldown = 0.3; this.grind.line = null;
@@ -2345,7 +2611,7 @@ class Skater {
   #stepManual(dt, ctx) {
     const m = this.manual, input = ctx.input;
     m.time += dt; ctx.tricks.grow(m.entry, 45 * dt);
-    m.balance += (m.balance * 1.2 + Math.cos(performance.now() * 0.0017) * CONFIG.balanceDrift * 0.5) * dt - input.axisY() * CONFIG.balanceControl * dt;
+    m.balance += (m.balance * CONFIG.balanceUnstable * 1.2 + Math.cos(performance.now() * 0.0017) * CONFIG.balanceDrift * 0.5) * dt - input.axisY() * CONFIG.balanceControl * dt;
     this.groundTime = 0;
     if (Math.abs(m.balance) > 1) { this.#endManual(ctx, false); this.#bail(ctx, 'balance'); }
   }
@@ -2360,18 +2626,79 @@ class Skater {
     this.state = 'bail'; this.bailTimer = CONFIG.bailTime; this.flip = null; this.grab = null; this.manual.on = false; this.pendingSpecial = false;
     this.vel.multiplyScalar(0.3); this.vy = 0;
     this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    this.#clearFall();
     ctx.events.bail(reason);
     ctx.sfx.bail();
   }
+  /** How far (m, up to `max`) the rider can fall toward (dx, dz) before a ledge, wall, rail or the yard edge. */
+  #freeRun(x, z, dx, dz, max) {
+    const park = this.park, y0 = park.heightAt(x, z), lim = park.half - 0.3;
+    for (let d = 0.25; d <= max + 1e-6; d += 0.25) {
+      const px = x + dx * d, pz = z + dz * d;
+      if (Math.abs(px) > lim || Math.abs(pz) > lim) return d - 0.25;
+      const h = park.heightAt(px, pz);
+      if (h - y0 > 0.22 + d * 0.35) return d - 0.25;
+      const hit = park.nearestGrind(_v5.set(px, h + 0.5, pz));
+      if (hit.line && hit.d2 < 0.3 * 0.3 && hit.y > h + 0.12) return d - 0.25;
+    }
+    return max;
+  }
+  /** Picks the side the body falls to so it lands in open space, sliding clear first if both sides are blocked. */
+  #clearFall() {
+    const f = this.forward(_v1), rx = -f.z, rz = f.x, reach = 1.6;
+    const g = this.park.gradient(this.pos.x, this.pos.z), downhill = -(g.x * rx + g.z * rz);
+    const r = this.#freeRun(this.pos.x, this.pos.z, rx, rz, reach), l = this.#freeRun(this.pos.x, this.pos.z, -rx, -rz, reach);
+    this.bailSide = r > l + 0.01 ? 1 : l > r + 0.01 ? -1 : downhill >= 0 ? 1 : -1;
+    const under = this.park.nearestGrind(_v5.set(this.pos.x, this.pos.y + 0.5, this.pos.z));
+    if (under.line && under.d2 < 0.35 * 0.35 && under.y > this.pos.y + 0.12) {
+      this.pos.x += rx * this.bailSide * 0.55; this.pos.z += rz * this.bailSide * 0.55;
+      this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    }
+    if (Math.max(r, l) >= reach) return;
+    let best = -1, bx = 0, bz = 0;
+    for (let i = 0; i < 16; i++) {
+      const a = i * TAU / 16, dx = Math.sin(a), dz = Math.cos(a), run = this.#freeRun(this.pos.x, this.pos.z, dx, dz, 2.6);
+      if (run > best) { best = run; bx = dx; bz = dz; }
+    }
+    if (best <= 0) return;
+    const push = Math.min(best, 1.4) * 2.2;
+    this.vel.x = bx * push; this.vel.z = bz * push;
+    this.bailSide = bx * rx + bz * rz >= 0 ? 1 : -1;
+  }
   #stepBail(dt) {
     this.bailTimer -= dt;
-    this.vel.multiplyScalar(Math.exp(-2.5 * dt));
-    this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt;
-    this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    const park = this.park, g = park.gradient(this.pos.x, this.pos.z), G2 = g.x * g.x + g.z * g.z;
+    // Slide down transitions instead of sticking to them; the body drags hard on flat ground.
+    this.vel.x -= CONFIG.gravity * g.x / (1 + G2) * dt; this.vel.z -= CONFIG.gravity * g.z / (1 + G2) * dt;
+    this.vel.multiplyScalar(Math.exp(-(G2 > 0.25 ? 1.2 : 2.5) * dt));
+    const nx = this.pos.x + this.vel.x * dt, nz = this.pos.z + this.vel.z * dt, nh = park.heightAt(nx, nz);
+    const expected = g.x * (nx - this.pos.x) + g.z * (nz - this.pos.z);
+    if (nh - this.pos.y > expected + 0.12) this.#wall(this.pos.x, this.pos.z, nx, nz);
+    else { this.pos.x = nx; this.pos.z = nz; this.pos.y = nh; }
+    this.normal.set(-g.x, 1, -g.z).normalize();
     if (this.bailTimer <= 0) {
       this.state = 'ground'; this.groundTime = 0; this.vy = 0;
       if (this.speed > 0.5) this.heading = Math.atan2(this.vel.x, this.vel.z);
     }
+  }
+
+  /**
+   * Body tilt in the air: off vert the rider keeps leaning with the wall it left (head back
+   * toward the ramp's centre, easing a little toward level at the peak) instead of standing
+   * straight up; any air lines up with the surface below on the way down, so transition
+   * landings meet the ramp.
+   */
+  #airTilt(out) {
+    const a = this.air, base = this.airNormal ?? _up;
+    const settle = this.airVert ? 0.3 * Math.sin(Math.PI * clamp(0.5 - this.vy / 14, 0, 1)) : clamp(a.time / 0.35, 0, 1);
+    out.copy(base).lerp(_up, settle).normalize();
+    if (this.vy < 0) {
+      const g = this.park.gradient(this.pos.x + this.vel.x * 0.08, this.pos.z + this.vel.z * 0.08);
+      const h = this.park.heightAt(this.pos.x, this.pos.z), k = clamp(1 - (this.pos.y - h) / 2.2, 0, 1);
+      if (k > 0) out.lerp(_v5.set(-g.x, 1, -g.z).normalize(), k * k).normalize();
+    }
+    if (out.y < 0.17) { out.y = 0.17; out.normalize(); }
+    return out;
   }
 
   /** Copies the physics state onto the rig. Uses scratch quaternions only. */
@@ -2379,14 +2706,14 @@ class Skater {
     rig.root.position.copy(this.pos);
     rig.root.quaternion.setFromAxisAngle(_up, this.heading);
     // Tilt to the surface normal (in rig space) on the ground, level in the air.
-    const target = this.state === 'air' ? _v4.set(0, 1, 0) : _v4.copy(this.normal);
+    const target = this.state === 'air' ? this.#airTilt(_v4) : _v4.copy(this.normal);
     _q1.copy(rig.root.quaternion).invert();
     target.applyQuaternion(_q1);
     _q2.setFromUnitVectors(_up, target);
     rig.tilt.quaternion.slerp(_q2, damp(14, dt));
     // Board flips (around the board's own axes).
     const bp = rig.boardPivot;
-    bp.rotation.set(0, 0, 0); bp.position.y = 0;
+    bp.rotation.set(0, 0, 0); bp.position.set(0, 0, 0);
     if (this.flip) {
       const k = clamp(this.flip.t / this.flip.dur, 0, 1), e = k * k * (3 - 2 * k), turn = TAU * e;
       bp.position.y = Math.sin(Math.PI * k) * 0.22;
@@ -2395,19 +2722,25 @@ class Skater {
         case 'yaw': bp.rotation.y = Math.PI * e; break;
         case 'pitch': bp.rotation.x = turn; break;
         case 'varial': bp.rotation.y = Math.PI * e; bp.rotation.z = turn; break;
+        case 'tre': bp.rotation.y = TAU * e; bp.rotation.z = turn; break;
+        case 'hard': bp.rotation.x = turn; bp.rotation.y = Math.PI * e; break;
+        case 'double': bp.rotation.z = turn * 2; bp.position.y = Math.sin(Math.PI * k) * 0.3; break;
         case 'special': bp.rotation.z = turn * 2; bp.rotation.y = turn * 2.5; bp.position.y = Math.sin(Math.PI * k) * 0.5; break;
         case 'spin360': bp.rotation.y = TAU * e; break;
         case 'suitup': bp.rotation.x = Math.sin(Math.PI * k) * 0.9; bp.position.y = Math.sin(Math.PI * k) * 0.55; break;
         case 'invert': bp.rotation.z = Math.PI * e * 2; bp.position.y = Math.sin(Math.PI * k) * 0.35; break;
       }
     }
-    if (this.state === 'bail') { bp.position.y = 0.05; bp.rotation.z = 2.4; bp.position.x = 0.45; }
+    const side = this.bailSide ?? 1;
+    if (this.state === 'bail') { bp.position.y = 0.05; bp.rotation.z = 2.4 * side; bp.position.x = 0.45 * side; }
     // Pose.
     const p = rig.pose;
-    const crouchT = this.state === 'air' ? (this.grab ? 0.7 : 0.35) : this.state === 'grind' ? 0.45 : this.charge * 0.9 + (this.manual.on ? 0.15 : 0);
+    this.landSquash = Math.max(0, (this.landSquash ?? 0) - dt * 3.2);
+    const crouchT = this.state === 'air' ? (this.grab ? 0.7 : 0.35) : this.state === 'grind' ? 0.45 : Math.max(this.charge * 0.9 + (this.manual.on ? 0.15 : 0), this.landSquash * 0.8);
     p.crouch += (crouchT - p.crouch) * damp(12, dt);
     p.grab += ((this.grab ? 1 : 0) - p.grab) * damp(14, dt);
-    if (this.grab) p.grabType = this.grab.type;
+    if (this.grab) { p.grabType = this.grab.type; p.twoHand = this.grab.twoHand ? 1 : 0; p.legOutSide = this.grab.legOut ?? 0; }
+    p.legOut += ((this.grab?.legOut ? 1 : 0) - p.legOut) * damp(12, dt);
     p.armsOut += ((this.state === 'grind' || this.manual.on ? 1 : this.state === 'air' ? 0.65 : 0.18) - p.armsOut) * damp(6, dt);
     p.look += ((this.fakie ? -1 : 1) - p.look) * damp(4, dt);
     const carveT = this.state === 'ground' ? (this.steer ?? 0) * clamp(this.speed / 6, 0, 1) * (this.fakie ? -1 : 1) : 0;
@@ -2415,6 +2748,7 @@ class Skater {
     const bal = this.state === 'grind' ? this.grind.balance : this.manual.on ? this.manual.balance : 0;
     p.lean += (bal - p.lean) * damp(10, dt);
     p.bail += ((this.state === 'bail' ? 1 : 0) - p.bail) * damp(8, dt);
+    if (this.state === 'bail') p.bailSide = side;
     const suit = this.flip?.axis === 'suitup' ? Math.sin(Math.PI * clamp(this.flip.t / this.flip.dur, 0, 1)) : 0;
     if (suit > 0) p.armsOut = Math.max(p.armsOut, 1 + suit * 0.9);
     const inv = this.flip?.axis === 'invert' ? Math.sin(Math.PI * clamp(this.flip.t / this.flip.dur, 0, 1)) : 0;
@@ -2942,7 +3276,7 @@ class App {
   // --- level lifecycle ------------------------------------------------------
   async start(modeId, parkId, chapter = null) {
     this.sfx.unlock();
-    const mode = MODES[modeId], parkDef = PARKS[parkId];
+    const mode = MODES[modeId], parkDef = modeId === 'showdown' ? halfPipeArena(PARKS[parkId]) : PARKS[parkId];
     this.lastStart = { modeId, parkId, chapter };
     UI.show('loading');
     const bar = document.getElementById('loadBar'), text = document.getElementById('loadText');
@@ -3188,7 +3522,7 @@ class App {
   #openParks(modeId) {
     const mode = MODES[modeId], p = this.profiles.data;
     document.getElementById('parksTitle').textContent = mode.label;
-    document.getElementById('parksSub').textContent = modeId === 'blitz' ? 'One minute on the clock. Your best score per park is saved.' : modeId === 'showdown' ? 'Sixty seconds. Tricks started inside the glowing half-pipe zone score double.' : 'No timer. Press Esc for the menu when you are done.';
+    document.getElementById('parksSub').textContent = modeId === 'blitz' ? 'One minute on the clock. Your best score per park is saved.' : modeId === 'showdown' ? 'Sixty seconds in one long half-pipe, nothing else. Tricks started inside the glowing zone score double.' : 'No timer. Press Esc for the menu when you are done.';
     const list = document.getElementById('parkList'); list.textContent = '';
     for (const id of PARK_ORDER) {
       const park = PARKS[id], open = p.unlockedParks.includes(id), best = p.records[modeId]?.[id];

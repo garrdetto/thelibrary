@@ -5,6 +5,8 @@ export const siteThemes = [
   { id: 'wics', label: 'WICS' },
 ] as const
 
+export const defaultSiteTheme: SiteTheme = 'wics'
+
 export type SiteTheme = typeof siteThemes[number]['id']
 
 const legacy: Record<string, SiteTheme> = { charcoal: 'slate', gray: 'light', sage: 'light', clay: 'light', ocean: 'light', forest: 'light', lavender: 'light', rose: 'light', sand: 'light' }
@@ -19,4 +21,4 @@ export function isSiteTheme(value: unknown): value is SiteTheme {
   return siteThemes.some(theme => theme.id === value)
 }
 
-export const initializeSiteTheme = `try{var saved=document.cookie.match(/(?:^|; )vv_theme=([^;]*)(?:;|$)/);var theme=saved?saved[1]:'midnight';var legacy=${JSON.stringify(legacy)};if(legacy[theme])theme=legacy[theme];document.documentElement.dataset.theme=${JSON.stringify(siteThemes.map(theme => theme.id))}.includes(theme)?theme:'midnight'}catch{document.documentElement.dataset.theme='midnight'}`
+export const initializeSiteTheme = `try{var saved=document.cookie.match(/(?:^|; )vv_theme=([^;]*)(?:;|$)/);var theme=saved?saved[1]:'${defaultSiteTheme}';var legacy=${JSON.stringify(legacy)};if(legacy[theme])theme=legacy[theme];document.documentElement.dataset.theme=${JSON.stringify(siteThemes.map(theme => theme.id))}.includes(theme)?theme:'${defaultSiteTheme}'}catch{document.documentElement.dataset.theme='${defaultSiteTheme}'}`

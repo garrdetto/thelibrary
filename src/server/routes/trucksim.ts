@@ -3,7 +3,7 @@ import type { Env } from '../env.js'
 import { HttpError, json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
 import { HAUL_WORLDS, assignLot, claimLot, ensureTrucksimTables, loadPublicLots, loadTrucksimProfile, lotIsFree, saveTrucksimProfileIfUnchanged } from '../trucksim.js'
-import { applyAction, moveToLot } from '../../../modules-src/trucksim/shared/Actions'
+import { applyAction, moveToLot, withStarterDriveway } from '../../../modules-src/trucksim/shared/Actions'
 import type { TruckAction } from '../../../modules-src/trucksim/shared/Actions'
 import { LOOK_OPTIONS } from '../../../modules-src/trucksim/shared/Economy'
 import { MAX_ITEMS } from '../../../modules-src/trucksim/shared/Lots'
@@ -24,6 +24,9 @@ const lookSchema = z.object({
   wheels: z.enum(LOOK_OPTIONS.wheels),
   mudflaps: z.enum(LOOK_OPTIONS.mudflaps),
   horn: z.enum(LOOK_OPTIONS.horn),
+  grille: z.enum(LOOK_OPTIONS.grille).optional(),
+  roof: z.enum(LOOK_OPTIONS.roof).optional(),
+  skirts: z.boolean().optional(),
 })
 
 const metres = z.number().finite().min(-1000).max(1000)
@@ -86,11 +89,12 @@ export async function trucksim(request: Request, env: Env) {
     const loaded = await loadTrucksimProfile(env, key, user.username)
     const lot = await assignLot(env, user.id, user.username, now)
     let profile = loaded.profile
-    if (profile.lot !== lot) {
-      profile = lot === null ? { ...profile, lot } : moveToLot(profile, lot)
+    const fresh = lot === null ? profile : withStarterDriveway(profile.lot === lot ? profile : moveToLot(profile, lot))
+    if (profile.lot !== lot || fresh !== profile) {
+      profile = lot === null ? { ...profile, lot } : fresh
       await saveTrucksimProfileIfUnchanged(env, key, user.username, profile, loaded.updatedAt, Math.max(now, loaded.updatedAt + 1))
     }
-    return json({ signedIn: true, username: user.username, profile, lots: await loadPublicLots(env, now) })
+    return json({ signedIn: true, username: user.username, admin: user.isAdmin, profile, lots: await loadPublicLots(env, now) })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   requireSameOrigin(request)

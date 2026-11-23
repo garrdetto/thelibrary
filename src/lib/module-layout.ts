@@ -44,7 +44,7 @@ const defaultAssignments: Partial<Record<ModuleId, string[]>> = {
   cookies: ['business'], hotdog: ['business'],
   chess: ['puzzles'], checkers: ['puzzles'], '2048': ['puzzles'], tetradrop: ['puzzles'], sudoku: ['puzzles'], minesweeper: ['puzzles'], recall: ['puzzles'], greible: ['puzzles'], bubbles: ['puzzles'],
   sunvault: ['arcade'], beanstalk: ['arcade'], modollaz: ['arcade'],
-  helicopter: ['arcade'], blockhead: ['arcade'], foodchain: ['arcade'], keep: ['arcade'], giant: ['arcade'], alphabet: ['arcade'], party: ['arcade'],
+  helicopter: ['arcade'], blockhead: ['arcade'], foodchain: ['arcade'], keep: ['arcade'], giant: ['arcade'], appleshot: ['arcade'], alphabet: ['arcade'], party: ['arcade'],
   songmaker: ['creative'], lens: ['creative'],
 }
 
