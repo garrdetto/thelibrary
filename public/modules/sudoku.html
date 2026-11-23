@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sudoku</title>
@@ -42,13 +43,34 @@
   .pauseov h2 { margin: 0; font: 700 40px 'TL Fox Dollar', Rajdhani, sans-serif; }
   @media (max-width: 480px) { .pad { gap: 4px; } .pad button { font-size: 20px; padding: 6px 0 4px; } .tools button { font-size: 12px; padding: 9px 2px; } .tools kbd { display: none; } .panel { padding: 10px; } }
   @media (prefers-reduced-motion: reduce) { .grid { transition: none; } }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--wics-text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #fff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .panel { box-shadow: 0 1px 3px rgba(19, 32, 58, .08); }
+  html:root[data-tl-theme="wics"] .overlay p { color: #dfe5f2; }
+  html:root[data-tl-theme="wics"] .diff button.on { background: #5a70a8; border-color: #5a70a8; color: #fff; }
+  html:root[data-tl-theme="wics"] .grid { border-color: var(--wics-text); background: #c5c7bb; }
+  html:root[data-tl-theme="wics"] .cell { color: #0a6fa3; }
+  html:root[data-tl-theme="wics"] .cell.given { color: var(--wics-text); }
+  html:root[data-tl-theme="wics"] .cell.peer { background: #eceee6; }
+  html:root[data-tl-theme="wics"] .cell.same { background: #d5e4f2; }
+  html:root[data-tl-theme="wics"] .cell.sel { background: #b4cbe8; }
+  html:root[data-tl-theme="wics"] .cell.wrong { color: var(--bad); background: #f6dde2; }
+  html:root[data-tl-theme="wics"] .cell.wrong.sel { background: #efc4cd; }
+  html:root[data-tl-theme="wics"] .cell.hinted { color: #8a6400; }
+  html:root[data-tl-theme="wics"] .notes span.hl { color: #0a6fa3; }
+  html:root[data-tl-theme="wics"] .pad button { background: #f3f3ee; }
+  html:root[data-tl-theme="wics"] .tools button.on { background: #e6f3fa; border-color: var(--accent); color: #0a6fa3; }
+  html:root[data-tl-theme="wics"] .status.warn { color: #8a6400; }
+  html:root[data-tl-theme="wics"] .pauseov { background: rgba(215, 214, 203, .55); border-radius: 8px; }
+  [data-tl-theme-toggle] .tl-theme-toggle { font: 600 13px 'TL Fox Dollar', Inter, sans-serif; padding: 9px 14px; border-radius: 9px; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header class="top"><h1>Sudoku</h1><div class="stats"><div class="stat"><span>TIME</span><b id="time">0:00</b></div><div class="stat"><span>MISTAKES</span><b id="mist">0</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
-  <div class="bar"><div class="diff" id="diff" role="group" aria-label="Difficulty"><button data-d="easy">Easy</button><button data-d="medium">Medium</button><button data-d="hard">Hard</button></div><div><button id="pause">Pause <kbd>P</kbd></button><button id="newp">New puzzle</button></div></div>
+  <div class="bar"><div class="diff" id="diff" role="group" aria-label="Difficulty"><button data-d="easy">Easy</button><button data-d="medium">Medium</button><button data-d="hard">Hard</button></div><div data-tl-theme-toggle><button id="pause">Pause <kbd>P</kbd></button><button id="newp">New puzzle</button></div></div>
   <section class="panel" id="panel">
     <div class="wrap">
       <div class="grid" id="grid" tabindex="0" role="grid" aria-label="Sudoku board"></div>

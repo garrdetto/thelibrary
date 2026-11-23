@@ -216,7 +216,7 @@ async function boot(): Promise<void> {
     renderFloor = renderFloor > 1080 ? 1080 : 0
     app.setRenderHeightFloor(renderFloor)
   }
-  app.own(applyEnvironment(app.scene, config.engine.environment))
+  const environment = app.own(applyEnvironment(app.scene, config.engine.environment))
   const lighting = app.own(createLighting(config.engine.lighting, { ...quality.settings, shadows: false }))
   lighting.follow(new THREE.Vector3(0, BULL_HEIGHT, 0))
   app.graph.add('world', lighting.root)
@@ -231,6 +231,21 @@ async function boot(): Promise<void> {
     style: savedBoardStyle(settings.defaults.board),
   })
   app.own(pub)
+  const env = config.engine.environment
+  const light = config.engine.lighting
+  const usePalette = (wics: boolean) => {
+    pub.setPalette(wics)
+    environment.setBackground(wics ? '#d7d6cb' : env.background)
+    if (app.scene.fog) app.scene.fog.color.set(wics ? '#d7d6cb' : env.fogColor)
+    lighting.hemisphere.color.set(wics ? '#ffffff' : light.skyColor)
+    lighting.hemisphere.groundColor.set(wics ? '#bdbcb2' : light.groundColor)
+    lighting.sun.color.set(wics ? '#ffffff' : light.sunColor)
+  }
+  const siteTheme = (window as Window & { TLTheme?: { isWics(): boolean; onChange(listener: (theme: string) => void): () => void } }).TLTheme
+  if (siteTheme) {
+    if (siteTheme.isWics()) usePalette(true)
+    siteTheme.onChange((theme) => usePalette(theme === 'wics'))
+  }
   app.graph.add('world', pub.root)
 
   const kit = createDartKit(settings.darts)

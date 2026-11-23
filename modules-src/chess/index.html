@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script vite-ignore src="/module-theme.js"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Chess</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
@@ -62,6 +63,22 @@
   .bubble { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); background: var(--panel); border: 1px solid var(--accent); padding: 10px 16px; border-radius: 12px; font-weight: 700; z-index: 70; animation: fade 2.2s forwards; pointer-events: none; }
   @keyframes fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
   @media (max-width: 900px) and (orientation: portrait) { .app { grid-template-columns: 1fr; } .boardwrap { --size: min(calc(100vw - 36px), 640px); margin: 0 auto; } .side { max-height: none; } }
+  html:root[data-tl-theme="wics"] { --light: #e0e2d8; --dark: #6f83b5; --danger: #c8344f; }
+  html:root[data-tl-theme="wics"] .board { box-shadow: 0 6px 18px rgba(19, 32, 58, 0.18), 0 0 0 1px var(--line); }
+  html:root[data-tl-theme="wics"] .side { box-shadow: 0 1px 3px rgba(19, 32, 58, 0.08); }
+  html:root[data-tl-theme="wics"] h1 span { color: var(--accent2); }
+  html:root[data-tl-theme="wics"] button, html:root[data-tl-theme="wics"] select, html:root[data-tl-theme="wics"] input { background: #ffffff; }
+  html:root[data-tl-theme="wics"] button[aria-pressed="true"] { background: rgba(5, 148, 208, 0.12); color: #13203a; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #ffffff; }
+  html:root[data-tl-theme="wics"] button.primary:hover:not(:disabled) { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .status { background: var(--cell); }
+  html:root[data-tl-theme="wics"] .netdot.on { background: var(--good); }
+  html:root[data-tl-theme="wics"] .modal { background: rgba(19, 32, 58, 0.45); }
+  .theme-slot { display: contents; }
+  .side .tl-theme-toggle { flex: 1; justify-content: center; font: 600 13px 'TL Fox Dollar', Inter, sans-serif; padding: 9px 10px; border-radius: 9px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); white-space: nowrap; }
+  .side .tl-theme-toggle:hover { border-color: var(--accent); }
+  html:root[data-tl-theme="wics"] { --hl: rgba(5, 148, 208, 0.42); --last: rgba(185, 133, 0, 0.3); }
+  html:root[data-tl-theme="wics"] .moves .cur { background: rgba(5, 148, 208, 0.16); }
 </style>
 <script vite-ignore src="module-fit.js" data-doc></script>
 </head>
@@ -81,14 +98,14 @@
     </div>
     <div id="cpuOpts" class="row"><select id="level" aria-label="CPU level"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select><select id="color" aria-label="Your color"><option value="w">Play White</option><option value="b">Play Black</option><option value="r">Random</option></select></div>
     <div id="onlineOpts" class="online" hidden>
-      <div class="row"><button id="hostBtn">Host game</button><input id="joinCode" maxlength="6" placeholder="CODE" aria-label="Room code" style="text-transform:uppercase;letter-spacing:3px;text-align:center"><button id="joinBtn">Join</button></div>
+      <div class="row"><button id="hostBtn">Host room</button><input id="joinCode" maxlength="6" placeholder="CODE" aria-label="Room code" style="text-transform:uppercase;letter-spacing:3px;text-align:center"><button id="joinBtn">Join</button></div>
       <div id="codeBox" class="code" hidden></div>
       <div class="muted" id="netStatus"><span class="netdot"></span>Not connected. Host to get a code, or enter a friend's code.</div>
       <div class="emotes"><button data-emote="gg">GG</button><button data-emote="nice">Nice move!</button><button data-emote="hmm">Hmm…</button><button data-emote="oops">Oops</button></div>
     </div>
     <div class="status" id="status">White to move</div>
-    <div class="row"><button id="newBtn" class="primary">New game</button><button id="undoBtn">Undo</button><button id="flipBtn">Flip</button></div>
-    <div class="row"><button id="resignBtn">Resign</button><button id="drawBtn">Offer draw</button></div>
+    <div class="row"><button id="newBtn" class="primary">New match</button><button id="undoBtn">Undo</button><button id="flipBtn">Flip</button></div>
+    <div class="row"><button id="resignBtn">Resign</button><button id="drawBtn">Offer draw</button><span class="theme-slot" data-tl-theme-toggle></span></div>
     <div class="moves" id="moves" aria-label="Move list"></div>
   </aside>
 </div>
@@ -356,7 +373,7 @@ function setStatus(extra) {
   if (extra) { el.textContent = extra; return; }
   if (over) { el.textContent = `${over.reason} · ${over.result}`; return; }
   const who = st.turn === 'w' ? 'White' : 'Black';
-  if (mode === 'online' && !net.started) { el.textContent = net.connected ? 'Connected. Starting…' : 'Host or join a game to play online.'; return; }
+  if (mode === 'online' && !net.started) { el.textContent = net.connected ? 'Connected. Starting…' : 'Host or join a room to play online.'; return; }
   el.textContent = aiBusy ? 'CPU is thinking…' : `${who} to move${Chess.inCheck(st) ? ' · Check!' : ''}${mode !== 'local' && you && st.turn === you ? ' (you)' : ''}`;
 }
 /* ---------- input: click or drag ---------- */
@@ -423,7 +440,7 @@ const net = {
     if (!this.ensure()) return; this.close(); this.host = false; this.code = code.toUpperCase();
     this.peer = new window.Peer();
     this.peer.on('open', () => this.attach(this.peer.connect('tl-chess-' + this.code.toLowerCase(), { reliable: true })));
-    this.peer.on('error', err => this.status(err.type === 'peer-unavailable' ? 'No game with that code.' : 'Network error: ' + err.type, false));
+    this.peer.on('error', err => this.status(err.type === 'peer-unavailable' ? 'No room with that code.' : 'Network error: ' + err.type, false));
     this.status('Connecting…', false);
   },
   attach(c) {

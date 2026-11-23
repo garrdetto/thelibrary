@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Greible</title>
@@ -43,6 +44,32 @@
   .overlay .time { font: 600 22px "JetBrains Mono", monospace; color: #8ff0a4; }
   @media (max-width: 480px) { .keys button { height: 46px; font-size: 14px; } .lcd { font-size: 20px; min-width: 96px; } }
   @media (prefers-reduced-motion: reduce) { .tile, .row { animation: none !important; } }
+  html:root[data-tl-theme="wics"] { --hit: #1d8a5a; --near: #a47800; --miss: #6b7489; --tile: #ffffff; }
+  html:root[data-tl-theme="wics"] h1 { background: linear-gradient(135deg, #17744c 0%, #17744c 38%, #2f5ea8 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  html:root[data-tl-theme="wics"] .panel { background: #f4f4ef; box-shadow: 0 1px 3px rgba(19, 32, 58, .08); }
+  html:root[data-tl-theme="wics"] .stat { box-shadow: 0 1px 2px rgba(19, 32, 58, .06); }
+  html:root[data-tl-theme="wics"] .lengths button[aria-pressed="true"] { background: #5a70a8; color: #fff; border-color: #5a70a8; }
+  html:root[data-tl-theme="wics"] .lcd { background: #fff; color: var(--wics-text); }
+  html:root[data-tl-theme="wics"] .lcd.run { color: #077db3; }
+  html:root[data-tl-theme="wics"] .lcd.done { color: var(--good); }
+  html:root[data-tl-theme="wics"] .tile { border-color: #cfd1c6; color: var(--wics-text); box-shadow: inset 0 -2px 0 rgba(19, 32, 58, .04); }
+  html:root[data-tl-theme="wics"] .tile.filled { border-color: var(--wics-bar); }
+  html:root[data-tl-theme="wics"] .tile.hit, html:root[data-tl-theme="wics"] .tile.near, html:root[data-tl-theme="wics"] .tile.miss { color: #fff; box-shadow: none; }
+  html:root[data-tl-theme="wics"] .msg { color: #8a6400; }
+  html:root[data-tl-theme="wics"] .keys button { background: #e3e5dc; border-color: #cfd1c6; color: var(--wics-text); }
+  html:root[data-tl-theme="wics"] .keys button:hover { border-color: var(--wics-bar); }
+  html:root[data-tl-theme="wics"] .keys button.wide { background: #d3d8e6; }
+  html:root[data-tl-theme="wics"] .keys button.hit { background: var(--hit); color: #fff; }
+  html:root[data-tl-theme="wics"] .keys button.near { background: var(--near); color: #fff; }
+  html:root[data-tl-theme="wics"] .keys button.miss { background: var(--miss); color: #fff; opacity: .8; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #fff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .overlay p { color: #dfe5f2; }
+  html:root[data-tl-theme="wics"] .overlay .time { color: #9fe3bd; }
+  html:root[data-tl-theme="wics"] footer b[style*="--hit"] { color: #126240 !important; }
+  html:root[data-tl-theme="wics"] footer b[style*="--near"] { color: #7a5900 !important; }
+  .theme-slot { display: flex; justify-content: flex-end; margin: 10px 0 -4px; }
+  .theme-slot:empty, .theme-slot:has(> .tl-theme-toggle[hidden]) { display: none; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
@@ -64,6 +91,7 @@
     <div class="keys" id="keys" aria-label="Keyboard"></div>
     <div class="overlay" id="overlay"><h2 id="ovTitle">Solved!</h2><div class="word" id="ovWord"></div><div class="time" id="ovTime"></div><p id="ovText"></p><div><button class="primary" id="again">Next word</button><button id="close">View board</button></div></div>
   </section>
+  <div class="theme-slot" data-tl-theme-toggle></div>
   <footer>Find the hidden word. Pick <b>6</b>, <b>7</b> or <b>8 letters</b>; you get one more guess than the word has letters. Every guess must be a real word. After each guess the tiles turn <b style="color:var(--hit)">green</b> for the right letter in the right spot, <b style="color:var(--near)">gold</b> for a letter that is in the word somewhere else, and grey for a letter that isn't in it. The clock starts on your first letter and stops when you solve it. Each length has its own leaderboard below, showing the word and your time; sign in to save yours. Keys: type letters, <kbd>Enter</kbd> to guess, <kbd>Backspace</kbd> to erase.</footer>
 </main>
 <script src="module-scores.js"></script>

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Alphabet Sprint</title>
@@ -29,13 +30,24 @@
   .splits { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--muted); }
   .splits b { color: var(--text); font-variant-numeric: tabular-nums; }
   @media (max-width: 520px) { .track { grid-template-columns: repeat(7, 1fr); } .typed { font-size: 20px; } }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--wics-text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #fff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .panel { box-shadow: 0 1px 3px rgba(19, 32, 58, .08); }
+  html:root[data-tl-theme="wics"] .overlay p { color: #dfe5f2; }
+  html:root[data-tl-theme="wics"] .key { color: var(--muted); }
+  html:root[data-tl-theme="wics"] .key.done { color: #fff; }
+  html:root[data-tl-theme="wics"] .key.next { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(5, 148, 208, .22); }
+  html:root[data-tl-theme="wics"] .typed { background: #f3f3ee; }
+  html:root[data-tl-theme="wics"] .clock { color: var(--wics-text); }
+  [data-tl-theme-toggle] .tl-theme-toggle { font: 600 13px 'TL Fox Dollar', Inter, sans-serif; padding: 9px 14px; border-radius: 9px; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header class="top"><h1>Alphabet Sprint</h1><div class="stats"><div class="stat"><span>BEST</span><b id="best">—</b></div><div class="stat"><span>RUNS</span><b id="runs">0</b></div></div></header>
-  <div class="bar"><p>Type <b>a</b> through <b>z</b> as fast as you can. The clock starts on your first key.</p><div><button id="reset">Reset <kbd>Esc</kbd></button></div></div>
+  <div class="bar"><p>Type <b>a</b> through <b>z</b> as fast as you can. The clock starts on your first key.</p><div data-tl-theme-toggle><button id="reset">Reset <kbd>Esc</kbd></button></div></div>
   <section class="panel" id="panel" tabindex="0" role="application" aria-label="Alphabet typing track">
     <div class="track" id="track" aria-hidden="true"></div>
     <div class="typed" id="typed" aria-live="polite"><span id="text"></span><span class="caret"></span><span class="hint" id="hint">Click here or press any key to begin</span></div>
