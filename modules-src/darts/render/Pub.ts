@@ -4,7 +4,7 @@ import { bakeEnvironment, type BakedEnvironment } from '../../../engine'
 import { config } from '../config'
 import { BULL_HEIGHT, OCHE_DISTANCE, RADII, SECTORS, SECTOR_DEGREES, SOFT_RADII } from '../shared/Board'
 import { createRng } from '../shared/Rng'
-import { SPIDER_COLORS, boardPartColors, createBoardTextures, type BoardStyle, type BoardTextures } from './BoardTexture'
+import { SPIDER_COLORS, boardPartColors, createBoardTextures, setBoardPalette, type BoardStyle, type BoardTextures } from './BoardTexture'
 
 export interface Pub {
   root: THREE.Group
@@ -16,8 +16,55 @@ export interface Pub {
   setStyle(style: BoardStyle): void
   /** Shows a score (or short text) on the soft-tip board's LED display. */
   setDisplay(text: string): void
+  /** Repaints the board, room and lamps in the WICS palette, or back to the pub's own colours. */
+  setPalette(wics: boolean): void
   dispose(): void
 }
+
+interface PubLook {
+  wall: string
+  wallTrim: string
+  floor: string
+  cabinet: string
+  motif: string
+  panelLine: string
+  chalk: string
+  chalkLine: string
+  steelSide: string
+  softSide: string
+  band: string
+  surround: string
+  rail: string
+  oche: string
+  mat: string
+  shade: string
+  lamp: string
+  bulb: string
+  sconce: string
+  glow: string
+  envRoom: string
+  envLamp: string
+  envSconce: string
+  envWindow: string
+}
+
+const PUB_LOOK: PubLook = {
+  wall: config.room.wall, wallTrim: config.room.wallTrim, floor: config.room.floor, cabinet: config.room.cabinet,
+  motif: '#e0b878', panelLine: 'rgba(255,220,170,0.18)', chalk: '#1d2621', chalkLine: '#e8eee8',
+  steelSide: '#2a2420', softSide: '#141416', band: '#111111', surround: '#0d0d0e', rail: '#2b1710', oche: '#c79a4a', mat: '#1b1d22', shade: '#1c3a2c',
+  lamp: '#fff3df', bulb: '#fff4e0', sconce: '#ffb46a', glow: '#ffc78a',
+  envRoom: '#3a2418', envLamp: '#fff2dc', envSconce: '#ffc27a', envWindow: '#8fb4ff',
+}
+
+const WICS_LOOK: PubLook = {
+  wall: '#d7d6cb', wallTrim: '#c9cabd', floor: '#a9a796', cabinet: '#dddddd',
+  motif: '#6f83b5', panelLine: 'rgba(255,255,255,0.45)', chalk: '#2b3a58', chalkLine: '#e0e2d8',
+  steelSide: '#1e2b45', softSide: '#c5c7bb', band: '#13203a', surround: '#13203a', rail: '#6f83b5', oche: '#c9ccd2', mat: '#6f83b5', shade: '#6f83b5',
+  lamp: '#ffffff', bulb: '#ffffff', sconce: '#dfe8ff', glow: '#e8eeff',
+  envRoom: '#bdbcb2', envLamp: '#ffffff', envSconce: '#e8eeff', envWindow: '#cfe3ff',
+}
+
+let look: PubLook = PUB_LOOK
 
 export interface PubOptions {
   textureSize: number
@@ -98,6 +145,13 @@ function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderin
   return texture
 }
 
+function redraw(texture: THREE.CanvasTexture, draw: (ctx: CanvasRenderingContext2D) => void): void {
+  const ctx = (texture.image as HTMLCanvasElement).getContext('2d')
+  if (!ctx) return
+  draw(ctx)
+  texture.needsUpdate = true
+}
+
 function planks(ctx: CanvasRenderingContext2D): void {
   const rng = createRng(31)
   const { width, height } = ctx.canvas
@@ -108,7 +162,7 @@ function planks(ctx: CanvasRenderingContext2D): void {
     while (x < width) {
       const length = width * (0.35 + rng() * 0.4)
       const tone = 0.75 + rng() * 0.3
-      const base = new THREE.Color(config.room.floor).multiplyScalar(tone)
+      const base = new THREE.Color(look.floor).multiplyScalar(tone)
       ctx.fillStyle = `#${base.getHexString()}`
       ctx.fillRect(x, r * rowHeight, length, rowHeight)
       ctx.globalAlpha = 0.12
@@ -133,10 +187,10 @@ function planks(ctx: CanvasRenderingContext2D): void {
 
 function wallpaper(ctx: CanvasRenderingContext2D): void {
   const { width, height } = ctx.canvas
-  ctx.fillStyle = config.room.wall
+  ctx.fillStyle = look.wall
   ctx.fillRect(0, 0, width, height)
   ctx.globalAlpha = 0.16
-  ctx.fillStyle = '#e0b878'
+  ctx.fillStyle = look.motif
   const step = width / 4
   for (let x = 0; x < 4; x++) {
     for (let y = 0; y < 4; y++) {
@@ -160,11 +214,11 @@ function wallpaper(ctx: CanvasRenderingContext2D): void {
 
 function wainscot(ctx: CanvasRenderingContext2D): void {
   const { width, height } = ctx.canvas
-  ctx.fillStyle = config.room.wallTrim
+  ctx.fillStyle = look.wallTrim
   ctx.fillRect(0, 0, width, height)
   const panel = width / 2
   for (let i = 0; i < 2; i++) {
-    ctx.strokeStyle = 'rgba(255,220,170,0.18)'
+    ctx.strokeStyle = look.panelLine
     ctx.lineWidth = 6
     ctx.strokeRect(i * panel + 24, 30, panel - 48, height - 60)
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'
@@ -175,14 +229,14 @@ function wainscot(ctx: CanvasRenderingContext2D): void {
 
 function chalkboard(ctx: CanvasRenderingContext2D): void {
   const { width, height } = ctx.canvas
-  ctx.fillStyle = '#1d2621'
+  ctx.fillStyle = look.chalk
   ctx.fillRect(0, 0, width, height)
   const rng = createRng(5)
   ctx.globalAlpha = 0.06
   ctx.fillStyle = '#fff'
   for (let i = 0; i < 260; i++) ctx.fillRect(rng() * width, rng() * height, 6 + rng() * 40, 2 + rng() * 6)
   ctx.globalAlpha = 0.55
-  ctx.strokeStyle = '#e8eee8'
+  ctx.strokeStyle = look.chalkLine
   ctx.lineWidth = 3
   ctx.beginPath()
   ctx.moveTo(width / 2, 30)
@@ -196,19 +250,19 @@ function chalkboard(ctx: CanvasRenderingContext2D): void {
 /** A cheap backdrop for the environment map: warm walls, a bright lamp patch over the board, a dim floor. */
 function environmentScene(): THREE.Scene {
   const scene = new THREE.Scene()
-  const room = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color('#3a2418'), side: THREE.BackSide }))
+  const room = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(look.envRoom), side: THREE.BackSide }))
   room.position.y = 2
   scene.add(room)
-  const lamp = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff2dc').multiplyScalar(6) }))
+  const lamp = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ color: new THREE.Color(look.envLamp).multiplyScalar(6) }))
   lamp.position.set(0, 3.9, 1)
   lamp.rotation.x = Math.PI / 2
   scene.add(lamp)
   for (const x of [-2.5, 2.5]) {
-    const sconce = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc27a').multiplyScalar(4) }))
+    const sconce = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(look.envSconce).multiplyScalar(4) }))
     sconce.position.set(x, 2.3, -3.6)
     scene.add(sconce)
   }
-  const window = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.4), new THREE.MeshBasicMaterial({ color: new THREE.Color('#8fb4ff').multiplyScalar(1.5) }))
+  const window = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.4), new THREE.MeshBasicMaterial({ color: new THREE.Color(look.envWindow).multiplyScalar(1.5) }))
   window.position.set(0, 2, 3.95)
   window.rotation.y = Math.PI
   scene.add(window)
@@ -253,13 +307,13 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   board.add(face)
 
   const thickness = config.board.thickness
-  const sideMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#2a2420'), roughness: 0.95, metalness: 0 }))
+  const sideMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.steelSide), roughness: 0.95, metalness: 0 }))
   const side = new THREE.Mesh(keep(new THREE.CylinderGeometry(boardRadius, boardRadius, thickness, 96, 1, true)), sideMaterial)
   side.rotation.x = Math.PI / 2
   side.position.z = -thickness / 2
   side.receiveShadow = true
   board.add(side)
-  const bandMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#111'), roughness: 0.5, metalness: 0.4 }))
+  const bandMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.band), roughness: 0.5, metalness: 0.4 }))
   const band = new THREE.Mesh(keep(new THREE.TorusGeometry(boardRadius + 0.002, 0.004, 10, 128)), bandMaterial)
   band.position.z = -0.006
   const steelBoard = new THREE.Group()
@@ -353,14 +407,14 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
     displayTexture.needsUpdate = true
   }
 
-  const surroundMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#0d0d0e'), roughness: 0.85, metalness: 0 }))
+  const surroundMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.surround), roughness: 0.85, metalness: 0 }))
   const surround = new THREE.Mesh(keep(new THREE.CylinderGeometry(config.board.surroundRadius, config.board.surroundRadius, config.board.surroundDepth, 96)), surroundMaterial)
   surround.rotation.x = Math.PI / 2
   surround.position.z = -thickness - config.board.surroundDepth / 2 + 0.012
   surround.receiveShadow = true
   steelBoard.add(surround)
 
-  const woodMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(config.room.cabinet), roughness: 0.55, metalness: 0 }))
+  const woodMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.cabinet), roughness: 0.55, metalness: 0 }))
   const cabinetDepth = 0.14
   const cabinetSize = 0.82
   const back = new THREE.Mesh(keep(new THREE.BoxGeometry(cabinetSize, cabinetSize, 0.02)), woodMaterial)
@@ -416,7 +470,7 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   lower.position.set(0, 0.45, wallZ + 0.001)
   lower.receiveShadow = true
   root.add(lower)
-  const railMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#2b1710'), roughness: 0.45, metalness: 0 }))
+  const railMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.rail), roughness: 0.45, metalness: 0 }))
   const rail = new THREE.Mesh(keep(new THREE.BoxGeometry(9, 0.05, 0.04)), railMaterial)
   rail.position.set(0, 0.92, wallZ + 0.02)
   root.add(rail)
@@ -429,19 +483,19 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   floor.position.set(0, 0, wallZ + 4.5)
   floor.receiveShadow = true
   root.add(floor)
-  const ocheMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#c79a4a'), roughness: 0.28, metalness: 1 }))
+  const ocheMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.oche), roughness: 0.28, metalness: 1 }))
   const oche = new THREE.Mesh(keep(new THREE.BoxGeometry(0.9, 0.035, 0.05)), ocheMaterial)
   oche.position.set(0, 0.0175, OCHE_DISTANCE + 0.025)
   oche.receiveShadow = true
   root.add(oche)
-  const matMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#1b1d22'), roughness: 0.95, metalness: 0 }))
+  const matMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.mat), roughness: 0.95, metalness: 0 }))
   const mat = new THREE.Mesh(keep(new THREE.PlaneGeometry(0.9, OCHE_DISTANCE + 0.6)), matMaterial)
   mat.rotation.x = -Math.PI / 2
   mat.position.set(0, 0.002, (OCHE_DISTANCE + 0.6) / 2 - 0.15)
   mat.receiveShadow = true
   root.add(mat)
 
-  const boardLamp = new THREE.SpotLight(new THREE.Color('#fff3df'), 9, 0, 0.5, 0.55, 2)
+  const boardLamp = new THREE.SpotLight(new THREE.Color(look.lamp), 9, 0, 0.5, 0.55, 2)
   boardLamp.position.set(0, BULL_HEIGHT + 0.95, 0.85)
   boardLamp.target.position.set(0, BULL_HEIGHT - 0.05, 0)
   boardLamp.castShadow = options.shadows
@@ -451,12 +505,12 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   boardLamp.shadow.camera.near = 0.3
   boardLamp.shadow.camera.far = 3
   root.add(boardLamp, boardLamp.target)
-  const shadeMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#1c3a2c'), roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide }))
+  const shadeMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(look.shade), roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide }))
   const shade = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.06, 0.16, 0.12, 32, 1, true)), shadeMaterial)
   shade.position.copy(boardLamp.position).add(new THREE.Vector3(0, 0.05, 0))
   shade.rotation.x = 0.6
   root.add(shade)
-  const bulbMaterial = keepMat(new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff4e0').multiplyScalar(3) }))
+  const bulbMaterial = keepMat(new THREE.MeshBasicMaterial({ color: new THREE.Color(look.bulb).multiplyScalar(3) }))
   const bulb = new THREE.Mesh(keep(new THREE.SphereGeometry(0.03, 16, 10)), bulbMaterial)
   bulb.position.copy(boardLamp.position)
   root.add(bulb)
@@ -465,32 +519,50 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   arm.rotation.x = Math.PI / 2 - 0.55
   root.add(arm)
 
+  const sconces: THREE.PointLight[] = []
+  const glowMaterial = keepMat(new THREE.MeshBasicMaterial({ color: new THREE.Color(look.glow).multiplyScalar(2.4) }))
   for (const x of [-1.25, 1.25]) {
-    const sconce = new THREE.PointLight(new THREE.Color('#ffb46a'), 0.9, 4, 2)
+    const sconce = new THREE.PointLight(new THREE.Color(look.sconce), 0.9, 4, 2)
     sconce.position.set(x, 2.15, wallZ + 0.12)
     root.add(sconce)
-    const glow = new THREE.Mesh(keep(new THREE.SphereGeometry(0.045, 16, 10)), keepMat(new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc78a').multiplyScalar(2.4) })))
+    sconces.push(sconce)
+    const glow = new THREE.Mesh(keep(new THREE.SphereGeometry(0.045, 16, 10)), glowMaterial)
     glow.position.copy(sconce.position)
     root.add(glow)
   }
 
   let environment: BakedEnvironment | null = null
-  const envScene = environmentScene()
-  environment = bakeEnvironment(renderer, scene, envScene, 0.6)
-  envScene.traverse((node) => {
-    const mesh = node as THREE.Mesh
-    if (mesh.isMesh) {
-      mesh.geometry.dispose()
-      ;(mesh.material as THREE.Material).dispose()
-    }
-  })
+  const bake = () => {
+    environment?.dispose()
+    const envScene = environmentScene()
+    environment = bakeEnvironment(renderer, scene, envScene, 0.6)
+    envScene.traverse((node) => {
+      const mesh = node as THREE.Mesh
+      if (mesh.isMesh) {
+        mesh.geometry.dispose()
+        ;(mesh.material as THREE.Material).dispose()
+      }
+    })
+  }
+  bake()
+
+  const swapMaps = () => {
+    const old = maps
+    maps = createBoardTextures(options.textureSize, anisotropy, style)
+    faceMaterial.map = maps.color
+    faceMaterial.roughnessMap = maps.roughnessMetal
+    faceMaterial.metalnessMap = maps.roughnessMetal
+    faceMaterial.normalMap = maps.normal
+    faceMaterial.needsUpdate = true
+    window.setTimeout(() => old.dispose(), 1000)
+  }
 
   const showStyle = () => {
     const soft = style === 'spider'
     steelParts.visible = !soft
     steelBoard.visible = !soft
     spiderBoard.visible = soft
-    sideMaterial.color.set(soft ? '#141416' : '#2a2420')
+    sideMaterial.color.set(soft ? look.softSide : look.steelSide)
     faceMaterial.normalScale.set(soft ? 0.6 : 0.8, soft ? 0.6 : 0.8)
   }
   showStyle()
@@ -504,15 +576,40 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
       if (next === style) return
       style = next
       pub.style = next
-      const old = maps
-      maps = createBoardTextures(options.textureSize, anisotropy, style)
-      faceMaterial.map = maps.color
-      faceMaterial.roughnessMap = maps.roughnessMetal
-      faceMaterial.metalnessMap = maps.roughnessMetal
-      faceMaterial.normalMap = maps.normal
-      faceMaterial.needsUpdate = true
+      swapMaps()
       showStyle()
-      window.setTimeout(() => old.dispose(), 1000)
+    },
+    setPalette(wics) {
+      const next = wics ? WICS_LOOK : PUB_LOOK
+      if (next === look) return
+      look = next
+      setBoardPalette(wics)
+      swapMaps()
+      const parts = boardPartColors()
+      wireMaterial.color.set(parts.wire)
+      plasticSpiderMaterial.color.set(parts.plasticSpider)
+      housingMaterial.color.set(parts.housing)
+      housingRedMaterial.color.set(parts.housingTrim)
+      bandMaterial.color.set(look.band)
+      surroundMaterial.color.set(look.surround)
+      woodMaterial.color.set(look.cabinet)
+      railMaterial.color.set(look.rail)
+      ocheMaterial.color.set(look.oche)
+      matMaterial.color.set(look.mat)
+      shadeMaterial.color.set(look.shade)
+      bulbMaterial.color.set(look.bulb).multiplyScalar(3)
+      glowMaterial.color.set(look.glow).multiplyScalar(2.4)
+      boardLamp.color.set(look.lamp)
+      for (const sconce of sconces) sconce.color.set(look.sconce)
+      redraw(chalk, chalkboard)
+      redraw(paper, wallpaper)
+      redraw(panel, wainscot)
+      redraw(floorTexture, planks)
+      const shown = displayText
+      displayText = ''
+      setDisplay(shown)
+      showStyle()
+      bake()
     },
     setDisplay,
     dispose() {
