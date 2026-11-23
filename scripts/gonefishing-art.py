@@ -210,6 +210,8 @@ def metaball_mesh(name, elems, res=0.025, thresh=0.6):
         el.stiffness = e.get('stiff', 2.0)
         if 'rot' in e:
             el.rotation = Euler(e['rot'], 'XYZ').to_quaternion()
+        if 'quat' in e:
+            el.rotation = e['quat']
     o = link(bpy.data.objects.new(name + '_mb', mb))
     dg = bpy.context.evaluated_depsgraph_get()
     dg.update()
@@ -1050,13 +1052,210 @@ def hole(look):
     render(f'hole-{look}')
 
 
+SWING = [
+    {'yaw': -22, 'hands': (-0.3, -0.26, 1.72), 'bat': (-0.25, 0.35, 1.0), 'front': (0.5, 0.0, 0.0), 'lean': 0.0},
+    {'yaw': -34, 'hands': (-0.46, -0.16, 1.7), 'bat': (-0.55, 0.5, 0.72), 'front': (0.36, 0.0, 0.16), 'lean': -0.05},
+    {'yaw': -28, 'hands': (-0.46, -0.2, 1.6), 'bat': (-0.82, 0.45, 0.4), 'front': (0.62, 0.0, 0.0), 'lean': -0.03},
+    {'yaw': -10, 'hands': (-0.3, -0.46, 1.38), 'bat': (-0.92, -0.12, 0.08), 'front': (0.64, 0.0, 0.0), 'lean': 0.02},
+    {'yaw': 8, 'hands': (-0.05, -0.62, 1.18), 'bat': (-0.36, -0.93, -0.05), 'front': (0.64, 0.0, 0.0), 'lean': 0.04},
+    {'yaw': 24, 'hands': (0.2, -0.56, 1.1), 'bat': (0.82, -0.56, -0.12), 'front': (0.64, 0.0, 0.0), 'lean': 0.06},
+    {'yaw': 42, 'hands': (0.44, -0.36, 1.2), 'bat': (1.0, 0.1, 0.05), 'front': (0.64, 0.0, 0.0), 'lean': 0.06},
+    {'yaw': 60, 'hands': (0.44, -0.16, 1.55), 'bat': (0.3, 0.86, 0.45), 'front': (0.64, 0.0, 0.0), 'lean': 0.03},
+    {'yaw': 70, 'hands': (0.26, -0.12, 1.86), 'bat': (-0.55, 0.7, 0.45), 'front': (0.64, 0.0, 0.0), 'lean': 0.0},
+]
+BAT_LEN = 1.3
+BAT_SWEET = 0.98
+SWING_CAM = (0.15, 1.25, 3.8, 760)
+
+
+def seg(a, b, w, h=None, stiff=1.8):
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    q = Vector((1, 0, 0)).rotation_difference(d.normalized())
+    return {'co': tuple((a + b) / 2), 'size': (d.length / 2 + w * 0.35, w, h or w), 'quat': q, 'stiff': stiff}
+
+
+def batter_pose(i):
+    P = SWING[i]
+    th = math.radians(P['yaw'])
+
+    def turn(x, y, z, k=1.0):
+        t = th * k
+        return (x * math.cos(t) - y * math.sin(t), x * math.sin(t) + y * math.cos(t), z)
+    lean = P['lean']
+    front = Vector((P['front'][0], P['front'][1], 0.08 + P['front'][2]))
+    back = Vector((-0.56, 0.04, 0.08))
+    els = [
+        {'co': turn(0, 0, 0.78, 0.5), 'size': (0.42, 0.36, 0.32)},
+        {'co': (lean * 0.5, 0, 1.14), 'size': (0.43, 0.37, 0.46)},
+        {'co': turn(lean, -0.02, 1.5), 'size': (0.42, 0.35, 0.32)},
+        {'co': (0.03 + lean, 0, 1.84), 'size': (0.26, 0.26, 0.26), 'rot': (0, 0.4, 0)},
+        {'co': (0.12 + lean, 0, 2.1), 'size': (0.32, 0.3, 0.29)},
+        {'co': (0.4 + lean, 0, 2.03), 'size': (0.2, 0.15, 0.13), 'rot': (0, 0.12, 0)},
+        {'co': (-0.06 + lean, 0.2, 2.34), 'size': (0.09, 0.06, 0.09)},
+        {'co': (-0.06 + lean, -0.2, 2.34), 'size': (0.09, 0.06, 0.09)},
+    ]
+    for side, hip, foot in ((-1, (-0.24, 0.0, 0.74), back), (1, (0.24, 0.0, 0.74), front)):
+        hip = Vector(turn(*hip, 0.5))
+        knee = (hip + foot) / 2 + Vector((0.07 * side, -0.16, 0.04))
+        els.append(seg(hip, knee, 0.19, 0.19))
+        els.append(seg(knee, foot + Vector((0, 0, 0.06)), 0.14, 0.14))
+        els.append({'co': tuple(foot + Vector((0.12, -0.02, -0.02))), 'size': (0.24, 0.15, 0.09)})
+    hands = Vector(P['hands'])
+    bat = Vector(P['bat']).normalized()
+    grips = (hands + bat * 0.06, hands - bat * 0.06)
+    for side, grip in ((-1, grips[0]), (1, grips[1])):
+        sh = Vector(turn(0.34 * side + lean, -0.1, 1.58))
+        mid = (sh + grip) / 2
+        span = (grip - sh).length
+        out = Vector((side * 0.12, -0.1, -0.14)) * max(0.0, 0.95 - span) * 2.2
+        elbow = mid + out
+        els.append(seg(sh, elbow, 0.16, 0.15))
+        els.append(seg(elbow, grip, 0.135, 0.13))
+        els.append({'co': tuple(grip), 'size': (0.12, 0.11, 0.11)})
+    return els, hands, bat, lean
+
+
+def bat_mesh():
+    bme = bpy.data.meshes.new('bat')
+    bm = bmesh.new()
+    rings = [(-0.16, 0.048), (-0.13, 0.03), (0.0, 0.028), (0.38, 0.031), (0.68, 0.048), (0.9, 0.063), (1.1, 0.066), (BAT_LEN - 0.03, 0.063), (BAT_LEN, 0.045)]
+    loops = []
+    for z, r in rings:
+        ring = []
+        for k in range(24):
+            a = 2 * math.pi * k / 24
+            ring.append(bm.verts.new((r * math.cos(a), r * math.sin(a), z)))
+        loops.append(ring)
+    for ra, rb in zip(loops, loops[1:]):
+        for k in range(24):
+            bm.faces.new((ra[k], ra[(k + 1) % 24], rb[(k + 1) % 24], rb[k]))
+    bm.faces.new(list(reversed(loops[0])))
+    bm.faces.new(loops[-1])
+    bm.normal_update()
+    bm.to_mesh(bme)
+    bm.free()
+    bme.shade_smooth()
+    return bme
+
+
+def batter(look, i):
+    reset()
+    L = LOOKS[look]
+    lights(look)
+    furm, hairm = fur_mat(look), hair_mat()
+    els, hands, bat, lean = batter_pose(i)
+    b = metaball_mesh('bear', els)
+    b.data.materials.append(furm)
+    b.data.materials.append(hairm)
+    nose_m = solid('nose', (0.015, 0.015, 0.02), rough=0.45, spec=0.15)
+    eye_m = solid('eye', (0.01, 0.008, 0.008), rough=0.05, spec=0.6, coat=1.0)
+    hx = -0.28 + lean
+    tip, _ = surface_point(b, 0.84 + hx, 2.05)
+    n = sphere('nose', (0.86 + hx, tip.y + 0.06, 2.06), 0.07, nose_m)
+    n.scale = (0.8, 1.05, 0.75)
+    hit, loc, nrm, _ = b.ray_cast(Vector((0.56 + hx, -5, 2.18)), Vector((0, 1, 0)))
+    if hit:
+        sphere('eye', loc + nrm * 0.004, 0.032, eye_m, 24)
+    m_o = bpy.data.curves.new('mouth', 'CURVE')
+    m_o.dimensions = '3D'
+    m_o.bevel_depth = 0.008
+    sp = m_o.splines.new('BEZIER')
+    sp.bezier_points.add(2)
+    mt, _ = surface_point(b, 0.72 + hx, 1.95)
+    for bp, co in zip(sp.bezier_points, [(0.84 + hx, mt.y - 0.01, 1.97), (0.74 + hx, mt.y - 0.02, 1.93), (0.62 + hx, mt.y + 0.02, 1.95)]):
+        bp.co = co
+        bp.handle_left_type = bp.handle_right_type = 'AUTO'
+    link(bpy.data.objects.new('mouth', m_o)).data.materials.append(nose_m)
+    hat_m, band_m, pom_m = knit_mat('hat', L['hat']), knit_mat('band', L['hat_band']), knit_mat('pom', L['pom'])
+    hm = bpy.data.meshes.new('hat')
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=64, v_segments=32, radius=0.33)
+    for v in list(bm.verts):
+        if v.co.z < -0.02:
+            bm.verts.remove(v)
+    bm.to_mesh(hm)
+    bm.free()
+    hm.shade_smooth()
+    hat = link(bpy.data.objects.new('hat', hm))
+    hat.data.materials.append(hat_m)
+    hat.location = (0.36 + hx, 0, 2.15)
+    hat.scale = (1.0, 1.0, 1.25)
+    hat.rotation_euler = (0, math.radians(-14), 0)
+    hat.modifiers.new('s', 'SOLIDIFY').thickness = 0.02
+    tm = bpy.data.meshes.new('band')
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=False, segments=64, radius1=0.35, radius2=0.335, depth=0.1)
+    bm.to_mesh(tm)
+    bm.free()
+    tm.shade_smooth()
+    band = link(bpy.data.objects.new('band', tm))
+    band.data.materials.append(band_m)
+    band.location = (0.36 + hx, 0, 2.16)
+    band.rotation_euler = (0, math.radians(-14), 0)
+    band.modifiers.new('s', 'SOLIDIFY').thickness = 0.05
+    bsub = band.modifiers.new('sub', 'SUBSURF')
+    bsub.levels = bsub.render_levels = 2
+    pom = sphere('pom', (0.27 + hx, 0, 2.58), 0.1, pom_m)
+    pom.data.materials.append(hairm)
+    mod = pom.modifiers.new('fur', 'PARTICLE_SYSTEM')
+    ps = mod.particle_system.settings
+    ps.type = 'HAIR'
+    ps.count = 3000
+    ps.hair_length = 0.05
+    ps.radius_scale = 0.002
+    ps.material = 2
+    ps.child_type = 'INTERPOLATED'
+    ps.rendered_child_count = 6
+    ps.child_percent = 6
+    ps.roughness_1 = 0.02
+    wood = solid('wood', (0.5, 0.3, 0.14), rough=0.85)
+    grip_m = solid('grip', (0.05, 0.05, 0.06), rough=0.9)
+    bo = link(bpy.data.objects.new('bat', bat_mesh()))
+    bo.data.materials.append(wood)
+    bo.location = hands
+    bo.rotation_mode = 'QUATERNION'
+    bo.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(bat)
+    tape = bpy.data.meshes.new('tape')
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=20, radius1=0.034, radius2=0.034, depth=0.24)
+    bm.to_mesh(tape)
+    bm.free()
+    to = link(bpy.data.objects.new('tape', tape))
+    to.data.materials.append(grip_m)
+    to.parent = bo
+    to.location = (0, 0, -0.02)
+    hat_c = Vector((0.36 + hx, 0.0, 2.15))
+    add_fur(b, 34000, 0.04,
+            density=lambda c: 0.0 if (c - hat_c).length < 0.36 and c.z > 2.12 else 1.0,
+            size=lambda c: 0.25 if c.x > 0.34 + lean and c.z > 1.88 else (0.55 if c.z > 1.9 else 1.0))
+    cx, cz, scale, px = SWING_CAM
+    camera(cx, cz, scale, px, px)
+    render(f'bear-swing{i}-{look}')
+
+
+def swing_meta():
+    import json
+    cx, cz, scale, px = SWING_CAM
+    k = px / scale
+    out = {'px': k, 'w': px, 'h': px, 'ox': (0 - cx) * k + px / 2, 'oy': px / 2 + cz * k, 'frames': []}
+    for i in range(len(SWING)):
+        els, hands, bat, lean = batter_pose(i)
+        sweet = hands + bat * BAT_SWEET
+        out['frames'].append({'sweet': [round(sweet.x, 4), round(sweet.z, 4)], 'depth': round(sweet.y, 4)})
+    with open(os.path.join(OUT, 'swing.json'), 'w') as f:
+        json.dump(out, f, indent=1)
+    print('wrote swing.json', flush=True)
+
+
 JOBS = []
 for look in ('original', 'wics'):
-    JOBS += [('bear-body-' + look, lambda l=look: bear(l, 'body')), ('bear-arm-' + look, lambda l=look: bear(l, 'arm'))]
+    JOBS += [(f'bear-swing{i}-' + look, lambda l=look, i=i: batter(l, i)) for i in range(len(SWING))]
     JOBS += [(f'fish-{k}-' + look, lambda l=look, k=k: fish(l, k)) for k in ('perch', 'walleye', 'pike')]
     JOBS += [(f'shanty{i}-' + look, lambda l=look, i=i: shanty(l, i)) for i in range(4)]
     JOBS += [('shore-' + look, lambda l=look: shore(l)), ('ice-' + look, lambda l=look: ice(l)), ('hole-' + look, lambda l=look: hole(l))]
 
+swing_meta()
 for name, job in JOBS:
     if ONLY and not any(name.startswith(o) for o in ONLY):
         continue
