@@ -2,7 +2,9 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { HttpError, json, parseStored, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
-import { CHECKRIDES, applyFlight, defaultCareer, normalizeCareer, pilotClassOf } from '../../../modules-src/takeflight/shared/Career'
+import { CHECKRIDES, applyFlight, defaultCareer, joinAirline, leaveAirline, normalizeCareer, pilotClassOf } from '../../../modules-src/takeflight/shared/Career'
+import { AIRLINE_IDS } from '../../../modules-src/takeflight/shared/Airlines'
+import type { AirlineId } from '../../../modules-src/takeflight/shared/Airlines'
 import type { CareerProfile, FlightSummary } from '../../../modules-src/takeflight/shared/Career'
 import { HANGAR_CLASSES, hangarEntry } from '../../../modules-src/takeflight/shared/Hangar'
 import { START_KINDS } from '../../../modules-src/takeflight/sim/Starts'
@@ -44,11 +46,20 @@ const summarySchema = z.object({
   }).nullable(),
   checkride: z.enum(CHECKRIDES as unknown as [string, ...string[]]).nullable(),
   job: z.string().regex(/^d\d{1,6}-\d$/).nullable().optional(),
+  route: z.string().regex(/^(skylark|northline|meridian)-d\d{1,6}-\d$/).nullable().optional(),
 })
 
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('flight'), summary: summarySchema }),
+  z.object({ action: z.literal('join'), airline: z.enum(AIRLINE_IDS as unknown as [string, ...string[]]) }),
+  z.object({ action: z.literal('leave') }),
 ])
+
+async function saveCareer(env: Env, user: { id: string; username: string }, profile: CareerProfile, loadedAt: number, now: number) {
+  const saved = await env.DB.prepare('UPDATE takeflight_careers SET username = ?, data = ?, updated_at = ? WHERE user_id = ? AND updated_at = ?')
+    .bind(user.username, JSON.stringify(profile), Math.max(now, loadedAt + 1), user.id, loadedAt).run()
+  if ((saved.meta?.changes ?? 0) === 0) throw new HttpError(409, 'Your career changed in another window. Try again.')
+}
 
 let tableReady: Promise<unknown> | null = null
 
@@ -85,6 +96,20 @@ export async function takeflight(request: Request, env: Env) {
   requireSameOrigin(request)
   const user = await requireUser(request, env, 'Sign in to save your career.')
   const input = actions.parse(await readJson(request, BODY_LIMIT))
+  if (input.action === 'join' || input.action === 'leave') {
+    const now = Date.now()
+    const loaded = await loadCareer(env, user.id, user.username)
+    let profile: CareerProfile
+    if (input.action === 'join') {
+      const joined = joinAirline(loaded.profile, input.airline as AirlineId, now)
+      if (joined.error) throw new HttpError(400, joined.error)
+      profile = joined.profile
+    } else {
+      profile = leaveAirline(loaded.profile)
+    }
+    await saveCareer(env, user, profile, loaded.updatedAt, now)
+    return json({ ok: true, profile })
+  }
   const summary = input.summary as FlightSummary
   const entry = hangarEntry(summary.aircraft)
   if (!entry) throw new HttpError(400, 'Unknown aircraft.')
@@ -92,8 +117,6 @@ export async function takeflight(request: Request, env: Env) {
   const loaded = await loadCareer(env, user.id, user.username)
   if (loaded.profile.lastAt > 0 && summary.seconds > (now - loaded.profile.lastAt) / 1000 + CLOCK_SLACK_SECONDS) throw new HttpError(400, 'That flight is longer than the time since your last one.')
   const result = applyFlight(loaded.profile, summary, { now, pilotClass: pilotClassOf(entry.category), family: entry.family, classes: HANGAR_CLASSES, payload: entry.payload })
-  const saved = await env.DB.prepare('UPDATE takeflight_careers SET username = ?, data = ?, updated_at = ? WHERE user_id = ? AND updated_at = ?')
-    .bind(user.username, JSON.stringify(result.profile), Math.max(now, loaded.updatedAt + 1), user.id, loaded.updatedAt).run()
-  if ((saved.meta?.changes ?? 0) === 0) throw new HttpError(409, 'Your career changed in another window. Try again.')
+  await saveCareer(env, user, result.profile, loaded.updatedAt, now)
   return json({ ok: true, result })
 }

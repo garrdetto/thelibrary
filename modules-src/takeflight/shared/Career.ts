@@ -13,6 +13,8 @@ import type { StartKind } from '../sim/Starts'
 import { WEATHER_XP } from './Weather'
 import { cargoPay, openJob } from './Cargo'
 import type { CargoJob } from './Cargo'
+import { AIRLINE_IDS, AIRLINES, AIRLINE_SCORES, RANKS, earnedRank, newMembership, openRoute, routePay } from './Airlines'
+import type { AirlineId, AirlineMembership, AirlineRoute, RankId } from './Airlines'
 import type { WeatherKind } from './Weather'
 
 export const CAREER_VERSION = 1
@@ -78,6 +80,8 @@ export interface CareerProfile {
   /** Cargo career earnings and deliveries. */
   cash: number
   cargo: { delivered: number; kg: number }
+  /** The airline the pilot flies for, or null. */
+  airline: AirlineMembership | null
   /** When the last flight was saved (ms), for plausibility checks. */
   lastAt: number
 }
@@ -107,6 +111,8 @@ export interface FlightSummary {
   landing: { tick: number; airport?: string; sinkFpm: number; g: number; centreline: number; fromAim: number; bounces: number; onRunway: boolean } | null
   /** Cargo contract flown, by id. */
   job?: string | null
+  /** Airline route flown, by id. */
+  route?: string | null
   checkride: CheckrideId | null
 }
 
@@ -231,6 +237,7 @@ export function defaultCareer(): CareerProfile {
     lastAt: 0,
     cash: 0,
     cargo: { delivered: 0, kg: 0 },
+    airline: null,
   }
 }
 
@@ -347,6 +354,8 @@ export interface FlightResult {
   licence: LicenceId | null
   /** The cargo contract's outcome, when one was flown. */
   cargo: { job: CargoJob; paid: number; reason: string | null } | null
+  /** The airline route's outcome, when one was flown. */
+  airline: { route: AirlineRoute; paid: number; onTime: boolean; reason: string | null; promoted: RankId | null } | null
 }
 
 export interface FlightContext {
@@ -425,12 +434,35 @@ export function applyFlight(profile: CareerProfile, summary: FlightSummary, cont
       if (next.recent[0]) next.recent[0] = { ...next.recent[0], xp }
     }
   }
+  let airline: FlightResult['airline'] = null
+  if (summary.route && !summary.resumed && profile.airline) {
+    const route = openRoute(summary.route, context.now)
+    if (route && route.airline === profile.airline.id) {
+      const member = profile.airline
+      const landedAt = summary.landing ? summary.landing.airport ?? null : null
+      const outcome = routePay(route, member.rank, { crashed: summary.crashed, total: summary.total, landedAt, onRunway: summary.landing?.onRunway ?? false, seconds: summary.seconds, family: context.family })
+      const flown = outcome.paid > 0
+      const scores = [summary.total, ...member.scores].slice(0, AIRLINE_SCORES)
+      const updated: AirlineMembership = flown
+        ? { ...member, flights: member.flights + 1, seconds: member.seconds + Math.max(0, summary.seconds), onTime: member.onTime + (outcome.onTime ? 1 : 0), earned: member.earned + outcome.paid, scores }
+        : { ...member, scores }
+      const rank = earnedRank(updated)
+      next.airline = { ...updated, rank }
+      if (flown) {
+        next.cash += outcome.paid
+        xp += Math.round(route.km * 2 + route.passengers * 10)
+        next.xp = profile.xp + xp
+        if (next.recent[0]) next.recent[0] = { ...next.recent[0], xp }
+      }
+      airline = { route, paid: outcome.paid, onTime: outcome.onTime, reason: outcome.reason, promoted: rank !== member.rank ? rank : null }
+    }
+  }
   next.lastAt = context.now
-  return { profile: next, xp, levelBefore, levelAfter: levelFor(next.xp), ratingBefore, ratingAfter: pilotRating(next), checkride, licence, cargo }
+  return { profile: next, xp, levelBefore, levelAfter: levelFor(next.xp), ratingBefore, ratingAfter: pilotRating(next), checkride, licence, cargo, airline }
 }
 
 /** Builds the summary the career and the Worker read from a scored flight. */
-export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; weather: WeatherKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; engineFailure?: boolean; checkride: CheckrideId | null; job?: string | null }): FlightSummary {
+export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; weather: WeatherKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; engineFailure?: boolean; checkride: CheckrideId | null; job?: string | null; route?: string | null }): FlightSummary {
   const categories: Partial<Record<CategoryId, number>> = {}
   const metrics: Record<string, number> = {}
   for (const c of score.categories) {
@@ -483,5 +515,36 @@ export function normalizeCareer(value: unknown): CareerProfile {
     lastAt: num(v.lastAt),
     cash: num(v.cash),
     cargo: { delivered: num(v.cargo?.delivered), kg: num(v.cargo?.kg) },
+    airline: normalizeMembership(v.airline, num),
   }
+}
+
+function normalizeMembership(value: unknown, num: (x: unknown, fallback?: number) => number): AirlineMembership | null {
+  if (!value || typeof value !== 'object') return null
+  const m = value as Partial<AirlineMembership>
+  if (!AIRLINE_IDS.includes(m.id as AirlineId)) return null
+  const rank = RANKS.some((r) => r.id === m.rank) ? (m.rank as RankId) : 'fo'
+  const scores = Array.isArray(m.scores) ? m.scores.filter((x) => typeof x === 'number' && x >= 0 && x <= 100).slice(0, AIRLINE_SCORES) : []
+  return { id: m.id as AirlineId, rank, flights: num(m.flights), seconds: num(m.seconds), onTime: num(m.onTime), earned: num(m.earned), scores, joinedAt: num(m.joinedAt) }
+}
+
+/** Why the pilot cannot join an airline (empty when they can). */
+export function airlineBarriers(profile: CareerProfile, id: AirlineId): string[] {
+  const airline = AIRLINES[id]
+  const reasons: string[] = []
+  if (!profile.licences.includes(airline.requires)) reasons.push(`Needs the ${LICENCE_LABELS[airline.requires]}.`)
+  if (profile.airline && profile.airline.id === id) reasons.push('You already fly for this airline.')
+  return reasons
+}
+
+/** Joins an airline as First Officer (leaving any other: rank and airline totals do not carry over). Never mutates `profile`. */
+export function joinAirline(profile: CareerProfile, id: AirlineId, now: number): { profile: CareerProfile; error: string | null } {
+  const reasons = airlineBarriers(profile, id)
+  if (reasons.length > 0) return { profile, error: reasons[0] }
+  return { profile: { ...profile, airline: newMembership(id, now) }, error: null }
+}
+
+/** Leaves the current airline. Never mutates `profile`. */
+export function leaveAirline(profile: CareerProfile): CareerProfile {
+  return { ...profile, airline: null }
 }

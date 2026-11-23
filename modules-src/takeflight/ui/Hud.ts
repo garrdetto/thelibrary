@@ -7,6 +7,7 @@
 import { FOOT, FPM, KNOT } from '../sim/Atmosphere'
 import type { ControlInput } from '../sim/Controls'
 import type { FlightModel } from '../sim/FlightModel'
+import { RadioLog } from './RadioLog'
 
 const REFRESH = 1 / 15
 
@@ -42,6 +43,8 @@ export class Hud {
   private readonly locMarker: HTMLElement
   private since = 0
   private toastTimer = 0
+  /** ATC and ATIS transmissions. */
+  readonly radio: RadioLog
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'tf-hud', parent)
@@ -71,6 +74,7 @@ export class Hud {
     this.toastNode = el('div', 'tf-toast', this.root)
     this.toastNode.style.opacity = '0'
     this.toastNode.setAttribute('role', 'status')
+    this.radio = new RadioLog(this.root)
   }
 
   setMinimal(minimal: boolean): void {
@@ -88,6 +92,7 @@ export class Hud {
   }
 
   update(a: FlightModel, input: Readonly<ControlInput>, extras: HudExtras, dt: number): void {
+    this.radio.update(dt)
     if (this.toastTimer > 0) {
       this.toastTimer -= dt
       if (this.toastTimer <= 0) this.toastNode.style.opacity = '0'

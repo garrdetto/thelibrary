@@ -36,6 +36,8 @@ export interface RecordHeader {
   payload?: number | null
   /** The cargo contract flown, by id. */
   job?: string | null
+  /** The airline route flown, by id. */
+  route?: string | null
   /** The engine failure flown, if any (multi-engine checkride). */
   failure?: { engine: number; agl: number } | null
 }

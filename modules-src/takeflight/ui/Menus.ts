@@ -12,6 +12,7 @@ import type { QualityTier } from '../render/Quality'
 import type { CheckrideId } from '../shared/Career'
 import { WEATHER_LABELS } from '../shared/Weather'
 import type { CargoJob } from '../shared/Cargo'
+import type { AirlineRoute } from '../shared/Airlines'
 import { fleetSpec } from '../shared/Fleet'
 import { liveriesFor } from '../shared/Liveries'
 
@@ -66,6 +67,8 @@ export interface FlightOptions {
   checkride: CheckrideId | null
   /** The cargo contract being flown, or null. */
   job?: CargoJob | null
+  /** The airline route being flown, or null. */
+  route?: AirlineRoute | null
 }
 
 export interface MenuHandlers {
@@ -77,6 +80,7 @@ export interface MenuHandlers {
   quality(tier: QualityTier): void
   checkrides(): void
   cargo(): void
+  airlines(): void
 }
 
 const KIND_LABELS: Record<AirportSpec['kind'], string> = { grass: 'grass strip', ga: 'general aviation', regional: 'regional', cargo: 'cargo', midsize: 'mid-size', hub: 'international hub', challenge: 'mountain field' }
@@ -222,7 +226,7 @@ export class Menus {
       make('h1', { textContent: 'Take Flight' }),
       make('p', { textContent: `${this.aircraftName} and more as your licences grow. Seven airports across a 200 km region, from a grass strip to an international hub. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
       this.career,
-      make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides()), button('Cargo contracts', () => this.handlers.cargo())),
+      make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides()), button('Cargo contracts', () => this.handlers.cargo()), button('Airlines', () => this.handlers.airlines())),
       choice('Aircraft', this.aircraftLabels, this.options.aircraft, (v) => {
         this.options.aircraft = v
         this.renderLiveries()
@@ -306,7 +310,7 @@ export class Menus {
       }
       list.append(row)
     }
-    const keyActions: KeyAction[] = ['pitchUp', 'pitchDown', 'rollLeft', 'rollRight', 'yawLeft', 'yawRight', 'throttleUp', 'throttleDown', 'flapsDown', 'flapsUp', 'gear', 'brakes', 'parkingBrake', 'trimUp', 'trimDown', 'view', 'lights', 'hud', 'devOverlay', 'pause']
+    const keyActions: KeyAction[] = ['pitchUp', 'pitchDown', 'rollLeft', 'rollRight', 'yawLeft', 'yawRight', 'throttleUp', 'throttleDown', 'flapsDown', 'flapsUp', 'gear', 'brakes', 'parkingBrake', 'trimUp', 'trimDown', 'view', 'lights', 'hud', 'atis', 'devOverlay', 'pause']
     for (const action of keyActions) {
       const codes = b.keys[action] ?? []
       const buttons = (BUTTON_ACTIONS as string[]).includes(action) ? b.buttons[action] ?? [] : []
