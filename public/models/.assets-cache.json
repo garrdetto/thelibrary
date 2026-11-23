@@ -1800,9 +1800,9 @@
   "preset": "aircraft"
  },
  "takeflight/duet_cockpit.glb": {
-  "hash": "68d3eb01fa9a9144b250a2246e2cd3f9142d313d",
-  "before": 43436,
-  "after": 24140,
+  "hash": "2f825eacad2349e47dbf8c2431abf2aa6035166f",
+  "before": 40424,
+  "after": 23040,
   "primsBefore": 9,
   "primsAfter": 8,
   "matsBefore": 5,
@@ -1827,6 +1827,86 @@
   "primsAfter": 27,
   "matsBefore": 8,
   "matsAfter": 8,
+  "preset": "aircraft"
+ },
+ "takeflight/sprite_cockpit.glb": {
+  "hash": "2098774d9e60258ac7211adafaf7ee6b24861a2e",
+  "before": 38800,
+  "after": 22400,
+  "primsBefore": 9,
+  "primsAfter": 8,
+  "matsBefore": 5,
+  "matsAfter": 5,
+  "preset": "aircraft"
+ },
+ "takeflight/sprite_lod1.glb": {
+  "hash": "82761b5cda472f12535312574c31e1b6a6c4a9f6",
+  "before": 153908,
+  "after": 97864,
+  "primsBefore": 31,
+  "primsAfter": 29,
+  "matsBefore": 7,
+  "matsAfter": 7,
+  "preset": "aircraft"
+ },
+ "takeflight/sprite_lod2.glb": {
+  "hash": "bf40b09a7e81e2c1cbc1aa457f49dc44c13bf9a5",
+  "before": 103600,
+  "after": 77740,
+  "primsBefore": 31,
+  "primsAfter": 29,
+  "matsBefore": 7,
+  "matsAfter": 7,
+  "preset": "aircraft"
+ },
+ "takeflight/sprite_lod0.glb": {
+  "hash": "0a7d06091f7a2b34371f4e6cdeaf2bd857670435",
+  "before": 253588,
+  "after": 126020,
+  "primsBefore": 31,
+  "primsAfter": 29,
+  "matsBefore": 7,
+  "matsAfter": 7,
+  "preset": "aircraft"
+ },
+ "takeflight/vesta_cockpit.glb": {
+  "hash": "c0e5020a17f91e7fb30d33c52679d10dab20d876",
+  "before": 29644,
+  "after": 19100,
+  "primsBefore": 9,
+  "primsAfter": 8,
+  "matsBefore": 5,
+  "matsAfter": 5,
+  "preset": "aircraft"
+ },
+ "takeflight/vesta_lod0.glb": {
+  "hash": "d8e836c1b436b5e7d81105d5d64f2a7aac48ddf5",
+  "before": 239852,
+  "after": 112352,
+  "primsBefore": 34,
+  "primsAfter": 30,
+  "matsBefore": 7,
+  "matsAfter": 7,
+  "preset": "aircraft"
+ },
+ "takeflight/vesta_lod2.glb": {
+  "hash": "efacf921917e41f7d6c724e99c9ecc2b21d8177b",
+  "before": 108368,
+  "after": 71188,
+  "primsBefore": 34,
+  "primsAfter": 30,
+  "matsBefore": 7,
+  "matsAfter": 7,
+  "preset": "aircraft"
+ },
+ "takeflight/vesta_lod1.glb": {
+  "hash": "cb415ea05bd207843958b39d182947f13a28f40d",
+  "before": 152888,
+  "after": 87172,
+  "primsBefore": 34,
+  "primsAfter": 30,
+  "matsBefore": 7,
+  "matsAfter": 7,
   "preset": "aircraft"
  }
 }

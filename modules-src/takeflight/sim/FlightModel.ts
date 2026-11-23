@@ -554,7 +554,7 @@ export class FlightModel {
       induced = (ratio * ratio) / (1 + ratio * ratio)
       cl *= 1 + 0.06 * (1 - induced) * attached
     }
-    const cd = aero.cd0 + this.inductionFactor * cl * cl * induced * attached + interpolate(aero.stallDrag.alpha, aero.stallDrag.value, absAlpha) + aero.flapDrag * this.flap + aero.gearDrag * this.gear + aero.spoilerDrag * this.spoiler + 0.5 * beta * beta
+    const cd = aero.cd0 + this.inductionFactor * cl * cl * induced * attached + interpolate(aero.stallDrag.alpha, aero.stallDrag.value, absAlpha) + aero.flapDrag * this.flap + aero.gearDrag * this.gear + aero.spoilerDrag * this.spoiler + 0.5 * beta * beta + (this.mach > aero.machCrit ? aero.machDrag * (this.mach - aero.machCrit) * (this.mach - aero.machCrit) : 0)
     const cy = aero.sideslip * beta + aero.sideRudder * this.rudder
 
     const lift = cl * qbar * area
@@ -578,7 +578,7 @@ export class FlightModel {
     const sigma = this.air.sigma
     if (engine.kind === 'turbofan') {
       this.mach = speed / this.air.speedOfSound
-      thrust = engine.staticThrust * this.power * (sigma > 0 ? Math.sqrt(sigma) * (0.6 + 0.4 * sigma) : 0) * (1 - 0.3 * this.mach)
+      thrust = engine.staticThrust * this.power * (sigma > 0 ? Math.sqrt(sigma) * (0.6 + 0.4 * sigma) : 0) * (1 - 0.55 * this.mach + 0.2 * this.mach * this.mach)
     } else {
       const lapse = engine.kind === 'piston' ? 1.132 * sigma - 0.132 : sigma * (0.7 + 0.3 * sigma)
       const shaft = engine.maxPower * this.power * (lapse > 0 ? lapse : 0)

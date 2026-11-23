@@ -1,0 +1,324 @@
+{
+  "id": "corvane-sprite",
+  "name": "Sprite TP-9",
+  "maker": "Corvane",
+  "family": "sprite",
+  "category": "turboprop",
+  "tier": 3,
+  "seats": 6,
+  "mass": {
+    "empty": 2050,
+    "maxTakeoff": 3350,
+    "maxLanding": 3200,
+    "fuelCapacity": 850,
+    "defaultFuel": 600,
+    "defaultPayload": 300
+  },
+  "inertia": {
+    "roll": 9000,
+    "pitch": 12500,
+    "yaw": 19500,
+    "rollYaw": 0
+  },
+  "wing": {
+    "area": 22.0,
+    "span": 14.4,
+    "chord": 1.65,
+    "oswald": 0.78
+  },
+  "aero": {
+    "lift": {
+      "alpha": [
+        -180,
+        -150,
+        -135,
+        -90,
+        -60,
+        -30,
+        -20,
+        -16,
+        -14,
+        -10,
+        -5,
+        0,
+        5,
+        10,
+        14,
+        16,
+        18,
+        20,
+        25,
+        30,
+        45,
+        60,
+        90,
+        135,
+        150,
+        180
+      ],
+      "value": [
+        0,
+        0.6,
+        0.9,
+        0,
+        -0.8,
+        -0.72,
+        -0.82,
+        -0.96,
+        -0.98,
+        -0.62,
+        -0.15,
+        0.31,
+        0.77,
+        1.2,
+        1.48,
+        1.55,
+        1.42,
+        1.22,
+        1.02,
+        0.96,
+        1.0,
+        0.82,
+        0,
+        -0.9,
+        -0.6,
+        0
+      ]
+    },
+    "cd0": 0.0215,
+    "stallDrag": {
+      "alpha": [
+        0,
+        14,
+        18,
+        25,
+        45,
+        90,
+        135,
+        180
+      ],
+      "value": [
+        0,
+        0,
+        0.08,
+        0.3,
+        0.9,
+        1.3,
+        0.9,
+        0.08
+      ]
+    },
+    "stallAlpha": 16,
+    "flapLift": 0.7,
+    "flapDrag": 0.07,
+    "flapStallShift": -2,
+    "flapPitch": -0.05,
+    "gearDrag": 0.013,
+    "sideslip": -0.31,
+    "sideRudder": -0.075,
+    "pitch0": 0.035,
+    "pitchAlpha": -0.9,
+    "pitchRate": -12.4,
+    "pitchControl": 0.55,
+    "pitchTrim": 0.3,
+    "rollSideslip": -0.089,
+    "rollRate": -0.47,
+    "rollYawRate": 0.096,
+    "rollControl": 0.07,
+    "rollRudder": 0.0044,
+    "yawSideslip": 0.065,
+    "yawRate": -0.099,
+    "yawRollRate": -0.03,
+    "yawAileron": -0.012,
+    "yawControl": 0.026,
+    "groundEffect": true
+  },
+  "controls": {
+    "rate": 4,
+    "flapDetents": [
+      0,
+      10,
+      20,
+      35
+    ],
+    "flapTime": 12,
+    "gearTime": 7,
+    "retractable": true,
+    "trimRate": 0.12
+  },
+  "engine": {
+    "kind": "turboprop",
+    "count": 1,
+    "maxPower": 700000,
+    "staticThrust": 11500,
+    "propEfficiency": 0.86,
+    "fuelFlow": 0.055,
+    "spool": 1.4,
+    "torqueYaw": 0.35,
+    "positions": [
+      [
+        4.78,
+        0.0,
+        0.0
+      ]
+    ],
+    "idle": 0.12,
+    "rpm": [
+      1100,
+      2000
+    ]
+  },
+  "contacts": [
+    {
+      "name": "gear_nose",
+      "position": [
+        3.4,
+        -1.86,
+        0
+      ],
+      "stiffness": 90000,
+      "damping": 7000,
+      "kind": "wheel",
+      "steer": 14,
+      "brake": "none",
+      "friction": 0.8,
+      "breakSpeed": 3.4,
+      "retracts": true
+    },
+    {
+      "name": "gear_main_L",
+      "position": [
+        -0.3,
+        -1.96,
+        -1.95
+      ],
+      "stiffness": 150000,
+      "damping": 14000,
+      "kind": "wheel",
+      "brake": "left",
+      "friction": 0.85,
+      "breakSpeed": 4.6,
+      "retracts": true
+    },
+    {
+      "name": "gear_main_R",
+      "position": [
+        -0.3,
+        -1.96,
+        1.95
+      ],
+      "stiffness": 150000,
+      "damping": 14000,
+      "kind": "wheel",
+      "brake": "right",
+      "friction": 0.85,
+      "breakSpeed": 4.6,
+      "retracts": true
+    },
+    {
+      "name": "tail",
+      "position": [
+        -6.2,
+        0.2,
+        0
+      ],
+      "stiffness": 250000,
+      "damping": 12000,
+      "kind": "structure",
+      "friction": 0.5,
+      "breakSpeed": 2.5
+    },
+    {
+      "name": "belly",
+      "position": [
+        0.3,
+        -0.6,
+        0
+      ],
+      "stiffness": 250000,
+      "damping": 16000,
+      "kind": "structure",
+      "friction": 0.45,
+      "breakSpeed": 1.6
+    },
+    {
+      "name": "prop_tip",
+      "position": [
+        4.8,
+        -1.18,
+        0
+      ],
+      "stiffness": 200000,
+      "damping": 9000,
+      "kind": "structure",
+      "friction": 0.5,
+      "breakSpeed": 0.6
+    },
+    {
+      "name": "wingtip_L",
+      "position": [
+        0.1,
+        0.21,
+        -7.2
+      ],
+      "stiffness": 250000,
+      "damping": 12000,
+      "kind": "structure",
+      "friction": 0.5,
+      "breakSpeed": 1.2
+    },
+    {
+      "name": "wingtip_R",
+      "position": [
+        0.1,
+        0.21,
+        7.2
+      ],
+      "stiffness": 250000,
+      "damping": 12000,
+      "kind": "structure",
+      "friction": 0.5,
+      "breakSpeed": 1.2
+    },
+    {
+      "name": "cabin_roof",
+      "position": [
+        0.0,
+        1.12,
+        0
+      ],
+      "stiffness": 250000,
+      "damping": 12000,
+      "kind": "structure",
+      "friction": 0.5,
+      "breakSpeed": 0.5
+    }
+  ],
+  "vSpeeds": {
+    "vs0": 64,
+    "vs1": 77,
+    "vr": 85,
+    "vx": 100,
+    "vy": 115,
+    "vref": 92,
+    "vapp": 102,
+    "cruise": 250,
+    "vfe": 150,
+    "vno": 230,
+    "vne": 266,
+    "va": 160
+  },
+  "limits": {
+    "gPositive": 3.8,
+    "gNegative": -1.52,
+    "maxCrosswind": 22,
+    "maxBank": 60,
+    "maxPitch": 30
+  },
+  "eye": [
+    0.78,
+    0.72,
+    -0.34
+  ],
+  "model": "sprite"
+}

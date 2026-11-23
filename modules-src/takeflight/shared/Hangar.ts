@@ -17,6 +17,8 @@ export interface HangarEntry {
 export const HANGAR: readonly HangarEntry[] = [
   { id: 'halden-wren', family: 'wren', category: 'trainer', requires: 'student' },
   { id: 'arden-duet', family: 'duet', category: 'twin', requires: 'ppl' },
+  { id: 'corvane-sprite', family: 'sprite', category: 'turboprop', requires: 'instrument' },
+  { id: 'solent-vesta', family: 'vesta', category: 'bizjet', requires: 'commercial' },
 ]
 
 export function hangarEntry(id: string): HangarEntry | undefined {
