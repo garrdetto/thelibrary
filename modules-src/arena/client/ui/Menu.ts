@@ -1,6 +1,6 @@
 import { ARENA_CODE_PATTERN } from '../../../../server/arena/protocol.mjs'
 import type { ModeRequest, PlayModeId } from '../modes/types'
-import { clampSensitivity, loadSensitivity, saveSensitivity } from './Settings'
+import { clampSensitivity, loadGraphics, loadSensitivity, saveGraphics, saveSensitivity, type ArenaGraphics } from './Settings'
 
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
@@ -39,6 +39,16 @@ export class Menu {
       this.sensitivity(value)
       saveSensitivity(value)
     })
+    const graphicsSelect = document.getElementById('menu-graphics') as HTMLSelectElement | null
+    if (graphicsSelect) {
+      graphicsSelect.value = loadGraphics()
+      graphicsSelect.addEventListener('change', () => {
+        saveGraphics(graphicsSelect.value as ArenaGraphics)
+        const url = new URL(location.href)
+        url.searchParams.delete('quality')
+        location.replace(url.toString())
+      })
+    }
     this.box?.addEventListener('click', event => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-mode]')
       if (!button) return

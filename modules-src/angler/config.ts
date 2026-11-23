@@ -9,11 +9,21 @@ export const config = {
 
 export type QualityTier = 'low' | 'medium' | 'high'
 
+const QUALITY_KEY = 'angler/quality'
+const isTier = (value: string | null): value is QualityTier => value === 'low' || value === 'medium' || value === 'high'
+
 export function pickQuality(): QualityTier {
   const forced = new URLSearchParams(location.search).get('quality')
-  if (forced === 'low' || forced === 'medium' || forced === 'high') return forced
-  const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
-  const cores = navigator.hardwareConcurrency || 4
-  if (mobile) return 'low'
-  return cores >= 8 ? 'high' : 'medium'
+  if (isTier(forced)) return forced
+  try {
+    const saved = localStorage.getItem(QUALITY_KEY)
+    if (isTier(saved)) return saved
+  } catch {}
+  return 'low'
+}
+
+export function saveQuality(tier: QualityTier): void {
+  try {
+    localStorage.setItem(QUALITY_KEY, tier)
+  } catch {}
 }

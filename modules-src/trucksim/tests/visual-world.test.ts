@@ -38,16 +38,16 @@ function heightOf(arrays: ReturnType<typeof buildTerrainArrays>, ix: number, iz:
   return arrays.positions[(iz * arrays.verts + ix) * 3 + 1]
 }
 
-test('quality tiers resolve from ?quality=, the saved pick, then medium (low on weak devices)', () => {
+test('quality tiers resolve from ?quality=, the saved pick, then low', () => {
   assert.equal(resolveTier('?quality=ultra', 'webgl2', {}, null), 'ultra')
   assert.equal(resolveTier('?quality=med', 'webgpu', {}, 'high'), 'medium')
-  assert.equal(resolveTier('', 'webgpu', {}, null), 'medium')
-  assert.equal(resolveTier('', 'webgl2', {}, null), 'medium')
-  assert.equal(resolveTier('', 'webgpu', { memoryGb: 16, cores: 16 }, null), 'medium')
+  assert.equal(resolveTier('', 'webgpu', {}, null), 'low')
+  assert.equal(resolveTier('', 'webgl2', {}, null), 'low')
+  assert.equal(resolveTier('', 'webgpu', { memoryGb: 16, cores: 16 }, null), 'low')
   assert.equal(resolveTier('', 'webgpu', { mobile: true }, null), 'low')
   assert.equal(resolveTier('', 'webgpu', { cores: 2 }, null), 'low')
   assert.equal(resolveTier('', 'webgpu', { mobile: true }, 'high'), 'high')
-  assert.equal(resolveTier('', 'webgl2', {}, 'nonsense'), 'medium')
+  assert.equal(resolveTier('', 'webgl2', {}, 'nonsense'), 'low')
   assert.equal(resolveTier('?quality=nonsense', 'webgl2', { memoryGb: 2 }, null), 'low')
   assert.equal(lowerTier('low'), 'low')
   for (const tier of ['low', 'medium', 'high', 'ultra'] as const) {

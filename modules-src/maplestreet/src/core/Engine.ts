@@ -6,6 +6,7 @@
  * Append ?webgl to the URL to force the WebGL2 backend, ?noao to skip AO.
  */
 import * as THREE from 'three/webgpu';
+import { loadGraphics, wireGraphicsButton } from './Graphics';
 
 /** Filled in once the AO pipeline exists: an MRT override for materials without normals. */
 const flatNormalMRT: { node: unknown } = { node: null };
@@ -43,12 +44,14 @@ export class Engine {
   private async init(container: HTMLElement) {
     const params = new URLSearchParams(location.search);
     const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: params.has('webgl') });
-    this.maxRatio = this.ratio = Math.min(devicePixelRatio, 2);
+    const graphics = loadGraphics();
+    wireGraphicsButton(document.getElementById('graphicsBtn') as HTMLButtonElement | null, graphics);
+    this.maxRatio = this.ratio = graphics === 'high' ? Math.min(devicePixelRatio, 2) : 1;
     renderer.setPixelRatio(this.ratio);
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.92;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = graphics === 'high';
     renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(renderer.domElement);
     await renderer.init();
@@ -56,7 +59,7 @@ export class Engine {
     const backend = (renderer as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend;
     this.backendName = backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2';
 
-    if (!params.has('noao')) await this.setupPostProcessing();
+    if (graphics === 'high' && !params.has('noao')) await this.setupPostProcessing();
 
     addEventListener('resize', () => {
       this.camera.aspect = innerWidth / innerHeight;

@@ -4,6 +4,7 @@ import { LOT_D, LOT_W, LOTS_PER_STREET, lotPlacement } from '../../shared/Street
 import type { StreetInfo, StreetLotInfo } from '../net/Api'
 import { detach } from '../models/Kit'
 import { buildForSaleSign, buildStreetGround, type StreetGround } from '../models/Street'
+import { createGraphicsSetting } from '../../../../engine'
 import { button, el } from '../ui/Ui'
 import { LotModel } from './LotModel'
 import type { PointerTarget, Stage } from './Stage'
@@ -106,6 +107,7 @@ export class StreetMode implements PointerTarget {
         me.home ? button('Go home', () => actions.visit(-1), 'btn primary') : null,
         button('Around town', () => this.toggleTown(), 'btn', 'The workplaces and the dispatch feed'),
         button('Practice lot', () => actions.practice(), 'btn', 'A starter house that runs only on this device'),
+        createGraphicsSetting(stage.qualityTier),
       ),
     )
     stage.ui.append(this.hud)

@@ -1,6 +1,6 @@
 /** Darts entry: boots the shared engine, builds the pub and board, locks the camera to the thrower's eye, wires the throw gesture to a local or online session, plays every dart's flight, keeps the overlay in step, answers the chat's room requests and frees everything on pagehide. */
 import * as THREE from 'three/webgpu'
-import { App, HubBridge, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
+import { App, HubBridge, Scores, applyEnvironment, createLighting, createPost, mountGraphicsSettings, resolveQuality } from '../../engine'
 import { config } from './config'
 import { initEmbedFull } from '../_shared/embed-full.js'
 import { DartsSocket, roomInfo } from './net/Socket'
@@ -201,6 +201,7 @@ async function boot(): Promise<void> {
     }
   }
   const quality = resolveQuality(config.engine.quality, app.backend)
+  mountGraphicsSettings(quality.tier)
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
   const sharp = quality.tier === 'high' || quality.tier === 'ultra'
   let renderFloor = sharp ? config.board.renderHeightFloor : 0

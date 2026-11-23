@@ -137,7 +137,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
   const [toasts, setToasts] = useState<Toast[]>([])
   const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null)
   const [grid, setGrid] = useState(false)
-  const [quality, setQuality] = useState<{ tier: ParkQuality; auto: boolean }>({ tier: 'medium', auto: true })
+  const [quality, setQuality] = useState<{ tier: ParkQuality; auto: boolean }>({ tier: 'low', auto: true })
   const [pathColor, setPathColor] = useState('#cdbb93')
   const [pathBuild, setPathBuild] = useState<PathBuild | null>(null)
   const [pathHoverSegment, setPathHoverSegment] = useState<PathSegment | null>(null)
@@ -184,7 +184,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
     let renderer: ParkRenderer
     try { renderer = new ParkRenderer(canvas, backend) } catch (error) { setGlError((error as Error).message); return }
     rendererRef.current = renderer
-    setQuality({ tier: renderer.quality, auto: renderer.qualityReason !== '?quality=' })
+    setQuality({ tier: renderer.quality, auto: renderer.qualityReason === 'default' })
     if (import.meta.env.DEV) (window as unknown as { __park?: unknown }).__park = { session, renderer }
     renderer.setState(session.state, session.park)
     renderer.focusPark()
@@ -804,7 +804,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
       </div>}
       <div className="pk-top-actions">
         <button onClick={() => setGrid(v => !v)} className={grid ? 'on' : ''} title="Grid (G)" aria-label="Toggle grid"><Grid3x3 size={16} /></button>
-        <button onClick={cycleQuality} title={`Graphics quality: ${QUALITY_LABEL[quality.tier]}${quality.auto ? ' (picked for this device)' : ''}. Click to change.`} aria-label={`Graphics quality ${QUALITY_LABEL[quality.tier]}, change`}><Gauge size={16} /><span>{QUALITY_LABEL[quality.tier]}</span></button>
+        <button onClick={cycleQuality} title={`Graphics quality: ${QUALITY_LABEL[quality.tier]}${quality.auto ? ' (default)' : ''}. Click to change.`} aria-label={`Graphics quality ${QUALITY_LABEL[quality.tier]}, change`}><Gauge size={16} /><span>{QUALITY_LABEL[quality.tier]}</span></button>
         <button onClick={() => void fullscreen()} title="Fullscreen" aria-label="Fullscreen"><Maximize2 size={16} /></button>
         {!viewOnly && <button onClick={() => void openSave()} title="Save park" aria-label="Save park"><Save size={16} /></button>}
         {session.online && <button onClick={() => togglePanel('chat')} className={panel === 'chat' ? 'on' : ''} title="Chat" aria-label="Chat"><MessageCircle size={16} /></button>}

@@ -1,7 +1,7 @@
 /** Demo Derby entry: boots the shared engine at a full-HD render floor with the tier's post chain, builds the fair arena, runs the garage preview, then the heat (player + AI field) with component damage, sparks, shrapnel, lost parts (bumpers, wheels, hoods, lids, exhausts), fire, steam, tire smoke from rubbing fenders, dragging-exhaust sparks, stall puffs and tire marks, the HUD with its damage diagram, results and the board; lowers the render floor when frames run slow; freed on pagehide. */
 import * as THREE from 'three/webgpu'
 import type RAPIER from '@dimforge/rapier3d-compat'
-import { App, Hud, Input, PhysicsWorld, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
+import { App, Hud, Input, PhysicsWorld, Scores, applyEnvironment, createLighting, createPost, mountGraphicsSettings, resolveQuality } from '../../engine'
 import { aiLevelById, bodyById, config, damageFor, paintById, type Action } from './config'
 import { createArena } from './models/Arena'
 import type { ParkScenery } from './models/ParkScenery'
@@ -76,6 +76,7 @@ async function boot(): Promise<void> {
 
   const app = await App.create({ container, config: config.engine })
   const quality = resolveQuality(config.engine.quality, app.backend)
+  mountGraphicsSettings(quality.tier)
   const tierLook = config.looks[quality.tier]
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
   let renderFloor = quality.settings.minRenderHeight ?? tierLook.minRenderHeight

@@ -28,6 +28,8 @@
   .label { font-size: 12px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-top: 6px; }
   #spawn { width: 100%; padding: 14px; font: inherit; font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #fff; border: 0; border-radius: 12px; cursor: pointer; background: linear-gradient(135deg, #ff5a36, #ff2d6f); box-shadow: 0 8px 30px rgba(255, 70, 70, 0.35); }
   #spawn:hover { filter: brightness(1.1); }
+  #gfxBtn { width: 100%; margin-top: 10px; padding: 8px; font: inherit; font-size: 14px; font-weight: 700; letter-spacing: 2px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  #gfxBtn:hover, #gfxBtn:focus-visible { border-color: var(--accent); }
   .keys { margin-top: 18px; font-size: 13px; color: var(--muted); line-height: 1.8; }
   kbd { display: inline-block; min-width: 22px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; text-align: center; color: var(--text); background: rgba(255, 255, 255, 0.05); font-family: inherit; }
   #hud { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
@@ -71,6 +73,7 @@
     <kbd>Shift</kbd> rocket boost · <kbd>R</kbd> respawn · <kbd>F</kbd> flip upright<br>
     <kbd>C</kbd> camera · <kbd>B</kbd> back to build mode
   </div>
+  <button id="gfxBtn" type="button" title="Low is lighter on slower computers; High adds soft shadows and sharper pixels. The page reloads.">GRAPHICS: LOW</button>
 </aside>
 <div id="hud" class="hidden">
   <div id="topbar"><button id="toBuild">◀ BUILD</button><button id="respawn">RESPAWN</button></div>

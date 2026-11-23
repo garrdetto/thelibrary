@@ -31,7 +31,7 @@ export const TIERS: Record<Tier, TierSettings> = {
 export function tierOf(search: string, classic: string): Tier {
   const q = new URLSearchParams(search).get('quality')
   if (q === 'low' || q === 'medium' || q === 'high' || q === 'ultra') return q
-  return classic === 'low' ? 'low' : classic === 'high' ? 'high' : 'medium'
+  return classic === 'high' ? 'high' : classic === 'med' || classic === 'medium' ? 'medium' : 'low'
 }
 
 /**
