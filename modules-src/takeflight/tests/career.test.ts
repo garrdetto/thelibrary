@@ -17,7 +17,7 @@ const NO_ASSISTS = { autoTrim: false, stallProtection: false, landingGuidance: f
 
 function summary(overrides: Partial<FlightSummary> = {}): FlightSummary {
   return {
-    aircraft: 'halden-wren', airport: 'harrow', start: 'runway09', wind: 'crosswind', time: 'noon', seconds: 300, resumed: false, total: 82, crashed: false,
+    aircraft: 'halden-wren', airport: 'harrow', start: 'runway1', wind: 'crosswind', time: 'noon', seconds: 300, resumed: false, total: 82, crashed: false,
     assists: { ...NO_ASSISTS }, instrumentsOnly: false,
     categories: { landing: 80, approach: 85, smoothness: 90, procedure: 95, operations: 100 },
     metrics: { 'approach.glidepath': 0.9, 'approach.tracking': 0.9 },
@@ -114,7 +114,7 @@ test('passing a checkride earns its licence and a bonus; failing records the att
 })
 
 test('the instrument checkride needs the instruments-only HUD and a tight approach', () => {
-  const good = summary({ start: 'final09', instrumentsOnly: true, checkride: 'instrument' })
+  const good = summary({ start: 'final1', instrumentsOnly: true, checkride: 'instrument' })
   assert.equal(evaluateCheckride('instrument', good).passed, true)
   assert.equal(evaluateCheckride('instrument', { ...good, instrumentsOnly: false }).passed, false)
   assert.equal(evaluateCheckride('instrument', { ...good, metrics: { 'approach.glidepath': 0.5, 'approach.tracking': 0.9 } }).passed, false)
@@ -122,7 +122,7 @@ test('the instrument checkride needs the instruments-only HUD and a tight approa
 
 test('a real scored landing passes the Private Pilot criteria', () => {
   const sim = makeSim({ direction: 90, speed: 3.1, gust: 0, turbulence: 0.12 }, 99)
-  placeStart(sim.aircraft, sim.pilot, HARROW_FIELD, TERRAIN, 'final09')
+  placeStart(sim.aircraft, sim.pilot, HARROW_FIELD, TERRAIN, 'final1')
   sim.settle()
   const recorder = new FlightRecorder()
   recorder.attach(sim)
@@ -132,8 +132,8 @@ test('a real scored landing passes the Private Pilot criteria', () => {
     pilot(0)
     sim.stepPilot()
   }
-  const score = scoreFlight({ spec: WREN, airport: HARROW_FIELD, assists: NO_ASSISTS, telemetry: recorder.telemetryLog(), samples: recorder.samples, touchdowns: recorder.touchdowns, crashed: sim.aircraft.crashed, ended: 'stopped' })
-  const s = summarizeFlight(score, { aircraft: WREN.id, airport: HARROW_FIELD.id, start: 'final09', wind: 'crosswind', time: 'noon', seconds: score.seconds, resumed: false, assists: NO_ASSISTS, instrumentsOnly: false, checkride: 'ppl' as CheckrideId })
+  const score = scoreFlight({ spec: WREN, assists: NO_ASSISTS, telemetry: recorder.telemetryLog(), samples: recorder.samples, touchdowns: recorder.touchdowns, crashed: sim.aircraft.crashed, ended: 'stopped' })
+  const s = summarizeFlight(score, { aircraft: WREN.id, airport: HARROW_FIELD.id, start: 'final1', wind: 'crosswind', time: 'noon', seconds: score.seconds, resumed: false, assists: NO_ASSISTS, instrumentsOnly: false, checkride: 'ppl' as CheckrideId })
   const evaluation = evaluateCheckride('ppl', s)
   assert.equal(evaluation.passed, true, JSON.stringify(evaluation.criteria.filter((c) => !c.passed)))
 })

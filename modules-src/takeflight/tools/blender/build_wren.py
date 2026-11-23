@@ -19,22 +19,24 @@ import export_aircraft  # noqa: E402
 
 SEGMENTS = 40
 
+# (x, half width, top, bottom, exponent, top exponent). Under the wing (x 0.55 to -1.05) the cabin has square shoulders and a roof
+# that reaches the wing's underside, so the wing root sits on the cabin with no gap.
 FUSELAGE = [
-    (2.04, 0.36, 0.30, -0.36, 2.2),
-    (1.92, 0.44, 0.38, -0.46, 2.4),
-    (1.60, 0.52, 0.48, -0.54, 2.6),
-    (1.20, 0.56, 0.58, -0.56, 2.7),
-    (0.95, 0.58, 0.70, -0.56, 2.7),
-    (0.60, 0.60, 0.90, -0.56, 2.8),
-    (0.30, 0.61, 1.00, -0.55, 2.8),
-    (-0.40, 0.61, 1.00, -0.53, 2.8),
-    (-1.00, 0.58, 0.98, -0.48, 2.7),
-    (-1.60, 0.50, 0.86, -0.36, 2.6),
-    (-2.30, 0.40, 0.70, -0.20, 2.5),
-    (-3.20, 0.29, 0.58, -0.02, 2.4),
-    (-4.20, 0.20, 0.50, 0.12, 2.3),
-    (-5.10, 0.13, 0.45, 0.22, 2.2),
-    (-5.75, 0.07, 0.42, 0.28, 2.2),
+    (2.04, 0.36, 0.30, -0.36, 2.2, 2.2),
+    (1.92, 0.44, 0.38, -0.46, 2.4, 2.4),
+    (1.60, 0.52, 0.48, -0.54, 2.6, 2.6),
+    (1.20, 0.56, 0.58, -0.56, 2.7, 2.7),
+    (0.95, 0.58, 0.72, -0.56, 2.7, 3.2),
+    (0.60, 0.60, 0.97, -0.56, 2.8, 7.0),
+    (0.30, 0.61, 1.00, -0.55, 2.8, 9.0),
+    (-0.40, 0.61, 1.00, -0.53, 2.8, 9.0),
+    (-1.00, 0.58, 0.99, -0.48, 2.7, 8.0),
+    (-1.60, 0.50, 0.86, -0.36, 2.6, 3.5),
+    (-2.30, 0.40, 0.70, -0.20, 2.5, 2.5),
+    (-3.20, 0.29, 0.58, -0.02, 2.4, 2.4),
+    (-4.20, 0.20, 0.50, 0.12, 2.3, 2.3),
+    (-5.10, 0.13, 0.45, 0.22, 2.2, 2.2),
+    (-5.75, 0.07, 0.42, 0.28, 2.2, 2.2),
 ]
 
 
@@ -54,7 +56,7 @@ def smooth_sections(sections, per_span):
         d = sections[min(n - 1, i + 2)]
         for k in range(per_span):
             t = k / per_span
-            out.append(tuple(catmull(a[j], b[j], c[j], d[j], t) for j in range(5)))
+            out.append(tuple(catmull(a[j], b[j], c[j], d[j], t) for j in range(len(b))))
     out.append(sections[-1])
     return out
 
@@ -145,9 +147,9 @@ def build_wing_side(side, mats, root, collection, points=22):
             kit.mirror_y(bm)
         return bm
 
-    main = place(kit.wing_panel(stations_between(0.58, 5.5), points=points, start=0.0, end=0.74, cap_root=True, cap_tip=True))
+    main = place(kit.wing_panel(stations_between(0.0, 5.5), points=points, start=0.0, end=0.74, cap_root=True, cap_tip=True))
     tip_te = place(kit.wing_panel(stations_between(5.2, 5.5), points=points, start=0.74, end=1.0))
-    stub_te = place(kit.wing_panel(stations_between(0.58, 0.66), points=points, start=0.74, end=1.0))
+    stub_te = place(kit.wing_panel(stations_between(0.0, 0.66), points=points, start=0.74, end=1.0))
     kit.merge(main, tip_te, stub_te)
     wing = kit.new_object(f'wing_{side}', main, mats['paint'], parent=root, collection=collection)
 
@@ -306,7 +308,7 @@ def build_cockpit(collection):
     root = bpy.data.objects.new('wren_cockpit', None)
     collection.objects.link(root)
     sections = [s for s in smooth_sections(FUSELAGE, 3) if -2.1 < s[0] < 1.25]
-    inner = [(x, hw - 0.035, top - 0.035, bottom + 0.05, e) for (x, hw, top, bottom, e) in sections]
+    inner = [(x, hw - 0.035, top - 0.035, bottom + 0.05, e, te) for (x, hw, top, bottom, e, te) in sections]
     bm = kit.loft(inner, SEGMENTS, cap_front=True, cap_back=True)
     bmesh.ops.reverse_faces(bm, faces=bm.faces)
     remove = [f for f in bm.faces if window_kind(f.calc_center_median(), -f.normal) is not None]

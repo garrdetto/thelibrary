@@ -5,7 +5,7 @@
  * pilot's controls start with.
  */
 import type { AirportSpec } from '../shared/Airports'
-import { runwayFrame } from '../shared/Airports'
+import { aimDistance, landingEnds, runwayFrame } from '../shared/Airports'
 import type { Ground } from '../shared/Terrain'
 import { FOOT, KNOT, SEA_LEVEL_PRESSURE, createAirSample, sampleAir } from './Atmosphere'
 import type { ControlInput } from './Controls'
@@ -13,9 +13,10 @@ import type { FlightModel } from './FlightModel'
 import { DEG, cos, sin } from './SimMath'
 import { levelTrim } from './Trim'
 
-export type StartKind = 'runway09' | 'runway27' | 'stand' | 'final09' | 'final27' | 'cruise'
+/** Starts on the airport's main runway: end 1 is `runways[0].ends[0]`, end 2 the other one. */
+export type StartKind = 'runway1' | 'runway2' | 'stand' | 'final1' | 'final2' | 'cruise'
 
-export const START_KINDS: readonly StartKind[] = ['runway09', 'runway27', 'stand', 'final09', 'final27', 'cruise']
+export const START_KINDS: readonly StartKind[] = ['runway1', 'runway2', 'stand', 'final1', 'final2', 'cruise']
 
 export interface StartResult {
   throttle: number
@@ -23,6 +24,14 @@ export interface StartResult {
 }
 
 const air = createAirSample()
+const CRUISE_LEAD = 9000
+const CRUISE_CLEARANCE = 450
+
+/** The starts offered at an airport (no final onto a runway end that is not landed on). */
+export function startsAt(airport: AirportSpec): StartKind[] {
+  const ends = landingEnds(airport, airport.runways[0])
+  return START_KINDS.filter((kind) => (kind === 'final1' ? ends.includes(0) : kind === 'final2' ? ends.includes(1) : true))
+}
 
 /** Places `aircraft` for `start` at `airport` and sets the matching pilot levers in `pilot`. */
 export function placeStart(aircraft: FlightModel, pilot: ControlInput, airport: AirportSpec, ground: Ground, start: StartKind): StartResult {
@@ -45,14 +54,14 @@ export function placeStart(aircraft: FlightModel, pilot: ControlInput, airport: 
     const stand = airport.stands[0]
     aircraft.placeOnGround(ground, stand.x, stand.z, stand.heading)
     parkingBrake = true
-  } else if (start === 'runway09' || start === 'runway27') {
-    const along = start === 'runway09' ? 25 : runway.length - 25
-    const heading = start === 'runway09' ? runway.heading : (runway.heading + 180) % 360
+  } else if (start === 'runway1' || start === 'runway2') {
+    const along = start === 'runway1' ? 25 : runway.length - 25
+    const heading = start === 'runway1' ? runway.heading : (runway.heading + 180) % 360
     aircraft.placeOnGround(ground, frame.x0 + frame.dx * along, frame.z0 + frame.dz * along, heading)
-  } else if (start === 'final09' || start === 'final27') {
-    const fromLow = start === 'final09'
+  } else if (start === 'final1' || start === 'final2') {
+    const fromLow = start === 'final1'
     const distance = 3 * 1609
-    const aim = 250
+    const aim = aimDistance(runway)
     const along = fromLow ? aim - distance : runway.length - aim + distance
     const heading = fromLow ? runway.heading : (runway.heading + 180) % 360
     const x = frame.x0 + frame.dx * along
@@ -73,11 +82,18 @@ export function placeStart(aircraft: FlightModel, pilot: ControlInput, airport: 
     pilot.flaps = flapIndex
     throttle = 0.3
   } else {
-    const altitude = 3500 * FOOT
+    const x = frame.x0 - frame.dx * CRUISE_LEAD
+    const z = frame.z0 - frame.dz * CRUISE_LEAD
+    let highest = airport.elevation
+    for (let d = 0; d <= CRUISE_LEAD * 2; d += 250) {
+      const h = ground.heightAt(x + frame.dx * d, z + frame.dz * d)
+      if (h > highest) highest = h
+    }
+    const altitude = Math.max(3500 * FOOT, Math.ceil((highest + CRUISE_CLEARANCE) / (500 * FOOT)) * 500 * FOOT)
     const speed = spec.vSpeeds.cruise * KNOT * 0.95
     sampleAir(altitude, 0, SEA_LEVEL_PRESSURE, air)
     const trim = levelTrim(spec, aircraft.mass, speed, air.density, 0)
-    aircraft.place(airport.x - 9000, altitude, airport.z + 2500, runway.heading, trim.alpha, 0, speed)
+    aircraft.place(x, altitude, z, runway.heading, trim.alpha, 0, speed)
     aircraft.trim = trim.trim
     aircraft.power = 0.72
     throttle = 0.72
@@ -88,5 +104,5 @@ export function placeStart(aircraft: FlightModel, pilot: ControlInput, airport: 
 }
 
 export function startsAirborne(start: StartKind): boolean {
-  return start === 'final09' || start === 'final27' || start === 'cruise'
+  return start === 'final1' || start === 'final2' || start === 'cruise'
 }

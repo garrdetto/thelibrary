@@ -4,6 +4,7 @@
  * re-scoring, which must reproduce the live flight's telemetry and score exactly.
  */
 import type { AircraftSpec } from '../shared/AircraftSpec'
+import { airportById } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
 import type { RecordHeader } from '../shared/FlightRecord'
 import type { Ground } from '../shared/Terrain'
@@ -17,9 +18,13 @@ export class Reflight {
   readonly sim: Simulation
   readonly recorder: FlightRecorder | null
   private next = 0
+  private readonly airport: AirportSpec
   private readonly input = createInput()
 
-  constructor(spec: AircraftSpec, private readonly ground: Ground, private readonly airport: AirportSpec, private readonly header: RecordHeader, private inputs: Uint8Array, record = false) {
+  constructor(spec: AircraftSpec, private readonly ground: Ground, private readonly header: RecordHeader, private inputs: Uint8Array, record = false) {
+    const airport = airportById(header.airport)
+    if (!airport) throw new Error(`Unknown airport ${header.airport}`)
+    this.airport = airport
     this.sim = new Simulation({ aircraft: spec, ground, wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: { ...header.assists } })
     this.recorder = record ? new FlightRecorder() : null
     this.recorder?.attach(this.sim)

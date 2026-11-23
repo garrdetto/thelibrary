@@ -131,6 +131,48 @@
   background: var(--tf-text);
 }
 
+.tf-hud .tf-ils {
+  position: absolute;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  font-size: 12px;
+}
+
+.tf-hud .tf-ils[hidden] { display: none; }
+
+.tf-hud .tf-loc {
+  position: relative;
+  width: 160px;
+  height: 14px;
+  border: 1px solid var(--tf-line);
+  background: var(--tf-panel);
+  border-radius: 6px;
+}
+
+.tf-hud .tf-loc::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 50%;
+  width: 2px;
+  background: var(--tf-text);
+}
+
+.tf-hud .tf-loc b {
+  position: absolute;
+  top: -6px;
+  width: 4px;
+  height: 24px;
+  margin-left: -2px;
+  background: var(--tf-good);
+  border-radius: 2px;
+}
+
 .tf-hud .tf-toast {
   position: absolute;
   bottom: 70px;

@@ -99,6 +99,8 @@ export interface FlightSummary {
 }
 
 export interface CheckrideSetup {
+  /** Checkrides are flown from Harrow Field. */
+  airport: string
   start: StartKind
   wind: WindKind
   time: TimeKind
@@ -140,7 +142,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 3,
     hours: 0.5,
     pilotClass: 'single',
-    setup: { start: 'runway09', wind: 'crosswind', time: 'noon', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway1', wind: 'crosswind', time: 'noon', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, category('landing', 70, 'Landing'), category('procedure', 75, 'Procedure'), { label: 'Total 70 or better', test: (s) => s.total >= 70 }, { label: 'At least 2 minutes flown', test: (s) => s.seconds >= 120 }],
   },
   instrument: {
@@ -151,7 +153,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 8,
     hours: 2,
     pilotClass: 'single',
-    setup: { start: 'final09', wind: 'light', time: 'evening', instrumentsOnly: true },
+    setup: { airport: 'harrow', start: 'final1', wind: 'light', time: 'evening', instrumentsOnly: true },
     criteria: [noAssists, noCrash, onRunway, { label: 'Flown on instruments', test: (s) => s.instrumentsOnly }, category('approach', 80, 'Approach'), metricAtLeast('approach.glidepath', 0.75, 'Glidepath within about 0.8 dots'), metricAtLeast('approach.tracking', 0.75, 'Centreline tracking within about 1.3°'), category('landing', 65, 'Landing')],
   },
   multi: {
@@ -162,7 +164,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 12,
     hours: 5,
     pilotClass: 'multi',
-    setup: { start: 'runway09', wind: 'light', time: 'noon', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway1', wind: 'light', time: 'noon', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, category('landing', 75, 'Landing'), category('procedure', 85, 'Procedure')],
   },
   commercial: {
@@ -173,7 +175,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 20,
     hours: 10,
     pilotClass: 'single',
-    setup: { start: 'runway27', wind: 'gusty', time: 'morning', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway2', wind: 'gusty', time: 'morning', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, noBounce, category('landing', 80, 'Landing'), category('smoothness', 80, 'Smoothness'), category('procedure', 90, 'Procedure'), { label: 'Total 85 or better', test: (s) => s.total >= 85 }],
   },
   atp: {
@@ -184,7 +186,7 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
     level: 35,
     hours: 25,
     pilotClass: 'jet',
-    setup: { start: 'runway09', wind: 'crosswind', time: 'noon', instrumentsOnly: false },
+    setup: { airport: 'harrow', start: 'runway1', wind: 'crosswind', time: 'noon', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, noBounce, category('landing', 85, 'Landing'), category('approach', 85, 'Approach'), category('smoothness', 85, 'Smoothness'), { label: 'Total 90 or better', test: (s) => s.total >= 90 }],
   },
 }

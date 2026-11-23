@@ -18,7 +18,7 @@ const LIGHT = { direction: 90, speed: 3.1, gust: 0, turbulence: 0.12 }
 function fly(start: StartKind, seconds: number, options: { flareHeight?: number; sinkTarget?: number } = {}, warmup = false) {
   const sim = makeSim(LIGHT, 2024)
   if (warmup) {
-    placeStart(sim.aircraft, sim.pilot, HARROW_FIELD, TERRAIN, 'runway09')
+    placeStart(sim.aircraft, sim.pilot, HARROW_FIELD, TERRAIN, 'runway1')
     sim.settle()
     sim.pilot.throttle = 1
     for (let i = 0; i < SIM_HZ * 20; i++) sim.stepPilot()
@@ -39,7 +39,7 @@ function fly(start: StartKind, seconds: number, options: { flareHeight?: number;
     pilot(i / SIM_HZ)
     sim.stepPilot()
   }
-  const data: FlightData = { spec: WREN, airport: HARROW_FIELD, assists: header.assists, telemetry: recorder.telemetryLog(), samples: recorder.samples, touchdowns: recorder.touchdowns, crashed: sim.aircraft.crashed, ended: 'stopped' }
+  const data: FlightData = { spec: WREN, assists: header.assists, telemetry: recorder.telemetryLog(), samples: recorder.samples, touchdowns: recorder.touchdowns, crashed: sim.aircraft.crashed, ended: 'stopped' }
   return { sim, recorder, header, data, score: scoreFlight(data) }
 }
 
@@ -50,7 +50,7 @@ test('band scores between its good and bad thresholds', () => {
 })
 
 test('a stable approach and gentle landing scores well in every category', () => {
-  const { score, sim } = fly('final09', 200)
+  const { score, sim } = fly('final1', 200)
   assert.equal(sim.aircraft.crashed, null)
   assert.ok(score.landing, 'a landing was found')
   assert.equal(score.landing.runway, '09')
@@ -64,8 +64,8 @@ test('a stable approach and gentle landing scores well in every category', () =>
 })
 
 test('a firm, late flare scores lower on the landing', () => {
-  const soft = fly('final09', 200).score
-  const firm = fly('final09', 200, { flareHeight: 1.2, sinkTarget: 2.6 }).score
+  const soft = fly('final1', 200).score
+  const firm = fly('final1', 200, { flareHeight: 1.2, sinkTarget: 2.6 }).score
   const landing = (s: typeof soft) => s.categories.find((c) => c.id === 'landing')?.score ?? 0
   assert.ok(firm.landing && soft.landing && firm.landing.sinkFpm > soft.landing.sinkFpm, `firm ${firm.landing?.sinkFpm} soft ${soft.landing?.sinkFpm}`)
   assert.ok(landing(firm) < landing(soft), `firm ${landing(firm)} soft ${landing(soft)}`)
@@ -81,15 +81,15 @@ test('a flight without a landing scores only smoothness and procedure', () => {
 })
 
 test('a crash scores zero', () => {
-  const { data } = fly('final09', 20)
+  const { data } = fly('final1', 20)
   const score = scoreFlight({ ...data, crashed: 'impact', ended: 'crash' })
   assert.equal(score.total, 0)
   assert.equal(score.grade, 'Crashed')
 })
 
 test('re-flying the input log reproduces the telemetry and the score exactly', () => {
-  const live = fly('final09', 200, {}, true)
-  const replay = new Reflight(WREN, TERRAIN, HARROW_FIELD, live.header, live.recorder.inputLog(), true)
+  const live = fly('final1', 200, {}, true)
+  const replay = new Reflight(WREN, TERRAIN, live.header, live.recorder.inputLog(), true)
   while (replay.step(5000) > 0);
   assert.equal(replay.flown, live.recorder.ticks)
   assert.deepEqual(Array.from(replay.recorder!.telemetryLog()), Array.from(live.recorder.telemetryLog()))
@@ -99,7 +99,7 @@ test('re-flying the input log reproduces the telemetry and the score exactly', (
 })
 
 test('a compressed record decodes to the same log and re-scores identically', async () => {
-  const live = fly('final09', 200)
+  const live = fly('final1', 200)
   const writer = new RecordWriter(live.header)
   for (const chunk of live.recorder.takeFull()) {
     writer.addInputs(chunk.inputs)

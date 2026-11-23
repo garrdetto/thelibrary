@@ -10,6 +10,9 @@ import { ACTION_LABELS, AXIS_ACTIONS, BUTTON_ACTIONS, defaultBindings } from '..
 import type { InputManager } from '../input/InputManager'
 import type { QualityTier } from '../render/Quality'
 import type { CheckrideId } from '../shared/Career'
+import { AIRPORTS, airportById } from '../shared/Airports'
+import type { AirportSpec } from '../shared/Airports'
+import { startsAt } from '../sim/Starts'
 import type { StartKind } from '../sim/Starts'
 
 export type { StartKind }
@@ -17,6 +20,8 @@ export type WindKind = 'calm' | 'light' | 'crosswind' | 'gusty'
 export type TimeKind = 'morning' | 'noon' | 'evening' | 'night'
 
 export interface FlightOptions {
+  /** Airport id. */
+  airport: string
   start: StartKind
   wind: WindKind
   time: TimeKind
@@ -36,13 +41,22 @@ export interface MenuHandlers {
   checkrides(): void
 }
 
-const START_LABELS: Record<StartKind, string> = {
-  runway09: 'Runway 09, ready',
-  runway27: 'Runway 27, ready',
-  stand: 'Parked on the apron',
-  final09: '3 mi final, runway 09',
-  final27: '3 mi final, runway 27',
-  cruise: 'Cruising at 3,500 ft',
+const KIND_LABELS: Record<AirportSpec['kind'], string> = { grass: 'grass strip', ga: 'general aviation', regional: 'regional', cargo: 'cargo', midsize: 'mid-size', hub: 'international hub', challenge: 'mountain field' }
+
+/** Start choices at an airport, named after its main runway's ends. */
+function startLabels(airport: AirportSpec): Partial<Record<StartKind, string>> {
+  const [one, two] = airport.runways[0].ends
+  const labels: Record<StartKind, string> = {
+    runway1: `Runway ${one}, ready`,
+    runway2: `Runway ${two}, ready`,
+    stand: 'Parked on the apron',
+    final1: `3 mi final, runway ${one}`,
+    final2: `3 mi final, runway ${two}`,
+    cruise: 'Cruising toward the field',
+  }
+  const out: Partial<Record<StartKind, string>> = {}
+  for (const kind of startsAt(airport)) out[kind] = labels[kind]
+  return out
 }
 const WIND_LABELS: Record<WindKind, string> = { calm: 'Calm', light: 'Light, 090° 6 kt', crosswind: 'Crosswind, 180° 12 kt', gusty: 'Gusty, 240° 14 G 24 kt' }
 const TIME_LABELS: Record<TimeKind, string> = { morning: 'Morning', noon: 'Midday', evening: 'Sunset', night: 'Night' }
@@ -84,9 +98,10 @@ export class Menus {
   private readonly controls: HTMLDivElement
   private readonly multiplierText: HTMLSpanElement
   private returnTo: 'start' | 'pause' = 'start'
+  private readonly startSlot = make('div')
 
   constructor(private readonly parent: HTMLElement, private readonly input: InputManager, private readonly handlers: MenuHandlers, tier: QualityTier, private readonly aircraftName: string, private readonly career: HTMLElement) {
-    this.options = { start: 'runway09', wind: 'light', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
+    this.options = { airport: 'harrow', start: 'runway1', wind: 'light', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
     this.multiplierText = make('span')
     this.start = this.buildStart()
     this.pause = this.buildPause()
@@ -100,6 +115,26 @@ export class Menus {
     screen.append(card)
     this.parent.append(screen)
     return screen
+  }
+
+  private airportField(): HTMLElement {
+    const select = make('select', { className: 'tf-select' })
+    select.setAttribute('aria-label', 'Airport')
+    for (const airport of AIRPORTS) select.append(make('option', { value: airport.id, textContent: `${airport.name} (${airport.icao}) · ${KIND_LABELS[airport.kind]}` }))
+    select.value = this.options.airport
+    select.addEventListener('change', () => {
+      this.options.airport = select.value
+      this.renderStarts()
+    })
+    this.renderStarts()
+    return make('label', { className: 'tf-field' }, make('span', { textContent: 'Airport' }), select)
+  }
+
+  private renderStarts(): void {
+    const airport = airportById(this.options.airport) ?? AIRPORTS[0]
+    const labels = startLabels(airport) as Record<StartKind, string>
+    if (!(this.options.start in labels)) this.options.start = 'runway1'
+    this.startSlot.replaceChildren(choice('Start', labels, this.options.start, (v) => (this.options.start = v)))
   }
 
   private updateMultiplier(): void {
@@ -125,10 +160,11 @@ export class Menus {
     }
     const card = make('div', { className: 'tf-card' },
       make('h1', { textContent: 'Take Flight' }),
-      make('p', { textContent: `${this.aircraftName} at Harrow Field. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
+      make('p', { textContent: `${this.aircraftName}. Seven airports across a 200 km region, from a grass strip to an international hub. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
       this.career,
       make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides())),
-      choice('Start', START_LABELS, o.start, (v) => (o.start = v)),
+      this.airportField(),
+      this.startSlot,
       choice('Wind', WIND_LABELS, o.wind, (v) => (o.wind = v)),
       choice('Time of day', TIME_LABELS, o.time, (v) => (o.time = v)),
       assists,
