@@ -4,7 +4,7 @@ Career flight simulator (`modules-src/takeflight/`, module id `takeflight`, page
 
 ## Status
 
-Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is in, delivered in four parts: seven airports, floating origin, airport streaming and ILS; weather, clouds, rain and time of day; towns and the city; CDLOD geomorphing with tiles built in a worker. Milestone 5 (more aircraft, the cargo career, liveries) is under way in parts: part 1 (the Arden Duet D2 twin, the hangar, retracting gear, engine failures and the multi-engine checkride) and part 2 (the Corvane Sprite TP-9 turboprop and the Solent Vesta 5 business jet, which unlocks the ATP checkride) are in. Milestones 6–8 (airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is in, delivered in four parts: seven airports, floating origin, airport streaming and ILS; weather, clouds, rain and time of day; towns and the city; CDLOD geomorphing with tiles built in a worker. Milestone 5 (more aircraft, the cargo career, liveries) is under way in parts: part 1 (the Arden Duet D2 twin, the hangar, retracting gear, engine failures and the multi-engine checkride) part 2 (the Corvane Sprite TP-9 turboprop and the Solent Vesta 5 business jet, which unlocks the ATP checkride) and part 3 (the Corvane Haulmaster 2T freighter and the cargo career) are in; liveries and KTX2 textures follow. Milestones 6–8 (airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
 
 **Milestones run back to back (owner, 2026-11-23).** When a milestone's pull request merges, start the next one in the plan without waiting for a prompt, and mark it done in `docs/takeflight/PLAN.md` and here when it merges.
 
@@ -49,6 +49,12 @@ Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, c
 - Jets: turbofan thrust lapses with density and Mach (`1 − 0.55 M + 0.2 M²`), and every aircraft has a transonic drag rise (`aero.machCrit`, default 0.72, and `machDrag`). Fleet cockpits (`build_fleet.py`) end the interior shell open just ahead of the panel so nothing fills the windshield.
 - Retractable gear (`controls.retractable`, `gearTime`) folds in `AircraftVisual`: mains forward, nose aft, hidden when stowed. Contacts marked `retracts` stop touching when up.
 - Engine failures: `FlightSetup.failure` (`{ engine, agl }`) fails that engine once the aircraft climbs through `agl` after take-off; `FlightModel.failedEngine` is part of the snapshot, the dead engine gives windmill drag and its thrust moment goes, and the record header carries it. The multi-engine checkride flies the Duet with engine 2 failing at 120 m and needs `engineFailure` in the summary.
+
+## Cargo career
+
+- `shared/Cargo.ts`: eight contracts a day (UTC), the same for everyone, generated from the day number (`jobsFor`): origin, destination, goods, kg and pay (distance and weight). A contract stays open the day it is offered and the next (`openJob`). `cargoPay` pays 60–100 % of the contract with the score, only for landing on a runway at the destination without a crash.
+- Careers keep `cash` and `cargo` (deliveries, kg). `applyFlight` pays a contract from its id (the Worker regenerates it), refuses loads heavier than the aircraft's `HANGAR` payload (max take-off − empty − default fuel; `tests/career.test.ts` checks it against the JSON) and adds `kg / 20` XP.
+- The Cargo contracts screen (`CareerPanel.showCargo`) offers each contract in the lightest aircraft the pilot may fly that lifts it; the flight starts on the origin's stand with the load as payload (`FlightSetup.payload`, record header `payload` and `job`). The debrief shows the pay or why it was not paid.
 
 ## Careers
 

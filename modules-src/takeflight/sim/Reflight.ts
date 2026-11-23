@@ -25,7 +25,7 @@ export class Reflight {
     const airport = airportById(header.airport)
     if (!airport) throw new Error(`Unknown airport ${header.airport}`)
     this.airport = airport
-    this.sim = new Simulation({ aircraft: spec, ground, wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: { ...header.assists }, weather: header.weather, failure: header.failure ?? null })
+    this.sim = new Simulation({ aircraft: spec, ground, wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: { ...header.assists }, weather: header.weather, failure: header.failure ?? null, payload: header.payload ?? null })
     this.recorder = record ? new FlightRecorder() : null
     this.recorder?.attach(this.sim)
     this.restart()
@@ -48,7 +48,7 @@ export class Reflight {
 
   restart(): void {
     const h = this.header
-    this.sim.reset({ wind: h.wind, seed: h.seed, temperatureOffset: h.temperatureOffset, seaLevelPressure: h.seaLevelPressure, assists: { ...h.assists }, weather: h.weather, failure: h.failure ?? null })
+    this.sim.reset({ wind: h.wind, seed: h.seed, temperatureOffset: h.temperatureOffset, seaLevelPressure: h.seaLevelPressure, assists: { ...h.assists }, weather: h.weather, failure: h.failure ?? null, payload: h.payload ?? null })
     placeStart(this.sim.aircraft, this.sim.pilot, this.airport, this.ground, h.start)
     this.sim.settle()
     this.recorder?.reset(startsAirborne(h.start))

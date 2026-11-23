@@ -1908,5 +1908,45 @@
   "matsBefore": 7,
   "matsAfter": 7,
   "preset": "aircraft"
+ },
+ "takeflight/haulmaster_lod2.glb": {
+  "hash": "da17d1be42a632d3662bb66f9e2f3bfde0e56698",
+  "before": 120188,
+  "after": 82360,
+  "primsBefore": 43,
+  "primsAfter": 35,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "aircraft"
+ },
+ "takeflight/haulmaster_lod1.glb": {
+  "hash": "2c79754aba219451d7028e6308b9b543bcd9af79",
+  "before": 172348,
+  "after": 100568,
+  "primsBefore": 43,
+  "primsAfter": 35,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "aircraft"
+ },
+ "takeflight/haulmaster_cockpit.glb": {
+  "hash": "d262fcf4203ca92f964a616b42029c7653b88adf",
+  "before": 29192,
+  "after": 19196,
+  "primsBefore": 9,
+  "primsAfter": 9,
+  "matsBefore": 5,
+  "matsAfter": 5,
+  "preset": "aircraft"
+ },
+ "takeflight/haulmaster_lod0.glb": {
+  "hash": "7c289739aa85d022b816996d0988c3b32e59b305",
+  "before": 273240,
+  "after": 126716,
+  "primsBefore": 43,
+  "primsAfter": 35,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "aircraft"
  }
 }

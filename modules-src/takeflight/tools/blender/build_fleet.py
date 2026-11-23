@@ -409,7 +409,34 @@ VESTA = {
     'cabin': {'fore': 5.53, 'aft': 3.2, 'panel': (5.45, 0.02, 0.72), 'seat_y': 0.38, 'floor': -0.7, 'floor_half': 0.7},
 }
 
-FLEET = {'duet': DUET, 'sprite': SPRITE, 'vesta': VESTA}
+HAULMASTER = {
+    'name': 'haulmaster',
+    'category': 'cargo',
+    'colors': ((0.9, 0.86, 0.62), (0.2, 0.22, 0.24)),
+    'fuselage': [
+        (8.10, 0.08, 0.30, -0.20, 2.0, 2.0),
+        (7.70, 0.55, 0.85, -0.60, 2.4, 2.6),
+        (6.80, 0.95, 1.40, -0.95, 3.0, 3.6),
+        (5.60, 1.12, 1.62, -1.05, 4.0, 5.0),
+        (3.50, 1.18, 1.70, -1.08, 4.5, 6.0),
+        (-2.50, 1.18, 1.70, -1.08, 4.5, 6.0),
+        (-4.50, 1.05, 1.66, -0.70, 4.0, 5.0),
+        (-6.30, 0.70, 1.60, 0.10, 3.0, 3.6),
+        (-7.80, 0.30, 1.55, 0.95, 2.4, 2.4),
+        (-8.40, 0.08, 1.52, 1.25, 2.0, 2.0),
+    ],
+    'windows': {'front': (6.2, 7.6, 0.75, 0.85), 'side': (5.6, 6.6, 0.75, 1.35)},
+    'stripe': (-0.4, -0.15),
+    'wing': {'span': 19.6, 'root': 2.3, 'tip': 1.35, 'le': 1.55, 'sweep': 1.0, 'z': 1.85, 'dihedral': 1.5, 'flap_start': 1.3, 'flap_end': 6.0, 'airfoil': '4415', 'twist': 1.5},
+    'spoilers': (2.6, 5.4),
+    'tail': {'t_tail': False, 'fin_x': -6.4, 'fin_base': 1.4, 'fin_height': 3.0, 'fin_root': 2.6, 'fin_tip': 1.3, 'fin_sweep': 1.8, 'stab_x': -6.9, 'stab_z': 1.62, 'stab_span': 7.6, 'stab_root': 1.6, 'stab_tip': 0.95, 'stab_sweep': 0.3},
+    'engines': {'kind': 'wing', 'y': [3.0], 'ahead': 1.9, 'nacelle': 0.5, 'radius': 1.4, 'blades': 4, 'spinner': 0.22},
+    'gear': {'retract': True, 'main_x': -0.5, 'main_top_y': 1.25, 'main_top_z': -0.85, 'main_y': 1.35, 'axle_z': -1.55, 'main_radius': 0.42, 'nose_x': 6.3, 'nose_top_z': -0.85, 'nose_radius': 0.3},
+    'doors': {'cargo': (-5.3, 0.0, 0.0, 2.4, 0.02), 'crew': (5.9, 1.19, 0.2, 0.75, 1.3)},
+    'cabin': {'fore': 7.05, 'aft': 5.0, 'panel': (6.97, 0.62, 0.85), 'seat_y': 0.42, 'floor': -0.6, 'floor_half': 0.95},
+}
+
+FLEET = {'duet': DUET, 'sprite': SPRITE, 'vesta': VESTA, 'haulmaster': HAULMASTER}
 
 
 def build(spec, out_dir):

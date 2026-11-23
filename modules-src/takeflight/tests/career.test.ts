@@ -155,3 +155,41 @@ test('stored careers are cleaned up and the hangar index matches the aircraft da
     assert.equal(entry.category, spec.category)
   }
 })
+
+test('cargo contracts are the same for everyone each day, expire after a day and pay only at the destination', async () => {
+  const { dayNumber, jobsFor, openJob, cargoPay } = await import('../shared/Cargo')
+  const now = Date.UTC(2026, 10, 23, 12)
+  const today = dayNumber(now)
+  const jobs = jobsFor(today)
+  assert.equal(jobs.length, 8)
+  assert.deepEqual(jobsFor(today), jobs)
+  for (const job of jobs) assert.ok(job.from !== job.to && job.kg > 0 && job.pay > 0 && job.km > 0)
+  assert.deepEqual(openJob(jobs[3].id, now), jobs[3])
+  assert.deepEqual(openJob(jobs[3].id, now + 86400000), jobs[3], 'still open the next day')
+  assert.equal(openJob(jobs[3].id, now + 2 * 86400000), null, 'gone after two days')
+  const job = jobs[0]
+  assert.equal(cargoPay(job, { crashed: false, total: 100, landedAt: job.to, onRunway: true }), job.pay)
+  assert.equal(cargoPay(job, { crashed: false, total: 0, landedAt: job.to, onRunway: true }), Math.round(job.pay * 0.6))
+  assert.equal(cargoPay(job, { crashed: false, total: 100, landedAt: job.from, onRunway: true }), 0)
+  assert.equal(cargoPay(job, { crashed: true, total: 100, landedAt: job.to, onRunway: true }), 0)
+})
+
+test('a delivered contract pays into the career; one too heavy for the aircraft does not', async () => {
+  const { dayNumber, jobsFor } = await import('../shared/Cargo')
+  const now = Date.UTC(2026, 10, 23, 12)
+  const job = jobsFor(dayNumber(now))[0]
+  const flown = summary({ job: job.id, landing: { tick: 1, airport: job.to, sinkFpm: 150, g: 1.3, centreline: 1, fromAim: 10, bounces: 0, onRunway: true } })
+  const paid = applyFlight(defaultCareer(), flown, { ...CONTEXT, now, payload: 99999 })
+  assert.ok(paid.cargo && paid.cargo.paid > 0 && paid.profile.cash === paid.cargo.paid)
+  assert.equal(paid.profile.cargo.delivered, 1)
+  const heavy = applyFlight(defaultCareer(), flown, { ...CONTEXT, now, payload: job.kg - 1 })
+  assert.equal(heavy.cargo?.paid, 0)
+  assert.equal(heavy.profile.cash, 0)
+})
+
+test('hangar payloads match the aircraft data', () => {
+  for (const spec of FLEET) {
+    const entry = HANGAR.find((h) => h.id === spec.id)!
+    assert.equal(entry.payload, spec.mass.maxTakeoff - spec.mass.empty - spec.mass.defaultFuel, spec.id)
+  }
+})

@@ -75,7 +75,7 @@ export class CareerStore {
 
   async record(summary: FlightSummary): Promise<RecordOutcome> {
     const entry = hangarEntry(summary.aircraft)
-    const context = { now: Date.now(), pilotClass: pilotClassOf(entry?.category ?? 'trainer'), family: entry?.family ?? 'wren', classes: HANGAR_CLASSES }
+    const context = { now: Date.now(), pilotClass: pilotClassOf(entry?.category ?? 'trainer'), family: entry?.family ?? 'wren', classes: HANGAR_CLASSES, payload: entry?.payload }
     const local = applyFlight(this.profile, summary, context)
     if (this.mode === 'guest') {
       this.profile = local.profile

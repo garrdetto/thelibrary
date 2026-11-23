@@ -582,7 +582,8 @@ A career flight simulator. Built from `modules-src/takeflight/index.html` + `ind
 - `sim/Reflight.ts` — re-flies a record from its start or a snapshot (`seek`) with `stepWith`.
 - `shared/AircraftSpec.ts` — Zod schema for aircraft JSON; `shared/aircraft/wren.json` — Halden Wren T4.
 - `shared/Airports.ts` — the seven airports (`layout()` builds all but Harrow), runway frames, `pavementAt`, `aimDistance`, `runwayEndFor`, `landingEnds`, `nearestAirport`. `shared/Approach.ts` — `approachFor`: glideslope and localizer dots for the approach being flown.
-- `shared/Fleet.ts` — parsed aircraft (`FLEET`, `fleetSpec`); `shared/aircraft/duet.json` — Arden Duet D2 twin; `sprite.json` — Corvane Sprite TP-9 turboprop; `vesta.json` — Solent Vesta 5 business jet.
+- `shared/Fleet.ts` — parsed aircraft (`FLEET`, `fleetSpec`); `shared/aircraft/duet.json` — Arden Duet D2 twin; `sprite.json` — Corvane Sprite TP-9 turboprop; `vesta.json` — Solent Vesta 5 business jet; `haulmaster.json` — Corvane Haulmaster 2T freighter.
+- `shared/Cargo.ts` — daily cargo contracts (`jobsFor`, `openJob`, `cargoPay`).
 - `shared/Career.ts` — career rules: XP, levels, licences, `CHECKRIDE_SPECS`, `evaluateCheckride`, Pilot Rating, `applyFlight`, `summarizeFlight`, `normalizeCareer` (also the Worker's `src/server/routes/takeflight.ts`). `shared/Hangar.ts` — aircraft ids, families and categories for the career.
 - `shared/Towns.ts` — seeded towns, city and works (`PLACES`, `buildPlace`, `allPlaces`), `heightLimit` (approach surfaces), `obstacleTop` (building collision for the sim), `townWeight`.
 - `shared/Weather.ts` — weather presets and the changing-weather cycle (`weatherAt`, `weatherWind`, `WEATHER_XP`).

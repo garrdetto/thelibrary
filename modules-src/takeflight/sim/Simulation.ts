@@ -31,6 +31,8 @@ export interface FlightSetup {
   assists: AssistSettings
   /** Weather over the base `wind` (default clear). */
   weather?: WeatherKind
+  /** Payload in kg (default: the aircraft's default payload). */
+  payload?: number | null
   /** An engine that fails once the aircraft has climbed through `agl` metres after take-off (multi-engine checkride). */
   failure?: { engine: number; agl: number } | null
 }
@@ -102,7 +104,7 @@ export class Simulation {
   }
 
   /** Starts a new flight with new conditions on the same aircraft; the caller places it afterwards. */
-  reset(conditions: Pick<FlightSetup, 'wind' | 'seed' | 'temperatureOffset' | 'seaLevelPressure' | 'assists' | 'weather' | 'failure'>): void {
+  reset(conditions: Pick<FlightSetup, 'wind' | 'seed' | 'temperatureOffset' | 'seaLevelPressure' | 'assists' | 'weather' | 'failure' | 'payload'>): void {
     Object.assign(this.setup, conditions)
     this.setup.failure = conditions.failure ?? null
     this.setup.weather = conditions.weather ?? 'clear'
@@ -112,6 +114,8 @@ export class Simulation {
     this.env.seaLevelPressure = conditions.seaLevelPressure
     this.aircraft.reset()
     this.previous.reset()
+    if (conditions.payload !== undefined && conditions.payload !== null) this.aircraft.payload = conditions.payload
+    this.setup.payload = conditions.payload ?? null
     this.accumulator = 0
   }
 

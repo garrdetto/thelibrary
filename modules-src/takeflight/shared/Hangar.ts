@@ -12,13 +12,16 @@ export interface HangarEntry {
   category: AircraftSpec['category']
   /** Licence needed to fly it outside a checkride. */
   requires: LicenceId
+  /** Payload it can lift with its default fuel, kg (max take-off − empty − default fuel). */
+  payload: number
 }
 
 export const HANGAR: readonly HangarEntry[] = [
-  { id: 'halden-wren', family: 'wren', category: 'trainer', requires: 'student' },
-  { id: 'arden-duet', family: 'duet', category: 'twin', requires: 'ppl' },
-  { id: 'corvane-sprite', family: 'sprite', category: 'turboprop', requires: 'instrument' },
-  { id: 'solent-vesta', family: 'vesta', category: 'bizjet', requires: 'commercial' },
+  { id: 'halden-wren', family: 'wren', category: 'trainer', requires: 'student', payload: 280 },
+  { id: 'arden-duet', family: 'duet', category: 'twin', requires: 'ppl', payload: 320 },
+  { id: 'corvane-sprite', family: 'sprite', category: 'turboprop', requires: 'instrument', payload: 700 },
+  { id: 'solent-vesta', family: 'vesta', category: 'bizjet', requires: 'commercial', payload: 1300 },
+  { id: 'corvane-haulmaster', family: 'haulmaster', category: 'cargo', requires: 'commercial', payload: 2200 },
 ]
 
 export function hangarEntry(id: string): HangarEntry | undefined {

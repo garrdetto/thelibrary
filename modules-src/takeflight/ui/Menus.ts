@@ -11,6 +11,7 @@ import type { InputManager } from '../input/InputManager'
 import type { QualityTier } from '../render/Quality'
 import type { CheckrideId } from '../shared/Career'
 import { WEATHER_LABELS } from '../shared/Weather'
+import type { CargoJob } from '../shared/Cargo'
 import type { WeatherKind } from '../shared/Weather'
 import { AIRPORTS, airportById } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
@@ -34,6 +35,8 @@ export interface FlightOptions {
   tier: QualityTier
   /** The checkride being flown, or null for a free flight. */
   checkride: CheckrideId | null
+  /** The cargo contract being flown, or null. */
+  job?: CargoJob | null
 }
 
 export interface MenuHandlers {
@@ -44,6 +47,7 @@ export interface MenuHandlers {
   quit(): void
   quality(tier: QualityTier): void
   checkrides(): void
+  cargo(): void
 }
 
 const KIND_LABELS: Record<AirportSpec['kind'], string> = { grass: 'grass strip', ga: 'general aviation', regional: 'regional', cargo: 'cargo', midsize: 'mid-size', hub: 'international hub', challenge: 'mountain field' }
@@ -168,7 +172,7 @@ export class Menus {
       make('h1', { textContent: 'Take Flight' }),
       make('p', { textContent: `${this.aircraftName} and more as your licences grow. Seven airports across a 200 km region, from a grass strip to an international hub. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
       this.career,
-      make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides())),
+      make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides()), button('Cargo contracts', () => this.handlers.cargo())),
       choice('Aircraft', this.aircraftLabels, this.options.aircraft, (v) => (this.options.aircraft = v)),
       this.noticeLine,
       this.airportField(),

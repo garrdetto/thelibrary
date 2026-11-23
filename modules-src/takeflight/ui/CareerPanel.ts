@@ -5,7 +5,13 @@
  */
 import { CHECKRIDES, CHECKRIDE_SPECS, CLASS_LABELS, LICENCE_LABELS, PILOT_CLASSES, checkrideAvailability, classRating, currentLicence, hoursTotal, levelFor, levelProgress, pilotRating, xpForLevel } from '../shared/Career'
 import type { CareerProfile, CheckrideId } from '../shared/Career'
-import { HANGAR_CLASSES } from '../shared/Hangar'
+import { HANGAR, HANGAR_CLASSES } from '../shared/Hangar'
+import { airportById } from '../shared/Airports'
+import { dayNumber, jobsFor } from '../shared/Cargo'
+import type { CargoJob } from '../shared/Cargo'
+import { fleetSpec } from '../shared/Fleet'
+
+const money = (value: number) => '$' + value.toLocaleString('en-US')
 import type { CareerMode, RecordOutcome } from '../game/CareerStore'
 
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
@@ -38,6 +44,7 @@ function xpBar(xp: number): HTMLElement {
 
 export interface CareerPanelHandlers {
   checkride(id: CheckrideId): void
+  cargo(job: CargoJob, aircraft: string): void
   back(): void
 }
 
@@ -78,6 +85,8 @@ export class CareerPanel {
     add('Hours', hoursTotal(profile).toFixed(1))
     add('Flights', String(profile.flights))
     add('Landings', String(profile.landings))
+    add('Earnings', money(profile.cash))
+    add('Deliveries', String(profile.cargo.delivered))
     this.summary.replaceChildren(head, xpBar(profile.xp), stats)
   }
 
@@ -121,6 +130,38 @@ export class CareerPanel {
     ;(card.querySelector('.tf-btn.primary') as HTMLButtonElement | null ?? back).focus({ preventScroll: true })
   }
 
+  /** Today's cargo contracts, each with the lightest aircraft the pilot may fly that can lift the load. */
+  showCargo(profile: CareerProfile): void {
+    const card = this.card
+    card.replaceChildren(make('h2', '', 'Cargo contracts'))
+    card.append(make('p', '', `Today's contracts. Fly the load to its destination and land on the runway; the pay rises with your score. Earnings so far: ${money(profile.cash)}.`))
+    const list = make('div', 'tf-ride-list')
+    const flyable = HANGAR.filter((entry) => profile.licences.includes(entry.requires)).sort((a, b) => a.payload - b.payload)
+    for (const job of jobsFor(dayNumber(Date.now()))) {
+      const from = airportById(job.from)
+      const to = airportById(job.to)
+      const aircraft = flyable.find((entry) => entry.payload >= job.kg)
+      const item = make('section', `tf-ride${aircraft ? ' ready' : ''}`)
+      const title = make('h3', '', `${from?.name ?? job.from} → ${to?.name ?? job.to}`)
+      title.append(make('small', '', ` · ${money(job.pay)}`))
+      item.append(title, make('p', '', `${job.kg.toLocaleString('en-US')} kg of ${job.goods} · ${job.km.toFixed(0)} km`))
+      if (aircraft) {
+        const spec = fleetSpec(aircraft.id)
+        item.append(make('small', 'tf-muted', `Fly it in the ${spec ? spec.name : aircraft.id}. `), button('Fly this contract', () => this.handlers.cargo(job, aircraft.id), 'tf-btn primary'))
+      } else {
+        const needed = HANGAR.filter((entry) => entry.payload >= job.kg).sort((a, b) => a.payload - b.payload)[0]
+        item.append(make('small', 'tf-reasons', needed ? `Needs an aircraft that lifts ${job.kg} kg: the ${fleetSpec(needed.id)?.name ?? needed.id} (${LICENCE_LABELS[needed.requires]}).` : 'Too heavy for any aircraft in the hangar.'))
+      }
+      list.append(item)
+    }
+    const back = button('Back', () => this.handlers.back(), 'tf-btn')
+    card.append(list, make('div', 'tf-row'))
+    ;(card.lastElementChild as HTMLElement).append(back)
+    this.screen.hidden = false
+    this.screen.scrollTop = 0
+    ;(card.querySelector('.tf-btn.primary') as HTMLButtonElement | null ?? back).focus({ preventScroll: true })
+  }
+
   hide(): void {
     this.screen.hidden = true
   }
@@ -148,6 +189,12 @@ export class CareerPanel {
       }
       ride.append(list)
       if (r.licence) ride.append(make('p', 'tf-good', `${LICENCE_LABELS[r.licence]} earned. +${r.checkride.bonus} XP`))
+      block.append(ride)
+    }
+    if (r.cargo) {
+      const ride = make('div', `tf-ride-result ${r.cargo.paid > 0 ? 'pass' : 'fail'}`)
+      ride.append(make('h4', '', r.cargo.paid > 0 ? `Delivered: +${money(r.cargo.paid)}` : 'Contract not delivered'))
+      ride.append(make('p', '', `${r.cargo.job.kg.toLocaleString('en-US')} kg of ${r.cargo.job.goods} for ${airportById(r.cargo.job.to)?.name ?? r.cargo.job.to}.${r.cargo.reason ? ` ${r.cargo.reason}` : ''}`))
       block.append(ride)
     }
     if (outcome.message) block.append(make('p', 'tf-bad', outcome.message))
