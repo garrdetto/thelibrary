@@ -9,6 +9,9 @@ import { HANGAR, HANGAR_CLASSES } from '../shared/Hangar'
 import { airportById } from '../shared/Airports'
 import { dayNumber, jobsFor } from '../shared/Cargo'
 import type { CargoJob } from '../shared/Cargo'
+import { AIRLINES, AIRLINE_IDS, RANKS, averageScore, nextRank, promotionGaps, rankOf, routesFor } from '../shared/Airlines'
+import type { AirlineId, AirlineRoute } from '../shared/Airlines'
+import { airlineBarriers } from '../shared/Career'
 import { fleetSpec } from '../shared/Fleet'
 
 const money = (value: number) => '$' + value.toLocaleString('en-US')
@@ -45,6 +48,9 @@ function xpBar(xp: number): HTMLElement {
 export interface CareerPanelHandlers {
   checkride(id: CheckrideId): void
   cargo(job: CargoJob, aircraft: string): void
+  route(route: AirlineRoute, aircraft: string): void
+  join(id: AirlineId): void
+  leave(): void
   back(): void
 }
 
@@ -87,6 +93,7 @@ export class CareerPanel {
     add('Landings', String(profile.landings))
     add('Earnings', money(profile.cash))
     add('Deliveries', String(profile.cargo.delivered))
+    if (profile.airline) add('Airline', `${rankOf(profile.airline.rank).title}, ${AIRLINES[profile.airline.id].name}`)
     this.summary.replaceChildren(head, xpBar(profile.xp), stats)
   }
 
@@ -162,6 +169,64 @@ export class CareerPanel {
     ;(card.querySelector('.tf-btn.primary') as HTMLButtonElement | null ?? back).focus({ preventScroll: true })
   }
 
+  /** The airlines: join one, see the rank ladder and fly today's scheduled routes. */
+  showAirlines(profile: CareerProfile, message: string | null = null): void {
+    const card = this.card
+    card.replaceChildren(make('h2', '', 'Airlines'))
+    card.append(make('p', '', 'Fly scheduled routes for an airline: depart from the stand, land on the runway at the destination, and arrive inside the block time for a 20 % bonus. Airline flights, hours and scores earn promotion from First Officer to Chief Pilot, and each rank pays more.'))
+    if (message) card.append(make('p', 'tf-bad', message))
+    const member = profile.airline
+    if (member) {
+      const airline = AIRLINES[member.id]
+      const rank = rankOf(member.rank)
+      const next = nextRank(member.rank)
+      const status = make('section', 'tf-ride ready')
+      const title = make('h3', '', `${rank.title}, ${airline.name}`)
+      title.append(make('small', '', ` · pay ×${rank.pay.toFixed(2)}`))
+      status.append(title)
+      status.append(make('p', '', `${member.flights} airline flights · ${(member.seconds / 3600).toFixed(1)} h · ${member.onTime} on time · average score ${Math.round(averageScore(member.scores))} · earned ${money(member.earned)}`))
+      const gaps = promotionGaps(member)
+      status.append(make('small', next ? 'tf-reasons' : 'tf-muted', next ? `Next: ${next.title} after ${gaps.join(', ')}.` : 'You hold the top rank.'))
+      card.append(status)
+      const list = make('div', 'tf-ride-list')
+      const flyable = HANGAR.filter((entry) => airline.fleet.includes(entry.family) && profile.licences.includes(entry.requires))
+      for (const route of routesFor(member.id, dayNumber(Date.now()))) {
+        const item = make('section', `tf-ride${flyable.length > 0 ? ' ready' : ''}`)
+        const head = make('h3', '', `${route.flight}: ${airportById(route.from)?.name ?? route.from} → ${airportById(route.to)?.name ?? route.to}`)
+        head.append(make('small', '', ` · ${money(Math.round(route.pay * rank.pay))}`))
+        item.append(head, make('p', '', `${route.passengers} passengers · ${route.km.toFixed(0)} km · block ${route.block} min`))
+        for (const entry of flyable) item.append(button(`Fly in the ${fleetSpec(entry.id)?.name ?? entry.id}`, () => this.handlers.route(route, entry.id), 'tf-btn primary'))
+        if (flyable.length === 0) item.append(make('small', 'tf-reasons', 'No aircraft in this fleet that your licences allow.'))
+        list.append(item)
+      }
+      card.append(make('h3', '', 'Today’s schedule'), list)
+    }
+    const others = make('div', 'tf-ride-list')
+    for (const id of AIRLINE_IDS) {
+      if (member && member.id === id) continue
+      const airline = AIRLINES[id]
+      const barriers = airlineBarriers(profile, id)
+      const item = make('section', `tf-ride${barriers.length === 0 ? ' ready' : ''}`)
+      item.append(make('h3', '', airline.name), make('p', '', `${airline.blurb} Fleet: ${HANGAR.filter((entry) => airline.fleet.includes(entry.family)).map((entry) => fleetSpec(entry.id)?.name ?? entry.id).join(', ')}.`))
+      if (barriers.length > 0) item.append(make('small', 'tf-reasons', barriers.join(' ')))
+      else item.append(button(member ? `Move to ${airline.name}` : `Join ${airline.name}`, () => this.handlers.join(id), 'tf-btn'))
+      if (member && barriers.length === 0) item.append(make('small', 'tf-muted', ' Moving starts again as First Officer.'))
+      others.append(item)
+    }
+    card.append(make('h3', '', member ? 'Other airlines' : 'Choose an airline'), others)
+    const ladder = make('ol', 'tf-muted')
+    for (const rank of RANKS) ladder.append(make('li', '', rank.flights === 0 ? `${rank.title}: on joining` : `${rank.title}: ${rank.flights} flights, ${rank.hours} h, average score ${rank.score}`))
+    card.append(make('h3', '', 'Ranks'), ladder)
+    const row = make('div', 'tf-row')
+    if (member) row.append(button('Leave the airline', () => this.handlers.leave(), 'tf-btn'))
+    const back = button('Back', () => this.handlers.back(), 'tf-btn')
+    row.append(back)
+    card.append(row)
+    this.screen.hidden = false
+    this.screen.scrollTop = 0
+    ;(card.querySelector('.tf-btn.primary') as HTMLButtonElement | null ?? back).focus({ preventScroll: true })
+  }
+
   hide(): void {
     this.screen.hidden = true
   }
@@ -195,6 +260,14 @@ export class CareerPanel {
       const ride = make('div', `tf-ride-result ${r.cargo.paid > 0 ? 'pass' : 'fail'}`)
       ride.append(make('h4', '', r.cargo.paid > 0 ? `Delivered: +${money(r.cargo.paid)}` : 'Contract not delivered'))
       ride.append(make('p', '', `${r.cargo.job.kg.toLocaleString('en-US')} kg of ${r.cargo.job.goods} for ${airportById(r.cargo.job.to)?.name ?? r.cargo.job.to}.${r.cargo.reason ? ` ${r.cargo.reason}` : ''}`))
+      block.append(ride)
+    }
+    if (r.airline) {
+      const a = r.airline
+      const ride = make('div', `tf-ride-result ${a.paid > 0 ? 'pass' : 'fail'}`)
+      ride.append(make('h4', '', a.paid > 0 ? `${a.route.flight} arrived: +${money(a.paid)}${a.onTime ? ' (on time)' : ''}` : `${a.route.flight} not completed`))
+      ride.append(make('p', '', `${a.route.passengers} passengers for ${airportById(a.route.to)?.name ?? a.route.to}, block ${a.route.block} min.${a.reason ? ` ${a.reason}` : ''}`))
+      if (a.promoted) ride.append(make('p', 'tf-good', `Promoted to ${rankOf(a.promoted).title}.`))
       block.append(ride)
     }
     if (outcome.message) block.append(make('p', 'tf-bad', outcome.message))

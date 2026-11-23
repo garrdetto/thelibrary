@@ -3,7 +3,8 @@
  * with the shared rules and returns the result), otherwise in this browser for guests. `record` applies a flight and resolves
  * to what changed; a failed save keeps the local result and says so.
  */
-import { applyFlight, defaultCareer, normalizeCareer, pilotClassOf } from '../shared/Career'
+import { applyFlight, defaultCareer, joinAirline, leaveAirline, normalizeCareer, pilotClassOf } from '../shared/Career'
+import type { AirlineId } from '../shared/Airlines'
 import type { CareerProfile, FlightResult, FlightSummary } from '../shared/Career'
 import { HANGAR_CLASSES, hangarEntry } from '../shared/Hangar'
 
@@ -71,6 +72,38 @@ export class CareerStore {
       this.mode = 'guest'
     }
     this.changed()
+  }
+
+  /** Joins (or moves to) an airline; resolves to an error message, or null when it worked. */
+  async joinAirline(id: AirlineId): Promise<string | null> {
+    const local = joinAirline(this.profile, id, Date.now())
+    if (local.error) return local.error
+    return this.change(local.profile, { action: 'join', airline: id })
+  }
+
+  async leaveAirline(): Promise<string | null> {
+    return this.change(leaveAirline(this.profile), { action: 'leave' })
+  }
+
+  private async change(profile: CareerProfile, body: Record<string, unknown>): Promise<string | null> {
+    if (this.mode === 'guest') {
+      this.profile = profile
+      const saved = writeGuest(profile)
+      this.changed()
+      return saved ? null : 'This browser would not keep the career.'
+    }
+    try {
+      const response = await fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const reply = (await response.json().catch(() => ({}))) as { ok?: boolean; profile?: unknown; error?: string }
+      if (response.ok && reply.ok && reply.profile) {
+        this.profile = normalizeCareer(reply.profile)
+        this.changed()
+        return null
+      }
+      return reply.error ?? 'The career could not be saved.'
+    } catch {
+      return 'The career could not be saved: no connection.'
+    }
   }
 
   async record(summary: FlightSummary): Promise<RecordOutcome> {

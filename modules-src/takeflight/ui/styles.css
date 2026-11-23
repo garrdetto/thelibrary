@@ -418,3 +418,35 @@
 
 .tf-card p.tf-notice { color: var(--tf-warn); margin: -4px 0 10px; }
 .tf-card p.tf-notice[hidden] { display: none; }
+
+.tf-hud .tf-radio {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(620px, calc(100vw - 340px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.tf-hud .tf-radio p {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: var(--tf-radius);
+  background: var(--tf-panel);
+  border: 1px solid var(--tf-line);
+  font-size: 13px;
+  line-height: 1.35;
+  text-shadow: none;
+}
+
+.tf-hud .tf-radio b { color: var(--tf-accent); font-weight: 600; }
+
+.tf-hud.minimal .tf-radio p:not(:last-child) { display: none; }
+
+@media (max-width: 720px) {
+  .tf-hud .tf-radio { top: auto; bottom: 120px; width: calc(100vw - 32px); }
+  .tf-hud .tf-radio p { font-size: 12px; }
+}

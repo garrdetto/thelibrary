@@ -68,6 +68,10 @@ import { allPlaces } from '../shared/Towns'
 import { World } from './World'
 import { FlightSession } from './FlightSession'
 import { TouchdownReplay } from './TouchdownReplay'
+import { Radio } from './Radio'
+import { TrafficView } from '../render/TrafficView'
+import type { RadioConditions } from './Radio'
+import { AIRLINES } from '../shared/Airlines'
 
 export interface BootProgress {
   (share: number, text: string): void
@@ -104,11 +108,14 @@ export class Standalone {
   private readonly careerPanel: CareerPanel
   private instrumentsOnly = false
   private failureAnnounced = false
+  private radio!: Radio
+  private readonly radioConditions: RadioConditions = { hours: 12, wind: { direction: 0, speed: 0, gust: 0, turbulence: 0 }, weather: null as unknown as RadioConditions['weather'], temperatureOffset: 0, pressure: SEA_LEVEL_PRESSURE }
   private submittedSeconds = 0
   private atmosphere!: Atmosphere
   private pipeline: WorldPipeline | null = null
   private terrain!: TerrainRenderer
   private world!: World
+  private traffic!: TrafficView
   private weather!: WeatherView
   private towerAirport: AirportSpec = HARROW_FIELD
   private water!: Mesh
@@ -144,6 +151,7 @@ export class Standalone {
     this.input = this.scope.track(new InputManager(canvas))
     this.hud = this.scope.track(new Hud(ui))
     this.hud.setVisible(false)
+    this.radio = new Radio(this.hud.radio)
     this.dev = this.scope.track(new DevOverlay(ui, this.scene, engine, {
       simMs: () => this.simMs,
       assets: () => this.assets.stats,
@@ -155,7 +163,17 @@ export class Standalone {
       checkride: (id) => this.startCheckride(id),
       cargo: (job, aircraft) => {
         this.careerPanel.hide()
-        this.startFlight({ ...this.menus.options, aircraft, airport: job.from, start: 'stand', checkride: null, job })
+        this.startFlight({ ...this.menus.options, aircraft, airport: job.from, start: 'stand', checkride: null, job, route: null })
+      },
+      route: (route, aircraft) => {
+        this.careerPanel.hide()
+        this.startFlight({ ...this.menus.options, aircraft, airport: route.from, start: 'stand', checkride: null, job: null, route })
+      },
+      join: (id) => {
+        void this.career.joinAirline(id).then((error) => this.careerPanel.showAirlines(this.career.profile, error))
+      },
+      leave: () => {
+        void this.career.leaveAirline().then((error) => this.careerPanel.showAirlines(this.career.profile, error))
       },
       back: () => {
         this.careerPanel.hide()
@@ -178,6 +196,10 @@ export class Standalone {
       cargo: () => {
         this.menus.hide()
         this.careerPanel.showCargo(this.career.profile)
+      },
+      airlines: () => {
+        this.menus.hide()
+        this.careerPanel.showAirlines(this.career.profile)
       },
     }, this.tier, `${this.spec.maker} ${this.spec.name}`, this.careerPanel.summary, Object.fromEntries(FLEET.map((spec) => [spec.id, `${spec.maker} ${spec.name}`]))))
     this.session = new FlightSession(this.sim)
@@ -237,6 +259,7 @@ export class Standalone {
     this.world = new World(scene)
     this.scope.defer(() => this.world.dispose())
     this.terrain = this.scope.track(new TerrainRenderer(scene, quality, this.world.root))
+    this.traffic = this.scope.track(new TrafficView(scene, this.assets, this.world.root))
     this.water = this.buildWater()
     report(0.45, 'Painting the runway…')
     this.world.updateAirports(0, 0)
@@ -388,12 +411,14 @@ export class Standalone {
     this.replay.stop()
     this.debrief.hide()
     if (this.phase === 'flying' || this.phase === 'paused') this.session.abandon()
-    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists }, weather: options.weather, failure: ride?.setup.failure ?? null, payload: options.job ? options.job.kg : null, job: options.job ? options.job.id : null }
+    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists }, weather: options.weather, failure: ride?.setup.failure ?? null, payload: options.job ? options.job.kg : options.route ? options.route.passengers * 90 : null, job: options.job ? options.job.id : null, route: options.route ? options.route.id : null }
     this.sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: this.options.assists, weather: header.weather, failure: header.failure, payload: header.payload })
     this.placeAt(airport, options.start)
     this.showAround(airport)
     this.session.begin(header)
     this.weather.start(HOURS[options.time], airport.elevation)
+    const callsign = options.route ? `${AIRLINES[options.route.airline].name.split(' ')[0]} ${options.route.flight.split(' ')[1]}` : this.spec.name
+    this.radio.begin(airport, options.route?.to ?? options.job?.to ?? null, options.start, callsign, this.conditions())
     this.lightsOn = options.time === 'night' || options.time === 'evening'
     this.sim.paused = false
     this.phase = 'flying'
@@ -403,6 +428,7 @@ export class Standalone {
     this.hud.setVisible(true)
     this.setView(options.start === 'stand' ? 'cockpit' : 'chase')
     if (options.job) this.hud.toast(`Cargo: ${options.job.kg.toLocaleString('en-US')} kg of ${options.job.goods} to ${airportById(options.job.to)?.name ?? options.job.to}. Release the parking brake (P) and go.`, 8)
+    else if (options.route) this.hud.toast(`${options.route.flight} to ${airportById(options.route.to)?.name ?? options.route.to}: ${options.route.passengers} passengers, block ${options.route.block} min. Release the parking brake (P) and go.`, 8)
     else if (ride) this.hud.toast(`${ride.title}: ${ride.brief}`, 8)
     else this.hud.toast(options.start === 'stand' ? `Parking brake set: P releases it. Taxi to runway ${airport.runways[0].ends[0]} via A.` : options.start.startsWith('final') ? 'On a 3-mile final: follow the PAPI, two white and two red.' : `Cleared for take-off: full throttle, rotate at ${this.sim.aircraft.spec.vSpeeds.vr} kt.`, 5)
     this.canvas.focus()
@@ -418,8 +444,19 @@ export class Standalone {
   }
 
   /** Ends the flight and opens its debrief. */
+  private conditions(): RadioConditions {
+    const c = this.radioConditions
+    c.hours = this.weather.hours
+    c.wind = this.sim.env.wind.spec
+    c.weather = this.sim.weather
+    c.temperatureOffset = this.sim.env.temperatureOffset
+    c.pressure = this.sim.env.seaLevelPressure
+    return c
+  }
+
   private endFlight(reason: EndReason): void {
     if (this.phase !== 'flying' && this.phase !== 'paused') return
+    this.radio.end()
     this.phase = 'debrief'
     this.sim.paused = true
     this.input.enabled = false
@@ -430,7 +467,7 @@ export class Standalone {
     const checkride = options?.checkride ?? null
     this.debrief.show(score, this.session.recorder.telemetryLog(), { canContinue: reason !== 'crash' && !this.sim.aircraft.crashed && checkride === null, aircraft: `${this.spec.maker} ${this.spec.name}`, airport: (airportById(score.landing?.airport ?? options?.airport ?? '') ?? HARROW_FIELD).name, checkride: checkride ? CHECKRIDE_SPECS[checkride].title : null })
     if (options) {
-      const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: options.airport, start: options.start, wind: options.wind, weather: options.weather, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, engineFailure: this.sim.aircraft.failedEngine >= 0, checkride, job: options.job && this.submittedSeconds === 0 ? options.job.id : null })
+      const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: options.airport, start: options.start, wind: options.wind, weather: options.weather, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, engineFailure: this.sim.aircraft.failedEngine >= 0, checkride, job: options.job && this.submittedSeconds === 0 ? options.job.id : null, route: options.route && this.submittedSeconds === 0 ? options.route.id : null })
       this.submittedSeconds = score.seconds
       void this.career.record(summary).then((outcome) => {
         if (this.session.score === score) this.debrief.setCareer(CareerPanel.outcome(outcome, this.career.mode))
@@ -538,11 +575,13 @@ export class Standalone {
     else if (action === 'flapsUp') pilot.flaps = Math.max(0, pilot.flaps - 1)
     else if (action === 'gear') {
       if (this.spec.controls.retractable) pilot.gear = pilot.gear >= 0.5 ? 0 : 1
-      else this.hud.toast('The Wren has fixed gear')
+      else this.hud.toast(`The ${this.spec.name} has fixed gear`)
     } else if (action === 'parkingBrake') {
       this.parkingBrake = !this.parkingBrake
       pilot.parkingBrake = this.parkingBrake ? 1 : 0
       this.hud.toast(this.parkingBrake ? 'Parking brake set' : 'Parking brake released')
+    } else if (action === 'atis') {
+      this.radio.atis(this.sim.aircraft.px, this.sim.aircraft.pz, this.conditions())
     } else if (action === 'view') {
       const next = VIEW_ORDER[(VIEW_ORDER.indexOf(this.cameras.mode) + 1) % VIEW_ORDER.length]
       this.setView(next)
@@ -618,6 +657,7 @@ export class Standalone {
     const eyeZ = camera.position.z + this.world.originZ
     this.world.updateAirports(eyeX, eyeZ)
     this.world.updateTowns(eyeX, eyeZ, this.atmosphere.night)
+    this.traffic.update(eyeX, eyeZ, this.weather.hours * 3600, sim.env.wind.spec.direction, sim.env.wind.spec.speed)
     this.terrain.update(eyeX, camera.position.y, eyeZ)
     this.atmosphere.update(camera.position)
     this.weather.update(dt, shown, camera.position, this.world.originX, this.world.originZ, this.phase === 'flying')
@@ -633,6 +673,7 @@ export class Standalone {
     this.dev.update(frameMs, dt)
     this.resolution.update(performance.now(), this.engine.getFps())
     if (this.phase === 'flying') {
+      this.radio.update(aircraft, this.parkingBrake, this.conditions(), this.traffic.current)
       if (aircraft.failedEngine >= 0 && !this.failureAnnounced) {
         this.failureAnnounced = true
         this.hud.toast(`Engine ${aircraft.failedEngine + 1} failed: rudder toward the live engine, keep the speed, fly the circuit and land`, 7)
