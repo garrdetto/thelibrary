@@ -172,7 +172,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `park2` | Babylon.js 9.34.0 (WebGPU, WebGL2 fallback) behind the `park` renderer's backend interface | `src/lib/park2/` (models, simulation and HUD shared with `park`) |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
-| `2048`, `helicopter`, `alphabet`, `wpm`, `tetradrop`, `bubbles`, `memory`, `simon`, `sudoku`, `minesweeper`, `mathrush`, `blockhead`, `songmaker`, `foodchain`, `keep`, `giant`, `cookies`, `hotdog` | 2D canvas / DOM | `public/modules/<id>.html` (static, shared `module-base.css`) |
+| `2048`, `helicopter`, `alphabet`, `wpm`, `tetradrop`, `bubbles`, `memory`, `simon`, `sudoku`, `minesweeper`, `mathrush`, `blockhead`, `songmaker`, `foodchain`, `keep`, `giant`, `gonefishing`, `cookies`, `hotdog` | 2D canvas / DOM | `public/modules/<id>.html` (static, shared `module-base.css`) |
 | `party` | DOM + 2D canvas, bundled PeerJS | `modules-src/party/` |
 | `pingpong` | 2D canvas (projected 3D), bundled PeerJS | `modules-src/pingpong/` |
 
@@ -760,6 +760,7 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `public/modules/foodchain.html` — Food Chain: eat smaller fish to grow, stages, jellyfish and shark hazards, combo scoring, score — hub iframe.
 - `public/modules/keep.html` — Hold the Keep: grab-and-fling wall defense, six raider types, fall damage and bowling hits, between-wave shop (repair, wall, moat, archers), score — hub iframe.
 - `public/modules/giant.html` — Giant's Hand: ninety-second toss round, height and airtime scoring, mid-air catch juggle multiplier, balloons and a moving hoop, score — hub iframe.
+- `public/modules/gonefishing.html` — Gone Fishing: a polar bear swats fish leaping from an ice hole; contact height sets launch angle and power, fish fly nose-first with drag and wind, bounce depending on impact angle and slide to a stop; five fish a round, longest distance (tenths of feet) to the board; Original or WICS colours. Sprites in `public/modules/gonefishing/*.webp` are Cycles renders made by `scripts/gonefishing-art.py` (Blender `bpy`), never drawn by hand.
 - `public/modules/cookies.html` — Cookie Factory: five-minute timed clicker (seven production lines at 15% price growth, doubling upgrades, golden cookies, 16 clicks/s cap), total baked as score — hub iframe.
 - `public/modules/hotdog.html` — Corner Cart: thirty-day cart business (forecast, three corners with rent, sausages that spoil, buns that keep a day, toppings, price, grill/canopy/sign upgrades, reputation), final cash as score — hub iframe.
 
