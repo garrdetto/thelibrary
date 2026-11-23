@@ -12,6 +12,7 @@
  * the dock) is Rack & Reel's own, moved onto Lake Montello (lake/LakeSite.ts); the UTV, the quad and the boat come
  * only when the account owns them (`Account.rides`).
  */
+import { LifeSimTrucks } from '../trucks/LifeSimTrucks'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
@@ -114,6 +115,8 @@ export class FoxLakeTown implements GameExtension {
   readonly drivesClock = true
   private host!: GameHost
   private root!: TransformNode
+  /** Truck Simulator in Montello (`?trucks`), or null. */
+  private trucks: LifeSimTrucks | null = null
   private gfx!: TownGfx
   private physics!: Physics
   private mats!: Mats
@@ -239,6 +242,11 @@ export class FoxLakeTown implements GameExtension {
     const sky = scene.getMeshByName('sky') as Mesh | null
     if (sky) this.gfx.bakeSky(sky)
     this.cars = new Cars(scene, this.physics, this.models, host.vehicles)
+    if (new URLSearchParams(location.search).has('trucks')) {
+      const physics = this.physics
+      this.trucks = new LifeSimTrucks(host, this.root, physics, (x, z) => this.land.heightAt(x, -z), (b) => physics.addStaticBox({ cx: b.x, cy: b.y, cz: b.z, hx: b.hx, hy: b.hy, hz: b.hz, rotY: b.rotY }), (c) => physics.removeStatic(c))
+      void this.trucks.start().catch((error) => console.error('Truck Simulator could not start in Montello', error))
+    }
     this.cars.ground = (x, z) => this.land.heightAt(x, -z)
     this.cars.onImpact = (kind, dv, at) => {
       if (this.account?.garage.includes(kind as never)) this.send({ t: 'crash', kind: kind as never, dv, at })
@@ -488,15 +496,19 @@ export class FoxLakeTown implements GameExtension {
 
   update(dt: number): void {
     if (!this.cars) return
-    this.acc += dt
-    let steps = 0
-    while (this.acc >= STEP && steps < MAX_STEPS) {
-      this.fixed(STEP)
-      this.acc -= STEP
-      steps++
+    const run = () => {
+      this.acc += dt
+      let steps = 0
+      while (this.acc >= STEP && steps < MAX_STEPS) {
+        this.fixed(STEP)
+        this.acc -= STEP
+        steps++
+      }
+      if (steps === MAX_STEPS) this.acc = 0
+      this.physics.interpolate(this.acc / STEP)
     }
-    if (steps === MAX_STEPS) this.acc = 0
-    this.physics.interpolate(this.acc / STEP)
+    if (this.trucks) this.trucks.frame(dt, run)
+    else run()
     this.cars.syncAll()
     const night = this.host.lighting.night
     this.cars.visuals(night)
@@ -542,6 +554,7 @@ export class FoxLakeTown implements GameExtension {
     pts.push({ x: t.x, z: t.z })
     const drive = pts.length
     this.cars.focusPoints(pts)
+    this.trucks?.focus(pts)
     this.montello.solidTrees(pts.slice(drive))
     this.physics.stream(pts, dt)
     this.wading?.step(dt)
@@ -672,6 +685,15 @@ export class FoxLakeTown implements GameExtension {
     const lot = this.lotForSale()
     if (lot) return `E — Buy lot ${lot.id} for $${lotPrice(lot).toLocaleString()}`
     return ''
+  }
+
+  /** E in a land vehicle: the truck keeps it while one of its prompts is showing. */
+  claimsInteract(): boolean {
+    return this.trucks?.claimsInteract() ?? false
+  }
+
+  vehiclePrompt(): string {
+    return this.trucks?.prompt() ?? ''
   }
 
   interact(): boolean {
