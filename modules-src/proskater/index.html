@@ -429,14 +429,18 @@ const CONFIG = Object.freeze({
   wallRestitution: 0.35,
   vertSlope: 1.43,         // tan(55°): launches above this go straight up (vert)
   vertInward: 0.25,        // m/s drift back into the ramp on vert airs
-  landAlign: 0.72,         // rad (~41°): worse landings bail
-  hardLanding: 15,         // m/s into the surface bails
+  landAlign: 1.08,         // rad (~62°): worse landings bail
+  landSketchy: 0.55,       // rad: landings between this and landAlign are sketchy (speed loss, no bail)
+  flipCatch: 0.7,          // a flip at least this far through its animation is caught on landing
+  hardLanding: 19,         // m/s into the surface bails
   bailTime: 1.5,
-  grindSnap: 0.55,         // m horizontal snap distance to a rail
+  grindSnap: 0.85,         // m horizontal snap distance to a rail
+  grindWindow: 420,        // ms a grind press stays live before a rail comes in reach
   grindFriction: 0.45,
   grindMinSpeed: 3.2,
-  balanceDrift: 0.9,
-  balanceControl: 2.8,
+  balanceDrift: 0.7,
+  balanceControl: 3.4,
+  balanceUnstable: 0.8,    // how fast an off-centre grind or manual tips further (1/s)
   bankDelay: 0.35,         // s on the ground before a combo banks
   skaterRadius: 0.6,
   specialFillPerPoint: 1 / 2600,
@@ -1955,8 +1959,8 @@ class SkaterRig {
         arm.elbow.rotation.z = -0.1;
       }
     }
-    this.body.rotation.z = p.bail * 1.3 + p.invert * 2.7 - p.carve * 0.16;
-    this.body.position.y = -p.bail * 0.6 + p.invert * 0.9;
+    this.body.rotation.z = p.bail * 1.42 * (p.bailSide ?? 1) + p.invert * 2.7 - p.carve * 0.16;
+    this.body.position.y = p.bail * 0.12 + p.invert * 0.9;
     this.body.rotation.x = p.manual * 0.15;
     if (this.retarget) this.#retargetPose();
   }
@@ -2349,7 +2353,7 @@ class Skater {
     if (along < -0.15) this.fakie = true; else if (along > 0.15) this.fakie = false;
     this.pushing = input.down('up') && !this.manual.on;
     // Manual (balance on two wheels): L on flattish ground.
-    if (!this.manual.on && input.take('grind') && G2 < 0.04 && this.speed > 1.5) this.#startManual(ctx);
+    if (!this.manual.on && input.take('grind') && G2 < 0.08 && this.speed > 1.2) this.#startManual(ctx);
     else if (this.manual.on && input.take('grind')) this.#endManual(ctx, false);
     if (this.manual.on) this.#stepManual(dt, ctx);
     if (this.state !== 'ground') return;
@@ -2401,10 +2405,13 @@ class Skater {
         vy = Math.sqrt(vy * vy + out * out * 0.35);
       }
     }
-    this.#enterAir(y, vy, ctx);
+    _v6.set(-gx, 1, -gz).normalize();
+    this.#enterAir(y, vy, ctx, _v6, G > CONFIG.vertSlope);
   }
 
-  #enterAir(y, vy, ctx) {
+  #enterAir(y, vy, ctx, launchNormal = null, vert = false) {
+    this.airNormal ??= new THREE.Vector3();
+    this.airNormal.copy(launchNormal ?? this.normal); this.airVert = vert;
     this.state = 'air'; this.pos.y = y; this.vy = vy; this.charge = 0;
     const a = this.air; a.time = 0; a.spin = 0; a.spinVel = 0; a.peakY = y; a.overFunbox = false; a.tricks.length = 0; a.firstTrick = null;
     a.wallride = false; a.startX = this.pos.x; a.startZ = this.pos.z; this.trickLock = 0;
@@ -2446,7 +2453,7 @@ class Skater {
     const ox = this.pos.x, oz = this.pos.z;
     // Write-Up Wallride: hold L into a yard wall in the air to ride up it.
     const lim = park.half - 0.35;
-    if (!a.wallride && (input.down('grind') || input.recent('grind', 250)) && this.speed > 3 && (Math.abs(this.pos.x) > lim || Math.abs(this.pos.z) > lim) && this.pos.y > 0.4) {
+    if (!a.wallride && (input.down('grind') || input.recent('grind', CONFIG.grindWindow)) && this.speed > 3 && (Math.abs(this.pos.x) > lim || Math.abs(this.pos.z) > lim) && this.pos.y > 0.4) {
       a.wallride = true; this.vy = Math.max(this.vy, 3.4); input.take('grind');
       a.tricks.push(tricks.add(WALLRIDE.name, WALLRIDE.pts)); a.firstTrick ??= a.tricks[a.tricks.length - 1];
       ctx.sfx.grind(true); setTimeout(() => ctx.sfx.grind(false), 220);
@@ -2460,9 +2467,9 @@ class Skater {
       if (Math.abs(u) < fb.over.uHalf && Math.abs(v) < fb.over.vHalf && this.pos.y > fb.over.top + 0.2) a.overFunbox = true;
     }
     // Grind snap.
-    if ((input.down('grind') || input.recent('grind', 250)) && this.vy < 2.5 && this.grind.cooldown <= 0) {
-      const hit = park.nearestGrind(this.pos);
-      if (hit.line && hit.d2 < CONFIG.grindSnap * CONFIG.grindSnap && this.pos.y > hit.y - 0.4 && this.pos.y < hit.y + 0.9 && !(hit.line === this.grind.lastLine && this.grind.cooldown > 0)) {
+    if ((input.down('grind') || input.recent('grind', CONFIG.grindWindow)) && this.vy < 4 && this.grind.cooldown <= 0) {
+      const hit = park.nearestGrind(_v5.set(this.pos.x + this.vel.x * 0.04, this.pos.y, this.pos.z + this.vel.z * 0.04));
+      if (hit.line && hit.d2 < CONFIG.grindSnap * CONFIG.grindSnap && this.pos.y > hit.y - 0.65 && this.pos.y < hit.y + 1.2 && !(hit.line === this.grind.lastLine && this.grind.cooldown > 0)) {
         input.take('grind'); this.#startGrind(hit.line, hit.t, ctx); return;
       }
     }
@@ -2490,15 +2497,19 @@ class Skater {
     // Bail checks: unfinished flip, bad alignment, too hard.
     const hs = this.speed;
     let reason = null;
-    if (this.flip && this.flip.t < this.flip.dur - 0.06) reason = 'flip';
+    if (this.flip && this.flip.t < this.flip.dur * CONFIG.flipCatch) reason = 'flip';
     if (!reason && impact > CONFIG.hardLanding) reason = 'hard';
-    let d = 0;
+    let d = 0, off = 0;
     if (hs > 1.2) {
       d = wrapAngle(Math.atan2(this.vel.x, this.vel.z) - this.heading);
-      const off = Math.min(Math.abs(d), Math.PI - Math.abs(d));
+      off = Math.min(Math.abs(d), Math.PI - Math.abs(d));
       if (!reason && off > CONFIG.landAlign) reason = 'angle';
     }
     if (reason) { this.#bail(ctx, reason); return; }
+    // Sketchy landings (crooked, or a heavy drop) scrub speed instead of bailing.
+    const sketch = Math.max(clamp((off - CONFIG.landSketchy) / (CONFIG.landAlign - CONFIG.landSketchy), 0, 1), clamp((impact - CONFIG.hardLanding * 0.6) / (CONFIG.hardLanding * 0.4), 0, 1));
+    if (sketch > 0) { const k = 1 - 0.35 * sketch; this.vel.x *= k; this.vel.z *= k; }
+    this.landSquash = clamp(impact / 9, 0.15, 1);
     // Clean landing: auto-straighten onto the rolling direction.
     if (hs > 1.2) { const fak = Math.abs(d) > Math.PI / 2; this.heading = Math.atan2(this.vel.x, this.vel.z) + (fak ? Math.PI : 0); this.fakie = fak; }
     this.vy = grad.x * this.vel.x + grad.z * this.vel.z;
@@ -2518,6 +2529,7 @@ class Skater {
   }
 
   #wall(ox, oz, nx, nz) {
+    if (this.state === 'bail') this.vel.multiplyScalar(0.5);
     const park = this.park, mx = (ox + nx) / 2, mz = (oz + nz) / 2;
     const grad = park.gradient(mx, mz), G = Math.hypot(grad.x, grad.z);
     if (G < 1e-3) { this.vel.multiplyScalar(-CONFIG.wallRestitution); return; }
@@ -2576,7 +2588,7 @@ class Skater {
     ctx.tricks.grow(gr.entry, 55 * step);
     ctx.session?.addGrind(step);
     // Balance: unstable equilibrium you correct with left/right.
-    gr.balance += (gr.balance * 1.0 + Math.sin(performance.now() * 0.0021) * CONFIG.balanceDrift * 0.45) * dt - input.axisX() * CONFIG.balanceControl * dt;
+    gr.balance += (gr.balance * CONFIG.balanceUnstable + Math.sin(performance.now() * 0.0021) * CONFIG.balanceDrift * 0.45) * dt - input.axisX() * CONFIG.balanceControl * dt;
     if (Math.abs(gr.balance) > 1) { this.#exitGrind(ctx, false); this.#bail(ctx, 'balance'); return; }
     this.pos.copy(line.a).addScaledVector(line.dir, clamp(gr.t, 0, line.len));
     this.vel.set(line.dir.x * gr.dir * gr.speed, 0, line.dir.z * gr.dir * gr.speed);
@@ -2599,7 +2611,7 @@ class Skater {
   #stepManual(dt, ctx) {
     const m = this.manual, input = ctx.input;
     m.time += dt; ctx.tricks.grow(m.entry, 45 * dt);
-    m.balance += (m.balance * 1.2 + Math.cos(performance.now() * 0.0017) * CONFIG.balanceDrift * 0.5) * dt - input.axisY() * CONFIG.balanceControl * dt;
+    m.balance += (m.balance * CONFIG.balanceUnstable * 1.2 + Math.cos(performance.now() * 0.0017) * CONFIG.balanceDrift * 0.5) * dt - input.axisY() * CONFIG.balanceControl * dt;
     this.groundTime = 0;
     if (Math.abs(m.balance) > 1) { this.#endManual(ctx, false); this.#bail(ctx, 'balance'); }
   }
@@ -2614,18 +2626,79 @@ class Skater {
     this.state = 'bail'; this.bailTimer = CONFIG.bailTime; this.flip = null; this.grab = null; this.manual.on = false; this.pendingSpecial = false;
     this.vel.multiplyScalar(0.3); this.vy = 0;
     this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    this.#clearFall();
     ctx.events.bail(reason);
     ctx.sfx.bail();
   }
+  /** How far (m, up to `max`) the rider can fall toward (dx, dz) before a ledge, wall, rail or the yard edge. */
+  #freeRun(x, z, dx, dz, max) {
+    const park = this.park, y0 = park.heightAt(x, z), lim = park.half - 0.3;
+    for (let d = 0.25; d <= max + 1e-6; d += 0.25) {
+      const px = x + dx * d, pz = z + dz * d;
+      if (Math.abs(px) > lim || Math.abs(pz) > lim) return d - 0.25;
+      const h = park.heightAt(px, pz);
+      if (h - y0 > 0.22 + d * 0.35) return d - 0.25;
+      const hit = park.nearestGrind(_v5.set(px, h + 0.5, pz));
+      if (hit.line && hit.d2 < 0.3 * 0.3 && hit.y > h + 0.12) return d - 0.25;
+    }
+    return max;
+  }
+  /** Picks the side the body falls to so it lands in open space, sliding clear first if both sides are blocked. */
+  #clearFall() {
+    const f = this.forward(_v1), rx = -f.z, rz = f.x, reach = 1.6;
+    const g = this.park.gradient(this.pos.x, this.pos.z), downhill = -(g.x * rx + g.z * rz);
+    const r = this.#freeRun(this.pos.x, this.pos.z, rx, rz, reach), l = this.#freeRun(this.pos.x, this.pos.z, -rx, -rz, reach);
+    this.bailSide = r > l + 0.01 ? 1 : l > r + 0.01 ? -1 : downhill >= 0 ? 1 : -1;
+    const under = this.park.nearestGrind(_v5.set(this.pos.x, this.pos.y + 0.5, this.pos.z));
+    if (under.line && under.d2 < 0.35 * 0.35 && under.y > this.pos.y + 0.12) {
+      this.pos.x += rx * this.bailSide * 0.55; this.pos.z += rz * this.bailSide * 0.55;
+      this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    }
+    if (Math.max(r, l) >= reach) return;
+    let best = -1, bx = 0, bz = 0;
+    for (let i = 0; i < 16; i++) {
+      const a = i * TAU / 16, dx = Math.sin(a), dz = Math.cos(a), run = this.#freeRun(this.pos.x, this.pos.z, dx, dz, 2.6);
+      if (run > best) { best = run; bx = dx; bz = dz; }
+    }
+    if (best <= 0) return;
+    const push = Math.min(best, 1.4) * 2.2;
+    this.vel.x = bx * push; this.vel.z = bz * push;
+    this.bailSide = bx * rx + bz * rz >= 0 ? 1 : -1;
+  }
   #stepBail(dt) {
     this.bailTimer -= dt;
-    this.vel.multiplyScalar(Math.exp(-2.5 * dt));
-    this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt;
-    this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    const park = this.park, g = park.gradient(this.pos.x, this.pos.z), G2 = g.x * g.x + g.z * g.z;
+    // Slide down transitions instead of sticking to them; the body drags hard on flat ground.
+    this.vel.x -= CONFIG.gravity * g.x / (1 + G2) * dt; this.vel.z -= CONFIG.gravity * g.z / (1 + G2) * dt;
+    this.vel.multiplyScalar(Math.exp(-(G2 > 0.25 ? 1.2 : 2.5) * dt));
+    const nx = this.pos.x + this.vel.x * dt, nz = this.pos.z + this.vel.z * dt, nh = park.heightAt(nx, nz);
+    const expected = g.x * (nx - this.pos.x) + g.z * (nz - this.pos.z);
+    if (nh - this.pos.y > expected + 0.12) this.#wall(this.pos.x, this.pos.z, nx, nz);
+    else { this.pos.x = nx; this.pos.z = nz; this.pos.y = nh; }
+    this.normal.set(-g.x, 1, -g.z).normalize();
     if (this.bailTimer <= 0) {
       this.state = 'ground'; this.groundTime = 0; this.vy = 0;
       if (this.speed > 0.5) this.heading = Math.atan2(this.vel.x, this.vel.z);
     }
+  }
+
+  /**
+   * Body tilt in the air: off vert the rider keeps leaning with the wall it left (head back
+   * toward the ramp's centre, easing a little toward level at the peak) instead of standing
+   * straight up; any air lines up with the surface below on the way down, so transition
+   * landings meet the ramp.
+   */
+  #airTilt(out) {
+    const a = this.air, base = this.airNormal ?? _up;
+    const settle = this.airVert ? 0.3 * Math.sin(Math.PI * clamp(0.5 - this.vy / 14, 0, 1)) : clamp(a.time / 0.35, 0, 1);
+    out.copy(base).lerp(_up, settle).normalize();
+    if (this.vy < 0) {
+      const g = this.park.gradient(this.pos.x + this.vel.x * 0.08, this.pos.z + this.vel.z * 0.08);
+      const h = this.park.heightAt(this.pos.x, this.pos.z), k = clamp(1 - (this.pos.y - h) / 2.2, 0, 1);
+      if (k > 0) out.lerp(_v5.set(-g.x, 1, -g.z).normalize(), k * k).normalize();
+    }
+    if (out.y < 0.17) { out.y = 0.17; out.normalize(); }
+    return out;
   }
 
   /** Copies the physics state onto the rig. Uses scratch quaternions only. */
@@ -2633,7 +2706,7 @@ class Skater {
     rig.root.position.copy(this.pos);
     rig.root.quaternion.setFromAxisAngle(_up, this.heading);
     // Tilt to the surface normal (in rig space) on the ground, level in the air.
-    const target = this.state === 'air' ? _v4.set(0, 1, 0) : _v4.copy(this.normal);
+    const target = this.state === 'air' ? this.#airTilt(_v4) : _v4.copy(this.normal);
     _q1.copy(rig.root.quaternion).invert();
     target.applyQuaternion(_q1);
     _q2.setFromUnitVectors(_up, target);
@@ -2658,10 +2731,12 @@ class Skater {
         case 'invert': bp.rotation.z = Math.PI * e * 2; bp.position.y = Math.sin(Math.PI * k) * 0.35; break;
       }
     }
-    if (this.state === 'bail') { bp.position.y = 0.05; bp.rotation.z = 2.4; bp.position.x = 0.45; }
+    const side = this.bailSide ?? 1;
+    if (this.state === 'bail') { bp.position.y = 0.05; bp.rotation.z = 2.4 * side; bp.position.x = 0.45 * side; }
     // Pose.
     const p = rig.pose;
-    const crouchT = this.state === 'air' ? (this.grab ? 0.7 : 0.35) : this.state === 'grind' ? 0.45 : this.charge * 0.9 + (this.manual.on ? 0.15 : 0);
+    this.landSquash = Math.max(0, (this.landSquash ?? 0) - dt * 3.2);
+    const crouchT = this.state === 'air' ? (this.grab ? 0.7 : 0.35) : this.state === 'grind' ? 0.45 : Math.max(this.charge * 0.9 + (this.manual.on ? 0.15 : 0), this.landSquash * 0.8);
     p.crouch += (crouchT - p.crouch) * damp(12, dt);
     p.grab += ((this.grab ? 1 : 0) - p.grab) * damp(14, dt);
     if (this.grab) { p.grabType = this.grab.type; p.twoHand = this.grab.twoHand ? 1 : 0; p.legOutSide = this.grab.legOut ?? 0; }
@@ -2673,6 +2748,7 @@ class Skater {
     const bal = this.state === 'grind' ? this.grind.balance : this.manual.on ? this.manual.balance : 0;
     p.lean += (bal - p.lean) * damp(10, dt);
     p.bail += ((this.state === 'bail' ? 1 : 0) - p.bail) * damp(8, dt);
+    if (this.state === 'bail') p.bailSide = side;
     const suit = this.flip?.axis === 'suitup' ? Math.sin(Math.PI * clamp(this.flip.t / this.flip.dur, 0, 1)) : 0;
     if (suit > 0) p.armsOut = Math.max(p.armsOut, 1 + suit * 0.9);
     const inv = this.flip?.axis === 'invert' ? Math.sin(Math.PI * clamp(this.flip.t / this.flip.dur, 0, 1)) : 0;
