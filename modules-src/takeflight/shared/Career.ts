@@ -11,6 +11,8 @@ import type { CategoryId, FlightScore } from '../sim/Scoring'
 import { pow } from '../sim/SimMath'
 import type { StartKind } from '../sim/Starts'
 import { WEATHER_XP } from './Weather'
+import { cargoPay, openJob } from './Cargo'
+import type { CargoJob } from './Cargo'
 import type { WeatherKind } from './Weather'
 
 export const CAREER_VERSION = 1
@@ -73,6 +75,9 @@ export interface CareerProfile {
   ratings: Record<PilotClass, number[]>
   bestLanding: { sinkFpm: number; g: number; total: number; at: number } | null
   recent: RecentFlight[]
+  /** Cargo career earnings and deliveries. */
+  cash: number
+  cargo: { delivered: number; kg: number }
   /** When the last flight was saved (ms), for plausibility checks. */
   lastAt: number
 }
@@ -99,7 +104,9 @@ export interface FlightSummary {
   categories: Partial<Record<CategoryId, number>>
   /** Metric scores 0..1 keyed `category.metric`. */
   metrics: Record<string, number>
-  landing: { tick: number; sinkFpm: number; g: number; centreline: number; fromAim: number; bounces: number; onRunway: boolean } | null
+  landing: { tick: number; airport?: string; sinkFpm: number; g: number; centreline: number; fromAim: number; bounces: number; onRunway: boolean } | null
+  /** Cargo contract flown, by id. */
+  job?: string | null
   checkride: CheckrideId | null
 }
 
@@ -222,6 +229,8 @@ export function defaultCareer(): CareerProfile {
     bestLanding: null,
     recent: [],
     lastAt: 0,
+    cash: 0,
+    cargo: { delivered: 0, kg: 0 },
   }
 }
 
@@ -336,6 +345,8 @@ export interface FlightResult {
   ratingAfter: number | null
   checkride: { id: CheckrideId; passed: boolean; criteria: CriterionResult[]; bonus: number } | null
   licence: LicenceId | null
+  /** The cargo contract's outcome, when one was flown. */
+  cargo: { job: CargoJob; paid: number; reason: string | null } | null
 }
 
 export interface FlightContext {
@@ -344,6 +355,8 @@ export interface FlightContext {
   family: string
   /** Classes in the hangar (checkrides need one). */
   classes: readonly PilotClass[]
+  /** Payload the aircraft flown can lift, kg (cargo contracts heavier than this are not paid). */
+  payload?: number
 }
 
 /** Adds a flight to the career. Never mutates `profile`. */
@@ -394,12 +407,30 @@ export function applyFlight(profile: CareerProfile, summary: FlightSummary, cont
   }
   next.recent.unshift({ at: context.now, aircraft: summary.aircraft, total: summary.total, xp, checkride: checkride ? checkride.id : null, passed: checkride ? checkride.passed : null })
   if (next.recent.length > RECENT_FLIGHTS) next.recent.length = RECENT_FLIGHTS
+  let cargo: FlightResult['cargo'] = null
+  if (summary.job && !summary.resumed) {
+    const job = openJob(summary.job, context.now)
+    if (job) {
+      const tooHeavy = context.payload !== undefined && job.kg > context.payload
+      const landedAt = summary.landing ? summary.landing.airport ?? null : null
+      const paid = tooHeavy ? 0 : cargoPay(job, { crashed: summary.crashed, total: summary.total, landedAt, onRunway: summary.landing?.onRunway ?? false })
+      const reason = tooHeavy ? 'The load was too heavy for that aircraft.' : paid > 0 ? null : summary.crashed ? 'The cargo was lost in the crash.' : landedAt !== job.to ? 'The cargo did not reach its destination.' : 'The aircraft did not land on the runway.'
+      if (paid > 0) {
+        next.cash = profile.cash + paid
+        next.cargo = { delivered: profile.cargo.delivered + 1, kg: profile.cargo.kg + job.kg }
+        xp += Math.round(job.kg / 20)
+        next.xp = profile.xp + xp
+      }
+      cargo = { job, paid, reason }
+      if (next.recent[0]) next.recent[0] = { ...next.recent[0], xp }
+    }
+  }
   next.lastAt = context.now
-  return { profile: next, xp, levelBefore, levelAfter: levelFor(next.xp), ratingBefore, ratingAfter: pilotRating(next), checkride, licence }
+  return { profile: next, xp, levelBefore, levelAfter: levelFor(next.xp), ratingBefore, ratingAfter: pilotRating(next), checkride, licence, cargo }
 }
 
 /** Builds the summary the career and the Worker read from a scored flight. */
-export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; weather: WeatherKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; engineFailure?: boolean; checkride: CheckrideId | null }): FlightSummary {
+export function summarizeFlight(score: FlightScore, info: { aircraft: string; airport: string; start: StartKind; wind: WindKind; weather: WeatherKind; time: TimeKind; seconds: number; resumed: boolean; assists: AssistSettings; instrumentsOnly: boolean; engineFailure?: boolean; checkride: CheckrideId | null; job?: string | null }): FlightSummary {
   const categories: Partial<Record<CategoryId, number>> = {}
   const metrics: Record<string, number> = {}
   for (const c of score.categories) {
@@ -414,7 +445,7 @@ export function summarizeFlight(score: FlightScore, info: { aircraft: string; ai
     crashed: score.crashed !== null,
     categories,
     metrics,
-    landing: l ? { tick: l.tick, sinkFpm: l.sinkFpm, g: l.g, centreline: l.centreline, fromAim: l.fromAim, bounces: l.bounces, onRunway: l.surface === 'runway' } : null,
+    landing: l ? { tick: l.tick, airport: l.airport, sinkFpm: l.sinkFpm, g: l.g, centreline: l.centreline, fromAim: l.fromAim, bounces: l.bounces, onRunway: l.surface === 'runway' } : null,
   }
 }
 
@@ -450,5 +481,7 @@ export function normalizeCareer(value: unknown): CareerProfile {
     bestLanding: v.bestLanding && typeof v.bestLanding === 'object' ? { sinkFpm: num(v.bestLanding.sinkFpm), g: num(v.bestLanding.g), total: num(v.bestLanding.total), at: num(v.bestLanding.at) } : null,
     recent: Array.isArray(v.recent) ? v.recent.slice(0, RECENT_FLIGHTS).filter((r) => r && typeof r === 'object').map((r) => ({ at: num(r.at), aircraft: String(r.aircraft ?? '').slice(0, 40), total: Math.min(100, num(r.total)), xp: num(r.xp), checkride: CHECKRIDES.includes(r.checkride as CheckrideId) ? (r.checkride as CheckrideId) : null, passed: typeof r.passed === 'boolean' ? r.passed : null })) : [],
     lastAt: num(v.lastAt),
+    cash: num(v.cash),
+    cargo: { delivered: num(v.cargo?.delivered), kg: num(v.cargo?.kg) },
   }
 }

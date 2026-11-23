@@ -34,6 +34,7 @@ const summarySchema = z.object({
   metrics: z.record(z.string().max(40), unit).refine((value) => Object.keys(value).length <= 64, 'Too many metrics'),
   landing: z.object({
     tick: z.number().int().min(0),
+    airport: z.string().max(40).optional(),
     sinkFpm: z.number().finite().min(-5000).max(20000),
     g: z.number().finite().min(-10).max(20),
     centreline: z.number().finite().min(-2000).max(2000),
@@ -42,6 +43,7 @@ const summarySchema = z.object({
     onRunway: z.boolean(),
   }).nullable(),
   checkride: z.enum(CHECKRIDES as unknown as [string, ...string[]]).nullable(),
+  job: z.string().regex(/^d\d{1,6}-\d$/).nullable().optional(),
 })
 
 const actions = z.discriminatedUnion('action', [
@@ -89,7 +91,7 @@ export async function takeflight(request: Request, env: Env) {
   const now = Date.now()
   const loaded = await loadCareer(env, user.id, user.username)
   if (loaded.profile.lastAt > 0 && summary.seconds > (now - loaded.profile.lastAt) / 1000 + CLOCK_SLACK_SECONDS) throw new HttpError(400, 'That flight is longer than the time since your last one.')
-  const result = applyFlight(loaded.profile, summary, { now, pilotClass: pilotClassOf(entry.category), family: entry.family, classes: HANGAR_CLASSES })
+  const result = applyFlight(loaded.profile, summary, { now, pilotClass: pilotClassOf(entry.category), family: entry.family, classes: HANGAR_CLASSES, payload: entry.payload })
   const saved = await env.DB.prepare('UPDATE takeflight_careers SET username = ?, data = ?, updated_at = ? WHERE user_id = ? AND updated_at = ?')
     .bind(user.username, JSON.stringify(result.profile), Math.max(now, loaded.updatedAt + 1), user.id, loaded.updatedAt).run()
   if ((saved.meta?.changes ?? 0) === 0) throw new HttpError(409, 'Your career changed in another window. Try again.')

@@ -103,7 +103,7 @@ export class Hud {
     v.gs.textContent = `${Math.round(a.groundSpeed / KNOT)} kt`
     v.agl.textContent = `${Math.max(0, Math.round((a.agl - 1.25) / FOOT))} ft`
     v.g.textContent = a.loadFactor.toFixed(2)
-    v.aoa.textContent = `${a.alpha.toFixed(1)}°`
+    v.aoa.textContent = a.ias / KNOT < 10 ? '—' : `${a.alpha.toFixed(1)}°`
     const spec = a.spec
     const detents = spec.controls.flapDetents
     const flapIndex = Math.max(0, Math.min(detents.length - 1, Math.round(input.flaps)))

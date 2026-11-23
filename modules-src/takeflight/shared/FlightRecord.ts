@@ -32,6 +32,10 @@ export interface RecordHeader {
   seaLevelPressure: number
   assists: AssistSettings
   weather: WeatherKind
+  /** Payload carried, kg (cargo contracts), or null for the default. */
+  payload?: number | null
+  /** The cargo contract flown, by id. */
+  job?: string | null
   /** The engine failure flown, if any (multi-engine checkride). */
   failure?: { engine: number; agl: number } | null
 }

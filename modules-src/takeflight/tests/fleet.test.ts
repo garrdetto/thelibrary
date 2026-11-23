@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import duet from '../shared/aircraft/duet.json'
 import sprite from '../shared/aircraft/sprite.json'
 import vesta from '../shared/aircraft/vesta.json'
+import haulmaster from '../shared/aircraft/haulmaster.json'
 import { parseAircraft } from '../shared/AircraftSpec'
 import type { AircraftSpec } from '../shared/AircraftSpec'
 import { TERRAIN } from '../shared/Terrain'
@@ -17,6 +18,7 @@ const FLEET: { spec: AircraftSpec; roll: [number, number]; climb: [number, numbe
   { spec: parseAircraft(duet), roll: [250, 560], climb: [900, 1700], level: [150, 205] },
   { spec: parseAircraft(sprite), roll: [280, 760], climb: [1300, 3400], level: [205, 290] },
   { spec: parseAircraft(vesta), roll: [350, 1100], climb: [2400, 7500], level: [300, 480] },
+  { spec: parseAircraft(haulmaster), roll: [300, 950], climb: [800, 2600], level: [165, 255] },
 ]
 
 function sim(spec: AircraftSpec) {

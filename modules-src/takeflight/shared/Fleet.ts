@@ -4,11 +4,12 @@
 import duet from './aircraft/duet.json'
 import sprite from './aircraft/sprite.json'
 import vesta from './aircraft/vesta.json'
+import haulmaster from './aircraft/haulmaster.json'
 import wren from './aircraft/wren.json'
 import { parseAircraft } from './AircraftSpec'
 import type { AircraftSpec } from './AircraftSpec'
 
-export const FLEET: readonly AircraftSpec[] = [parseAircraft(wren), parseAircraft(duet), parseAircraft(sprite), parseAircraft(vesta)]
+export const FLEET: readonly AircraftSpec[] = [parseAircraft(wren), parseAircraft(duet), parseAircraft(sprite), parseAircraft(vesta), parseAircraft(haulmaster)]
 
 export function fleetSpec(id: string): AircraftSpec | undefined {
   return FLEET.find((spec) => spec.id === id)

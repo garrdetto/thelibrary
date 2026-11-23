@@ -18,6 +18,8 @@ import aircraft_kit as kit  # noqa: E402
 import export_aircraft  # noqa: E402
 
 SEGMENTS = 40
+# The cockpit shell is lofted much finer than the outside so window openings cut face by face have smooth edges.
+COCKPIT_SEGMENTS = 96
 
 # (x, half width, top, bottom, exponent, top exponent). Under the wing (x 0.55 to -1.05) the cabin has square shoulders and a roof
 # that reaches the wing's underside, so the wing root sits on the cabin with no gap.
@@ -61,6 +63,11 @@ def smooth_sections(sections, per_span):
     return out
 
 
+# Windows in the loft's own parameters (see aircraft_kit.window_picks): windshield over the top, side windows either side of
+# the door post, and the rear roof window.
+WINDOWS = {'front': (0.40, 0.92, 1.0), 'side': (-1.70, 0.34, 0.05, 0.98), 'posts': [(-0.10, 0.06)], 'roof': (-1.75, -0.9, 0.35)}
+
+
 def window_kind(centre, normal):
     x, y, z = centre
     if 0.36 < x < 0.93 and z > 0.66 and normal.z > 0.15 and abs(y) < 0.5:
@@ -85,17 +92,9 @@ def build_fuselage(mats, root, collection, lod_segments=SEGMENTS, per_span=5, wi
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     glass = bmesh.new()
     if windows:
-        bm.faces.ensure_lookup_table()
-        remove = []
-        for face in bm.faces:
-            kind = window_kind(face.calc_center_median(), face.normal)
-            if kind is None:
-                continue
-            verts = []
-            for v in face.verts:
-                verts.append(glass.verts.new(v.co + face.normal * 0.004))
-            glass.faces.new(verts)
-            remove.append(face)
+        remove = kit.loft_faces(bm, sections, lod_segments, kit.window_picks(WINDOWS))
+        for face in remove:
+            glass.faces.new([glass.verts.new(v.co + face.normal * 0.004) for v in face.verts])
         bmesh.ops.delete(bm, geom=remove, context='FACES_ONLY')
     for face in bm.faces:
         c = face.calc_center_median()
@@ -307,11 +306,11 @@ def build_cockpit(collection):
     mats = materials()
     root = bpy.data.objects.new('wren_cockpit', None)
     collection.objects.link(root)
-    sections = [s for s in smooth_sections(FUSELAGE, 3) if -2.1 < s[0] < 1.25]
+    sections = [s for s in smooth_sections(FUSELAGE, 8) if -2.1 < s[0] < 1.25]
     inner = [(x, hw - 0.035, top - 0.035, bottom + 0.05, e, te) for (x, hw, top, bottom, e, te) in sections]
-    bm = kit.loft(inner, SEGMENTS, cap_front=True, cap_back=True)
+    bm = kit.loft(inner, COCKPIT_SEGMENTS, cap_front=True, cap_back=True)
     bmesh.ops.reverse_faces(bm, faces=bm.faces)
-    remove = [f for f in bm.faces if window_kind(f.calc_center_median(), -f.normal) is not None]
+    remove = kit.loft_faces(bm, inner, COCKPIT_SEGMENTS, kit.window_picks(WINDOWS))
     bmesh.ops.delete(bm, geom=remove, context='FACES_ONLY')
     kit.new_object('cabin', bm, mats['interior'], parent=root, collection=collection)
     panel = kit.box((0.06, 1.08, 0.40), (0.97, 0.0, 0.42))
