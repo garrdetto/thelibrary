@@ -8,7 +8,7 @@ import type { BumperOption, Finish, FlapOption, GrilleOption, HaulKind, HornOpti
 import { MAX_ITEMS, COLOR_PATTERN, normalizeBuildItem } from './Lots'
 import type { BuildItem } from './Lots'
 import type { Job } from './Jobs'
-import { LOTS, MAX_LAND_STRIPS } from './WorldLayout'
+import { MAX_LAND_STRIPS, knownLotIndex } from './WorldLayout'
 
 export interface OwnedTruck {
   uid: string
@@ -242,7 +242,7 @@ export function normalizeProfile(raw: unknown): Profile {
   }
   const activeTruck = typeof source.activeTruck === 'string' && trucks.some((truck) => truck.uid === source.activeTruck) ? source.activeTruck : trucks[0].uid
   const activeTrailer = typeof source.activeTrailer === 'string' && trailers.some((trailer) => trailer.uid === source.activeTrailer) ? source.activeTrailer : null
-  const lot = finite(source.lot) && Number.isInteger(source.lot) && source.lot >= 0 && source.lot < LOTS.length ? source.lot : null
+  const lot = finite(source.lot) && knownLotIndex(source.lot) ? source.lot : null
   return {
     version: 1,
     cash: Math.round(clamp(source.cash, 0, MAX_CASH, fallback.cash)),

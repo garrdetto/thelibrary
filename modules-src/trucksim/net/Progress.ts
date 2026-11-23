@@ -11,7 +11,6 @@ import { defaultProfile, normalizeProfile } from '../shared/Economy'
 import type { Profile } from '../shared/Economy'
 import type { HaulWorld } from '../shared/HaulWorld'
 import type { PublicLot } from '../shared/Lots'
-import { LOTS } from '../shared/WorldLayout'
 
 export interface ProgressClient {
   readonly profile: Profile
@@ -70,9 +69,9 @@ export class Progress implements ProgressClient {
         progress.admin = data.admin === true
         return progress
       }
-      return new Progress(guestProfile(lots), false, null, lots, false, world, url)
+      return new Progress(guestProfile(world, lots), false, null, lots, false, world, url)
     } catch {
-      return new Progress(guestProfile([]), false, null, [], true, world, url)
+      return new Progress(guestProfile(world, []), false, null, [], true, world, url)
     }
   }
 
@@ -155,8 +154,8 @@ export class Progress implements ProgressClient {
 }
 
 /** A guest borrows the first lot nobody owns, for this visit only. */
-function guestProfile(lots: readonly PublicLot[]): Profile {
+function guestProfile(world: HaulWorld, lots: readonly PublicLot[]): Profile {
   const taken = new Set(lots.map((lot) => lot.index))
-  const free = LOTS.find((lot) => !taken.has(lot.index))
-  return withStarterDriveway({ ...defaultProfile(), lot: free ? free.index : null })
+  const free = world.lots.find((lot) => !taken.has(lot.index))
+  return withStarterDriveway({ ...defaultProfile(), lot: free ? free.index : null }, world)
 }

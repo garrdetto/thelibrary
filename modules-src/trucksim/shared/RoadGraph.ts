@@ -4,12 +4,14 @@
  * road. `COUNTY` is the `HaulWorld` whose `routeDistance` uses it, so job distances are the same in the page and the Worker.
  */
 import type { HaulWorld } from './HaulWorld'
-import { ALL_ZONES, ROADS, SITES, SITE_BY_ID, ZONE_BY_ID } from './WorldLayout'
+import { ALL_ZONES, LOTS, ROADS, SITES, SITE_BY_ID, ZONE_BY_ID } from './WorldLayout'
 import type { Zone, ZoneKind } from './WorldLayout'
 
 const MERGE_DISTANCE = 0.5
 const ENDPOINT_TOLERANCE = 0.5
 const CELL = 1
+/** Segments are bucketed in squares this size so crossings are only tested between neighbours. */
+const SEGMENT_CELL = 64
 
 type Point = [number, number]
 
@@ -66,39 +68,65 @@ function projectOnto(segment: Segment, x: number, z: number): { t: number; dista
   return { t, distance: Math.hypot(x - (segment.a[0] + dx * t), z - (segment.a[1] + dz * t)) }
 }
 
-function buildGraph(): Graph {
+/** A road polyline: points in order, closed when `loop` is set. */
+export interface RoadLine {
+  points: readonly (readonly [number, number])[]
+  loop?: boolean
+}
+
+function buildGraph(roads: readonly RoadLine[], tolerance = ENDPOINT_TOLERANCE): Graph {
   const raw: { segment: Segment; road: number }[] = []
-  ROADS.forEach((road, roadIndex) => {
-    const points = road.loop ? [...road.points, road.points[0]] : road.points
+  roads.forEach((road, roadIndex) => {
+    const points = (road.loop ? [...road.points, road.points[0]] : road.points) as Point[]
     for (let i = 0; i + 1 < points.length; i++) raw.push({ segment: { a: points[i], b: points[i + 1], splits: [] }, road: roadIndex })
   })
-  for (let i = 0; i < raw.length; i++) {
-    for (let j = i + 1; j < raw.length; j++) {
-      if (raw[i].road === raw[j].road) continue
-      const hit = intersect(raw[i].segment, raw[j].segment)
-      if (hit) {
-        raw[i].segment.splits.push(hit[0])
-        raw[j].segment.splits.push(hit[1])
-      }
+  const segmentCells = new Map<string, number[]>()
+  const cellsOf = (segment: Segment): string[] => {
+    const x0 = Math.floor((Math.min(segment.a[0], segment.b[0]) - tolerance) / SEGMENT_CELL)
+    const x1 = Math.floor((Math.max(segment.a[0], segment.b[0]) + tolerance) / SEGMENT_CELL)
+    const z0 = Math.floor((Math.min(segment.a[1], segment.b[1]) - tolerance) / SEGMENT_CELL)
+    const z1 = Math.floor((Math.max(segment.a[1], segment.b[1]) + tolerance) / SEGMENT_CELL)
+    const out: string[] = []
+    for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) out.push(`${cx},${cz}`)
+    return out
+  }
+  raw.forEach((entry, index) => {
+    for (const key of cellsOf(entry.segment)) {
+      const list = segmentCells.get(key)
+      if (list) list.push(index)
+      else segmentCells.set(key, [index])
     }
-    for (let j = 0; j < raw.length; j++) {
+  })
+  for (let i = 0; i < raw.length; i++) {
+    const near = new Set<number>()
+    for (const key of cellsOf(raw[i].segment)) for (const j of segmentCells.get(key) ?? []) if (j !== i) near.add(j)
+    for (const j of near) {
       if (raw[i].road === raw[j].road) continue
+      if (j > i) {
+        const hit = intersect(raw[i].segment, raw[j].segment)
+        if (hit) {
+          raw[i].segment.splits.push(hit[0])
+          raw[j].segment.splits.push(hit[1])
+        }
+      }
       for (const end of [raw[j].segment.a, raw[j].segment.b]) {
-        const near = projectOnto(raw[i].segment, end[0], end[1])
-        if (near.distance <= ENDPOINT_TOLERANCE) raw[i].segment.splits.push(near.t)
+        const close = projectOnto(raw[i].segment, end[0], end[1])
+        if (close.distance <= tolerance) raw[i].segment.splits.push(close.t)
       }
     }
   }
 
   const nodes: Point[] = []
+  const merge = Math.max(MERGE_DISTANCE, tolerance)
+  const cell = Math.max(CELL, merge)
   const buckets = new Map<string, number[]>()
   const nodeAt = (x: number, z: number): number => {
-    const cx = Math.floor(x / CELL)
-    const cz = Math.floor(z / CELL)
+    const cx = Math.floor(x / cell)
+    const cz = Math.floor(z / cell)
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
         for (const index of buckets.get(`${cx + dx},${cz + dz}`) ?? []) {
-          if (Math.hypot(nodes[index][0] - x, nodes[index][1] - z) <= MERGE_DISTANCE) return index
+          if (Math.hypot(nodes[index][0] - x, nodes[index][1] - z) <= merge) return index
         }
       }
     }
@@ -134,12 +162,6 @@ function buildGraph(): Graph {
   return { nodes, edges, segments }
 }
 
-let cached: Graph | null = null
-
-function graph(): Graph {
-  cached ??= buildGraph()
-  return cached
-}
 
 function snapToRoad(g: Graph, x: number, z: number): Snap {
   let best: Snap = { segment: 0, t: 0, x: g.nodes[0][0], z: g.nodes[0][1], offset: Infinity }
@@ -210,13 +232,32 @@ function pathLength(points: Point[]): number {
   return length
 }
 
+/** A road network built once from its polylines; `route` finds the drive between two points on it. */
+export interface RoadNetwork {
+  route(fromX: number, fromZ: number, toX: number, toZ: number): RoutePath
+}
+
 /**
- * The drive from (fromX, fromZ) to (toX, toZ): walk to the nearest road point, follow roads by A*, walk off at the nearest
- * road point to the destination. `points` starts and ends at the given coordinates; `length` is the whole polyline in metres.
+ * Builds a network lazily from `roads` (the graph is made on the first route). A road end within `tolerance` metres of another
+ * road joins it; simplified road data needs at least its simplification tolerance here, or T-junctions come apart.
+ */
+export function createRoadNetwork(roads: readonly RoadLine[], tolerance = ENDPOINT_TOLERANCE): RoadNetwork {
+  let g: Graph | null = null
+  return { route: (fromX, fromZ, toX, toZ) => routeOn((g ??= buildGraph(roads, tolerance)), fromX, fromZ, toX, toZ) }
+}
+
+const COUNTY_ROADS = createRoadNetwork(ROADS)
+
+/**
+ * The drive from (fromX, fromZ) to (toX, toZ) on the county: walk to the nearest road point, follow roads by A*, walk off at the
+ * nearest road point to the destination. `points` starts and ends at the given coordinates; `length` is the whole polyline in metres.
  */
 export function route(fromX: number, fromZ: number, toX: number, toZ: number): RoutePath {
+  return COUNTY_ROADS.route(fromX, fromZ, toX, toZ)
+}
+
+function routeOn(g: Graph, fromX: number, fromZ: number, toX: number, toZ: number): RoutePath {
   if (fromX === toX && fromZ === toZ) return { points: [[fromX, fromZ]], length: 0 }
-  const g = graph()
   const start = snapToRoad(g, fromX, fromZ)
   const goal = snapToRoad(g, toX, toZ)
   const startEdge = g.segments[start.segment]
@@ -284,22 +325,28 @@ export function route(fromX: number, fromZ: number, toX: number, toZ: number): R
   return { points, length: pathLength(points) }
 }
 
-const routeCache = new Map<string, number>()
-
-function routeDistance(from: Zone, to: Zone): number {
-  const key = `${from.id}>${to.id}`
-  const known = routeCache.get(key)
-  if (known !== undefined) return known
-  const length = route(from.x, from.z, to.x, to.z).length
-  routeCache.set(key, length)
-  return length
+/** Zone-to-zone drive lengths on `network`, cached per pair. */
+export function zoneDistances(network: RoadNetwork): (from: Zone, to: Zone) => number {
+  const cache = new Map<string, number>()
+  return (from, to) => {
+    const key = `${from.id}>${to.id}`
+    const known = cache.get(key)
+    if (known !== undefined) return known
+    const length = network.route(from.x, from.z, to.x, to.z).length
+    cache.set(key, length)
+    return length
+  }
 }
+
+const routeDistance = zoneDistances(COUNTY_ROADS)
 
 /** The county as a `HaulWorld`: Millbrook, the highway loop, the work sites and Haulers Row. */
 export const COUNTY: HaulWorld = {
   id: 'county',
   sites: SITES,
   zones: ALL_ZONES,
+  lots: LOTS,
+  lot: (index: number) => LOTS[index],
   zone: (id: string) => ZONE_BY_ID[id],
   site: (id: string) => SITE_BY_ID[id],
   zonesOfKind: (kind: ZoneKind) => ALL_ZONES.filter((zone) => zone.kind === kind),

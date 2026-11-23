@@ -89,10 +89,10 @@ test('bought land moves with the driver to a new lot, and the build follows the 
   const westGrown = buy(owner(WEST)).profile
   const built = applyAction(westGrown, { action: 'build', items: [pave('p1', 40, 10, 10, 10)] }, ctx).profile
   assert.equal(built.build[0].x, 40)
-  const toEast = moveToLot(built, EAST)
+  const toEast = moveToLot(built, EAST, COUNTY)
   assert.equal(toEast.lot, EAST)
   assert.equal(toEast.build[0].x, 40 - LAND_STRIP_M)
-  assert.equal(moveToLot(toEast, WEST).build[0].x, 40)
+  assert.equal(moveToLot(toEast, WEST, COUNTY).build[0].x, 40)
 })
 
 test('odometer adds dirt and caps it at 100', () => {
