@@ -11,6 +11,7 @@
 import type { AircraftSpec, ContactSpec } from '../shared/AircraftSpec'
 import type { Ground, GroundSample } from '../shared/Terrain'
 import { createGroundSample } from '../shared/Terrain'
+import { obstacleTop } from '../shared/Towns'
 import { GRAVITY, SEA_LEVEL_PRESSURE, createAirSample, indicatedAirspeed, sampleAir } from './Atmosphere'
 import type { AirSample } from './Atmosphere'
 import type { ControlInput } from './Controls'
@@ -48,6 +49,8 @@ const SURFACE_ROLL: Record<GroundSample['surface'], number> = { runway: 0.015, t
 const BRAKE_SHARE = 0.68
 const TOUCHDOWN_WINDOW = 60
 const AIRBORNE_TICKS = 120
+/** Buildings are checked only this close to the ground (the tallest tower is about 210 m). */
+const OBSTACLE_CEILING = 260
 
 /** Everything a `FlightModel` carries from one tick to the next, for exact snapshots (replays start from one). */
 export interface FlightSnapshot {
@@ -665,6 +668,7 @@ export class FlightModel {
     this.tas = speed
     this.ias = indicatedAirspeed(speed, rho, this.air.pressure, this.air.speedOfSound)
     this.updateAttitude()
+    if (this.crashed === null && this.agl < OBSTACLE_CEILING && this.py - 0.8 < obstacleTop(this.px, this.pz)) this.crashed = 'impact'
     this.trackTouchdown()
   }
 

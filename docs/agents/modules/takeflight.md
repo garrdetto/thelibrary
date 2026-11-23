@@ -4,7 +4,7 @@ Career flight simulator (`modules-src/takeflight/`, module id `takeflight`, page
 
 ## Status
 
-Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is being delivered in parts: parts 1 (seven airports, floating origin, airport streaming, ILS) and 2 (weather, clouds, rain, time of day) are in; towns and cities, then CDLOD geomorphing in a worker follow. Milestones 5–8 (more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is being delivered in parts: parts 1 (seven airports, floating origin, airport streaming, ILS), 2 (weather, clouds, rain, time of day) and 3 (towns and the city) are in; CDLOD geomorphing in a worker follows. Milestones 5–8 (more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
 
 **Milestones run back to back (owner, 2026-11-23).** When a milestone's pull request merges, start the next one in the plan without waiting for a prompt, and mark it done in `docs/takeflight/PLAN.md` and here when it merges.
 
@@ -28,6 +28,12 @@ Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, c
 
 - `shared/Weather.ts`: presets clear, fair, overcast, rain, storm, fog (a ground layer) and changing (a seeded 36-minute cycle through fair, overcast and rain with the wind veering and strengthening). `weatherAt` gives cover, base and depth above the departure field, visibility, rain, and gust/turbulence/veer/speed factors; `weatherWind` applies them to the chosen base wind. The sim owns it (`Simulation.weather`, updated once a sim second for changing weather, recomputed on `loadState`), so the wind it stirs replays exactly; the record header carries `weather` (record version 3). Careers multiply XP by `WEATHER_XP`; the Instrument checkride is flown in fog.
 - `render/WeatherView.ts` draws it: `render/Clouds.ts` ray-marches a 3D value-noise slab on two planes at the base and top (only the plane between camera and layer draws, so nothing counts twice and terrain occludes through depth), GLSL and WGSL kept in step, hidden on a compile error; inside a thick layer a camera-centred bubble whites out the view (planes cannot reach the horizon); `render/Rain.ts` thin-instanced streaks below the base; visibility through `setFogRange`; sunlight dimmed by cover; the clock runs on during the flight. Change the two shader copies together.
+
+## Towns and the city
+
+- `shared/Towns.ts`: `PLACES` (Halvard city beside the hub, Ashby and Corran towns beside their airports, Fenwick Works industrial district, Harrow and Millbrook villages), each a rotated street grid filled from a seed: towers and offices downtown in the city, shops on the main street, houses toward the edge, warehouses in the works. Buildings stay off airport ground, water and slopes over 22 %, and below `heightLimit` (every runway's approach and departure surface: 2.5° from the runway end, 150 m either side widening 15 %), so approaches pass over or beside them. `tests/towns.test.ts` checks all of it.
+- Buildings are obstacles: `FlightModel.step` crashes the aircraft (`impact`) when it is within 260 m of the ground and below `obstacleTop` (exact rotated footprints found through a 64 m grid). That is part of the simulation, so the Worker's re-flight sees the same buildings; places are laid out once, on the loading screen.
+- `render/TownRenderer.ts` draws a place with thin-instanced boxes per kind (colour per instance), gabled roofs, window grids that light at night on offices and towers, and draped streets; houses, shops and streets only within 7 km. `game/World.ts` builds places within 22 km of their edge and releases them beyond 28 km. Trees are not planted in built-up areas (`townWeight`).
 
 ## Careers
 

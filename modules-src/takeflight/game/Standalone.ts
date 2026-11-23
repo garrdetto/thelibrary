@@ -63,6 +63,7 @@ import { Menus } from '../ui/Menus'
 import type { FlightOptions, StartKind, TimeKind, WindKind } from '../ui/Menus'
 import { CameraRig, VIEW_ORDER } from './Cameras'
 import { CareerStore } from './CareerStore'
+import { allPlaces } from '../shared/Towns'
 import { World } from './World'
 import { FlightSession } from './FlightSession'
 import { TouchdownReplay } from './TouchdownReplay'
@@ -247,6 +248,8 @@ export class Standalone {
     this.sim.paused = true
     report(0.75, 'Loading the countryside…')
     this.showAround(HARROW_FIELD)
+    report(0.85, 'Laying out the towns…')
+    allPlaces()
     report(0.9, 'Opening your logbook…')
     await this.career.load()
     report(0.95, 'Ready')
@@ -567,6 +570,7 @@ export class Standalone {
     const eyeX = camera.position.x + this.world.originX
     const eyeZ = camera.position.z + this.world.originZ
     this.world.updateAirports(eyeX, eyeZ)
+    this.world.updateTowns(eyeX, eyeZ, this.atmosphere.night)
     this.terrain.update(eyeX, camera.position.y, eyeZ)
     this.atmosphere.update(camera.position)
     this.weather.update(dt, shown, camera.position, this.world.originX, this.world.originZ, this.phase === 'flying')

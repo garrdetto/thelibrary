@@ -3,7 +3,8 @@
  * camera near the scene origin: every static world mesh (terrain, airports) hangs under `root`, which sits at minus the current
  * origin, and the aircraft and camera are drawn at world minus origin. When the camera strays more than `REBASE_DISTANCE` from
  * the origin, the origin jumps to the nearest kilometre under it and the frozen world matrices and bounding boxes under `root`
- * are recomputed once. Airports are built when the camera comes within `AIRPORT_LOAD` and released beyond `AIRPORT_UNLOAD`.
+ * are recomputed once. Airports are built when the camera comes within `AIRPORT_LOAD` and released beyond `AIRPORT_UNLOAD`, towns
+ * within `TOWN_LOAD` of their edge and released beyond `TOWN_UNLOAD`.
  */
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
@@ -11,17 +12,22 @@ import type { Scene } from '@babylonjs/core/scene'
 import { AIRPORTS } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
 import { AirportRenderer } from '../render/AirportRenderer'
+import { TownRenderer } from '../render/TownRenderer'
+import { allPlaces } from '../shared/Towns'
 
 const REBASE_DISTANCE = 3000
 const ORIGIN_STEP = 1000
 const AIRPORT_LOAD = 26000
 const AIRPORT_UNLOAD = 34000
+const TOWN_LOAD = 22000
+const TOWN_UNLOAD = 28000
 
 export interface WorldStats {
   originX: number
   originZ: number
   rebases: number
   airports: number
+  towns: number
 }
 
 export class World {
@@ -30,6 +36,7 @@ export class World {
   originZ = 0
   private rebases = 0
   private readonly airports = new Map<string, AirportRenderer>()
+  private readonly towns = new Map<string, TownRenderer>()
   private onRebaseListeners: (() => void)[] = []
 
   constructor(private readonly scene: Scene) {
@@ -37,7 +44,7 @@ export class World {
   }
 
   get stats(): WorldStats {
-    return { originX: this.originX, originZ: this.originZ, rebases: this.rebases, airports: this.airports.size }
+    return { originX: this.originX, originZ: this.originZ, rebases: this.rebases, airports: this.airports.size, towns: this.towns.size }
   }
 
   /** Airport renderers currently built. */
@@ -92,6 +99,26 @@ export class World {
     }
   }
 
+  /** Builds towns coming into range, releases those left behind, and lights their windows by `night`. */
+  updateTowns(worldX: number, worldZ: number, night: number): void {
+    for (const place of allPlaces()) {
+      const dx = worldX - place.spec.x
+      const dz = worldZ - place.spec.z
+      const distance = Math.sqrt(dx * dx + dz * dz) - place.spec.radius
+      let town = this.towns.get(place.spec.id)
+      if (!town && distance < TOWN_LOAD) {
+        town = new TownRenderer(this.scene, place, this.root)
+        for (const mesh of town.root.getChildMeshes(false)) this.refresh(mesh)
+        this.towns.set(place.spec.id, town)
+      } else if (town && distance > TOWN_UNLOAD) {
+        town.dispose()
+        this.towns.delete(place.spec.id)
+        continue
+      }
+      town?.update(worldX, worldZ, night)
+    }
+  }
+
   private build(airport: AirportSpec): AirportRenderer {
     const renderer = new AirportRenderer(this.scene, airport, this.root)
     for (const mesh of renderer.root.getChildMeshes(false)) this.refresh(mesh)
@@ -101,6 +128,8 @@ export class World {
   dispose(): void {
     for (const renderer of this.airports.values()) renderer.dispose()
     this.airports.clear()
+    for (const town of this.towns.values()) town.dispose()
+    this.towns.clear()
     this.root.dispose(false, false)
   }
 }
