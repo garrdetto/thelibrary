@@ -13,7 +13,6 @@ import type { TrafficPose } from '../shared/Traffic'
 import { FLEET } from '../shared/Fleet'
 import type { AssetManager, ModelInstance } from '../world/AssetManager'
 
-const RANGE = 26000
 const DEG = Math.PI / 180
 
 interface Slot {
@@ -23,6 +22,7 @@ interface Slot {
   gear: Node[]
   key: string
   used: boolean
+  gearDown: boolean
 }
 
 const clearance = new Map<string, number>()
@@ -35,49 +35,72 @@ for (const spec of FLEET) {
 const modelOf = new Map(FLEET.map((spec) => [spec.family, spec.model]))
 
 export class TrafficView {
-  private readonly poses: TrafficPose[] = []
+  private readonly list: TrafficPose[] = []
   private readonly slots: Slot[] = []
   private disposed = false
-  private count = 0
+  private written = 0
   enabled = true
+  /** Traffic drawn within this distance, metres (the quality tier's `trafficRange`). */
+  range = 26000
 
   constructor(private readonly scene: Scene, private readonly assets: AssetManager, private readonly parent: TransformNode) {}
 
-  /** Poses drawn last frame (for the radio's traffic calls). */
-  get current(): readonly TrafficPose[] {
-    return this.poses.slice(0, this.count)
+  /** Poses written last frame; the first `count` are current. */
+  get poses(): readonly TrafficPose[] {
+    return this.list
+  }
+
+  get count(): number {
+    return this.written
   }
 
   update(eyeX: number, eyeZ: number, seconds: number, windFrom: number, windSpeed: number): void {
     if (this.disposed) return
-    this.count = this.enabled ? trafficNear(eyeX, eyeZ, RANGE, seconds, windFrom, windSpeed, this.poses) : 0
-    for (const slot of this.slots) slot.used = false
-    for (let i = 0; i < this.count; i++) {
-      const pose = this.poses[i]
-      const slot = this.slots.find((s) => !s.used && s.key === pose.key)
-      if (slot) {
-        slot.used = true
-        this.place(slot, pose)
+    this.written = this.enabled ? trafficNear(eyeX, eyeZ, this.range, seconds, windFrom, windSpeed, this.list) : 0
+    const slots = this.slots
+    for (let s = 0; s < slots.length; s++) slots[s].used = false
+    for (let i = 0; i < this.written; i++) {
+      const pose = this.list[i]
+      for (let s = 0; s < slots.length; s++) {
+        const slot = slots[s]
+        if (!slot.used && slot.key === pose.key) {
+          slot.used = true
+          this.place(slot, pose)
+          break
+        }
       }
     }
-    for (let i = 0; i < this.count; i++) {
-      const pose = this.poses[i]
-      if (this.slots.some((s) => s.used && s.key === pose.key)) continue
+    for (let i = 0; i < this.written; i++) {
+      const pose = this.list[i]
+      if (this.placed(pose.key)) continue
       const dx = pose.x - eyeX
       const dz = pose.z - eyeZ
-      if (dx * dx + dz * dz > RANGE * RANGE) continue
-      const slot = this.slots.find((s) => !s.used && s.family === pose.family) ?? this.create(pose.family)
+      if (dx * dx + dz * dz > this.range * this.range) continue
+      let slot: Slot | null = null
+      for (let s = 0; s < slots.length; s++) {
+        if (!slots[s].used && slots[s].family === pose.family) {
+          slot = slots[s]
+          break
+        }
+      }
+      slot ??= this.create(pose.family)
       if (!slot) continue
       slot.used = true
       slot.key = pose.key
       this.place(slot, pose)
     }
-    for (const slot of this.slots) {
+    for (let s = 0; s < slots.length; s++) {
+      const slot = slots[s]
       if (!slot.used) {
         slot.key = ''
-        slot.node.setEnabled(false)
+        if (slot.node.isEnabled(false)) slot.node.setEnabled(false)
       }
     }
+  }
+
+  private placed(key: string): boolean {
+    for (let s = 0; s < this.slots.length; s++) if (this.slots[s].used && this.slots[s].key === key) return true
+    return false
   }
 
   private create(family: string): Slot | null {
@@ -87,7 +110,7 @@ export class TrafficView {
     node.parent = this.parent
     node.rotationQuaternion = new Quaternion()
     node.setEnabled(false)
-    const slot: Slot = { family, node, instance: null, gear: [], key: '', used: false }
+    const slot: Slot = { family, node, instance: null, gear: [], key: '', used: false, gearDown: true }
     this.slots.push(slot)
     void this.assets.acquire(`/models/takeflight/${model}_lod1.glb`).then((instance) => {
       if (this.disposed) {
@@ -107,7 +130,8 @@ export class TrafficView {
 
   private place(slot: Slot, pose: TrafficPose): void {
     const node = slot.node
-    node.setEnabled(slot.instance !== null)
+    const ready = slot.instance !== null
+    if (node.isEnabled(false) !== ready) node.setEnabled(ready)
     node.position.set(pose.x, pose.y + (clearance.get(pose.family) ?? 1.5), pose.z)
     const yaw = (90 - pose.heading) * DEG * 0.5
     const pitch = pose.pitch * DEG * 0.5
@@ -123,7 +147,10 @@ export class TrafficView {
     const iw = aw * bw
     const ix = ay * bz
     ;(node.rotationQuaternion as Quaternion).set(iw * cx + ix * cw, iy * cw + iz * cx, iz * cw - iy * cx, iw * cw - ix * cx)
-    for (const part of slot.gear) part.setEnabled(pose.gearDown)
+    if (slot.gearDown !== pose.gearDown) {
+      slot.gearDown = pose.gearDown
+      for (const part of slot.gear) part.setEnabled(pose.gearDown)
+    }
   }
 
   dispose(): void {

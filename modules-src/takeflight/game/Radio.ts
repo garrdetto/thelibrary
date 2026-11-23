@@ -71,9 +71,9 @@ export class Radio {
   }
 
   /** Per frame while flying. */
-  update(a: FlightModel, parkingBrake: boolean, conditions: RadioConditions, traffic: readonly TrafficPose[] = []): void {
+  update(a: FlightModel, parkingBrake: boolean, conditions: RadioConditions, traffic: readonly TrafficPose[] = [], trafficCount = traffic.length): void {
     if (a.crashed) return
-    this.trafficCalls(a, traffic)
+    this.trafficCalls(a, traffic, trafficCount)
     if (this.phase === 'done') return
     const onGround = a.wheelLoad > 0
     switch (this.phase) {
@@ -139,10 +139,11 @@ export class Radio {
   }
 
   /** Calls nearby airborne traffic once per movement: clock position, distance, relative height and type. */
-  private trafficCalls(a: FlightModel, traffic: readonly TrafficPose[]): void {
+  private trafficCalls(a: FlightModel, traffic: readonly TrafficPose[], count: number): void {
     if (this.trafficCooldown > 0) this.trafficCooldown--
     if (a.wheelLoad > 0 || this.trafficCooldown > 0) return
-    for (const pose of traffic) {
+    for (let i = 0; i < count; i++) {
+      const pose = traffic[i]
       if (pose.onGround || this.called.has(pose.key)) continue
       const dx = pose.x - a.px
       const dz = pose.z - a.pz

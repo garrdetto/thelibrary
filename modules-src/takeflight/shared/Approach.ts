@@ -35,9 +35,13 @@ function headingGap(a: number, b: number): number {
   return d
 }
 
-/** The approach being flown from (x, y, z) on `heading`, or null when not lined up with any landing runway end. */
-export function approachFor(x: number, y: number, z: number, heading: number, wheelHeight = 1.3): ApproachState | null {
-  let best: ApproachState | null = null
+export function createApproachState(): ApproachState {
+  return { airport: AIRPORTS[0], runway: AIRPORTS[0].runways[0], end: { end: 0, name: '', heading: 0, x: 0, z: 0, dx: 0, dz: 0 }, ils: false, glideslope: 0, localizer: 0, distance: 0 }
+}
+
+/** The approach being flown from (x, y, z) on `heading`, written into `out`, or null when not lined up with any landing runway end. */
+export function approachFor(x: number, y: number, z: number, heading: number, wheelHeight = 1.3, out: ApproachState = createApproachState()): ApproachState | null {
+  let found = false
   for (const airport of AIRPORTS) {
     const ax = x - airport.x
     const az = z - airport.z
@@ -56,9 +60,18 @@ export function approachFor(x: number, y: number, z: number, heading: number, wh
         const glideslope = (atan2(height, along) * RAD - runway.glidepath) / GS_DOT
         const localizer = (atan2(cross, along + runway.length) * RAD) / LOC_DOT
         if (Math.abs(localizer) > 8) continue
-        if (!best || along < best.distance) best = { airport, runway, end: { ...end }, ils: runway.ils[end.end], glideslope, localizer, distance: along }
+        if (!found || along < out.distance) {
+          found = true
+          out.airport = airport
+          out.runway = runway
+          Object.assign(out.end, end)
+          out.ils = runway.ils[end.end]
+          out.glideslope = glideslope
+          out.localizer = localizer
+          out.distance = along
+        }
       }
     }
   }
-  return best
+  return found ? out : null
 }

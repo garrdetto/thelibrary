@@ -36,6 +36,7 @@ export class World {
   originZ = 0
   private rebases = 0
   private readonly airports = new Map<string, AirportRenderer>()
+  private readonly loadedList: AirportRenderer[] = []
   private readonly towns = new Map<string, TownRenderer>()
   private onRebaseListeners: (() => void)[] = []
 
@@ -48,8 +49,9 @@ export class World {
   }
 
   /** Airport renderers currently built. */
-  get loadedAirports(): IterableIterator<AirportRenderer> {
-    return this.airports.values()
+  /** The airports built right now (the same array each call; it changes only when airports load or unload). */
+  get loadedAirports(): readonly AirportRenderer[] {
+    return this.loadedList
   }
 
   onRebase(listener: () => void): () => void {
@@ -91,10 +93,14 @@ export class World {
       const dz = worldZ - airport.z
       const distance = Math.sqrt(dx * dx + dz * dz)
       const loaded = this.airports.get(airport.id)
-      if (!loaded && distance < AIRPORT_LOAD) this.airports.set(airport.id, this.build(airport))
-      else if (loaded && distance > AIRPORT_UNLOAD) {
+      if (!loaded && distance < AIRPORT_LOAD) {
+        const built = this.build(airport)
+        this.airports.set(airport.id, built)
+        this.loadedList.push(built)
+      } else if (loaded && distance > AIRPORT_UNLOAD) {
         loaded.dispose()
         this.airports.delete(airport.id)
+        this.loadedList.splice(this.loadedList.indexOf(loaded), 1)
       }
     }
   }
@@ -128,6 +134,7 @@ export class World {
   dispose(): void {
     for (const renderer of this.airports.values()) renderer.dispose()
     this.airports.clear()
+    this.loadedList.length = 0
     for (const town of this.towns.values()) town.dispose()
     this.towns.clear()
     this.root.dispose(false, false)

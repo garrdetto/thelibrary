@@ -5,7 +5,7 @@
 import { buildTileData } from './TerrainTile'
 
 export interface TileRequest {
-  key: string
+  key: number
   x0: number
   z0: number
   size: number

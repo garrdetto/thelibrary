@@ -23,11 +23,17 @@ export interface FlightQuality {
   buildBudgetMs: number
   /** Cockpit gauge texture redraws per second. */
   gaugeHz: number
+  /** Most lines the frame is rendered at (dynamic resolution steps down from here when the frame rate drops). */
+  renderLines: number
+  /** AI traffic drawn within this distance, metres. */
+  trafficRange: number
+  /** Temporal anti-aliasing while the camera holds still. */
+  taa: boolean
 }
 
 export const FLIGHT_QUALITY: Record<QualityTier, FlightQuality> = {
-  low: { tier: 'low', viewDistance: 28000, terrainSplit: 1.6, minTile: 1024, treeRange: 1500, treeDensity: 0.35, buildBudgetMs: 2, gaugeHz: 15 },
-  medium: { tier: 'medium', viewDistance: 40000, terrainSplit: 1.9, minTile: 512, treeRange: 2500, treeDensity: 0.6, buildBudgetMs: 3, gaugeHz: 20 },
-  high: { tier: 'high', viewDistance: 60000, terrainSplit: 2.3, minTile: 512, treeRange: 3500, treeDensity: 0.85, buildBudgetMs: 4, gaugeHz: 30 },
-  ultra: { tier: 'ultra', viewDistance: 80000, terrainSplit: 2.8, minTile: 256, treeRange: 5000, treeDensity: 1, buildBudgetMs: 5, gaugeHz: 30 },
+  low: { tier: 'low', viewDistance: 28000, terrainSplit: 1.6, minTile: 1024, treeRange: 1500, treeDensity: 0.35, buildBudgetMs: 2, gaugeHz: 15, renderLines: 900, trafficRange: 12000, taa: false },
+  medium: { tier: 'medium', viewDistance: 40000, terrainSplit: 1.9, minTile: 512, treeRange: 2500, treeDensity: 0.6, buildBudgetMs: 3, gaugeHz: 20, renderLines: 1080, trafficRange: 18000, taa: false },
+  high: { tier: 'high', viewDistance: 60000, terrainSplit: 2.3, minTile: 512, treeRange: 3500, treeDensity: 0.85, buildBudgetMs: 4, gaugeHz: 30, renderLines: 1440, trafficRange: 26000, taa: false },
+  ultra: { tier: 'ultra', viewDistance: 80000, terrainSplit: 2.8, minTile: 256, treeRange: 5000, treeDensity: 1, buildBudgetMs: 5, gaugeHz: 30, renderLines: 2160, trafficRange: 32000, taa: true },
 }

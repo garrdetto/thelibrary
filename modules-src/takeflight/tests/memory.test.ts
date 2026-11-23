@@ -41,3 +41,63 @@ test('terrain streaming across the region keeps a bounded cache and frees everyt
   scene.dispose()
   engine.dispose()
 })
+
+test('every airport loads and unloads 50 times back to the baseline', async () => {
+  const { AIRPORTS } = await import('../shared/Airports')
+  const engine = new NullEngine()
+  const scene = new Scene(engine)
+  for (const spec of AIRPORTS) new AirportRenderer(scene, spec).dispose()
+  const baseline = counts(scene)
+  for (const spec of AIRPORTS) {
+    for (let i = 0; i < 50; i++) {
+      const airport = new AirportRenderer(scene, spec)
+      airport.dispose()
+    }
+    assert.deepEqual(counts(scene), baseline, `after 50 cycles of ${spec.id}`)
+  }
+  scene.dispose()
+  engine.dispose()
+})
+
+test('a 30-minute scripted route across the region keeps the world bounded and frees everything', async () => {
+  const { World } = await import('../game/World')
+  const { AIRPORTS } = await import('../shared/Airports')
+  const engine = new NullEngine()
+  const scene = new Scene(engine)
+  new TerrainRenderer(scene, FLIGHT_QUALITY.low).dispose()
+  const baseline = counts(scene)
+  const world = new World(scene)
+  const terrain = new TerrainRenderer(scene, { ...FLIGHT_QUALITY.low, viewDistance: 9000, treeRange: 1200 }, world.root)
+  const route = [...AIRPORTS, AIRPORTS[0]]
+  let peakMeshes = 0
+  const speed = 120
+  let leg = 0
+  let travelled = 0
+  for (let second = 0; second < 30 * 60; second += 2) {
+    const a = route[leg % (route.length - 1)]
+    const b = route[(leg % (route.length - 1)) + 1]
+    const length = Math.hypot(b.x - a.x, b.z - a.z)
+    travelled += speed * 2
+    if (travelled > length) {
+      travelled -= length
+      leg++
+    }
+    const t = Math.min(1, travelled / length)
+    const x = a.x + (b.x - a.x) * t
+    const z = a.z + (b.z - a.z) * t
+    world.follow(x, z)
+    world.updateAirports(x, z)
+    world.updateTowns(x, z, second % 600 > 400 ? 1 : 0)
+    terrain.update(x, 1500, z, Infinity)
+    peakMeshes = Math.max(peakMeshes, scene.meshes.length)
+    assert.ok(world.stats.airports <= 4, `${world.stats.airports} airports loaded at ${second} s`)
+    assert.ok(terrain.stats.tiles <= 420, `terrain cache ${terrain.stats.tiles} at ${second} s`)
+  }
+  assert.ok(leg >= 3, `flew ${leg} legs`)
+  assert.ok(peakMeshes < 6000, `peak ${peakMeshes} meshes`)
+  terrain.dispose()
+  world.dispose()
+  assert.deepEqual(counts(scene), baseline, 'after the route')
+  scene.dispose()
+  engine.dispose()
+})
