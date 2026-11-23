@@ -44,6 +44,7 @@ import { SimWorld } from '../sim/SimWorld'
 import type { ObstacleSource } from '../sim/SimWorld'
 import { chunkTreeObstacles } from '../render/world/PropsPlacement'
 import { RoadEdgeLayer, railBoxes } from '../render/world/RoadEdges'
+import { RoadsideLayer, roadsideBoxes } from '../render/world/Roadside'
 import { TruckAudio } from '../systems/Audio'
 import { Keys } from '../systems/Keys'
 import { MemoryGuard } from '../systems/MemoryGuard'
@@ -199,6 +200,7 @@ export class Standalone implements TruckHost {
     for (const site of SITES) for (const box of siteStaticBoxes(site.id)) this.physics.addStaticBox(box)
     this.physics.setObstacleSource(this.treeSource())
     for (const box of railBoxes(this.terrain)) this.physics.addStaticBox(box)
+    for (const box of roadsideBoxes((x, z) => this.terrain.heightAt(x, z))) this.physics.addStaticBox(box)
     this.traffic = new Traffic(buildLanes(ROADS), (x, z) => this.terrain.heightAt(x, z), Math.floor(Date.now() / 60000), TRAFFIC_BY_TIER[this.tier])
     this.trafficVisuals = new TrafficVisuals(scene, this.frameRoot, this.mats, this.physics, this.traffic)
     this.scope.defer(() => this.trafficVisuals?.dispose())
@@ -211,7 +213,7 @@ export class Standalone implements TruckHost {
     report(0.6, 'Building the sites…')
     this.scope.defer(() => this.seeThrough.dispose())
     const siteLayer = createSiteLayer(scene, this.mats, this.terrain, this.seeThrough)
-    const worldRenderer = this.worldRenderer = this.scope.track(createWorldRenderer(scene, this.frameRoot, this.terrain, this.guard, this.tier, [siteLayer, new RoadEdgeLayer(scene, this.mats, this.terrain)], { atmosphere: this.atmosphere }))
+    const worldRenderer = this.worldRenderer = this.scope.track(createWorldRenderer(scene, this.frameRoot, this.terrain, this.guard, this.tier, [siteLayer, new RoadEdgeLayer(scene, this.mats, this.terrain), new RoadsideLayer(scene, this.mats)], { atmosphere: this.atmosphere }))
     const workZones = this.scope.track(createWorkZones(scene, this.frameRoot, this.mats, ALL_ZONES, (x, z) => this.terrain.heightAt(x, z)))
     this.lotsRenderer = this.scope.track(new LotRenderer(scene, this.frameRoot, this.mats, this.terrain, this.seeThrough))
     this.hud = this.scope.track(new Hud(this.uiRoot))

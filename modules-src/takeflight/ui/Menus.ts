@@ -1,6 +1,6 @@
 /**
- * Take Flight's screens: the start screen (where to start, wind, time of day, assists and graphics quality), the pause screen,
- * the crash screen and the controls panel where every key, button and axis can be rebound with deadzone and curve per axis.
+ * Take Flight's screens: the start screen (where to start, wind, time of day, assists and graphics quality), the pause screen
+ * (resume, restart, end the flight for its debrief, controls) and the controls panel where every key, button and axis can be rebound with deadzone and curve per axis.
  * All are DOM cards over the 3D view, keyboard reachable, and built once; `show*` swaps which is visible.
  */
 import type { AssistSettings } from '../sim/Assists'
@@ -9,8 +9,9 @@ import type { AxisAction, KeyAction } from '../input/Bindings'
 import { ACTION_LABELS, AXIS_ACTIONS, BUTTON_ACTIONS, defaultBindings } from '../input/Bindings'
 import type { InputManager } from '../input/InputManager'
 import type { QualityTier } from '../render/Quality'
+import type { StartKind } from '../sim/Starts'
 
-export type StartKind = 'runway09' | 'runway27' | 'stand' | 'final09' | 'final27' | 'cruise'
+export type { StartKind }
 export type WindKind = 'calm' | 'light' | 'crosswind' | 'gusty'
 export type TimeKind = 'morning' | 'noon' | 'evening' | 'night'
 
@@ -26,6 +27,7 @@ export interface MenuHandlers {
   fly(options: FlightOptions): void
   resume(): void
   restart(): void
+  end(): void
   quit(): void
   quality(tier: QualityTier): void
 }
@@ -75,9 +77,7 @@ export class Menus {
   readonly options: FlightOptions
   private readonly start: HTMLDivElement
   private readonly pause: HTMLDivElement
-  private readonly crash: HTMLDivElement
   private readonly controls: HTMLDivElement
-  private readonly crashText: HTMLParagraphElement
   private readonly multiplierText: HTMLSpanElement
   private returnTo: 'start' | 'pause' = 'start'
 
@@ -86,8 +86,6 @@ export class Menus {
     this.multiplierText = make('span')
     this.start = this.buildStart()
     this.pause = this.buildPause()
-    this.crashText = make('p')
-    this.crash = this.screen(make('div', { className: 'tf-card' }, make('h2', { textContent: 'Flight ended' }), this.crashText, make('div', { className: 'tf-row' }, button('Fly again', () => this.handlers.restart(), 'tf-btn primary'), button('Change flight', () => this.handlers.quit()))))
     this.controls = this.screen(make('div'))
     this.updateMultiplier()
   }
@@ -123,7 +121,7 @@ export class Menus {
     }
     const card = make('div', { className: 'tf-card' },
       make('h1', { textContent: 'Take Flight' }),
-      make('p', { textContent: `Student pilot · ${this.aircraftName} at Harrow Field. Learn the controls, fly the pattern and land on the centreline.` }),
+      make('p', { textContent: `Student pilot · ${this.aircraftName} at Harrow Field. Learn the controls, fly the pattern and land on the centreline. Every flight is scored on smoothness and skill, with a debrief and touchdown replay when you stop.` }),
       choice('Start', START_LABELS, o.start, (v) => (o.start = v)),
       choice('Wind', WIND_LABELS, o.wind, (v) => (o.wind = v)),
       choice('Time of day', TIME_LABELS, o.time, (v) => (o.time = v)),
@@ -145,6 +143,7 @@ export class Menus {
       make('div', { className: 'tf-row' },
         button('Resume', () => this.handlers.resume(), 'tf-btn primary'),
         button('Restart flight', () => this.handlers.restart()),
+        button('End flight and debrief', () => this.handlers.end()),
         button('Controls', () => this.showControls('pause')),
         button('Change flight', () => this.handlers.quit()),
       ),
@@ -260,7 +259,6 @@ export class Menus {
   private hideAll(): void {
     this.start.hidden = true
     this.pause.hidden = true
-    this.crash.hidden = true
     this.controls.hidden = true
   }
 
@@ -276,12 +274,6 @@ export class Menus {
     ;(this.pause.querySelector('.tf-btn.primary') as HTMLButtonElement | null)?.focus()
   }
 
-  showCrash(reason: string): void {
-    this.hideAll()
-    this.crashText.textContent = `The flight ended: ${reason}.`
-    this.crash.hidden = false
-  }
-
   showControls(from: 'start' | 'pause'): void {
     this.returnTo = from
     this.hideAll()
@@ -294,10 +286,10 @@ export class Menus {
   }
 
   get open(): boolean {
-    return !this.start.hidden || !this.pause.hidden || !this.crash.hidden || !this.controls.hidden
+    return !this.start.hidden || !this.pause.hidden || !this.controls.hidden
   }
 
   dispose(): void {
-    for (const screen of [this.start, this.pause, this.crash, this.controls]) screen.remove()
+    for (const screen of [this.start, this.pause, this.controls]) screen.remove()
   }
 }

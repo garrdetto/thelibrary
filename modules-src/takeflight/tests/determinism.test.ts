@@ -46,3 +46,28 @@ test('a recorded input log replays to the exact same state', () => {
   for (const bytes of live.log) replay.stepWith(decodeInput(bytes, 0, input))
   assert.deepEqual(snapshot(replay), snapshot(live.sim))
 })
+
+test('a mid-flight snapshot continues to the exact same state', () => {
+  for (const at of [SIM_HZ * 5, SIM_HZ * 33]) {
+    const sim = makeSim(GUSTY, 777)
+    sim.aircraft.placeOnGround(TERRAIN, -560, 0, 90)
+    sim.settle()
+    const log: Uint8Array[] = []
+    let saved: ReturnType<typeof sim.saveState> | null = null
+    sim.onTick((tick, input) => {
+      const bytes = new Uint8Array(INPUT_BYTES)
+      encodeInput(input, bytes, 0)
+      log.push(bytes)
+      if (tick === at) saved = sim.saveState()
+    })
+    const live = scripted(777)
+    for (const bytes of live.log) sim.stepWith(decodeInput(bytes, 0, createInput()))
+    assert.ok(saved)
+    const other = makeSim(GUSTY, 1)
+    other.loadState(saved)
+    const input = createInput()
+    for (let i = at; i < log.length; i++) other.stepWith(decodeInput(log[i], 0, input))
+    assert.deepEqual(snapshot(other), snapshot(sim))
+    assert.deepEqual(other.aircraft.saveState(), sim.aircraft.saveState())
+  }
+})

@@ -71,7 +71,7 @@ export const HARROW_FIELD: AirportSpec = {
   kind: 'ga',
   x: 0,
   z: 0,
-  elevation: 128,
+  elevation: 205,
   blend: 650,
   halfX: 820,
   halfZ: 320,
@@ -88,7 +88,7 @@ export const HARROW_FIELD: AirportSpec = {
     { name: 'Stand 2', x: -150, z: -150, heading: 180 },
     { name: 'Stand 3', x: -110, z: -150, heading: 180 },
   ],
-  tower: [95, 146, -160],
+  tower: [95, 223, -160],
 }
 
 export const AIRPORTS: readonly AirportSpec[] = [HARROW_FIELD]
@@ -164,4 +164,37 @@ export function pavementAt(x: number, z: number): Surface | null {
 
 export function airportById(id: string): AirportSpec | undefined {
   return AIRPORTS.find((airport) => airport.id === id)
+}
+
+/** Distance of the aiming point (PAPI and touchdown-zone markings) past each threshold. */
+export function aimDistance(runway: RunwaySpec): number {
+  return runway.length >= 1500 ? 400 : 250
+}
+
+export interface RunwayEnd {
+  /** Index into `runway.ends`. */
+  end: 0 | 1
+  name: string
+  heading: number
+  /** Threshold of this end and the unit vector along the runway in its landing direction. */
+  x: number
+  z: number
+  dx: number
+  dz: number
+}
+
+/** The runway end flown on a heading: the one whose landing direction is within 90° of `headingDeg`. */
+export function runwayEndFor(runway: RunwaySpec, headingDeg: number, out: RunwayEnd = { end: 0, name: '', heading: 0, x: 0, z: 0, dx: 0, dz: 0 }): RunwayEnd {
+  runwayFrame(runway, frame)
+  let diff = (headingDeg - runway.heading) % 360
+  if (diff < 0) diff += 360
+  const low = diff <= 90 || diff >= 270
+  out.end = low ? 0 : 1
+  out.name = runway.ends[out.end]
+  out.heading = low ? runway.heading : (runway.heading + 180) % 360
+  out.dx = low ? frame.dx : -frame.dx
+  out.dz = low ? frame.dz : -frame.dz
+  out.x = low ? frame.x0 : frame.x0 + frame.dx * runway.length
+  out.z = low ? frame.z0 : frame.z0 + frame.dz * runway.length
+  return out
 }

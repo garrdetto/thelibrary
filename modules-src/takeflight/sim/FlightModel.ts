@@ -49,6 +49,14 @@ const BRAKE_SHARE = 0.68
 const TOUCHDOWN_WINDOW = 60
 const AIRBORNE_TICKS = 120
 
+/** Everything a `FlightModel` carries from one tick to the next, for exact snapshots (replays start from one). */
+export interface FlightSnapshot {
+  values: number[]
+  crashed: CrashReason | null
+  lastTouchdown: Touchdown | null
+  touchdownOpen: Touchdown | null
+}
+
 interface ContactState {
   spec: ContactSpec
   touching: boolean
@@ -268,6 +276,60 @@ export class FlightModel {
     this.spoiler = other.spoiler
     this.power = other.power
     this.crashed = other.crashed
+  }
+
+  /** A full copy of the state that persists between ticks. */
+  saveState(): FlightSnapshot {
+    const values = [this.tick, this.px, this.py, this.pz, this.vx, this.vy, this.vz, this.qx, this.qy, this.qz, this.qw, this.wx, this.wy, this.wz, this.fuel, this.payload, this.elevator, this.aileron, this.rudder, this.trim, this.flap, this.gear, this.spoiler, this.power, this.wheelLoad, this.airborneTicks, this.touchdowns, this.strikes, this.peakG, this.touchdownTicks]
+    for (const contact of this.contacts) values.push(contact.touching ? 1 : 0, contact.load, contact.compression)
+    const open = this.touchdownOpen && { ...this.touchdownOpen }
+    const last = this.lastTouchdown === this.touchdownOpen ? open : this.lastTouchdown && { ...this.lastTouchdown }
+    return { values, crashed: this.crashed, lastTouchdown: last, touchdownOpen: open }
+  }
+
+  /** Restores a `saveState` snapshot taken from a model of the same aircraft. */
+  loadState(snapshot: FlightSnapshot): void {
+    const v = snapshot.values
+    this.tick = v[0]
+    this.px = v[1]
+    this.py = v[2]
+    this.pz = v[3]
+    this.vx = v[4]
+    this.vy = v[5]
+    this.vz = v[6]
+    this.qx = v[7]
+    this.qy = v[8]
+    this.qz = v[9]
+    this.qw = v[10]
+    this.wx = v[11]
+    this.wy = v[12]
+    this.wz = v[13]
+    this.fuel = v[14]
+    this.payload = v[15]
+    this.elevator = v[16]
+    this.aileron = v[17]
+    this.rudder = v[18]
+    this.trim = v[19]
+    this.flap = v[20]
+    this.gear = v[21]
+    this.spoiler = v[22]
+    this.power = v[23]
+    this.wheelLoad = v[24]
+    this.airborneTicks = v[25]
+    this.touchdowns = v[26]
+    this.strikes = v[27]
+    this.peakG = v[28]
+    this.touchdownTicks = v[29]
+    for (let i = 0; i < this.contacts.length; i++) {
+      const contact = this.contacts[i]
+      contact.touching = v[30 + i * 3] === 1
+      contact.load = v[31 + i * 3]
+      contact.compression = v[32 + i * 3]
+    }
+    this.crashed = snapshot.crashed
+    this.touchdownOpen = snapshot.touchdownOpen && { ...snapshot.touchdownOpen }
+    this.lastTouchdown = snapshot.lastTouchdown === snapshot.touchdownOpen ? this.touchdownOpen : snapshot.lastTouchdown && { ...snapshot.lastTouchdown }
+    this.updateAttitude()
   }
 
   private normalize(): void {
