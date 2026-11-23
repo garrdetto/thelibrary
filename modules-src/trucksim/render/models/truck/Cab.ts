@@ -232,18 +232,28 @@ function sleeperBox(b: PartBatch, L: TruckLayout): void {
   }
 }
 
-function aeroDayFairing(b: PartBatch, L: TruckLayout): void {
-  if (L.style !== 'aero' || L.sleeper) return
+function roofFairing(b: PartBatch, L: TruckLayout, look: TruckLook): void {
+  if (look.roof === 'none' || L.raised || L.bed) return
   const hr = L.hw - L.tumble
   const yR = L.roofY
   const zT = L.cabFrontZ - L.rake
-  const z0 = L.cabBackZ + 0.05
+  const flatTop = L.sleeper && L.style !== 'cabover'
+  const z0 = (flatTop ? L.sleeperBackZ : L.cabBackZ) + 0.05
   const z1 = zT + 0.2
-  const top = Math.max(yR + 0.12, L.model.roofHeight)
+  const base = flatTop ? Math.max(yR, L.sleeperTopY) : yR
+  const low = L.style === 'aero' && !L.sleeper ? Math.max(yR + 0.12, L.model.roofHeight) : base + 0.32
+  const top = look.roof === 'tall' ? base + 0.78 : low
+  const power = look.roof === 'tall' ? 1.35 : 1.6
   b.add('primary', loft((z) => {
     const t = (z - z0) / (z1 - z0)
-    return { x0: -(hr - 0.04), x1: hr - 0.04, y0: yR - 0.04, y1: mix(yR + 0.02, top, 1 - Math.pow(t, 1.6)), rt: 0.1, rb: 0.01 }
+    return { x0: -(hr - 0.04), x1: hr - 0.04, y0: base - 0.04, y1: mix(base + 0.02, top, 1 - Math.pow(Math.max(0, t), power)), rt: 0.1, rb: 0.01 }
   }, z0, z1, { steps: 8, re: 0.08, ends: 'both', insetBottom: false }))
+  if (look.roof === 'tall') {
+    for (const s of [1, -1] as const) {
+      const [x0, x1] = xr(s, hr - 0.06, hr - 0.02)
+      b.add('secondary', slab(x0, x1, base + 0.05, top - 0.12, z0 + 0.1, z0 + 0.5, 0.01, 0.01, 0.01))
+    }
+  }
 }
 
 function roofEquipment(b: PartBatch, L: TruckLayout, look: TruckLook): void {
@@ -323,6 +333,20 @@ function stripes(b: PartBatch, L: TruckLayout, look: TruckLook): void {
       const y = yF + L.lowerBand + 0.3
       parts.push(['secondary', sideRibbon([[zFront, y], [zBack, y]], 0.16, x, 0.0025, s)])
       parts.push(['accent', sideRibbon([[zFront, y + 0.1], [zBack, y + 0.1]], 0.016, x, 0.003, s)])
+    } else if (stripe === 'twoTone') {
+      const y0 = yF + L.lowerBand
+      const y1 = yB - 0.16
+      parts.push(['secondary', sideRibbon([[zFront, (y0 + y1) / 2], [zBack, (y0 + y1) / 2]], y1 - y0, x, 0.0025, s)])
+      parts.push(['accent', sideRibbon([[zFront, y1 + 0.02], [zBack, y1 + 0.02]], 0.022, x, 0.003, s)])
+    } else if (stripe === 'chevron') {
+      const mid = yF + L.lowerBand + (yB - yF - L.lowerBand) * 0.45
+      const rise = Math.min(0.32, (yB - yF - L.lowerBand) * 0.4)
+      const tip = zFront - 0.25
+      for (const [k, key] of [[0, 'secondary'], [1, 'accent'], [2, 'secondary']] as const) {
+        const z = tip - k * 0.26
+        if (z - 0.45 < zBack) break
+        parts.push([key, sideRibbon([[z - 0.45, mid + rise], [z, mid], [z - 0.45, mid - rise]], k === 1 ? 0.05 : 0.11, x, 0.0025 + k * 0.0002, s)])
+      }
     } else {
       const low = yF + L.lowerBand + 0.12
       const high = yB - 0.1
@@ -346,7 +370,7 @@ export function buildCab(b: PartBatch, L: TruckLayout, look: TruckLook): void {
     else westCoastMirror(b, L, s)
   }
   sleeperBox(b, L)
-  aeroDayFairing(b, L)
+  roofFairing(b, L, look)
   roofEquipment(b, L, look)
   stripes(b, L, look)
 }

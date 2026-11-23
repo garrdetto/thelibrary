@@ -372,8 +372,8 @@ function exhaust(b: PartBatch, L: TruckLayout, look: TruckLook): void {
   }
 }
 
-function skirts(b: PartBatch, L: TruckLayout): void {
-  if (L.style !== 'aero') return
+function skirts(b: PartBatch, L: TruckLayout, look: TruckLook): void {
+  if (!look.skirts || L.bed) return
   const front = L.stepsBackZ - 0.02
   const back = Math.max(L.firstRearZ + L.wheelR + 0.15, (L.sleeper ? L.sleeperBackZ : L.cabBackZ) - 0.2)
   if (front - back < 0.4) return
@@ -402,5 +402,5 @@ export function buildChassis(b: PartBatch, L: TruckLayout, look: TruckLook): voi
   rearEnd(b, L)
   flaps(b, L, look)
   exhaust(b, L, look)
-  skirts(b, L)
+  skirts(b, L, look)
 }

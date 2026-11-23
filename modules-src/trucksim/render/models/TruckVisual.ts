@@ -52,7 +52,7 @@ export interface TruckVisual {
 type PaintSlot = 'primary' | 'secondary' | 'accent'
 
 function geometryKey(look: TruckLook): string {
-  return [look.paint.stripe, look.stacks, look.visor, look.bumper, look.lights, look.mudflaps, look.horn].join('|')
+  return [look.paint.stripe, look.stacks, look.visor, look.bumper, look.lights, look.mudflaps, look.horn, look.grille, look.roof, look.skirts].join('|')
 }
 
 function cloneLook(look: TruckLook): TruckLook {

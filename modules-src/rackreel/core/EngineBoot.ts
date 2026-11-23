@@ -1,7 +1,8 @@
 /**
  * Picks the renderer: Babylon's WebGPU engine whenever the browser hands out an adapter, the WebGL2 engine only when it has none or
  * `?gpu=webgl` asks for it. Every custom shader in the module is written in WGSL for the WebGPU engine, so nothing is transpiled from
- * GLSL there. If the WebGPU engine cannot start, loses its device or never draws a frame, the page reloads itself once onto WebGL2.
+ * GLSL there. If the WebGPU engine cannot start, loses its device or draws no frame in its first 8 visible seconds, the page reloads
+ * itself once onto WebGL2.
  */
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 import { Engine } from '@babylonjs/core/Engines/engine'
@@ -46,6 +47,20 @@ async function webGpuPreference(): Promise<GpuPreference | null> {
   return null
 }
 
+/** Runs `fn` now if the page is showing, otherwise when it next becomes visible (a hidden tab draws no frames). */
+function whenVisible(fn: () => void): void {
+  if (!document.hidden) {
+    fn()
+    return
+  }
+  const onShow = () => {
+    if (document.hidden) return
+    document.removeEventListener('visibilitychange', onShow)
+    fn()
+  }
+  document.addEventListener('visibilitychange', onShow)
+}
+
 /** A canvas that has given out a WebGPU context cannot give a WebGL one, so the switch is a reload of the page. */
 function restartOnWebGl(reason: string): Promise<never> {
   console.warn(`${reason}, reloading on WebGL2`)
@@ -79,9 +94,11 @@ export async function createEngine(canvas: HTMLCanvasElement): Promise<EngineBoo
       engine,
       backend: 'webgpu',
       watchFirstFrame: () => {
-        setTimeout(() => {
-          if (!drawn) replace('WebGPU drew no frames')
+        const arm = () => setTimeout(() => {
+          if (!drawn && !document.hidden) replace('WebGPU drew no frames')
+          else if (!drawn) whenVisible(arm)
         }, FIRST_FRAME_MS)
+        whenVisible(arm)
       },
     }
   }

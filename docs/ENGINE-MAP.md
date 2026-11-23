@@ -469,7 +469,7 @@ Rack & Reel's game with Montello, Wisconsin as its world and the lake gameplay o
 An open-world trucking module on a 4 km county with 16 shared player lots (Haulers Row). Built from `modules-src/trucksim/index.html` + `index.ts` into `public/modules/trucksim.html`; thumbnail `public/images/modules/trucksim.webp`; catalog entry in `src/lib/modules.ts`. Tests: `scripts/trucksim-tests.mjs` (in `pnpm test`).
 - `module.json`, `tsconfig.json`, `index.html`, `index.ts` — module manifest, type-check config, page shell with loading bar, and the entry that boots `Standalone` and tears it down on `pagehide`.
 - `shared/Actions.ts` — `applyAction(profile, action, ctx)`: the one authority for money, jobs and lots; returns the new profile, the cash `delta` and a message — `net/Progress.ts`, `src/server/routes/trucksim.ts`.
-- `shared/Catalog.ts` — every truck, trailer, cargo, look option and lot building (specs, prices, original makes) — physics, visuals, economy, Worker.
+- `shared/Catalog.ts` — every truck, trailer, cargo, look option, factory design (`DESIGNS`, `designLook`, `designOf`, `fitLook`) and lot building (specs, prices, original makes) — physics, visuals, economy, Worker.
 - `shared/Economy.ts` — `Profile`, `defaultProfile`, `normalizeProfile` (rebuilds untrusted data field by field), `LOOK_OPTIONS`.
 - `shared/HaulWorld.ts` — the `HaulWorld` interface (sites, zones, `routeDistance`) that jobs and procedures read instead of county constants — Life Sim seam.
 - `shared/Jobs.ts` — deterministic jobs per 30-minute slot (`<world>-<slot>-<n>`), pay by mass and distance, damage and on-time adjustments.
@@ -536,7 +536,7 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `render/world/Atmosphere.ts`, `AtmosphereSky.ts`, `AtmosphereEnvironment.ts` — sky dome, sun, moon, lights, fog and shadows by tier; the sky as plain numbers; the CPU-baked environment cube.
 - `render/world/Pipeline.ts` — the HDR post chain (ACES or neutral tone map, bloom, FXAA or MSAA, sharpen, SSAO).
 - `render/lots/Batch.ts` — `SceneryBatch`: boxes, cylinders, roofs and quads merged per material key.
-- `render/lots/Items.ts` — lot builder piece models and their collision boxes.
+- `render/lots/Items.ts` — lot builder piece models and their collision boxes (including the `pressureWasher` cart).
 - `render/lots/Palette.ts` — scenery material keys (matte, painted metal, chain-link, textured `paveGravel`/`paveAsphalt`) with owned materials.
 - `render/lots/PavingTexture.ts` — the tiling gravel and asphalt textures (seeded canvas painting, UVs in world metres; null without a canvas).
 - `render/lots/Signs.ts` — `SignAtlas`: one dynamic texture of block lettering split into cells.
@@ -547,12 +547,13 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `game/Procedures.ts` — the realistic loading and unloading steps per haul, as data plus checks over a `ProcedureContext`.
 - `game/JobRunner.ts` — follows one job from pickup to drop, runs the procedures and accumulates cargo damage.
 - `game/BuildMode.ts` — the lot builder's controls, ghost, batched `build` actions and the Land tab (`buy-land`).
+- `render/models/WashGear.ts` — `WashGear`: the wash wand aimed along the spray and the sagging hose from your pressure washer (`hosePath`, one updatable tube) — `WashMode`.
 - `game/WashMode.ts` — the interactive pressure wash: orbit camera round the truck, hold the mouse to spray the `DirtLayer`, then the `wash` action with the share cleaned.
 - `game/Cameras.ts` — chase, cab and build cameras.
 - `game/MapDraw.ts` — the county map and minimap drawing.
 - `net/Progress.ts` — the career client: `/api/trucksim` when signed in, local `applyAction` for guests, `?world=`.
 - `ui/Hud.ts`, `Panels.ts`, `Shop.ts`, `BuilderBar.ts`, `WashHud.ts`, `dom.ts`, `index.ts`, `styles.css` — the HUD, start/job/map/pause/help panels, dealer, garage and fleet screens, the builder toolbar (with the Land tab), the wash toolbar, DOM helpers, the barrel and the stylesheet.
-- `tests/` — Node tests run by `scripts/trucksim-tests.mjs`: `economy`, `jobs`, `lots`, `procedures`, `roadgraph`, `layout` (shared rules and world), `sim-dump`, `sim-excavator`, `sim-trailer`, `sim-truck`, `sim-world` (Rapier rigs), `groups` (collision groups equal Life Sim's), `boot` (boot recovery, multi-render extension loaded on both engines), `scope`, `streamer`, `memory` (ownership, streaming, guard), `visual-sites`, `visual-trailer`, `visual-truck`, `visual-world`, `wash`, `land-wash` (build and dispose on a `NullEngine` and require counts to return to baseline).
+- `tests/` — Node tests run by `scripts/trucksim-tests.mjs`: `economy`, `jobs`, `lots`, `procedures`, `roadgraph`, `layout` (shared rules and world), `sim-dump`, `sim-excavator`, `sim-trailer`, `sim-truck`, `sim-world` (Rapier rigs), `groups` (collision groups equal Life Sim's), `boot` (boot recovery, multi-render extension loaded on both engines), `scope`, `streamer`, `memory` (ownership, streaming, guard), `visual-sites`, `visual-trailer`, `visual-truck`, `visual-world`, `wash`, `land-wash`, `designs` (every truck in every design, `fitLook`, old looks), `washer` (placement beside the shop, `washSpots`, wand and hose) (build and dispose on a `NullEngine` and require counts to return to baseline).
 - `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` — `/api/trucksim` (see Worker API); `migrations/0049_trucksim.sql` — `trucksim_profiles` and `trucksim_lots`.
 - Contracts: coordinates are metres, Y up, right-handed (`scene.useRightHandedSystem = true`, so Rapier and Babylon share numbers); heading `h` faces `(sin h, 0, cos h)`; a vehicle frame has its origin on the ground under the front axle (trucks) or kingpin (trailers), +Z forward, +X the driver's left, so a positive heading change and a positive steer are left turns. Render code parents everything under the `parent`/`frameRoot` it is given, sim code talks to a `PhysicsHost`, rules read a `HaulWorld`. No custom shaders; Babylon imported by path.
 

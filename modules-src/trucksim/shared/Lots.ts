@@ -4,7 +4,7 @@
  * metres from (x, z) in the `rot` direction with thickness `d`. Validation depends only on a lot's size, so a Life Sim parcel
  * can be a truck lot as well as a Haulers Row lot.
  */
-import { BUILDING_BY_ID, DEMOLISH_REFUND } from './Catalog'
+import { BUILDING_BY_ID, DEMOLISH_REFUND, WASHER_SHOP_GAP_M } from './Catalog'
 import type { BuildDef } from './Catalog'
 
 export type BuildRotation = 0 | 1 | 2 | 3
@@ -83,6 +83,24 @@ export function hasService(build: readonly BuildItem[]): boolean {
   return build.some((item) => BUILDING_BY_ID[item.def]?.service === true)
 }
 
+/** Straight-line gap (m) between two footprints; 0 when they touch or overlap. */
+export function footprintGap(a: Footprint, b: Footprint): number {
+  const dx = Math.max(0, b.x - (a.x + a.w), a.x - (b.x + b.w))
+  const dz = Math.max(0, b.z - (a.z + a.d), a.z - (b.z + b.d))
+  return Math.hypot(dx, dz)
+}
+
+/** True when a pressure washer stands within `WASHER_SHOP_GAP_M` of a steel shop in `build`. */
+export function washerBesideShop(washer: BuildItem, build: readonly BuildItem[]): boolean {
+  const own = itemFootprint(washer)
+  return build.some((other) => other.def === 'shop-steel' && footprintGap(own, itemFootprint(other)) <= WASHER_SHOP_GAP_M + EPSILON)
+}
+
+/** The pieces of a lot where its owner can wash a truck: wash bays, and pressure washers that stand beside a steel shop. */
+export function washSpots(build: readonly BuildItem[]): BuildItem[] {
+  return build.filter((item) => item.def === 'wash-bay' || (item.def === 'pressure-washer' && washerBesideShop(item, build)))
+}
+
 function overlaps(a: Footprint, b: Footprint): boolean {
   return a.x < b.x + b.w - EPSILON && b.x < a.x + a.w - EPSILON && a.z < b.z + b.d - EPSILON && b.z < a.z + a.d - EPSILON
 }
@@ -128,6 +146,7 @@ export function validateItem(item: BuildItem, existing: readonly BuildItem[], lo
       if (overlaps(footprint, itemFootprint(other))) return `${def.name} overlaps ${otherDef.name}.`
     }
   }
+  if (def.id === 'pressure-washer' && !washerBesideShop(item, existing)) return `Stand the pressure washer within ${WASHER_SHOP_GAP_M} m of your steel shop.`
   return null
 }
 

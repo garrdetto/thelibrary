@@ -10,7 +10,7 @@ import type { Profile } from './Economy'
 import type { HaulWorld } from './HaulWorld'
 import { findJob, jobPayout, jobSlot, minimumMs } from './Jobs'
 import type { JobPayout } from './Jobs'
-import { COLOR_PATTERN, MAX_ITEMS, hasService, itemCost, itemRefund, validateItem } from './Lots'
+import { COLOR_PATTERN, MAX_ITEMS, hasService, itemCost, itemRefund, validateItem, washSpots } from './Lots'
 import type { BuildItem, LotSize } from './Lots'
 import { LAND_STRIP_M, LOTS, LOT_D, LOT_W, MAX_LAND_STRIPS, lotExtent } from './WorldLayout'
 
@@ -285,7 +285,7 @@ function wash(profile: Profile, uid: string, rawCleaned: number, place: 'own' | 
   const truck = profile.trucks.find((entry) => entry.uid === uid)
   if (!truck) return refuse(profile, 'You do not own that truck.')
   if (place !== 'own' && place !== 'public') return refuse(profile, 'Choose where to wash.')
-  if (place === 'own' && !profile.build.some((item) => item.def === 'wash-bay')) return refuse(profile, 'Build a wash bay on your lot first.')
+  if (place === 'own' && washSpots(profile.build).length === 0) return refuse(profile, 'Build a wash bay, or put a pressure washer beside your shop, first.')
   const cost = place === 'own' ? OWN_WASH_WATER : PUBLIC_WASH_PRICE
   if (cost > profile.cash) return refuse(profile, `You need ${money(cost - profile.cash)} more.`)
   const cleaned = Number.isFinite(rawCleaned) ? Math.max(0, Math.min(1, rawCleaned)) : 0
