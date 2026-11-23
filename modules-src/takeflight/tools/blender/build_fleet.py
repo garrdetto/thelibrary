@@ -273,12 +273,13 @@ def doors(spec, mats, root, collection):
 
 
 def cockpit(spec, mats, collection):
+    """The interior shell ends just ahead of the panel and is open at the front, so the view through the windshield is clear."""
     root = bpy.data.objects.new(f"{spec['name']}_cockpit", None)
     collection.objects.link(root)
     c = spec['cabin']
     sections = [s for s in smooth_sections(spec['fuselage'], 3) if c['aft'] < s[0] < c['fore']]
     inner = [(x, hw - 0.035, top - 0.035, bottom + 0.05, e, te) for (x, hw, top, bottom, e, te) in sections]
-    bm = kit.loft(inner, SEGMENTS, cap_front=True, cap_back=True)
+    bm = kit.loft(inner, SEGMENTS, cap_front=False, cap_back=True)
     bmesh.ops.reverse_faces(bm, faces=bm.faces)
     w = spec['windows']
     remove = []
@@ -350,10 +351,65 @@ DUET = {
     'tail': {'t_tail': False, 'fin_x': -4.55, 'fin_base': 0.5, 'fin_height': 1.55, 'fin_root': 1.5, 'fin_tip': 0.75, 'fin_sweep': 0.95, 'stab_x': -4.9, 'stab_z': 0.42, 'stab_span': 4.4, 'stab_root': 1.0, 'stab_tip': 0.62, 'stab_sweep': 0.2},
     'engines': {'kind': 'wing', 'y': [1.75], 'ahead': 1.25, 'nacelle': 0.34, 'radius': 0.96, 'blades': 2, 'spinner': 0.15},
     'gear': {'retract': True, 'main_x': -0.25, 'main_top_y': 1.7, 'main_top_z': -0.5, 'main_y': 1.7, 'axle_z': -1.28, 'main_radius': 0.3, 'nose_x': 1.95, 'nose_top_z': -0.42, 'nose_radius': 0.24},
-    'cabin': {'fore': 1.4, 'aft': -2.0, 'panel': (1.08, 0.40, 0.56), 'seat_y': 0.32, 'floor': -0.46, 'floor_half': 0.5},
+    'cabin': {'fore': 1.16, 'aft': -2.0, 'panel': (1.08, 0.40, 0.56), 'seat_y': 0.32, 'floor': -0.46, 'floor_half': 0.5},
 }
 
-FLEET = {'duet': DUET}
+SPRITE = {
+    'name': 'sprite',
+    'category': 'turboprop',
+    'colors': ((0.88, 0.9, 0.92), (0.1, 0.35, 0.55)),
+    'fuselage': [
+        (4.75, 0.08, 0.10, -0.06, 2.0, 2.0),
+        (4.55, 0.30, 0.22, -0.30, 2.4, 2.4),
+        (4.10, 0.42, 0.34, -0.44, 2.5, 2.5),
+        (3.00, 0.52, 0.48, -0.56, 2.6, 2.6),
+        (1.70, 0.62, 0.66, -0.60, 2.7, 3.0),
+        (1.05, 0.67, 1.06, -0.60, 2.8, 4.2),
+        (0.00, 0.68, 1.12, -0.58, 2.8, 4.4),
+        (-1.60, 0.66, 1.08, -0.52, 2.8, 4.0),
+        (-2.80, 0.56, 0.96, -0.38, 2.6, 3.0),
+        (-4.10, 0.40, 0.80, -0.14, 2.5, 2.5),
+        (-5.40, 0.24, 0.66, 0.10, 2.4, 2.4),
+        (-6.40, 0.08, 0.58, 0.28, 2.2, 2.2),
+    ],
+    'windows': {'front': (1.05, 1.75, 0.70, 0.5), 'side': (-2.2, 0.95, 0.45, 0.98)},
+    'stripe': (-0.1, 0.06),
+    'wing': {'span': 14.4, 'root': 2.15, 'tip': 1.15, 'le': 0.85, 'sweep': 1.5, 'z': -0.42, 'dihedral': 5.0, 'flap_start': 0.75, 'flap_end': 4.1, 'airfoil': '2415', 'twist': 1.5},
+    'tail': {'t_tail': False, 'fin_x': -5.05, 'fin_base': 0.6, 'fin_height': 1.9, 'fin_root': 1.75, 'fin_tip': 0.85, 'fin_sweep': 1.2, 'stab_x': -5.35, 'stab_z': 0.5, 'stab_span': 5.4, 'stab_root': 1.15, 'stab_tip': 0.7, 'stab_sweep': 0.25},
+    'engines': {'kind': 'nose', 'hub': (4.78, 0.0, 0.0), 'radius': 1.18, 'blades': 4, 'spinner': 0.2},
+    'gear': {'retract': True, 'main_x': -0.30, 'main_top_y': 1.9, 'main_top_z': -0.5, 'main_y': 1.9, 'axle_z': -1.62, 'main_radius': 0.34, 'nose_x': 3.4, 'nose_top_z': -0.55, 'nose_radius': 0.26},
+    'cabin': {'fore': 1.53, 'aft': -2.6, 'panel': (1.45, 0.42, 0.58), 'seat_y': 0.34, 'floor': -0.5, 'floor_half': 0.55},
+}
+
+VESTA = {
+    'name': 'vesta',
+    'category': 'bizjet',
+    'colors': ((0.93, 0.93, 0.94), (0.42, 0.44, 0.48)),
+    'fuselage': [
+        (7.30, 0.06, 0.05, -0.06, 2.0, 2.0),
+        (7.00, 0.32, 0.22, -0.34, 2.2, 2.2),
+        (6.40, 0.58, 0.48, -0.62, 2.3, 2.3),
+        (5.50, 0.78, 0.80, -0.82, 2.3, 2.5),
+        (4.40, 0.86, 0.98, -0.88, 2.4, 2.6),
+        (2.00, 0.88, 1.02, -0.88, 2.4, 2.6),
+        (-1.50, 0.88, 1.02, -0.86, 2.4, 2.6),
+        (-3.30, 0.78, 0.98, -0.66, 2.3, 2.4),
+        (-5.00, 0.56, 0.90, -0.30, 2.3, 2.3),
+        (-6.40, 0.32, 0.86, 0.12, 2.2, 2.2),
+        (-7.20, 0.10, 0.84, 0.48, 2.0, 2.0),
+    ],
+    'windows': {'front': (4.9, 6.35, 0.06, 0.64), 'side': (-2.6, 3.9, 0.12, 0.55)},
+    'stripe': (-0.32, -0.18),
+    'wing': {'span': 15.6, 'root': 2.7, 'tip': 1.05, 'le': 1.3, 'sweep': 14.0, 'z': -0.72, 'dihedral': 3.0, 'flap_start': 0.95, 'flap_end': 4.7, 'airfoil': '2412', 'twist': 1.0},
+    'spoilers': (1.6, 4.4),
+    'tail': {'t_tail': True, 'fin_x': -4.6, 'fin_base': 0.75, 'fin_height': 2.2, 'fin_root': 2.3, 'fin_tip': 1.3, 'fin_sweep': 1.7, 'stab_span': 6.0, 'stab_root': 1.35, 'stab_tip': 0.75, 'stab_sweep': 0.7},
+    'engines': {'kind': 'rear', 'pod': (-2.55, 1.42, 0.38), 'radius': 0.46, 'length': 2.7},
+    'gear': {'retract': True, 'main_x': -0.35, 'main_top_y': 1.55, 'main_top_z': -0.75, 'main_y': 1.55, 'axle_z': -1.78, 'main_radius': 0.36, 'nose_x': 5.35, 'nose_top_z': -0.8, 'nose_radius': 0.26},
+    'doors': {'main': (5.0, 0.87, -0.15, 0.85, 1.4)},
+    'cabin': {'fore': 5.53, 'aft': 3.2, 'panel': (5.45, 0.02, 0.72), 'seat_y': 0.38, 'floor': -0.7, 'floor_half': 0.7},
+}
+
+FLEET = {'duet': DUET, 'sprite': SPRITE, 'vesta': VESTA}
 
 
 def build(spec, out_dir):

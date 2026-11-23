@@ -98,6 +98,9 @@ export const aircraftSchema = z.object({
     yawRollRate: z.number(),
     yawAileron: z.number(),
     yawControl: z.number(),
+    /** Mach number where wave drag starts, and its growth (added drag coefficient per Mach² beyond it). */
+    machCrit: z.number().default(0.72),
+    machDrag: z.number().default(14),
     /** Less induced drag and a little more lift within a wingspan of the ground. */
     groundEffect: z.boolean().default(true),
   }),

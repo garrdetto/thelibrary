@@ -4,6 +4,7 @@ import wren from '../shared/aircraft/wren.json'
 import { MAX_LEVEL, applyFlight, checkrideAvailability, classRating, defaultCareer, evaluateCheckride, flightXp, levelFor, normalizeCareer, pilotRating, summarizeFlight, xpForLevel } from '../shared/Career'
 import type { CareerProfile, CheckrideId, FlightSummary } from '../shared/Career'
 import { HANGAR, HANGAR_CLASSES } from '../shared/Hangar'
+import { FLEET } from '../shared/Fleet'
 import { HARROW_FIELD } from '../shared/Airports'
 import { TERRAIN } from '../shared/Terrain'
 import { scoreFlight } from '../sim/Scoring'
@@ -94,9 +95,9 @@ test('checkrides need their licences, level, hours and an aircraft of their clas
   assert.equal(checkrideAvailability(withLevel(3, 1), 'ppl', HANGAR_CLASSES).available, true)
   assert.equal(checkrideAvailability(withLevel(30, 30, ['student', 'ppl']), 'instrument', HANGAR_CLASSES).available, true)
   assert.equal(checkrideAvailability(withLevel(30, 30, ['student', 'ppl']), 'multi', HANGAR_CLASSES).available, true, 'the Duet makes the multi-engine checkride available')
-  const atp = checkrideAvailability(withLevel(60, 60, ['student', 'ppl', 'instrument', 'multi', 'commercial']), 'atp', HANGAR_CLASSES)
-  assert.equal(atp.available, false)
-  assert.ok(atp.reasons.some((r) => r.includes('not in the hangar')))
+  assert.equal(checkrideAvailability(withLevel(60, 60, ['student', 'ppl', 'instrument', 'multi', 'commercial']), 'atp', HANGAR_CLASSES).available, true, 'the Vesta makes the ATP checkride available')
+  const noJet = checkrideAvailability(withLevel(60, 60, ['student', 'ppl', 'instrument', 'multi', 'commercial']), 'atp', ['single', 'multi'])
+  assert.ok(noJet.reasons.some((r) => r.includes('not in the hangar')))
 })
 
 test('passing a checkride earns its licence and a bonus; failing records the attempt', () => {
@@ -146,8 +147,11 @@ test('stored careers are cleaned up and the hangar index matches the aircraft da
   assert.deepEqual(cleaned.ratings.single, [50])
   assert.equal(cleaned.seconds.single, 0)
   assert.deepEqual(normalizeCareer(null), defaultCareer())
-  const entry = HANGAR.find((h) => h.id === wren.id)
-  assert.ok(entry)
-  assert.equal(entry.family, wren.family)
-  assert.equal(entry.category, wren.category)
+  assert.equal(HANGAR.length, FLEET.length)
+  for (const spec of FLEET) {
+    const entry = HANGAR.find((h) => h.id === spec.id)
+    assert.ok(entry, spec.id)
+    assert.equal(entry.family, spec.family)
+    assert.equal(entry.category, spec.category)
+  }
 })

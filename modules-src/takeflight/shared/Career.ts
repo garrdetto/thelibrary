@@ -191,12 +191,12 @@ export const CHECKRIDE_SPECS: Record<CheckrideId, CheckrideSpec> = {
   atp: {
     id: 'atp',
     title: 'Airline Transport Pilot checkride',
-    brief: 'A full flight in a multi-crew aircraft to airline standards.',
+    brief: 'A full circuit in the Vesta jet in a 12 kt crosswind, flown to airline standards: stable approach, no bounces, smooth throughout.',
     needs: ['commercial', 'multi'],
     level: 35,
     hours: 25,
     pilotClass: 'jet',
-    setup: { airport: 'harrow', start: 'runway1', wind: 'crosswind', weather: 'fair', time: 'noon', instrumentsOnly: false },
+    setup: { airport: 'harrow', aircraft: 'solent-vesta', start: 'runway1', wind: 'crosswind', weather: 'fair', time: 'noon', instrumentsOnly: false },
     criteria: [noAssists, noCrash, onRunway, noBounce, category('landing', 85, 'Landing'), category('approach', 85, 'Approach'), category('smoothness', 85, 'Smoothness'), { label: 'Total 90 or better', test: (s) => s.total >= 90 }],
   },
 }
