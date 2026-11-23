@@ -10,7 +10,7 @@ import type { AssistSettings } from './Assists'
 import { copyInput, createInput, quantizeInput } from './Controls'
 import type { ControlInput } from './Controls'
 import { FlightModel } from './FlightModel'
-import type { FlightEnvironment } from './FlightModel'
+import type { FlightEnvironment, FlightSnapshot } from './FlightModel'
 import { WindField } from './Wind'
 import type { WindSpec } from './Wind'
 
@@ -31,6 +31,11 @@ export interface FlightSetup {
 
 export interface TickListener {
   (tick: number, input: Readonly<ControlInput>, aircraft: FlightModel): void
+}
+
+export interface SimSnapshot {
+  aircraft: FlightSnapshot
+  wind: number[]
 }
 
 export interface InterpolatedState {
@@ -85,6 +90,17 @@ export class Simulation {
   settle(): void {
     this.previous.copyFrom(this.aircraft)
     this.accumulator = 0
+  }
+
+  /** The aircraft and wind state after the last tick, exact enough to continue from bit for bit. */
+  saveState(): SimSnapshot {
+    return { aircraft: this.aircraft.saveState(), wind: this.env.wind.state }
+  }
+
+  loadState(snapshot: SimSnapshot): void {
+    this.aircraft.loadState(snapshot.aircraft)
+    this.env.wind.state = snapshot.wind
+    this.settle()
   }
 
   /** Runs one tick with an explicit input (replays and tests). */

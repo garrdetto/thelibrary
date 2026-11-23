@@ -2,8 +2,10 @@
  * The Take Flight page: boots Babylon on WebGPU (WebGL2 fallback) with a reverse depth buffer, builds the sky, terrain, water,
  * Harrow Field and the Wren, and runs the flight. The flight model ticks at a fixed 120 Hz inside `Simulation`; each frame reads
  * the pilot's devices, advances the sim, interpolates the aircraft between ticks, and moves the camera, terrain, lights, cockpit
- * gauges, HUD and overlay. The start screen picks where and how to fly; Escape pauses; a crash ends the flight. Every Babylon
- * resource, observer and DOM listener belongs to one `Scope` torn down on `pagehide`.
+ * gauges, HUD and overlay. The start screen picks where and how to fly; Escape pauses. `FlightSession` records and scores each
+ * flight: stopping after a landing, ending it from the pause screen or a crash opens the debrief, which can play the touchdown
+ * replay re-flown by `TouchdownReplay`. Every Babylon resource, observer and DOM listener belongs to one `Scope` torn down on
+ * `pagehide`.
  */
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
@@ -25,13 +27,18 @@ import wren from '../shared/aircraft/wren.json'
 import { parseAircraft } from '../shared/AircraftSpec'
 import type { AircraftSpec } from '../shared/AircraftSpec'
 import { HARROW_FIELD, runwayFrame } from '../shared/Airports'
+import { RECORD_VERSION } from '../shared/FlightRecord'
+import type { RecordHeader } from '../shared/FlightRecord'
 import { TERRAIN, WATER_LEVEL } from '../shared/Terrain'
 import { NO_ASSISTS } from '../sim/Assists'
-import { FOOT, KNOT, SEA_LEVEL_PRESSURE, createAirSample, sampleAir } from '../sim/Atmosphere'
+import { FOOT, FPM, SEA_LEVEL_PRESSURE } from '../sim/Atmosphere'
+import { runwayContact } from '../sim/Scoring'
+import type { EndReason } from '../sim/Scoring'
 import { Simulation } from '../sim/Simulation'
 import type { InterpolatedState } from '../sim/Simulation'
 import { DEG } from '../sim/SimMath'
-import { levelTrim } from '../sim/Trim'
+import { placeStart } from '../sim/Starts'
+import type { TouchdownEvent } from '../sim/Telemetry'
 import type { WindSpec } from '../sim/Wind'
 import { CALM } from '../sim/Wind'
 import { InputManager } from '../input/InputManager'
@@ -43,17 +50,20 @@ import { FLIGHT_QUALITY } from '../render/Quality'
 import type { QualityTier } from '../render/Quality'
 import { TerrainRenderer } from '../render/TerrainRenderer'
 import { AssetManager } from '../world/AssetManager'
+import { Debrief } from '../ui/Debrief'
 import { DevOverlay } from '../ui/DevOverlay'
 import { Hud } from '../ui/Hud'
 import { Menus } from '../ui/Menus'
 import type { FlightOptions, StartKind, TimeKind, WindKind } from '../ui/Menus'
 import { CameraRig, VIEW_ORDER } from './Cameras'
+import { FlightSession } from './FlightSession'
+import { TouchdownReplay } from './TouchdownReplay'
 
 export interface BootProgress {
   (share: number, text: string): void
 }
 
-type Phase = 'menu' | 'flying' | 'paused' | 'ended'
+type Phase = 'menu' | 'flying' | 'paused' | 'debrief' | 'replay'
 
 const WINDS: Record<WindKind, WindSpec> = {
   calm: CALM,
@@ -77,6 +87,9 @@ export class Standalone {
   private readonly hud: Hud
   private readonly menus: Menus
   private readonly dev: DevOverlay
+  private readonly session: FlightSession
+  private readonly replay: TouchdownReplay
+  private readonly debrief: Debrief
   private atmosphere!: Atmosphere
   private pipeline: WorldPipeline | null = null
   private terrain!: TerrainRenderer
@@ -95,7 +108,6 @@ export class Standalone {
   private endTimer = 0
   private menuOrbit = 0
   private readonly wind = { x: 0, y: 0, z: 0 }
-  private readonly air = createAirSample()
 
   private constructor(engine: AbstractEngine, backend: 'webgpu' | 'webgl2', private readonly canvas: HTMLCanvasElement, ui: HTMLElement) {
     this.engine = engine
@@ -125,9 +137,24 @@ export class Standalone {
       fly: (options) => this.startFlight(options),
       resume: () => this.resume(),
       restart: () => this.options && this.startFlight(this.options),
+      end: () => this.endFlight('pilot'),
       quit: () => this.toMenu(),
       quality: (tier) => this.setTier(tier),
     }, this.tier, `${this.spec.maker} ${this.spec.name}`))
+    this.session = new FlightSession(this.sim, HARROW_FIELD)
+    this.scope.defer(() => this.session.dispose())
+    this.replay = new TouchdownReplay(this.spec, TERRAIN, HARROW_FIELD)
+    this.scope.defer(() => this.replay.stop())
+    this.debrief = this.scope.track(new Debrief(ui, {
+      replay: () => this.startReplay(),
+      continueFlight: () => this.continueFlight(),
+      again: () => this.options && this.startFlight(this.options),
+      change: () => this.toMenu(),
+    }, {
+      speed: () => (this.replay.speed = this.replay.speed < 1 ? 1 : 0.5),
+      camera: () => this.cameras.mode = this.cameras.mode === 'chase' ? 'tower' : 'chase',
+      back: () => this.stopReplay(),
+    }))
   }
 
   static async boot(canvas: HTMLCanvasElement, ui: HTMLElement, report: BootProgress): Promise<Standalone> {
@@ -140,11 +167,14 @@ export class Standalone {
   }
 
   /** Console and smoke-test hooks (`window.__takeflight`). */
-  get debug(): { sim: Simulation; fly(options?: Partial<FlightOptions>): void; view(mode: 'cockpit' | 'chase' | 'tower'): void; phase: Phase } {
+  get debug(): { sim: Simulation; session: FlightSession; fly(options?: Partial<FlightOptions>): void; view(mode: 'cockpit' | 'chase' | 'tower'): void; end(): void; replay(): void; phase: Phase } {
     return {
       sim: this.sim,
+      session: this.session,
       fly: (options) => this.startFlight({ ...this.menus.options, ...options }),
       view: (mode) => this.setView(mode),
+      end: () => this.endFlight('pilot'),
+      replay: () => this.startReplay(),
       phase: this.phase,
     }
   }
@@ -228,66 +258,22 @@ export class Standalone {
   }
 
   private placeAt(start: StartKind): void {
-    const sim = this.sim
-    const aircraft = sim.aircraft
-    const runway = HARROW_FIELD.runways[0]
-    const frame = runwayFrame(runway)
-    const pilot = sim.pilot
-    pilot.flaps = 0
-    pilot.gear = 1
-    this.parkingBrake = false
-    let throttle = 0
-    if (start === 'stand') {
-      const stand = HARROW_FIELD.stands[0]
-      aircraft.placeOnGround(TERRAIN, stand.x, stand.z, stand.heading)
-      this.parkingBrake = true
-    } else if (start === 'runway09' || start === 'runway27') {
-      const along = start === 'runway09' ? 25 : runway.length - 25
-      const heading = start === 'runway09' ? runway.heading : (runway.heading + 180) % 360
-      aircraft.placeOnGround(TERRAIN, frame.x0 + frame.dx * along, frame.z0 + frame.dz * along, heading)
-    } else if (start === 'final09' || start === 'final27') {
-      const fromLow = start === 'final09'
-      const distance = 3 * 1609
-      const aim = 250
-      const along = fromLow ? aim - distance : runway.length - aim + distance
-      const heading = fromLow ? runway.heading : (runway.heading + 180) % 360
-      const x = frame.x0 + frame.dx * along
-      const z = frame.z0 + frame.dz * along
-      const height = Math.tan(runway.glidepath * DEG) * distance
-      const speed = this.spec.vSpeeds.vapp * KNOT
-      const flapIndex = Math.min(1, this.spec.controls.flapDetents.length - 1)
-      const detents = this.spec.controls.flapDetents
-      const flapShare = detents[flapIndex] / detents[detents.length - 1]
-      sampleAir(HARROW_FIELD.elevation + height, 0, SEA_LEVEL_PRESSURE, this.air)
-      const trim = levelTrim(this.spec, aircraft.mass, speed, this.air.density, flapShare)
-      aircraft.place(x, HARROW_FIELD.elevation + 1.3 + height, z, heading, trim.alpha - runway.glidepath, 0, speed)
-      aircraft.vy = -Math.sin(runway.glidepath * DEG) * speed
-      aircraft.trim = trim.trim
-      aircraft.flap = flapShare
-      aircraft.power = 0.3
-      pilot.flaps = flapIndex
-      throttle = 0.3
-    } else {
-      const altitude = 3500 * FOOT
-      const speed = this.spec.vSpeeds.cruise * KNOT * 0.95
-      sampleAir(altitude, 0, SEA_LEVEL_PRESSURE, this.air)
-      const trim = levelTrim(this.spec, aircraft.mass, speed, this.air.density, 0)
-      aircraft.place(-9000, altitude, 2500, runway.heading, trim.alpha, 0, speed)
-      aircraft.trim = trim.trim
-      aircraft.power = 0.72
-      throttle = 0.72
-    }
-    pilot.throttle = throttle
-    pilot.parkingBrake = this.parkingBrake ? 1 : 0
-    this.input.setThrottle(throttle)
-    sim.settle()
+    const placed = placeStart(this.sim.aircraft, this.sim.pilot, HARROW_FIELD, TERRAIN, start)
+    this.parkingBrake = placed.parkingBrake
+    this.input.setThrottle(placed.throttle)
+    this.sim.settle()
   }
 
   private startFlight(options: FlightOptions): void {
     this.options = { ...options, assists: { ...options.assists } }
     this.setTier(options.tier)
-    this.sim.reset({ wind: WINDS[options.wind], seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: this.options.assists })
+    this.replay.stop()
+    this.debrief.hide()
+    if (this.phase === 'flying' || this.phase === 'paused') this.session.abandon()
+    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: HARROW_FIELD.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists } }
+    this.sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: this.options.assists })
     this.placeAt(options.start)
+    this.session.begin(header)
     this.atmosphere.setTime(HOURS[options.time])
     this.lightsOn = options.time === 'night' || options.time === 'evening'
     this.sim.paused = false
@@ -310,7 +296,76 @@ export class Standalone {
     this.canvas.focus()
   }
 
+  /** Ends the flight and opens its debrief. */
+  private endFlight(reason: EndReason): void {
+    if (this.phase !== 'flying' && this.phase !== 'paused') return
+    this.phase = 'debrief'
+    this.sim.paused = true
+    this.input.enabled = false
+    this.menus.hide()
+    this.hud.setVisible(false)
+    const { score, record } = this.session.finish(reason, this.sim.aircraft.crashed, this.spec)
+    this.debrief.show(score, this.session.recorder.telemetryLog(), { canContinue: reason !== 'crash' && !this.sim.aircraft.crashed, aircraft: `${this.spec.maker} ${this.spec.name}`, airport: HARROW_FIELD.name })
+    void record.then((result) => {
+      if (this.session.score === score) this.debrief.setRecord(result ? result.bytes : null, result ? result.raw : 0)
+    })
+  }
+
+  private continueFlight(): void {
+    if (this.phase !== 'debrief') return
+    this.debrief.hide()
+    this.session.resume()
+    this.phase = 'flying'
+    this.sim.paused = false
+    this.input.enabled = true
+    this.hud.setVisible(true)
+    this.canvas.focus()
+  }
+
+  private startReplay(): void {
+    const score = this.session.score
+    const header = this.session.header
+    if (this.phase !== 'debrief' || !score?.landing || !header) return
+    this.replay.start(header, this.session.recorder.inputLog(), this.session.snapshots, score.landing.tick)
+    const touchdown = this.session.recorder.touchdowns.find((t) => t.tick === score.landing?.tick)
+    if (touchdown) {
+      const end = runwayContact(HARROW_FIELD, touchdown.x, touchdown.z, touchdown.track)?.end
+      const dx = end ? end.dx : 1
+      const dz = end ? end.dz : 0
+      const side = 45
+      this.cameras.setTower(touchdown.x - dx * 70 - dz * side, HARROW_FIELD.elevation + 3, touchdown.z - dz * 70 + dx * side)
+    }
+    this.phase = 'replay'
+    this.cameras.mode = 'tower'
+    void this.cockpit.setActive(false)
+    this.debrief.showReplay()
+  }
+
+  private stopReplay(): void {
+    if (this.phase !== 'replay') return
+    this.replay.stop()
+    this.cameras.setTower(...HARROW_FIELD.tower)
+    this.cameras.mode = 'chase'
+    this.phase = 'debrief'
+    this.debrief.reveal()
+  }
+
+  private touchdownToast(event: TouchdownEvent): void {
+    const contact = runwayContact(HARROW_FIELD, event.x, event.z, event.track)
+    const sink = Math.round(event.sinkRate / FPM)
+    let where = ''
+    if (contact) {
+      const feet = Math.round(Math.abs(contact.cross) / FOOT)
+      where = feet < 3 ? ' · on the centreline' : ` · ${feet} ft ${contact.cross > 0 ? 'right' : 'left'} of centreline`
+    }
+    this.hud.toast(`Touchdown ${sink} fpm · ${event.g.toFixed(2)} G${where}`, 4)
+  }
+
   private toMenu(): void {
+    if (this.phase === 'flying' || this.phase === 'paused') this.session.abandon()
+    this.replay.stop()
+    this.debrief.hide()
+    this.cameras.setTower(...HARROW_FIELD.tower)
     this.phase = 'menu'
     this.sim.paused = true
     this.hud.setVisible(false)
@@ -329,6 +384,10 @@ export class Standalone {
   private onAction(action: PilotAction): void {
     const pilot = this.sim.pilot
     if (action === 'pause') {
+      if (this.phase === 'replay') {
+        this.stopReplay()
+        return
+      }
       if (this.phase === 'flying') {
         this.phase = 'paused'
         this.sim.paused = true
@@ -394,10 +453,17 @@ export class Standalone {
     this.input.update(dt, sim.pilot, this.spec.controls.flapDetents.length)
     sim.pilot.parkingBrake = this.parkingBrake ? 1 : 0
     const t0 = performance.now()
-    const share = sim.advance(dt)
+    let share = sim.advance(dt)
     this.simMs = performance.now() - t0
-    sim.interpolate(share, this.state)
-    const aircraft = sim.aircraft
+    let shown = sim
+    const replaySim = this.phase === 'replay' ? this.replay.sim : null
+    if (replaySim) {
+      share = this.replay.update(dt)
+      shown = replaySim
+      this.debrief.updateReplay(this.replay.progress, this.replay.clock, this.replay.speed)
+    }
+    shown.interpolate(share, this.state)
+    const aircraft = shown.aircraft
     const camera = this.cameras.camera
     let lookYaw = this.input.lookYaw
     let lookPitch = this.input.lookPitch
@@ -420,16 +486,17 @@ export class Standalone {
     this.water.position.x = Math.round(camera.position.x / 1000) * 1000
     this.water.position.z = Math.round(camera.position.z / 1000) * 1000
     this.cockpit.update(sim.applied, FLIGHT_QUALITY[this.tier].gaugeHz, dt)
-    if (this.phase !== 'menu') this.hud.update(aircraft, sim.applied, { view: VIEW_NAMES[this.cameras.mode], lights: this.lightsOn, parkingBrake: this.parkingBrake, glidepath: this.glidepathDots() }, dt)
+    if (this.phase === 'flying' || this.phase === 'paused') this.hud.update(aircraft, sim.applied, { view: VIEW_NAMES[this.cameras.mode], lights: this.lightsOn, parkingBrake: this.parkingBrake, glidepath: this.glidepathDots() }, dt)
     this.dev.update(frameMs, dt)
     this.resolution.update(performance.now(), this.engine.getFps())
-    if (this.phase === 'flying' && aircraft.crashed) {
-      this.endTimer += dt
-      if (this.endTimer > 2) {
-        this.phase = 'ended'
-        this.sim.paused = true
-        this.menus.showCrash(aircraft.crashed)
-      }
+    if (this.phase === 'flying') {
+      this.session.pump()
+      const touchdown = this.session.takeTouchdown()
+      if (touchdown && !aircraft.crashed) this.touchdownToast(touchdown)
+      if (aircraft.crashed) {
+        this.endTimer += dt
+        if (this.endTimer > 2) this.endFlight('crash')
+      } else if (this.session.stoppedAfterLanding(aircraft, dt)) this.endFlight('stopped')
     }
   }
 

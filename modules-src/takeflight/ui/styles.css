@@ -237,6 +237,99 @@
 .tf-keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12px; color: var(--tf-muted); margin: 10px 0 0; }
 .tf-keys kbd { font: 600 11px ui-monospace, monospace; color: var(--tf-text); background: #1a212b; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--tf-line); }
 
+
+.tf-muted { color: var(--tf-muted); }
+.tf-card p.tf-bad, .tf-bad { color: var(--tf-bad); }
+.tf-btn.small { padding: 5px 10px; font-size: 12px; }
+.tf-btn:disabled { opacity: 0.5; cursor: default; }
+
+.tf-debrief-screen { place-items: start center; }
+.tf-card.tf-debrief { width: min(720px, 100%); margin: 2vh 0; }
+.tf-debrief h3 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--tf-muted); }
+.tf-debrief-head { display: flex; gap: 18px; align-items: center; }
+.tf-debrief-intro p { margin: 0 0 4px; }
+.tf-debrief-intro h2 { margin-bottom: 4px; }
+
+.tf-score {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  border: 3px solid currentColor;
+  text-align: center;
+}
+.tf-score b { font: 800 40px/1 'TL Fox Dollar', 'Barlow Condensed', 'Arial Narrow', sans-serif; color: var(--tf-text); font-variant-numeric: tabular-nums; }
+.tf-score span { font-size: 12px; margin-top: -18px; }
+.tf-score.good { color: var(--tf-good); }
+.tf-score.warn { color: var(--tf-warn); }
+.tf-score.bad { color: var(--tf-bad); }
+
+.tf-facts { display: grid; grid-template-columns: repeat(4, auto 1fr); gap: 6px 12px; margin: 0; font-variant-numeric: tabular-nums; }
+.tf-facts dt { color: var(--tf-muted); }
+.tf-facts dd { margin: 0; font-weight: 700; }
+
+.tf-categories { display: grid; gap: 6px; }
+.tf-category { background: #151b23; border-radius: 8px; }
+.tf-category summary { display: grid; grid-template-columns: 150px 1fr 70px; gap: 12px; align-items: center; padding: 8px 10px; cursor: pointer; list-style: none; border-radius: 8px; }
+.tf-category summary::-webkit-details-marker { display: none; }
+.tf-category summary:focus-visible { outline: 2px solid var(--tf-accent); outline-offset: 2px; }
+.tf-category-label small { color: var(--tf-muted); font-weight: 500; }
+.tf-category-score { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tf-meter { position: relative; height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden; }
+.tf-meter i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--tf-muted); }
+.tf-meter i.good, .tf-metrics i.good { background: var(--tf-good); }
+.tf-meter i.warn, .tf-metrics i.warn { background: var(--tf-warn); }
+.tf-meter i.bad, .tf-metrics i.bad { background: var(--tf-bad); }
+.tf-category p { margin: 0; padding: 0 10px 10px; font-size: 13px; }
+.tf-metrics { margin: 0; padding: 0 10px 10px; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.tf-metrics li { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; }
+.tf-metrics i { width: 8px; height: 8px; border-radius: 50%; }
+.tf-metrics b { font-variant-numeric: tabular-nums; }
+
+.tf-graph { margin: 0; }
+.tf-graph canvas { display: block; width: 100%; height: 190px; background: #0d1218; border-radius: 8px; }
+.tf-graph figcaption { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--tf-muted); }
+.tf-key::before { content: ''; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+.tf-key.height::before { background: var(--tf-accent); }
+.tf-key.vs::before { background: var(--tf-warn); }
+.tf-key.touch::before { background: var(--tf-good); }
+
+.tf-tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--tf-text); }
+.tf-debrief-foot { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+
+.tf-replay {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 35;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: min(760px, calc(100vw - 32px));
+  padding: 10px 12px;
+  background: var(--tf-panel);
+  border: 1px solid var(--tf-line);
+  border-radius: var(--tf-radius);
+  color: var(--tf-text);
+  font: 600 13px/1.3 'TL Fox Dollar', Inter, system-ui, sans-serif;
+  pointer-events: auto;
+  flex-wrap: wrap;
+}
+.tf-replay[hidden] { display: none; }
+.tf-replay-label { min-width: 230px; font-variant-numeric: tabular-nums; }
+.tf-replay-track { flex: 1; min-width: 80px; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden; }
+.tf-replay-track i { display: block; height: 100%; width: 0; background: var(--tf-accent); }
+
+@media (max-width: 640px) {
+  .tf-facts { grid-template-columns: auto 1fr auto 1fr; }
+  .tf-category summary { grid-template-columns: 110px 1fr 56px; }
+  .tf-debrief-head { flex-direction: column; align-items: flex-start; }
+  .tf-replay-label { min-width: 0; width: 100%; }
+}
+
 @media (max-width: 640px) {
   .tf-hud .tf-flight { font-size: 11px; padding: 8px 10px; }
   .tf-dev { width: 200px; }
