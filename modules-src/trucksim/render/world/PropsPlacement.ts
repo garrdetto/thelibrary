@@ -7,6 +7,7 @@
  * Candidates sit on a world-aligned grid, so a chunk's props never depend on which chunks were loaded first, and a lower prop
  * density keeps a subset of the same trees. Renderer-free; matrices use Babylon's layout.
  */
+import { homeRects } from '../../shared/Roadside'
 import { SHOULDER, valueNoise } from '../../shared/Terrain'
 import type { Terrain } from '../../shared/Terrain'
 import { CHUNK_SIZE, FIELDS, LOTS, MAX_LAND_STRIPS, SITES, WORLD_HALF, lotExtent } from '../../shared/WorldLayout'
@@ -196,6 +197,7 @@ function grownRect(x: number, z: number, w: number, d: number, margin: number): 
 }
 
 const BLOCKERS: Rect[] = [
+  ...homeRects(),
   ...SITES.map((site) => grownRect(site.x, site.z, site.w, site.d, SITE_CLEARANCE)),
   ...LOTS.map((spec) => {
     const lot = lotExtent(spec, MAX_LAND_STRIPS)
