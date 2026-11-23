@@ -28,41 +28,41 @@
 <body>
 <main>
   <header class="top"><h1>Polar Swat</h1><div class="stats"><div class="stat"><span>FISH</span><b id="fishNo">0/5</b></div><div class="stat"><span>LAST</span><b id="last">—</b></div><div class="stat"><span>ROUND</span><b id="roundBest">—</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div><div class="stat"><span>WIND</span><b id="wind">—</b></div></div></header>
-  <div class="bar"><p>Five fish a round. Swat each one as it leaps from the hole; your longest fish is your score.</p><div><span data-tl-theme-toggle></span><button id="soundBtn" aria-pressed="true">Sound on <kbd>M</kbd></button><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button></div></div>
-  <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Frozen lake. Press Space, click or tap to swat the fish when it jumps out of the hole.">
+  <div class="bar"><p>Five fish a round. Hit each one with the bat as it leaps from the hole; your longest fish is your score.</p><div><span data-tl-theme-toggle></span><button id="soundBtn" aria-pressed="true">Sound on <kbd>M</kbd></button><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button></div></div>
+  <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Frozen lake. Press Space, click or tap to swing the bat when the fish jumps out of the hole.">
     <canvas id="cv" width="900" height="520" aria-hidden="true"></canvas>
-    <div class="overlay show" id="overlay"><h2 id="ovTitle">Polar Swat</h2><p id="ovText">A polar bear, a hole in the ice and fish that just won't stay put. Wait for a fish to leap, then swat it as far across the lake as you can. Catch it square and it flies; catch it high or low and it pops up or skids along the ice.</p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Start the round</button></div></div>
+    <div class="overlay show" id="overlay"><h2 id="ovTitle">Polar Swat</h2><p id="ovText">A polar bear, a hole in the ice and fish that just won't stay put. Wait for a fish to leap, then crush it with the bat as far across the lake as you can. Catch it square and it flies; catch it high or low and it pops up or skids along the ice.</p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Start the round</button></div></div>
     <p class="sr-only" id="live" aria-live="polite"></p>
   </section>
-  <footer>Press <kbd>Space</kbd>, click or tap to swing. You get one swing per leap. Where the paw meets the fish sets the launch: dead centre is the sweet spot, under the fish sends it high, over the top drives it low along the ice. Speed and launch angle decide how far it flies; a shallow landing skips a couple of times and slides on, a steep landing thuds and stops short. Wind blows toward or against the throw, and pike fly farther than walleye, which fly farther than perch. The distance from the hole to where the fish stops is measured in feet, and your longest fish of each five-fish round is saved to the leaderboard.</footer>
+  <footer>Press <kbd>Space</kbd>, click or tap to swing. You get one swing per leap. Where the barrel of the bat meets the fish sets the launch: square on the sweet spot flies farthest, catching it high pops it up, catching it low drives it along the ice. Speed and launch angle decide how far it flies; a shallow landing skips a couple of times and slides on, a steep landing thuds and stops short. Wind blows toward or against the throw, and pike fly farther than walleye, which fly farther than perch. The distance from the hole to where the fish stops is measured in yards to the hundredth, and your longest fish of each five-fish round is saved to the leaderboard.</footer>
 </main>
 <script src="module-scores.js"></script>
 <script>
 'use strict';
 const W = 900, H = 520, GROUND_Y = 430, HORIZON = 300, HOLE_SX = 260, BASE_S = 70, FISH_PER_ROUND = 5;
-const G = 9.81, JUMP_G = 7.6, DRAG = 0.004, SLIDE = 8, REACH = 0.55, FT = 3.28084;
-const SHOULDER = { x: -0.75, y: 1.45 }, ARM = 0.8, CONTACT_A = 0.245, BEAR_X = -0.832;
-const CONTACT = { x: SHOULDER.x + ARM * Math.cos(CONTACT_A), y: SHOULDER.y - ARM * Math.sin(CONTACT_A) };
-const ARM_READY = -2.1, ARM_END = 1.15, SWING_T = 0.15, RECOVER_T = 0.45;
+const G = 9.81, JUMP_G = 7.6, DRAG = 0.0016, SLIDE = 5, REACH = 0.55, YD = 0.9144, MAX_YD = 400;
+const SWING_ART = {"px": 200.0, "ox": 350.0, "oy": 630.0, "w": 760, "h": 760};
+const SWEET = [[-0.5251, 2.6203], [-0.9809, 2.3818], [-1.2499, 1.9853], [-1.2682, 1.4642], [-0.4033, 1.1309], [1.0034, 0.9824], [1.4139, 1.2487], [0.7294, 1.9841], [-0.2804, 2.3021]];
+const FRAME_T = [0, 0.03, 0.06, 0.09, 0.115, 0.14, 0.19, 0.25, 0.32], CONTACT_FRAME = 5, CONTACT_T = FRAME_T[CONTACT_FRAME];
+const HOLD_T = 0.55, BLEND_T = 0.25, SWING_FRAMES = FRAME_T.length;
+const BEAR_X = -SWEET[CONTACT_FRAME][0], CONTACT = { x: 0, y: SWEET[CONTACT_FRAME][1] };
 const ART = {
-  body: { px: 200, ox: 260, oy: 580, w: 620, h: 620 },
-  arm: { px: 200, ox: 220, oy: 220, w: 440, h: 440 },
   fish: { px: 412.9, ox: 289, oy: 128, w: 512, h: 256 },
   hole: { px: 140, ox: 210, oy: 80, w: 420, h: 160 },
   shanty: { w: 300, h: 300, ox: 150, oy: 272 },
   shore: { w: 2400, h: 360 },
   ice: { w: 2000, h: 220 },
 };
-const SPRITES = ['bear-body', 'bear-arm', 'fish-perch', 'fish-walleye', 'fish-pike', 'shanty0', 'shanty1', 'shanty2', 'shanty3', 'shore', 'ice', 'hole'];
+const SPRITES = [...Array.from({ length: SWING_FRAMES }, (_, i) => 'bear-swing' + i), 'fish-perch', 'fish-walleye', 'fish-pike', 'shanty0', 'shanty1', 'shanty2', 'shanty3', 'shore', 'ice', 'hole'];
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), panel = $('panel'), overlay = $('overlay');
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const SPECIES = [
-  { name: 'Perch', key: 'perch', v: 37, len: 0.3, weight: 0.45 },
-  { name: 'Walleye', key: 'walleye', v: 39, len: 0.42, weight: 0.35 },
-  { name: 'Pike', key: 'pike', v: 41.5, len: 0.6, weight: 0.2 },
+  { name: 'Perch', key: 'perch', v: 57.5, len: 0.3, weight: 0.45 },
+  { name: 'Walleye', key: 'walleye', v: 60.5, len: 0.42, weight: 0.35 },
+  { name: 'Pike', key: 'pike', v: 64.5, len: 0.6, weight: 0.2 },
 ];
 
 const LOOKS = {
@@ -82,7 +82,7 @@ function themeLook() { return window.TLTheme && TLTheme.isWics() ? 'wics' : 'ori
 let look = themeLook();
 let P = LOOKS[look];
 let soundOn = store.get('gonefishing-sound') !== 'off';
-let best = +(store.get('gonefishing-best') || 0);
+let best = +(store.get('gonefishing-best-yd') || 0);
 let dpr = 1, last = 0, mode = 'menu', S = null;
 const cam = { x: 0, s: BASE_S, shake: 0 };
 
@@ -154,8 +154,8 @@ function fit() { dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = W *
 fit(); window.addEventListener('resize', fit);
 function rand(a, b) { return a + Math.random() * (b - a); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-function feet(m) { return Math.max(0, Math.round(m * FT * 10)); }
-function fmt(tenths) { return (tenths / 10).toFixed(1) + ' ft'; }
+function yards(m) { return Math.max(0, Math.min(MAX_YD * 100, Math.round(m / YD * 100))); }
+function fmt(hundredths) { return (hundredths / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' yd'; }
 function sx(x) { return HOLE_SX + (x - cam.x) * cam.s; }
 function sy(y) { return GROUND_Y - y * cam.s; }
 
@@ -165,7 +165,7 @@ function newFish() {
   return { sp, x: 0, y: -0.35, vx: 0, vy: 0, rot: -Math.PI / 2, state: 'wait', wait: rand(0.9, 2.6), vy0: Math.sqrt(2 * JUMP_G * (apex + 0.35)), swung: false, bounces: 0, trail: [], wiggle: 0 };
 }
 function fresh() {
-  return { n: 0, results: [], roundBest: 0, fish: null, wind: 0, arm: ARM_READY, armT: -1, fx: [], hold: 0, msg: null, freeze: 0, idle: 0 };
+  return { n: 0, results: [], roundBest: 0, fish: null, wind: 0, armT: -1, fx: [], hold: 0, msg: null, freeze: 0, idle: 0, hitT: 99 };
 }
 function nextFish() {
   S.n++; S.fish = newFish(); S.wind = Math.round(rand(-4.5, 4.5) * 2) / 2; S.hold = 0; S.msg = null; hud();
@@ -182,16 +182,16 @@ function hud() {
 function say(t) { $('live').textContent = t; }
 
 function start() {
-  if (S && (mode === 'play' || mode === 'pause') && S.roundBest > 0 && window.tlScores) tlScores.submit('gonefishing', S.roundBest);
+  if (S && (mode === 'play' || mode === 'pause') && S.roundBest > 0 && window.tlScores) tlScores.submit('gonefishing-yd', S.roundBest);
   S = fresh(); mode = 'play'; overlay.classList.remove('show'); cam.x = 0; cam.s = BASE_S; nextFish(); panel.focus();
 }
 function finishRound() {
   mode = 'over';
-  if (S.roundBest > best) { best = S.roundBest; store.set('gonefishing-best', String(best)); }
-  if (window.tlScores && S.roundBest > 0) tlScores.submit('gonefishing', S.roundBest);
+  if (S.roundBest > best) { best = S.roundBest; store.set('gonefishing-best-yd', String(best)); }
+  if (window.tlScores && S.roundBest > 0) tlScores.submit('gonefishing-yd', S.roundBest);
   const hits = S.results.filter(Boolean).length;
   $('ovTitle').textContent = S.roundBest ? 'Nice swatting!' : 'They all got away';
-  $('ovText').textContent = hits + ' of ' + FISH_PER_ROUND + ' fish swatted. ' + (S.roundBest ? 'Your longest flew and slid ' + fmt(S.roundBest) + ' from the hole.' : 'Wait for the fish to reach the paw, then swing.');
+  $('ovText').textContent = hits + ' of ' + FISH_PER_ROUND + ' fish hit. ' + (S.roundBest ? 'Your longest flew and slid ' + fmt(S.roundBest) + ' from the hole.' : 'Wait for the fish to drop into the path of the bat, then swing.');
   $('ovStats').innerHTML = '<div><span>LONGEST</span>' + (S.roundBest ? fmt(S.roundBest) : '—') + '</div><div><span>BEST</span>' + (best ? fmt(best) : '—') + '</div>';
   $('ovBtn').textContent = 'Fish again'; overlay.classList.add('show'); $('ovBtn').focus(); hud();
   say('Round over. Longest fish ' + (S.roundBest ? fmt(S.roundBest) : 'none') + '.');
@@ -199,16 +199,17 @@ function finishRound() {
 
 function swing() {
   if (!S || mode !== 'play') return;
-  if (S.armT >= 0 && S.armT < SWING_T + RECOVER_T * 0.6) return;
+  if (S.armT >= 0 && S.armT < HOLD_T) return;
   const f = S.fish;
   if (f && f.state === 'jump' && f.swung) return;
   if (f && f.state === 'jump') f.swung = true;
   S.armT = 0; tone('swing');
 }
-function armAngle(t) {
-  if (t < 0) return ARM_READY + Math.sin(S.idle * 2) * 0.05;
-  if (t < SWING_T) { const k = t / SWING_T; return ARM_READY + (ARM_END - ARM_READY) * (1 - (1 - k) * (1 - k)); }
-  const k = Math.min(1, (t - SWING_T) / RECOVER_T); return ARM_END + (ARM_READY - ARM_END) * (k * k * (3 - 2 * k));
+function swingFrame(t) {
+  if (t < 0) return { frame: 0, blend: 0 };
+  let frame = 0;
+  for (let i = 0; i < SWING_FRAMES; i++) if (t >= FRAME_T[i]) frame = i;
+  return { frame, blend: t > HOLD_T ? Math.min(1, (t - HOLD_T) / BLEND_T) : 0 };
 }
 
 function burst(x, y, n, color, kind, speed) {
@@ -226,7 +227,7 @@ function tryHit(f) {
   const perfect = Math.abs(o) < 0.12, q = 1 - Math.abs(o);
   const deg = clamp(30 + o * 40 + f.vy * 0.8, 2, 76), a = deg * Math.PI / 180;
   const v = f.sp.v * (0.5 + 0.5 * Math.pow(q, 0.8)) * (perfect ? 1.06 : 1);
-  f.state = 'fly'; f.x = CONTACT.x + 0.1; f.vx = v * Math.cos(a); f.vy = v * Math.sin(a); f.bounces = 0; f.trail = [];
+  S.hitT = 0; f.state = 'fly'; f.x = CONTACT.x + 0.05; f.vx = v * Math.cos(a); f.vy = v * Math.sin(a); f.bounces = 0; f.trail = [];
   S.freeze = 0.07; cam.shake = reduce ? 0 : perfect ? 9 : 5;
   burst(f.x, f.y, perfect ? 26 : 14, perfect ? P.best : P.splash, 'spark', perfect ? 6 : 4);
   label(CONTACT.x + 0.6, CONTACT.y + 0.9, perfect ? 'PERFECT!' : o > 0.5 ? 'Pop-up' : o < -0.5 ? 'Skidder' : 'Whack!', perfect ? P.best : P.text, perfect);
@@ -237,9 +238,9 @@ function tryHit(f) {
 
 function settle(f) {
   f.state = 'rest'; f.vx = 0; f.vy = 0; f.y = 0;
-  const d = feet(f.x);
+  const d = yards(f.x);
   S.results.push(d); S.roundBest = Math.max(S.roundBest, d);
-  if (window.tlScores) tlScores.progress('gonefishing', S.roundBest);
+  if (window.tlScores) tlScores.progress('gonefishing-yd', S.roundBest);
   S.msg = { text: fmt(d), sub: f.sp.name + (d >= S.roundBest && S.results.length > 1 ? ' · round best' : ''), t: 0 };
   tone('stop'); hud(); say(f.sp.name + ' stopped at ' + fmt(d) + '.');
   S.hold = 2.2;
@@ -289,14 +290,14 @@ function stepFish(f, dt) {
 function update(dt) {
   S.idle += dt;
   if (S.freeze > 0) { S.freeze -= dt; return; }
+  S.hitT += dt;
   cam.shake = Math.max(0, cam.shake - dt * 30);
   const f = S.fish;
   if (S.armT >= 0) {
-    const before = armAngle(S.armT); S.armT += dt; const after = armAngle(S.armT);
-    if (S.armT <= SWING_T + dt && before < CONTACT_A && after >= CONTACT_A && f) tryHit(f);
-    if (S.armT > SWING_T + RECOVER_T) S.armT = -1;
+    const before = S.armT; S.armT += dt;
+    if (before < CONTACT_T && S.armT >= CONTACT_T && f) tryHit(f);
+    if (S.armT > HOLD_T + BLEND_T) S.armT = -1;
   }
-  S.arm = armAngle(S.armT);
   if (f) {
     const steps = Math.max(1, Math.ceil(dt * 240)), h = dt / steps;
     for (let i = 0; i < steps && (f.state === 'fly' || f.state === 'slide'); i++) stepFish(f, h);
@@ -309,13 +310,17 @@ function update(dt) {
   let ts = BASE_S, tx = 0;
   if (f && (f.state === 'fly' || f.state === 'slide' || f.state === 'rest')) {
     const top = f.state === 'fly' ? Math.max(f.y, 0) : 0;
-    ts = clamp((GROUND_Y - 80) / (top + 2.6), 10, BASE_S);
+    ts = clamp((GROUND_Y - 80) / (top + 2.6), 3.2, BASE_S);
     if (f.state === 'rest' && S.hold < 0.9) { ts = BASE_S; tx = 0; }
     else tx = Math.max(0, f.x - (W * 0.58 - HOLE_SX) / ts);
   }
   const k = 1 - Math.exp(-dt * (f && f.state === 'fly' ? 3 : 2.4));
+  if (f && f.state === 'fly' && S.hitT < 0.4) ts = BASE_S;
   cam.s += (ts - cam.s) * k;
-  if (f && (f.state === 'fly' || f.state === 'slide')) cam.x = Math.max(0, f.x - (W * 0.58 - HOLE_SX) / cam.s);
+  const follow = f && (f.state === 'fly' || f.state === 'slide');
+  if (follow && S.hitT < 0.4) cam.x += (0 - cam.x) * k;
+  else if (follow && S.hitT < 1.1) { const want = Math.max(0, f.x - (W * 0.58 - HOLE_SX) / cam.s); cam.x += (want - cam.x) * Math.min(1, (S.hitT - 0.4) * 1.6); }
+  else if (follow) cam.x = Math.max(0, f.x - (W * 0.58 - HOLE_SX) / cam.s);
   else cam.x += (tx - cam.x) * k;
   if (S.hold > 0 && f && (f.state === 'rest' || f.state === 'gone')) {
     S.hold -= dt;
@@ -367,17 +372,17 @@ function drawIce() {
   }
 }
 function drawMarkers() {
-  const stepFt = cam.s > 40 ? 10 : cam.s > 20 ? 25 : 50;
-  const startFt = Math.max(stepFt, Math.floor((cam.x - HOLE_SX / cam.s) * FT / stepFt) * stepFt);
-  const endFt = (cam.x + (W - HOLE_SX) / cam.s + 2) * FT;
+  const step = cam.s > 40 ? 2 : cam.s > 18 ? 5 : cam.s > 8 ? 10 : cam.s > 4.5 ? 25 : 50;
+  const startYd = Math.max(step, Math.floor((cam.x - HOLE_SX / cam.s) / YD / step) * step);
+  const endYd = (cam.x + (W - HOLE_SX) / cam.s + 2) / YD;
   ctx.font = "700 12px 'TL Fox Dollar', Rajdhani, sans-serif"; ctx.textAlign = 'center';
-  for (let ft = startFt; ft <= endFt; ft += stepFt) {
-    const x = sx(ft / FT), major = ft % (stepFt * 2) === 0;
+  for (let yd = startYd; yd <= endYd; yd += step) {
+    const x = sx(yd * YD), major = yd % (step * 2) === 0;
     ctx.fillStyle = P.iceLine; ctx.fillRect(x - 1, GROUND_Y - 2, 2, major ? 34 : 20);
-    if (major) { ctx.fillStyle = P.markerText; ctx.fillText(ft + ' ft', x, GROUND_Y + 50); }
+    if (major) { ctx.fillStyle = P.markerText; ctx.fillText(yd + ' yd', x, GROUND_Y + 50); }
   }
-  if (best > 0) drawFlag(best / 10 / FT, P.best, 'BEST', true);
-  if (S) for (let i = 0; i < S.results.length; i++) { const d = S.results[i]; if (d > 0 && !(S.fish && S.fish.state === 'rest' && i === S.results.length - 1)) drawFlag(d / 10 / FT, P.marker, '#' + (i + 1), false); }
+  if (best > 0) drawFlag(best / 100 * YD, P.best, 'BEST', true);
+  if (S) for (let i = 0; i < S.results.length; i++) { const d = S.results[i]; if (d > 0 && !(S.fish && S.fish.state === 'rest' && i === S.results.length - 1)) drawFlag(d / 100 * YD, P.marker, '#' + (i + 1), false); }
 }
 function drawFlag(xm, color, text, dashed) {
   const x = sx(xm); if (x < -40 || x > W + 40) return;
@@ -397,28 +402,28 @@ function drawHole() {
     ctx.globalAlpha = 1;
   }
 }
-function drawBear(front) {
-  const k = cam.s / ART.body.px, bx = sx(BEAR_X), by = sy(0) + 6 * k;
-  if (bx < -ART.body.w * k || bx > W + ART.body.w * k) return;
-  if (!front) {
-    const body = IMG[look]['bear-body']; if (!body) return;
-    const sh = ctx.createRadialGradient(bx + 30 * k, by, 0, bx + 30 * k, by, 170 * k); sh.addColorStop(0, 'rgba(20,45,80,0.32)'); sh.addColorStop(1, 'rgba(20,45,80,0)');
-    ctx.save(); ctx.translate(bx + 30 * k, by); ctx.scale(1, 0.16); ctx.translate(-bx - 30 * k, -by); ctx.fillStyle = sh; ctx.fillRect(bx - 150 * k, by - 170 * k, 360 * k, 340 * k); ctx.restore();
-    const breathe = 1 + Math.sin((S ? S.idle : 0) * 2.2) * 0.008;
-    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, by + 10 * k); ctx.clip(); ctx.translate(bx, by); ctx.scale(1, breathe);
-    ctx.drawImage(body, -ART.body.ox * k, -ART.body.oy * k, ART.body.w * k, ART.body.h * k);
-    ctx.restore();
-    return;
+function drawBear() {
+  const A = SWING_ART, k = cam.s / A.px, bx = sx(BEAR_X), by = sy(0);
+  if (bx < -A.w * k || bx > W + A.w * k) return;
+  const sh = ctx.createRadialGradient(bx + 20 * k, by, 0, bx + 20 * k, by, 200 * k); sh.addColorStop(0, 'rgba(20,45,80,0.3)'); sh.addColorStop(1, 'rgba(20,45,80,0)');
+  ctx.save(); ctx.translate(bx + 20 * k, by); ctx.scale(1, 0.16); ctx.translate(-bx - 20 * k, -by); ctx.fillStyle = sh; ctx.fillRect(bx - 200 * k, by - 200 * k, 400 * k, 400 * k); ctx.restore();
+  const t = S ? S.armT : -1, { frame, blend } = swingFrame(t);
+  const img = IMG[look]['bear-swing' + frame], stance = IMG[look]['bear-swing0'];
+  const bob = t < 0 ? Math.sin((S ? S.idle : 0) * 2.2) * 0.008 : 0;
+  const put = (im, alpha) => {
+    if (!im || alpha <= 0) return;
+    ctx.globalAlpha = alpha; ctx.save(); ctx.translate(bx, by); ctx.scale(1, 1 + bob);
+    ctx.drawImage(im, -A.ox * k, -A.oy * k, A.w * k, A.h * k); ctx.restore(); ctx.globalAlpha = 1;
+  };
+  put(img, 1 - blend); put(stance, blend);
+  if (t >= FRAME_T[2] && t < FRAME_T[6] + 0.04 && !reduce) {
+    const fade = 1 - Math.max(0, t - FRAME_T[6]) / 0.04;
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.45 * fade) + ')'; ctx.lineWidth = Math.max(2, 9 * k); ctx.lineCap = 'round';
+    ctx.beginPath();
+    const last = Math.min(frame, 6);
+    for (let i = 2; i <= last; i++) { const px = sx(BEAR_X + SWEET[i][0]), py = sy(SWEET[i][1]); if (i === 2) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+    ctx.stroke();
   }
-  const arm = IMG[look]['bear-arm']; if (!arm) return;
-  const a = S ? S.arm : ARM_READY;
-  ctx.save(); ctx.translate(sx(SHOULDER.x), sy(SHOULDER.y)); ctx.rotate(a);
-  if (S && S.armT >= 0 && S.armT < SWING_T + 0.05 && !reduce) {
-    const r = ARM * cam.s + 10, g = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(255,255,255,0.4)');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, -1.1, 0); ctx.closePath(); ctx.fill();
-  }
-  ctx.drawImage(arm, -ART.arm.ox * k, -ART.arm.oy * k, ART.arm.w * k, ART.arm.h * k);
-  ctx.restore();
 }
 function fishAngle(f) {
   if (f.state === 'jump') return f.rot;
@@ -488,7 +493,7 @@ function drawRestFlag() {
 function drawHint() {
   if (!S || mode !== 'play' || !S.fish || S.fish.state !== 'wait' || S.n > 1 || S.idle > 6) return;
   ctx.textAlign = 'center'; ctx.font = "600 14px 'TL Fox Dollar', Inter, sans-serif"; ctx.fillStyle = look === 'wics' ? '#1e3a6e' : 'rgba(255,255,255,0.92)';
-  ctx.fillText('Watch the hole. Swing (Space, click or tap) as the fish reaches the paw.', W / 2, 130);
+  ctx.fillText('Watch the hole. Swing (Space, click or tap) as the fish drops into the path of the bat.', W / 2, 130);
 }
 
 function draw(dt) {
@@ -496,14 +501,14 @@ function draw(dt) {
   if (cam.shake > 0) ctx.translate(rand(-cam.shake, cam.shake) * 0.5, rand(-cam.shake, cam.shake) * 0.5);
   if (!S) S = fresh();
   drawSky(); drawFar(); drawIce(); drawMarkers(); drawHole();
-  drawBear(false); drawFish(S.fish); drawBear(true); drawRestFlag(); drawFx();
+  drawBear(); drawFish(S.fish); drawRestFlag(); drawFx();
   ctx.restore();
   drawSnow(dt); drawMessage(); drawHint();
 }
 
 function frame(now) {
   const dt = Math.min(0.033, (now - last) / 1000 || 0); last = now;
-  if (mode === 'play') update(dt); else if (S && mode !== 'pause') { S.idle += dt; S.arm = armAngle(-1); }
+  if (mode === 'play') update(dt); else if (S && mode !== 'pause') S.idle += dt;
   draw(mode === 'pause' ? 0 : dt); requestAnimationFrame(frame);
 }
 
