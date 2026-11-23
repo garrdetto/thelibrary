@@ -37,7 +37,7 @@ async function boot(): Promise<void> {
   const hud = app.own(new Hud(config.engine.hud, config.meta.accent, container))
   const ui = installStyles(config.meta.accent)
   container.append(ui)
-  const stage = new Stage(app, lighting, ui)
+  const stage = new Stage(app, lighting, ui, quality.tier)
 
   let scene: Scene | null = null
   let sceneName = 'loading'

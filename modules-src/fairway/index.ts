@@ -1,6 +1,6 @@
 /** Fairway Nine entry: boots the shared engine, builds the sky, balls, golfer, tracer and shot preview, wires input, HUD, gauge, minimap, screens and the session, steps the systems each fixed step and moves meshes each frame; everything is freed on pagehide. */
 import * as THREE from 'three/webgpu'
-import { App, HubBridge, Hud, Input, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
+import { App, HubBridge, Hud, Input, applyEnvironment, createLighting, createPost, mountGraphicsSettings, resolveQuality } from '../../engine'
 import { config, type Action } from './config'
 import { createBall } from './models/Ball'
 import { createGolfer } from './models/Golfer'
@@ -62,6 +62,7 @@ async function boot(): Promise<void> {
 
   const app = await App.create({ container, config: config.engine })
   const quality = resolveQuality(config.engine.quality, app.backend)
+  mountGraphicsSettings(quality.tier)
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
   app.own(applyEnvironment(app.scene, config.engine.environment))
   const lighting = app.own(createLighting(config.engine.lighting, quality.settings))

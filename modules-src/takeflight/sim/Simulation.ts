@@ -1,0 +1,151 @@
+/**
+ * The fixed-timestep driver: the flight model runs at exactly 120 Hz whatever the frame rate, the renderer reads a state
+ * interpolated between the last two ticks, and every tick's quantised input goes to an optional recorder (telemetry and replays).
+ * The same class re-flies a recorded input log on the Worker.
+ */
+import type { AircraftSpec } from '../shared/AircraftSpec'
+import type { Ground } from '../shared/Terrain'
+import { applyAssists } from './Assists'
+import type { AssistSettings } from './Assists'
+import { copyInput, createInput, quantizeInput } from './Controls'
+import type { ControlInput } from './Controls'
+import { FlightModel } from './FlightModel'
+import type { FlightEnvironment } from './FlightModel'
+import { WindField } from './Wind'
+import type { WindSpec } from './Wind'
+
+export const SIM_HZ = 120
+export const SIM_DT = 1 / SIM_HZ
+/** Most ticks run in one frame; a longer stall (tab in the background) is dropped rather than replayed in a burst. */
+const MAX_TICKS_PER_FRAME = 12
+
+export interface FlightSetup {
+  aircraft: AircraftSpec
+  ground: Ground
+  wind: WindSpec
+  seed: number
+  temperatureOffset: number
+  seaLevelPressure: number
+  assists: AssistSettings
+}
+
+export interface TickListener {
+  (tick: number, input: Readonly<ControlInput>, aircraft: FlightModel): void
+}
+
+export interface InterpolatedState {
+  x: number
+  y: number
+  z: number
+  qx: number
+  qy: number
+  qz: number
+  qw: number
+}
+
+export class Simulation {
+  readonly aircraft: FlightModel
+  readonly previous: FlightModel
+  readonly env: FlightEnvironment
+  readonly setup: FlightSetup
+  /** Raw pilot input; the sim copies, assists and quantises it each tick. */
+  readonly pilot: ControlInput = createInput()
+  readonly applied: ControlInput = createInput()
+  paused = false
+  private accumulator = 0
+  private readonly listeners: TickListener[] = []
+
+  constructor(setup: FlightSetup) {
+    this.setup = setup
+    this.aircraft = new FlightModel(setup.aircraft)
+    this.previous = new FlightModel(setup.aircraft)
+    this.env = { ground: setup.ground, wind: new WindField(setup.wind, setup.seed), temperatureOffset: setup.temperatureOffset, seaLevelPressure: setup.seaLevelPressure }
+  }
+
+  /** Starts a new flight with new conditions on the same aircraft; the caller places it afterwards. */
+  reset(conditions: Pick<FlightSetup, 'wind' | 'seed' | 'temperatureOffset' | 'seaLevelPressure' | 'assists'>): void {
+    Object.assign(this.setup, conditions)
+    this.env.wind = new WindField(conditions.wind, conditions.seed)
+    this.env.temperatureOffset = conditions.temperatureOffset
+    this.env.seaLevelPressure = conditions.seaLevelPressure
+    this.aircraft.reset()
+    this.previous.reset()
+    this.accumulator = 0
+  }
+
+  onTick(listener: TickListener): () => void {
+    this.listeners.push(listener)
+    return () => {
+      const index = this.listeners.indexOf(listener)
+      if (index >= 0) this.listeners.splice(index, 1)
+    }
+  }
+
+  /** Marks the current state as both previous and current (after a teleport or reset). */
+  settle(): void {
+    this.previous.copyFrom(this.aircraft)
+    this.accumulator = 0
+  }
+
+  /** Runs one tick with an explicit input (replays and tests). */
+  stepWith(input: ControlInput): void {
+    copyInput(input, this.applied)
+    quantizeInput(this.applied)
+    this.previous.copyFrom(this.aircraft)
+    this.aircraft.step(this.applied, SIM_DT, this.env)
+    for (let i = 0; i < this.listeners.length; i++) this.listeners[i](this.aircraft.tick, this.applied, this.aircraft)
+  }
+
+  /** Runs one tick from the pilot input with assists applied. */
+  stepPilot(): void {
+    copyInput(this.pilot, this.applied)
+    applyAssists(this.setup.assists, this.aircraft, this.applied)
+    quantizeInput(this.applied)
+    this.previous.copyFrom(this.aircraft)
+    this.aircraft.step(this.applied, SIM_DT, this.env)
+    for (let i = 0; i < this.listeners.length; i++) this.listeners[i](this.aircraft.tick, this.applied, this.aircraft)
+  }
+
+  /** Advances by real time `seconds`; returns the interpolation share (0..1) between the previous and current tick. */
+  advance(seconds: number): number {
+    if (this.paused) return 1
+    this.accumulator += seconds
+    let ticks = 0
+    while (this.accumulator >= SIM_DT && ticks < MAX_TICKS_PER_FRAME) {
+      this.stepPilot()
+      this.accumulator -= SIM_DT
+      ticks++
+    }
+    if (ticks === MAX_TICKS_PER_FRAME && this.accumulator > SIM_DT) this.accumulator = 0
+    return this.accumulator / SIM_DT
+  }
+
+  /** Interpolated position and orientation for rendering. */
+  interpolate(share: number, out: InterpolatedState): InterpolatedState {
+    const a = this.previous
+    const b = this.aircraft
+    out.x = a.px + (b.px - a.px) * share
+    out.y = a.py + (b.py - a.py) * share
+    out.z = a.pz + (b.pz - a.pz) * share
+    let bx = b.qx
+    let by = b.qy
+    let bz = b.qz
+    let bw = b.qw
+    if (a.qx * bx + a.qy * by + a.qz * bz + a.qw * bw < 0) {
+      bx = -bx
+      by = -by
+      bz = -bz
+      bw = -bw
+    }
+    const x = a.qx + (bx - a.qx) * share
+    const y = a.qy + (by - a.qy) * share
+    const z = a.qz + (bz - a.qz) * share
+    const w = a.qw + (bw - a.qw) * share
+    const length = Math.sqrt(x * x + y * y + z * z + w * w) || 1
+    out.qx = x / length
+    out.qy = y / length
+    out.qz = z / length
+    out.qw = w / length
+    return out
+  }
+}

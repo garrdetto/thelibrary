@@ -162,7 +162,7 @@ export const ENGINE_DEFAULTS: EngineConfig = {
   },
   environment: { background: '#0a0e1a', fogColor: '#0a0e1a', fogNear: 40, fogFar: 160 },
   quality: {
-    requested: 'auto',
+    requested: 'low',
     tiers: {
       low: { pixelRatioCap: 1, shadows: false, shadowMapSize: 512, post: false },
       medium: { pixelRatioCap: 1.5, shadows: true, shadowMapSize: 1024, post: false },

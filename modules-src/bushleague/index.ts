@@ -1,6 +1,6 @@
 /** Bush League Baseball entry: boots the shared engine with the tier's broadcast budget (AgX HDR output, post chain, cascaded shadows, adaptive resolution), builds the park, lights, crowd and grass for each contest, binds the screens and hands the contest to the Director; tears everything down on pagehide. */
 import * as THREE from 'three/webgpu'
-import { App, Input, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
+import { App, Input, applyEnvironment, createLighting, createPost, mountGraphicsSettings, resolveQuality } from '../../engine'
 import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js'
 import { config, type Action } from './config'
 import { LIGHT_PRESETS, TIER_BUDGETS, themeFor, type TimeOfDay } from './looks'
@@ -34,6 +34,7 @@ async function boot(): Promise<void> {
 
   const app = await App.create({ container, config: config.engine })
   const quality = resolveQuality(config.engine.quality, app.backend)
+  mountGraphicsSettings(quality.tier)
   const budget = TIER_BUDGETS[quality.tier]
   app.setPixelRatioCap(budget.pixelRatio)
   app.own(applyEnvironment(app.scene, config.engine.environment))

@@ -133,7 +133,7 @@ Engine code imports three only as `three/webgpu` (addons from `three/addons/*` s
 - `engine/render/Environment.ts` — `applyEnvironment`: background and fog; `bakeEnvironment(renderer, scene, source, intensity)`: prefilters any source scene into a PMREM and installs it as `scene.environment` (no-op handle if the backend cannot bake) — module `index.ts`, `bushleague/view/Lights.ts`.
 - `engine/render/Post.ts` — `createPost`: installs the App render pass; with `post.enabled`, a tier that allows post and some `effects` it builds a TSL `RenderPipeline` on the HDR scene colour (GTAO from packed MRT normals, TRAA from MRT velocity, both on a non-MSAA scene pass; bloom, lens flare off the bloom, vignette, film grain, and depth of field driven at runtime by `PostChain.setFocus(distance, strength)`, zero strength by default) before tone mapping, and falls back to a direct render if the pipeline cannot be built; modules without `effects` render exactly as before — module `index.ts`. Depth of field only mixes in while `setFocus` strength is above zero.
 - `engine/render/ShadowCache.ts` — `ShadowCache`: walks the visible scene once a frame and writes a signature of every shadow light and caster (world matrices, bones, geometry and instance versions, morph weights); shadow maps re-render only when it changes or on `invalidate()`, so a camera that only turns reuses them. Lights with a cascaded `shadowNode` stay on automatic updates; casters animated in the vertex shader set `userData.shadowAnimated` (fairway trees and flag, demoderby crowd, bushleague corn) — `App`.
-- `engine/render/Quality.ts` — `resolveQuality`: `auto` tier per backend, `?quality=` override — module `index.ts`.
+- `engine/render/Quality.ts` — `resolveQuality`: `?quality=` override, then the player's saved Graphics pick (`tl-graphics:<page path>` in localStorage), then the config (`low` by default; `auto` still picks per backend); `createGraphicsSetting` / `mountGraphicsSettings` put a Graphics select (Low–Ultra, saves and reloads) into elements marked `data-tl-graphics` — module `index.ts` (Darts and Fairway pause, Bush League and Demo Derby setup, The Hood street bar).
 - `engine/physics/World.ts` — `PhysicsWorld`: lazy-loaded Rapier, fixed `step(dt, events?)` (an optional `EventQueue` is drained by the caller for contact events), `track` + interpolated `syncMesh(body, mesh, alpha)`, `setDebug(parent)` line draw — module `index.ts`.
 - `engine/ui/Hud.ts` — `Hud`: DOM overlay panels, stats, buttons, toasts styled with `--lib-*` tokens mirrored live from the hub page — module `index.ts`.
 - `engine/net/HubBridge.ts` — same-origin `postMessage`: `tl-room`, `tl-score-saved`, `tl-lap`, `tl-fairway` out, `tl-host` in — `Peer`, `Scores`, fairway `index.ts`.
@@ -560,6 +560,32 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` — `/api/trucksim` (see Worker API); `migrations/0049_trucksim.sql` — `trucksim_profiles` and `trucksim_lots`.
 - Contracts: coordinates are metres, Y up, right-handed (`scene.useRightHandedSystem = true`, so Rapier and Babylon share numbers); heading `h` faces `(sin h, 0, cos h)`; a vehicle frame has its origin on the ground under the front axle (trucks) or kingpin (trailers), +Z forward, +X the driver's left, so a positive heading change and a positive steer are left turns. Render code parents everything under the `parent`/`frameRoot` it is given, sim code talks to a `PhysicsHost`, rules read a `HaulWorld`. No custom shaders; Babylon imported by path.
 
+### takeflight — Take Flight (`modules-src/takeflight/`, Babylon.js 9.34 WebGPU with a WebGL2 fallback through Rack & Reel's `createEngine`, own flight model, not on `engine/`; design and decisions in `docs/takeflight/PLAN.md`, rules in `docs/agents/modules/takeflight.md`)
+
+A career flight simulator. Built from `modules-src/takeflight/index.html` + `index.ts` into `public/modules/takeflight.html`; thumbnail `public/images/modules/takeflight.webp`; catalog entry in `src/lib/modules.ts`. Models `public/models/takeflight/wren_lod0..2.glb` and `wren_cockpit.glb` from `assets-src/models/takeflight/`. Tests: `scripts/takeflight-tests.mjs` (in `pnpm test`).
+
+- `sim/SimMath.ts` — bit-exact `sin`, `cos`, `atan`, `atan2`, `asin`, `exp`, `ln`, `pow`, `tanh`, `hash2`, `SimRandom` — every sim and shared file.
+- `sim/Atmosphere.ts` — ISA with temperature offset, indicated altitude and airspeed.
+- `sim/Controls.ts` — `ControlInput`, 12-byte encoding and quantising.
+- `sim/Wind.ts` — `WindField`: steady wind with log profile, seeded gusts and turbulence.
+- `sim/FlightModel.ts` — the aircraft's rigid-body state and `step`: actuators, engine, aerodynamics, stall and spin, ground effect, gear and structure contacts, crashes, touchdown records.
+- `sim/Simulation.ts` — 120 Hz fixed step, interpolation, tick listeners, `stepWith` for replays, `reset`.
+- `sim/Assists.ts` — auto-trim, stall protection, score multiplier. `sim/Trim.ts` — `levelTrim` for starts in the air.
+- `shared/AircraftSpec.ts` — Zod schema for aircraft JSON; `shared/aircraft/wren.json` — Halden Wren T4.
+- `shared/Airports.ts` — airport layouts (Harrow Field), runway frames, `pavementAt`.
+- `shared/Terrain.ts` — seeded terrain with airport flattening, `TERRAIN` ground for the sim, forest and field helpers.
+- `world/AssetManager.ts` — reference-counted glTF containers with an LRU byte budget and the bundled meshopt decoder.
+- `render/Quality.ts` — terrain, tree and gauge settings per tier (sky and post tiers are Truck Simulator's).
+- `render/TerrainRenderer.ts` — quadtree terrain tiles with skirts, vertex colour, detail texture and thin-instanced trees.
+- `render/AirportRenderer.ts` — pavement, geometry markings, lights, PAPI, windsock, hangars, office, tower.
+- `render/AircraftVisual.ts` — LOD swap, control surfaces, prop and disc, wheels, nose steering, lamps.
+- `render/Cockpit.ts` + `render/Instruments.ts` — the interior and its painted six-pack and engine gauges.
+- `game/Cameras.ts` — cockpit, chase and tower views. `game/Standalone.ts` — the page: boot, starts, frame loop, actions.
+- `input/Bindings.ts` + `input/InputManager.ts` — keys, gamepads, yokes and HOTAS with remapping, deadzone and curve.
+- `ui/Hud.ts`, `ui/Menus.ts`, `ui/DevOverlay.ts`, `ui/styles.css` — overlay, screens, performance overlay.
+- `tools/blender/` — `aircraft_kit.py`, `build_wren.py`, `export_aircraft.py` (validator and LOD export). `tools/fly-check.ts`, `tools/approach-check.ts` — quick envelope prints (`npx tsx`).
+- `tests/` — `simmath`, `controls`, `determinism` (bit-identical runs and replay), `flight` (envelope, stall, approach, landing, crash), `terrain`, `memory` (airport 50 load/unload cycles and terrain streaming back to baseline on a `NullEngine`).
+
 ### county — Kestrel County (`modules-src/county/`, PlayCanvas, in `modules.ts` with `public/images/modules/county.webp`)
 A separate 4 × 4 km world (airport and helicopters to come) in a glossy realistic-clipart style. Phase 1 streams the county with graded terrain, a generated road network and a town of houses, with Fox Plains 2's walking and driving imported unchanged; `?lookdev=1` keeps the Phase 0 look-development scene. It imports Fox Plains 2's `MeshBuilder`/`meshEntity`, physics (`Physics`, `Vehicle`, `VehicleModels`, `Character`), `Assets`, `AvatarKits` and `CameraRig`, and Fox Plains' `Input`, `store`, `Wardrobe`, `Economy` and vehicle registry (`CustomVehicles`, `Vehicles`) rather than copying them. Details in `modules-src/county/README.md`.
 - `modules-src/county/index.html`, `index.ts` — page shell with the world HUD, developer panel styles and the look-dev panel — `vite.modules.ts` (→ `public/modules/county.html`).
@@ -764,7 +790,7 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `public/modules/foodchain.html` — Food Chain: eat smaller fish to grow, stages, jellyfish and shark hazards, combo scoring, score — hub iframe.
 - `public/modules/keep.html` — Hold the Keep: grab-and-fling wall defense, six raider types, fall damage and bowling hits, between-wave shop (repair, wall, moat, archers), score — hub iframe.
 - `public/modules/giant.html` — Giant's Hand: ninety-second toss round, height and airtime scoring, mid-air catch juggle multiplier, balloons and a moving hoop, score — hub iframe.
-- `public/modules/gonefishing.html` — Polar Swat: a polar bear swats fish leaping from an ice hole; contact height sets launch angle and power, fish fly nose-first with drag and wind, bounce depending on impact angle and slide to a stop; five fish a round, longest distance (tenths of feet) to the board; Original or WICS colours through `TLTheme`. Sprites in `public/modules/gonefishing/*.webp` are Cycles renders made by `scripts/gonefishing-art.py` (Blender `bpy`), never drawn by hand.
+- `public/modules/gonefishing.html` — Polar Swat: a polar bear swings a baseball bat (nine Blender swing frames, `FRAME_T`, contact at frame 5) at fish leaping from an ice hole; contact height against the bat's sweet spot sets launch angle and power, fish fly nose-first with drag and wind, bounce depending on impact angle and slide to a stop; five fish a round, longest distance in hundredths of a yard (up to 400) to the `gonefishing-yd` board; Original or WICS colours through `TLTheme`. Sprites in `public/modules/gonefishing/*.webp` are Cycles renders made by `scripts/gonefishing-art.py` (Blender), never drawn by hand.
 - `public/modules/cookies.html` — Cookie Factory: five-minute timed clicker (seven production lines at 15% price growth, doubling upgrades, golden cookies, 16 clicks/s cap), total baked as score — hub iframe.
 - `public/modules/hotdog.html` — Corner Cart: thirty-day cart business (forecast, three corners with rent, sausages that spoil, buns that keep a day, toppings, price, grill/canopy/sign upgrades, reputation), final cash as score — hub iframe.
 

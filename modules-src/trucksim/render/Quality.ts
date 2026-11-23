@@ -101,13 +101,10 @@ export const TIER_STORAGE_KEY = 'trucksim:quality'
 
 /**
  * `?quality=low|medium|high|ultra` (also `med`, `max`) wins, then the tier this driver picked before (`saved`). Otherwise every
- * driver starts on medium, and phones and devices reporting under 4 GB or 4 cores on low; higher tiers are a pick in the pause menu.
+ * driver starts on low; higher tiers are a pick in the pause menu.
  */
-export function resolveTier(search: string, _backend: Backend, hints: DeviceHints = deviceHints(), saved: string | null = savedTier()): QualityTier {
-  const asked = parseTier(new URLSearchParams(search).get('quality')) ?? parseTier(saved)
-  if (asked) return asked
-  const weak = hints.mobile === true || (hints.memoryGb !== undefined && hints.memoryGb < 4) || (hints.cores !== undefined && hints.cores < 4)
-  return weak ? 'low' : 'medium'
+export function resolveTier(search: string, _backend: Backend, _hints: DeviceHints = deviceHints(), saved: string | null = savedTier()): QualityTier {
+  return parseTier(new URLSearchParams(search).get('quality')) ?? parseTier(saved) ?? 'low'
 }
 
 /** The tier saved in this browser, or null (no storage, private window, nothing saved). */

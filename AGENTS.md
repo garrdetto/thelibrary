@@ -38,6 +38,7 @@ This file loads into every session, so it holds only what applies everywhere. De
 | Kestrel County | `modules-src/county/` | `docs/agents/modules/county.md` |
 | Pro Skater AI | `modules-src/proskater/` | `docs/agents/modules/proskater.md` |
 | Bridge Builder | `modules-src/bridge/` | `docs/agents/modules/bridge.md` |
+| Take Flight (career flight simulator) | `modules-src/takeflight/` | `docs/agents/modules/takeflight.md` |
 | Truck Simulator | `modules-src/trucksim/`, `src/server/routes/trucksim.ts` | `docs/agents/modules/trucksim.md` |
 | Sun Vault, Beanstalk Bounty, Mo' Dollaz | `modules-src/sunvault/`, `beanstalk/`, `modollaz/` | `docs/agents/modules/slots.md` |
 
@@ -64,6 +65,7 @@ The 3D code index is `docs/ENGINE-MAP.md`; the shared 3D engine is `engine/`.
 - Module pages are built from `modules-src/<id>/` into `public/modules/` by `vite.modules.ts` (generated files are git-ignored). Models in `assets-src/models/` are optimized into the committed `public/models/` by `pnpm assets`: after changing a source model, run it and commit `public/models/` too (CI's `pnpm assets:check` fails otherwise); never hand-edit `public/models/`.
 - Keep each module's rules in its renderer-free, deterministic `shared/` or `sim/` code where it has one, because Durable Objects and tests run it too.
 - Every module is embedded in an iframe at `#module-<id>`; the catalog is `src/lib/modules.ts`.
+- Every 3D module starts on its lowest graphics setting and offers a Graphics setting (saved per browser) to raise it; `?quality=` still overrides for testing. Engine modules get this from `resolveQuality` and `mountGraphicsSettings`; never pick a higher default from the device.
 
 ## Conventions
 
