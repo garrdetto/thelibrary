@@ -137,13 +137,13 @@ export class FlightSession {
   }
 
   /** Ends the flight: scores it and finishes the compressed record (resolves to null if compression is unavailable). */
-  finish(ended: EndReason, crashed: CrashReason | null, spec: FlightModel['spec']): { score: FlightScore; record: Promise<FinishedRecord | null> } {
+  finish(ended: EndReason, crashed: CrashReason | null, spec: FlightModel['spec'], instrumentsOnly = false): { score: FlightScore; record: Promise<FinishedRecord | null> } {
     const r = this.recorder
     const score = scoreFlight({ spec, assists: this.header?.assists ?? { autoTrim: false, stallProtection: false, landingGuidance: false }, telemetry: r.telemetryLog(), samples: r.samples, touchdowns: r.touchdowns, crashed, ended })
     this.score = score
     this.pump()
     this.send(r.takeTail())
-    const footer: RecordFooter = { ticks: r.ticks, samples: r.samples, touchdowns: r.touchdowns.map((t) => ({ ...t })), crashed, ended, score: score.total }
+    const footer: RecordFooter = { ticks: r.ticks, samples: r.samples, touchdowns: r.touchdowns.map((t) => ({ ...t })), crashed, ended, score: score.total, instrumentsOnly }
     const id = ++this.finishId
     let record: Promise<FinishedRecord | null>
     if (this.post({ type: 'finish', id, footer })) {

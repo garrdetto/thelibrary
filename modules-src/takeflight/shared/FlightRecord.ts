@@ -10,11 +10,12 @@ import type { CrashReason } from '../sim/FlightModel'
 import type { StartKind } from '../sim/Starts'
 import type { WindSpec } from '../sim/Wind'
 import type { WeatherKind } from './Weather'
+import type { CheckrideId, TimeKind, WindKind } from './Career'
 import { INPUT_BYTES } from '../sim/Controls'
 import { CHANNELS } from '../sim/Telemetry'
 import type { TouchdownEvent } from '../sim/Telemetry'
 
-export const RECORD_VERSION = 3
+export const RECORD_VERSION = 4
 const MAGIC = [0x54, 0x46, 0x52, 0x31]
 const FRAME_HEADER = 1
 const FRAME_INPUTS = 2
@@ -38,6 +39,13 @@ export interface RecordHeader {
   job?: string | null
   /** The airline route flown, by id. */
   route?: string | null
+  /** Random id of this flight, the same in every record of it (Keep flying re-sends the whole flight). */
+  flight?: string
+  /** The named presets the conditions came from. */
+  windKind?: WindKind
+  time?: TimeKind
+  /** The checkride flown, if any. */
+  checkride?: CheckrideId | null
   /** The engine failure flown, if any (multi-engine checkride). */
   failure?: { engine: number; agl: number } | null
 }
@@ -49,6 +57,8 @@ export interface RecordFooter {
   crashed: CrashReason | null
   ended: 'stopped' | 'pilot' | 'crash'
   score: number
+  /** True when the whole flight was flown on the essential HUD without glidepath guidance. */
+  instrumentsOnly?: boolean
 }
 
 export interface FlightRecordData {
