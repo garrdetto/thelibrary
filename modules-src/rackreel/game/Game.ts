@@ -169,6 +169,10 @@ export interface GameExtension {
   cycleMinimapZoom?(): string
   /** The line shown when play starts, in place of Rack & Reel's own about its stands ('' for none). */
   greeting?(): string
+  /** E in a vehicle: true when the host world uses this press itself (a truck prompt), so it does not get the player out. */
+  claimsInteract?(): boolean
+  /** The prompt line while driving a land vehicle (a truck's fuel, wash or job step), '' for none. */
+  vehiclePrompt?(): string
 }
 
 export interface GameOptions {
@@ -1271,6 +1275,7 @@ export class Game {
       return
     }
     if (this.mode === 'vehicle') {
+      if (this.ext?.claimsInteract?.()) return
       const spot = this.vehicles.exit()
       if (!spot) {
         this.hud.toast('Too deep to step out here. Run the boat up to shore.', 'warn')
@@ -2467,7 +2472,7 @@ export class Game {
       prompt = fishPrompt || (!b || b.speed > 1.2 ? `${b?.name ?? 'The captain'} is driving — hold on` : b.anchored ? 'Left-click to cast · F to ask for the other seat · E near shore to step off' : 'Left-click to cast · E near shore to step off')
     } else if (v) {
       const idle = v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy
-      prompt = fishPrompt || (!idle ? '' : v.anchored ? 'Left-click to cast · F to switch seats · Q to pull the anchor' : 'Left-click to cast · Q to drop anchor · E near shore to step out')
+      prompt = fishPrompt || (v.kind !== 'BOAT' ? this.ext?.vehiclePrompt?.() ?? '' : !idle ? '' : v.anchored ? 'Left-click to cast · F to switch seats · Q to pull the anchor' : 'Left-click to cast · Q to drop anchor · E near shore to step out')
     } else {
       const down = this.wildlife.nearestDown(this.foot, TAG_RANGE)
       const near = this.nearOwnVehicle()

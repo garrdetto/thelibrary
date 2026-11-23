@@ -205,4 +205,5 @@ export const MONTELLO: HaulWorld = {
   site: (id: string) => SITE_INDEX.get(id),
   zonesOfKind: (kind: ZoneKind) => ZONES.filter((z) => z.kind === kind),
   routeDistance,
+  route: montelloRoute,
 }

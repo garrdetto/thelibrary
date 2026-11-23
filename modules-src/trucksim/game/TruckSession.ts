@@ -21,9 +21,7 @@ import type { TrailerModel, TruckLook, TruckModel } from '../shared/Catalog'
 import { FUEL_STATION_MARKUP, REPAIR_LABOUR_MARKUP } from '../shared/Economy'
 import type { OwnedTruck, Profile } from '../shared/Economy'
 import { hasService, itemFootprint, washSpots } from '../shared/Lots'
-import { route } from '../shared/RoadGraph'
-import { getTerrain } from '../shared/Terrain'
-import { SITE_BY_ID, SITES, headingDelta, inRect, inZone, lotSpawn } from '../shared/WorldLayout'
+import { headingDelta, inRect, inZone, lotSpawn } from '../shared/WorldLayout'
 import type { LotSpec, Zone } from '../shared/WorldLayout'
 import { COUPLING_MESSAGES, attachNeck, checkCouple, couple, detachNeck, uncouple } from '../sim/Coupling'
 import { ExcavatorRig } from '../sim/ExcavatorRig'
@@ -305,7 +303,6 @@ export class TruckSession {
   private disposed = false
   private readonly unsubscribe: () => void
   private readonly view: SessionView
-  private readonly terrain = getTerrain()
   private lastPayloadShown = -1
   private lastDumpShown = -1
 
@@ -515,7 +512,7 @@ export class TruckSession {
       slot += 1
       if (z > lot.z + lot.d - 6) break
       const visual = buildTruckVisual(this.host.scene, this.host.frameRoot, model, owned.look, this.host.mats)
-      const y = this.terrain.heightAt(baseX, z)
+      const y = this.host.physics.heightAt(baseX, z)
       visual.update(this.staticTruckPose(model, baseX, y, z, heading))
       this.parked.push({ uid: owned.uid, visual })
       this.trackCasters(visual.meshes)
@@ -530,7 +527,7 @@ export class TruckSession {
       tslot += 1
       if (z > lot.z + lot.d - 6) break
       const visual = buildTrailerVisual(this.host.scene, this.host.frameRoot, model, owned.color, this.host.mats)
-      visual.update(this.staticTrailerPose(model, x, this.terrain.heightAt(x, z), z, heading))
+      visual.update(this.staticTrailerPose(model, x, this.host.physics.heightAt(x, z), z, heading))
       this.parked.push({ uid: owned.uid, visual })
       this.trackCasters(visual.meshes)
     }
@@ -773,7 +770,7 @@ export class TruckSession {
     const damage = owner.damage
     if (zone?.kind === 'dealer') {
       if (press) this.events.openDealer()
-      return `Press E to step inside ${SITE_BY_ID[zone.site]?.name ?? 'the dealership'}`
+      return `Press E to step inside ${this.host.world.site(zone.site)?.name ?? 'the dealership'}`
     }
     if (zone?.kind === 'service' || atShop) {
       const markup = atShop ? 1 : REPAIR_LABOUR_MARKUP
@@ -809,7 +806,7 @@ export class TruckSession {
       const distance = Math.hypot(x - cx, z - cz)
       if (distance <= WASHER_REACH_M && distance < nearest) {
         nearest = distance
-        washer = { kind: 'washer', reel: { x: cx, y: this.terrain.heightAt(cx, cz) + 1.12, z: cz } }
+        washer = { kind: 'washer', reel: { x: cx, y: this.host.physics.heightAt(cx, cz) + 1.12, z: cz } }
       }
     }
     return washer
@@ -820,7 +817,7 @@ export class TruckSession {
     this.picked = point ? { x: point.x, z: point.z } : null
     this.routeTimer = 2
     const p = this.truck?.pose().position
-    this.routePoints = point && p ? route(p.x, p.z, point.x, point.z).points : null
+    this.routePoints = point && p ? this.host.world.route(p.x, p.z, point.x, point.z).points : null
     if (!point) this.routeTimer = 0
   }
 
@@ -954,7 +951,7 @@ export class TruckSession {
       const arm = loader.ai.armPose()
       const zone = loader.zone
       const eq = zone.equipment ?? { x: zone.x, z: zone.z + 12, heading: zone.heading }
-      const y = this.terrain.heightAt(eq.x, eq.z)
+      const y = this.host.physics.heightAt(eq.x, eq.z)
       const rotation = { x: 0, y: Math.sin(eq.heading / 2), z: 0, w: Math.cos(eq.heading / 2) }
       let machine: ExcavatorPose | LoaderPose
       if (loader.ai.kind === 'excavator') {
@@ -1021,11 +1018,11 @@ export class TruckSession {
   private placeName(x: number, z: number): string {
     const lot = this.lot
     if (lot && x >= lot.x && x <= lot.x + lot.w && z >= lot.z && z <= lot.z + lot.d) return `${this.host.progress.profile.company} — your lot`
-    for (const site of SITES) if (site.kind !== 'lotDistrict' && site.kind !== 'town' && inRect(site, x, z, 25)) return site.name
-    const town = SITE_BY_ID.town
-    if (town && inRect(town, x, z)) return town.name
-    const road = this.terrain.roadAt(x, z)
-    if (road && road.distance < road.half + 6) return road.road.name
+    const sites = this.host.world.sites
+    for (const site of sites) if (site.kind !== 'lotDistrict' && site.kind !== 'town' && inRect(site, x, z, 25)) return site.name
+    const named = this.host.placeName?.(x, z)
+    if (named) return named
+    for (const site of sites) if ((site.kind === 'town' || site.kind === 'lotDistrict') && inRect(site, x, z)) return site.name
     return 'Open country'
   }
 
@@ -1114,7 +1111,7 @@ export class TruckSession {
     const goal = this.picked ?? target
     if (goal && this.routeTimer <= 0) {
       this.routeTimer = 2
-      const path = route(px, pz, goal.x, goal.z)
+      const path = this.host.world.route(px, pz, goal.x, goal.z)
       this.routePoints = path.points
       this.routeLength = this.picked ? 0 : path.length
     } else if (!goal) {
@@ -1144,8 +1141,8 @@ export class TruckSession {
       const job = view.job ?? { cargo: '', massKg: 0, from: '', to: '', distanceKm: 0, pay: 0, arrowRad: 0 }
       job.cargo = cargo?.name ?? runner.job.cargo
       job.massKg = runner.job.massKg
-      job.from = SITE_BY_ID[runner.pickup.site]?.name ?? runner.pickup.label
-      job.to = SITE_BY_ID[runner.drop.site]?.name ?? runner.drop.label
+      job.from = this.host.world.site(runner.pickup.site)?.name ?? runner.pickup.label
+      job.to = this.host.world.site(runner.drop.site)?.name ?? runner.drop.label
       job.distanceKm = (this.routeLength || Math.hypot(target.x - px, target.z - pz)) / 1000
       job.pay = runner.job.pay
       job.arrowRad = -headingDelta(bearing, heading)
