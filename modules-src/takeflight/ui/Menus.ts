@@ -10,6 +10,8 @@ import { ACTION_LABELS, AXIS_ACTIONS, BUTTON_ACTIONS, defaultBindings } from '..
 import type { InputManager } from '../input/InputManager'
 import type { QualityTier } from '../render/Quality'
 import type { CheckrideId } from '../shared/Career'
+import { WEATHER_LABELS } from '../shared/Weather'
+import type { WeatherKind } from '../shared/Weather'
 import { AIRPORTS, airportById } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
 import { startsAt } from '../sim/Starts'
@@ -24,6 +26,7 @@ export interface FlightOptions {
   airport: string
   start: StartKind
   wind: WindKind
+  weather: WeatherKind
   time: TimeKind
   assists: AssistSettings
   tier: QualityTier
@@ -101,7 +104,7 @@ export class Menus {
   private readonly startSlot = make('div')
 
   constructor(private readonly parent: HTMLElement, private readonly input: InputManager, private readonly handlers: MenuHandlers, tier: QualityTier, private readonly aircraftName: string, private readonly career: HTMLElement) {
-    this.options = { airport: 'harrow', start: 'runway1', wind: 'light', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
+    this.options = { airport: 'harrow', start: 'runway1', wind: 'light', weather: 'fair', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
     this.multiplierText = make('span')
     this.start = this.buildStart()
     this.pause = this.buildPause()
@@ -166,6 +169,7 @@ export class Menus {
       this.airportField(),
       this.startSlot,
       choice('Wind', WIND_LABELS, o.wind, (v) => (o.wind = v)),
+      choice('Weather', WEATHER_LABELS, o.weather, (v) => (o.weather = v)),
       choice('Time of day', TIME_LABELS, o.time, (v) => (o.time = v)),
       assists,
       choice('Graphics', TIER_LABELS, o.tier, (v) => {

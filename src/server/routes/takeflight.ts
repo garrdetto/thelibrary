@@ -6,6 +6,7 @@ import { CHECKRIDES, applyFlight, defaultCareer, normalizeCareer, pilotClassOf }
 import type { CareerProfile, FlightSummary } from '../../../modules-src/takeflight/shared/Career'
 import { HANGAR_CLASSES, hangarEntry } from '../../../modules-src/takeflight/shared/Hangar'
 import { START_KINDS } from '../../../modules-src/takeflight/sim/Starts'
+import { WEATHER_KINDS } from '../../../modules-src/takeflight/shared/Weather'
 
 const BODY_LIMIT = 16 * 1024
 const MAX_SEGMENT_SECONDS = 4 * 60 * 60
@@ -20,6 +21,7 @@ const summarySchema = z.object({
   airport: z.string().min(1).max(40),
   start: z.enum(START_KINDS as unknown as [string, ...string[]]),
   wind: z.enum(['calm', 'light', 'crosswind', 'gusty']),
+  weather: z.enum(WEATHER_KINDS as unknown as [string, ...string[]]).default('clear'),
   time: z.enum(['morning', 'noon', 'evening', 'night']),
   seconds: z.number().finite().min(0).max(MAX_SEGMENT_SECONDS),
   resumed: z.boolean(),

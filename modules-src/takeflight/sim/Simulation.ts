@@ -13,6 +13,8 @@ import { FlightModel } from './FlightModel'
 import type { FlightEnvironment, FlightSnapshot } from './FlightModel'
 import { WindField } from './Wind'
 import type { WindSpec } from './Wind'
+import { createWeatherState, weatherAt, weatherWind } from '../shared/Weather'
+import type { WeatherKind, WeatherState } from '../shared/Weather'
 
 export const SIM_HZ = 120
 export const SIM_DT = 1 / SIM_HZ
@@ -27,6 +29,8 @@ export interface FlightSetup {
   temperatureOffset: number
   seaLevelPressure: number
   assists: AssistSettings
+  /** Weather over the base `wind` (default clear). */
+  weather?: WeatherKind
 }
 
 export interface TickListener {
@@ -57,6 +61,8 @@ export class Simulation {
   readonly pilot: ControlInput = createInput()
   readonly applied: ControlInput = createInput()
   paused = false
+  /** The weather now (changes during the flight for changing weather; read by the renderer). */
+  readonly weather: WeatherState = createWeatherState()
   private accumulator = 0
   private readonly listeners: TickListener[] = []
 
@@ -65,12 +71,26 @@ export class Simulation {
     this.aircraft = new FlightModel(setup.aircraft)
     this.previous = new FlightModel(setup.aircraft)
     this.env = { ground: setup.ground, wind: new WindField(setup.wind, setup.seed), temperatureOffset: setup.temperatureOffset, seaLevelPressure: setup.seaLevelPressure }
+    this.applyWeather(0)
+  }
+
+  /** Sets the weather and the wind it stirs for `tick` (updated once a second of sim time). */
+  private applyWeather(tick: number): void {
+    const kind = this.setup.weather ?? 'clear'
+    weatherAt(kind, this.setup.seed, Math.floor(tick / SIM_HZ), this.weather)
+    weatherWind(this.setup.wind, this.weather, this.env.wind.spec)
+  }
+
+  private stepWeather(): void {
+    if (this.setup.weather === 'changing' && this.aircraft.tick % SIM_HZ === 0) this.applyWeather(this.aircraft.tick)
   }
 
   /** Starts a new flight with new conditions on the same aircraft; the caller places it afterwards. */
-  reset(conditions: Pick<FlightSetup, 'wind' | 'seed' | 'temperatureOffset' | 'seaLevelPressure' | 'assists'>): void {
+  reset(conditions: Pick<FlightSetup, 'wind' | 'seed' | 'temperatureOffset' | 'seaLevelPressure' | 'assists' | 'weather'>): void {
     Object.assign(this.setup, conditions)
+    this.setup.weather = conditions.weather ?? 'clear'
     this.env.wind = new WindField(conditions.wind, conditions.seed)
+    this.applyWeather(0)
     this.env.temperatureOffset = conditions.temperatureOffset
     this.env.seaLevelPressure = conditions.seaLevelPressure
     this.aircraft.reset()
@@ -100,6 +120,7 @@ export class Simulation {
   loadState(snapshot: SimSnapshot): void {
     this.aircraft.loadState(snapshot.aircraft)
     this.env.wind.state = snapshot.wind
+    this.applyWeather(this.aircraft.tick)
     this.settle()
   }
 
@@ -108,6 +129,7 @@ export class Simulation {
     copyInput(input, this.applied)
     quantizeInput(this.applied)
     this.previous.copyFrom(this.aircraft)
+    this.stepWeather()
     this.aircraft.step(this.applied, SIM_DT, this.env)
     for (let i = 0; i < this.listeners.length; i++) this.listeners[i](this.aircraft.tick, this.applied, this.aircraft)
   }
@@ -118,6 +140,7 @@ export class Simulation {
     applyAssists(this.setup.assists, this.aircraft, this.applied)
     quantizeInput(this.applied)
     this.previous.copyFrom(this.aircraft)
+    this.stepWeather()
     this.aircraft.step(this.applied, SIM_DT, this.env)
     for (let i = 0; i < this.listeners.length; i++) this.listeners[i](this.aircraft.tick, this.applied, this.aircraft)
   }

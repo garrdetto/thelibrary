@@ -53,6 +53,7 @@ import { Cockpit } from '../render/Cockpit'
 import { FLIGHT_QUALITY } from '../render/Quality'
 import type { QualityTier } from '../render/Quality'
 import { TerrainRenderer } from '../render/TerrainRenderer'
+import { WeatherView } from '../render/WeatherView'
 import { AssetManager } from '../world/AssetManager'
 import { CareerPanel } from '../ui/CareerPanel'
 import { Debrief } from '../ui/Debrief'
@@ -105,6 +106,7 @@ export class Standalone {
   private pipeline: WorldPipeline | null = null
   private terrain!: TerrainRenderer
   private world!: World
+  private weather!: WeatherView
   private towerAirport: AirportSpec = HARROW_FIELD
   private water!: Mesh
   private visual!: AircraftVisual
@@ -122,7 +124,7 @@ export class Standalone {
   private readonly wind = { x: 0, y: 0, z: 0 }
   private readonly eyeWorld = new Vector3()
 
-  private constructor(engine: AbstractEngine, backend: 'webgpu' | 'webgl2', private readonly canvas: HTMLCanvasElement, ui: HTMLElement) {
+  private constructor(engine: AbstractEngine, private readonly backend: 'webgpu' | 'webgl2', private readonly canvas: HTMLCanvasElement, ui: HTMLElement) {
     this.engine = engine
     engine.useReverseDepthBuffer = true
     this.scene = new Scene(engine)
@@ -219,6 +221,8 @@ export class Standalone {
       console.warn('Take Flight: post-processing unavailable', error)
     }
     report(0.3, 'Raising the hills…')
+    this.weather = new WeatherView(scene, this.atmosphere, this.tier, this.backend === 'webgpu')
+    this.scope.defer(() => this.weather.dispose())
     this.world = new World(scene)
     this.scope.defer(() => this.world.dispose())
     this.terrain = this.scope.track(new TerrainRenderer(scene, quality, this.world.root))
@@ -279,6 +283,7 @@ export class Standalone {
     this.atmosphere.setFogRange(quality.viewDistance * 0.85)
     this.pipeline?.setTier(tier)
     this.terrain.setQuality(quality)
+    this.weather.setQuality(tier)
     this.cameras.camera.maxZ = quality.viewDistance * 1.25
     for (const mesh of this.visual.detailMeshes) this.atmosphere.addCaster(mesh)
   }
@@ -318,7 +323,7 @@ export class Standalone {
   private startCheckride(id: CheckrideId): void {
     const setup = CHECKRIDE_SPECS[id].setup
     this.careerPanel.hide()
-    this.startFlight({ ...this.menus.options, airport: setup.airport, start: setup.start, wind: setup.wind, time: setup.time, assists: { autoTrim: false, stallProtection: false, landingGuidance: false }, checkride: id })
+    this.startFlight({ ...this.menus.options, airport: setup.airport, start: setup.start, wind: setup.wind, weather: setup.weather, time: setup.time, assists: { autoTrim: false, stallProtection: false, landingGuidance: false }, checkride: id })
   }
 
   private startFlight(options: FlightOptions): void {
@@ -334,12 +339,12 @@ export class Standalone {
     this.replay.stop()
     this.debrief.hide()
     if (this.phase === 'flying' || this.phase === 'paused') this.session.abandon()
-    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists } }
-    this.sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: this.options.assists })
+    const header: RecordHeader = { version: RECORD_VERSION, aircraft: this.spec.id, airport: airport.id, start: options.start, wind: { ...WINDS[options.wind] }, seed: (Date.now() & 0x7fffffff) | 1, temperatureOffset: 0, seaLevelPressure: SEA_LEVEL_PRESSURE, assists: { ...this.options.assists }, weather: options.weather }
+    this.sim.reset({ wind: header.wind, seed: header.seed, temperatureOffset: header.temperatureOffset, seaLevelPressure: header.seaLevelPressure, assists: this.options.assists, weather: header.weather })
     this.placeAt(airport, options.start)
     this.showAround(airport)
     this.session.begin(header)
-    this.atmosphere.setTime(HOURS[options.time])
+    this.weather.start(HOURS[options.time], airport.elevation)
     this.lightsOn = options.time === 'night' || options.time === 'evening'
     this.sim.paused = false
     this.phase = 'flying'
@@ -375,7 +380,7 @@ export class Standalone {
     const checkride = options?.checkride ?? null
     this.debrief.show(score, this.session.recorder.telemetryLog(), { canContinue: reason !== 'crash' && !this.sim.aircraft.crashed && checkride === null, aircraft: `${this.spec.maker} ${this.spec.name}`, airport: (airportById(score.landing?.airport ?? options?.airport ?? '') ?? HARROW_FIELD).name, checkride: checkride ? CHECKRIDE_SPECS[checkride].title : null })
     if (options) {
-      const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: options.airport, start: options.start, wind: options.wind, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, checkride })
+      const summary = summarizeFlight(score, { aircraft: this.spec.id, airport: options.airport, start: options.start, wind: options.wind, weather: options.weather, time: options.time, seconds: Math.max(0, score.seconds - this.submittedSeconds), resumed: this.submittedSeconds > 0, assists: options.assists, instrumentsOnly: this.instrumentsOnly, checkride })
       this.submittedSeconds = score.seconds
       void this.career.record(summary).then((outcome) => {
         if (this.session.score === score) this.debrief.setCareer(CareerPanel.outcome(outcome, this.career.mode))
@@ -564,6 +569,7 @@ export class Standalone {
     this.world.updateAirports(eyeX, eyeZ)
     this.terrain.update(eyeX, camera.position.y, eyeZ)
     this.atmosphere.update(camera.position)
+    this.weather.update(dt, shown, camera.position, this.world.originX, this.world.originZ, this.phase === 'flying')
     const shadows = this.atmosphere.shadows
     if (shadows instanceof CascadedShadowGenerator) shadows.shadowMaxZ = Math.min(FLIGHT_QUALITY[this.tier].viewDistance, 260 + Math.max(0, aircraft.agl) * 2.5)
     sim.env.wind.sample(10, this.wind)

@@ -4,7 +4,7 @@ Career flight simulator (`modules-src/takeflight/`, module id `takeflight`, page
 
 ## Status
 
-Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is being delivered in parts: part 1 (seven airports, floating origin, airport streaming, ILS) is in; weather, clouds and time of day, then towns and cities, then CDLOD geomorphing in a worker follow. Milestones 5–8 (more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestone 4 (the 200 km region) is being delivered in parts: parts 1 (seven airports, floating origin, airport streaming, ILS) and 2 (weather, clouds, rain, time of day) are in; towns and cities, then CDLOD geomorphing in a worker follow. Milestones 5–8 (more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
 
 **Milestones run back to back (owner, 2026-11-23).** When a milestone's pull request merges, start the next one in the plan without waiting for a prompt, and mark it done in `docs/takeflight/PLAN.md` and here when it merges.
 
@@ -23,6 +23,11 @@ Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, c
 - Starts are generic per airport (`runway1`/`runway2`/`final1`/`final2` on `runways[0]`, `stand`, `cruise` 9 km out at least 450 m above the highest ground on the way in). Scoring finds the landing runway at whichever airport the wheels touch (`nearestAirport`).
 - `shared/Approach.ts` (`approachFor`) gives glideslope and localizer dots for the landing runway end the aircraft is lined up with; ILS ends drive the HUD needles (an instrument, always on), any end drives the landing-guidance bar.
 - `game/World.ts` is the floating origin: terrain and airports hang under `world.root` at minus the origin; the aircraft, camera and tower are drawn at world minus origin; when the aircraft strays 3 km the origin jumps to the kilometre under it and frozen world matrices and bounding boxes under the root are recomputed. Anything new that is placed in world metres goes under `world.root` (and through `world.refresh` if it is frozen before the next rebase) or is converted with the origin. Airports build within 26 km of the camera and are released beyond 34 km. Airport geometry is still in absolute metres (static millimetre rounding far from Harrow); moving it to airport-relative coordinates is milestone 8 polish.
+
+## Weather
+
+- `shared/Weather.ts`: presets clear, fair, overcast, rain, storm, fog (a ground layer) and changing (a seeded 36-minute cycle through fair, overcast and rain with the wind veering and strengthening). `weatherAt` gives cover, base and depth above the departure field, visibility, rain, and gust/turbulence/veer/speed factors; `weatherWind` applies them to the chosen base wind. The sim owns it (`Simulation.weather`, updated once a sim second for changing weather, recomputed on `loadState`), so the wind it stirs replays exactly; the record header carries `weather` (record version 3). Careers multiply XP by `WEATHER_XP`; the Instrument checkride is flown in fog.
+- `render/WeatherView.ts` draws it: `render/Clouds.ts` ray-marches a 3D value-noise slab on two planes at the base and top (only the plane between camera and layer draws, so nothing counts twice and terrain occludes through depth), GLSL and WGSL kept in step, hidden on a compile error; inside a thick layer a camera-centred bubble whites out the view (planes cannot reach the horizon); `render/Rain.ts` thin-instanced streaks below the base; visibility through `setFogRange`; sunlight dimmed by cover; the clock runs on during the flight. Change the two shader copies together.
 
 ## Careers
 
