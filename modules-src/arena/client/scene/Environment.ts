@@ -111,7 +111,7 @@ function createSky(scene: Scene): Mesh {
   return skybox
 }
 
-export function createEnvironment(scene: Scene): ArenaEnvironment {
+export function createEnvironment(scene: Scene, high = false): ArenaEnvironment {
   scene.clearColor = new Color4(HAZE.r, HAZE.g, HAZE.b, 1)
   scene.ambientColor = new Color3(0.3, 0.32, 0.36)
   scene.fogMode = Scene.FOGMODE_EXP2
@@ -133,9 +133,10 @@ export function createEnvironment(scene: Scene): ArenaEnvironment {
   sun.shadowMinZ = 1
   sun.shadowMaxZ = 340
 
-  const shadows = new ShadowGenerator(2048, sun)
+  const shadows = new ShadowGenerator(high ? 2048 : 512, sun)
   shadows.usePercentageCloserFiltering = true
-  shadows.filteringQuality = ShadowGenerator.QUALITY_HIGH
+  shadows.filteringQuality = high ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_LOW
+  sun.shadowEnabled = high
   shadows.bias = 0.0006
   shadows.normalBias = 0.02
   shadows.darkness = 0

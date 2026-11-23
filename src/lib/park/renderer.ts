@@ -5,7 +5,7 @@ import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel
 import type { RideModel } from './models'
 import { personCuller, frustumPlanes, sphereVisible } from './culling'
 import { M } from './materials'
-import { QUALITY, requestedQuality, pickQuality } from './quality'
+import { QUALITY, requestedQuality, saveQuality, savedQuality } from './quality'
 import type { ParkQuality, QualitySettings } from './quality'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel } from './waterRides'
@@ -138,8 +138,8 @@ export class ParkRenderer {
     const asked = requestedQuality()
     if (asked) { this.quality = asked; this.qualityReason = '?quality=' }
     else {
-      const picked = pickQuality(this.g.probe(), typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, this.g.rendererName())
-      this.quality = picked.tier; this.qualityReason = picked.reason
+      const saved = savedQuality()
+      this.quality = saved ?? 'low'; this.qualityReason = saved ? 'chosen in settings' : 'default'
     }
     this.settings = QUALITY[this.quality]
     this.g.setLevel(this.settings.level)
@@ -172,6 +172,7 @@ export class ParkRenderer {
 
   setQuality(tier: ParkQuality, reason = 'chosen in settings') {
     this.quality = tier; this.qualityReason = reason
+    if (reason === 'chosen in settings') saveQuality(tier)
     this.settings = QUALITY[tier]
     this.g.setLevel(this.settings.level)
     this.rides.clear()

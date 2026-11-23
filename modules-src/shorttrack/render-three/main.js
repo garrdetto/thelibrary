@@ -1118,7 +1118,7 @@ function aiBaseline(){const pick=list=>(list||[]).slice(0,20).map(r=>r.milliseco
 const lvKey=v=>'sts_livery_'+v;
 function saveLv(){store.set('sts_livery',myLv);store.set(lvKey(myLv.veh),myLv);}
 let myLv=(()=>{const last=cleanLv(store.get('sts_livery',DEFAULT_LV)),own=store.get(lvKey(last.veh),null);return own?cleanLv({...own,veh:last.veh}):last;})();if(!myLv.number)myLv.number='7';saveLv();
-let quality=store.get('sts_q','med');
+let quality=store.get('sts_q','low');
 
 const MODE_NAMES={'time-attack':'Time Attack','race':'Solo Race','multiplayer':'Online'};
 const RUN_ID=(crypto.randomUUID&&crypto.randomUUID())||'00000000-0000-4000-8000-'+String(Date.now()).slice(-12).padStart(12,'0');

@@ -12,7 +12,7 @@ import { findJob, jobPayout, jobSlot, minimumMs } from './Jobs'
 import type { JobPayout } from './Jobs'
 import { COLOR_PATTERN, MAX_ITEMS, STARTER_DRIVEWAY_ID, hasService, itemCost, itemRefund, validateItem, washSpots } from './Lots'
 import type { BuildItem, LotSize } from './Lots'
-import { LAND_STRIP_M, LOTS, LOT_D, LOT_W, MAX_LAND_STRIPS, lotExtent } from './WorldLayout'
+import { LAND_STRIP_M, LOT_D, LOT_W, MAX_LAND_STRIPS, lotExtent } from './WorldLayout'
 
 /** A look as a client sends it: saves from before grilles, roof fairings and skirts may leave them out (`normalizeLook` fills them in). */
 export type SentLook = Omit<TruckLook, 'grille' | 'roof' | 'skirts'> & Partial<Pick<TruckLook, 'grille' | 'roof' | 'skirts'>>
@@ -71,7 +71,7 @@ function accept(profile: Profile, rawDelta: number, message: string, paid?: JobP
 
 function lotSizeFor(profile: Profile, ctx: ActionContext): LotSize {
   if (ctx.lotSize) return ctx.lotSize
-  const spec = profile.lot === null ? undefined : LOTS[profile.lot]
+  const spec = profile.lot === null ? undefined : ctx.world.lot(profile.lot)
   if (!spec) return { w: LOT_W, d: LOT_D }
   return { w: lotExtent(spec, profile.land).w, d: LOT_D }
 }
@@ -252,8 +252,8 @@ function demolish(profile: Profile, ids: string[]): ActResult {
  * its gate toward -x, so items shifted for bought land on one side are shifted back when the new lot is on the other side.
  */
 /** The free gravel driveway a new driver's lot starts with: 10 m wide, running 40 m in from the gate along the lot's middle. */
-export function starterDriveway(index: number): BuildItem | null {
-  const lot = LOTS[index]
+export function starterDriveway(world: HaulWorld, index: number): BuildItem | null {
+  const lot = world.lot(index)
   if (!lot) return null
   const length = 40
   const width = 10
@@ -263,16 +263,16 @@ export function starterDriveway(index: number): BuildItem | null {
 }
 
 /** A brand-new driver (a lot, nothing built, no kilometres or jobs yet) gets the starter driveway; anyone else is returned as is. */
-export function withStarterDriveway(profile: Profile): Profile {
+export function withStarterDriveway(profile: Profile, world: HaulWorld): Profile {
   if (profile.lot === null || profile.build.length > 0 || profile.stats.km > 0 || profile.stats.jobs > 0) return profile
-  const driveway = starterDriveway(profile.lot)
+  const driveway = starterDriveway(world, profile.lot)
   return driveway ? { ...profile, build: [driveway] } : profile
 }
 
-export function moveToLot(profile: Profile, index: number): Profile {
+export function moveToLot(profile: Profile, index: number, world: HaulWorld): Profile {
   if (profile.lot === index) return profile
-  const fromWest = profile.lot !== null && LOTS[profile.lot]?.side === 'west'
-  const toWest = LOTS[index]?.side === 'west'
+  const fromWest = profile.lot !== null && world.lot(profile.lot)?.side === 'west'
+  const toWest = world.lot(index)?.side === 'west'
   const shift = (toWest ? 1 : 0) - (fromWest ? 1 : 0)
   const dx = shift * profile.land * LAND_STRIP_M
   const build = dx === 0 ? profile.build : profile.build.map((item) => ({ ...item, x: item.x + dx }))
@@ -280,22 +280,23 @@ export function moveToLot(profile: Profile, index: number): Profile {
 }
 
 function claimLot(profile: Profile, index: number, ctx: ActionContext): ActResult {
-  if (!Number.isInteger(index) || index < 0 || index >= LOTS.length) return refuse(profile, 'There is no such lot.')
+  const spec = Number.isInteger(index) ? ctx.world.lot(index) : undefined
+  if (!spec) return refuse(profile, 'There is no such lot.')
   if (profile.lot === index) return accept(profile, 0, 'That lot is already yours.')
   if (profile.lot !== null && profile.build.length > 0) return refuse(profile, 'Demolish what you built before moving to another lot.')
   if (ctx.lotFree && !ctx.lotFree(index)) return refuse(profile, 'Someone already has that lot.')
-  const moved = moveToLot(profile, index)
+  const moved = moveToLot(profile, index, ctx.world)
   profile.lot = moved.lot
   profile.build = moved.build
-  return accept(profile, 0, `Lot ${index + 1} is yours.`)
+  return accept(profile, 0, `Lot ${ctx.world.lots.indexOf(spec) + 1} is yours.`)
 }
 
-function buyLand(profile: Profile): ActResult {
+function buyLand(profile: Profile, ctx: ActionContext): ActResult {
   if (profile.lot === null) return refuse(profile, 'Claim a lot before buying land.')
   if (profile.land >= MAX_LAND_STRIPS) return refuse(profile, 'Your lot cannot grow any larger.')
   const price = landStripPrice(profile.land)
   if (price > profile.cash) return refuse(profile, `You need ${money(price - profile.cash)} more.`)
-  if (LOTS[profile.lot]?.side === 'west') {
+  if (ctx.world.lot(profile.lot)?.side === 'west') {
     profile.build = profile.build.map((item) => ({ ...item, x: item.x + LAND_STRIP_M }))
   }
   profile.land += 1
@@ -358,7 +359,7 @@ function run(profile: Profile, action: TruckAction, ctx: ActionContext): ActResu
       return accept(profile, 0, 'Company renamed.')
     }
     case 'claim-lot': return claimLot(profile, action.index, ctx)
-    case 'buy-land': return buyLand(profile)
+    case 'buy-land': return buyLand(profile, ctx)
     case 'wash': return wash(profile, action.uid, action.cleaned, action.place)
     case 'odometer': return odometer(profile, action.uid, action.km, action.fuelUsedL)
     default: return refuse(profile, 'Unknown action.')

@@ -29,8 +29,7 @@ function initialQuality(): Quality {
   if (asked && (QUALITIES as string[]).includes(asked)) return asked as Quality;
   const saved = store.get(QUALITY_KEY);
   if (saved && (QUALITIES as string[]).includes(saved)) return saved as Quality;
-  const touch = matchMedia('(pointer: coarse)').matches;
-  return touch || (navigator.hardwareConcurrency ?? 8) <= 4 ? 'medium' : 'high';
+  return 'low';
 }
 
 export class Renderer {

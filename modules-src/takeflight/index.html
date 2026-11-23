@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0e12" />
+    <title>Take Flight · the library</title>
+    <meta name="description" content="Learn to fly: a career flight simulator that starts you in a high-wing trainer and scores every take-off and landing." />
+    <style>
+      html,body{margin:0;height:100%;background:#0b0e12;color:#e8edf2;overflow:hidden;font:500 14px/1.45 'TL Fox Dollar', Inter, system-ui, sans-serif;-webkit-user-select:none;user-select:none}
+      #scene{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
+      #ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+      #boot{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(ellipse at 70% 20%,rgba(92,200,255,.16),transparent 55%),#0b0e12}
+      #boot .card{display:grid;gap:14px;justify-items:center;text-align:center;padding:24px}
+      #boot h1{margin:0;font:800 34px/1 'TL Fox Dollar', 'Barlow Condensed', 'Arial Narrow', sans-serif;letter-spacing:1.5px;text-transform:uppercase;color:#5cc8ff}
+      #boot p{margin:0;color:#9aa6b2}
+      #boot .bar{width:min(360px,80vw);height:6px;border-radius:4px;background:#1c232c;overflow:hidden}
+      #boot .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#d7e6f2,#5cc8ff);transition:width .2s}
+      #boot[hidden]{display:none}
+      @media (prefers-reduced-motion: reduce){#boot .bar i{transition:none}}
+    </style>
+  </head>
+  <body>
+    <canvas id="scene" tabindex="0" aria-label="Take Flight 3D view"></canvas>
+    <div id="ui"></div>
+    <div id="boot" role="status" aria-live="polite">
+      <div class="card">
+        <h1>Take Flight</h1>
+        <div class="bar"><i id="boot-bar"></i></div>
+        <p id="boot-text">Pre-flight checks…</p>
+      </div>
+    </div>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

@@ -30,7 +30,7 @@ export interface Graphics {
   shadows: boolean
 }
 
-export const DEFAULT_GRAPHICS: Graphics = { shadows: true }
+export const DEFAULT_GRAPHICS: Graphics = { shadows: false }
 const GRAPHICS_KEY = 'tl-rackreel-graphics'
 
 export function loadGraphics(): Graphics {

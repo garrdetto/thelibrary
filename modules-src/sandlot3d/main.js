@@ -38,9 +38,12 @@ const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
 /* ================= THREE SETUP ================= */
 const cv=$('gl'),hud=$('hud'),hx=hud.getContext('2d');
 const renderer=window.__renderer,TSL=THREE.TSL; // WebGPU, or its WebGL2 backend (?renderer=webgl or no WebGPU), set up in index.ts
-renderer.setPixelRatio(Math.min(1.75,window.devicePixelRatio||1));
+/* Graphics setting: low (the default) renders one pixel per CSS pixel with no shadows or grading; high is the full picture. */
+const GFX=(()=>{const q=new URLSearchParams(location.search).get('quality');if(q==='low'||q==='high')return q;try{return localStorage.getItem('sandlot3d/graphics')==='high'?'high':'low'}catch{return 'low'}})();
+renderer.setPixelRatio(GFX==='high'?Math.min(1.75,window.devicePixelRatio||1):1);
 const adaptRes=window.__adaptiveResolution?window.__adaptiveResolution({max:renderer.getPixelRatio(),min:Math.min(renderer.getPixelRatio(),.75),apply:r=>{renderer.setPixelRatio(r);resize()}}):null;
-renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
+renderer.shadowMap.enabled=GFX==='high';renderer.shadowMap.type=THREE.PCFShadowMap;
+{const gb=$('gfxBtn');if(gb){gb.textContent='Graphics: '+(GFX==='high'?'High':'Low');gb.onclick=()=>{try{localStorage.setItem('sandlot3d/graphics',GFX==='high'?'low':'high')}catch{}const u=new URL(location.href);u.searchParams.delete('quality');location.replace(u.toString())}}}
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(50,1,.3,9000);
 const MAXANI=renderer.getMaxAnisotropy?renderer.getMaxAnisotropy():8;
@@ -54,7 +57,7 @@ const post=(()=>{const T=TSL,u={tint:T.uniform(new THREE.Vector3(1,1,1)),lift:T.
   c=T.min(c,.8).add(T.float(.2).mul(T.float(1).sub(T.exp(T.max(c.sub(.8),0).mul(-5)))));
   const q=T.screenUV.sub(.5);c=c.mul(T.float(1).sub(u.vig.mul(T.pow(T.length(q).mul(1.35),2.4))));
   pipe.outputNode=T.vec4(T.clamp(c,0,1),1);pipe.outputColorTransform=false;
-  return{pipe,u,on:new URLSearchParams(location.search).get('post')!=='0'}})();
+  return{pipe,u,on:GFX==='high'&&new URLSearchParams(location.search).get('post')!=='0'}})();
 const GRADE={dusk:{tint:[1.05,.98,.9],lift:[.03,.01,.04],sat:1.04,con:1.06,vig:.4},day:{tint:[1.02,1,.97],lift:[.015,.015,.025],sat:.95,con:1.05,vig:.28},
   night:{tint:[.95,.98,1.05],lift:[.0,.012,.035],sat:.94,con:1.1,vig:.45},dome:{tint:[1.04,1.0,.95],lift:[.02,.02,.025],sat:.96,con:1.07,vig:.32}};
 function setGrade(k){const g=GRADE[k],u=post.u;u.tint.value.set(...g.tint);u.lift.value.set(...g.lift);u.sat.value=g.sat;u.con.value=g.con;u.vig.value=g.vig}
