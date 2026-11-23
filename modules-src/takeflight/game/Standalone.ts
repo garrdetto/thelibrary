@@ -248,7 +248,12 @@ export class Standalone {
       phase: this.phase,
       counts: () => {
         const s = this.scene
-        return { meshes: s.meshes.length, materials: s.materials.length, textures: s.textures.length, geometries: s.geometries.length, nodes: s.transformNodes.length, heapMb: Math.round(((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1048576) }
+        const groups: Record<string, number> = {}
+        for (const mesh of s.meshes) {
+          const group = 'mesh:' + mesh.name.replace(/#\d+$/, '').replace(/[-_]?\d.*$/, '').split('/').pop()!.slice(0, 40)
+          groups[group] = (groups[group] ?? 0) + 1
+        }
+        return { meshes: s.meshes.length, materials: s.materials.length, textures: s.textures.length, geometries: s.geometries.length, nodes: s.transformNodes.length, heapMb: Math.round(((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1048576), ...groups }
       },
     }
   }
