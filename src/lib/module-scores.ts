@@ -18,6 +18,7 @@ export const scoredModules = {
   foodchain: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you swim, so a dive you leave unfinished still counts, and finalized when your last life is eaten.' },
   keep: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you defend, so a siege you leave unfinished still counts, and finalized when the wall falls.' },
   giant: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 10_000_000, note: 'One ninety-second round. Saved as you toss, and finalized when the clock runs out.' },
+  gonefishing: { title: 'Longest Fish', metric: 'Distance', order: 'desc', unit: 'feet', min: 1, max: 20_000, note: 'The longest fish in one five-fish round, measured from the hole to where it stopped after its bounces and slide. Saved after every fish, and finalized when the fifth fish stops.' },
   appleshot: { title: 'Longest Streaks', metric: 'In a row', order: 'desc', unit: 'apples', min: 1, max: 10_000, note: 'Apples split in a row, starting from 20 ft with the volunteer stepping back 1.70 ft after every hit. Saved as you shoot, and finalized when an arrow misses.' },
   cookies: { title: 'Biggest Bakes', metric: 'Cookies', order: 'desc', unit: 'points', min: 1, max: 1_000_000_000_000_000, note: 'Total cookies baked in one five-minute bake-off, spent or not. Saved as you bake, and finalized when the ovens switch off.' },
   hotdog: { title: 'Richest Carts', metric: 'Cash', order: 'desc', unit: 'dollars', min: 1, max: 10_000_000, note: 'Cash on hand after the thirtieth day. Saved when the season ends.' },
@@ -95,6 +96,7 @@ export function scoreDetailLabel(module: ScoredModuleId): string | null {
 export function formatScore(module: ScoredModuleId, value: number) {
   const unit = scoredModules[module].unit
   if (unit === 'meters') return `${value.toLocaleString()} m`
+  if (unit === 'feet') return `${(value / 10).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ft`
   if (unit === 'ms') { const config = scoredModules[module]; return formatDuration(value, 'decimals' in config ? config.decimals : 3) }
   if (unit === 'wpm') return `${value.toLocaleString()} wpm`
   if (unit === 'dollars') return `$${value.toLocaleString()}`
