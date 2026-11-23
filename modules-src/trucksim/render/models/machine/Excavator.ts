@@ -13,8 +13,8 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { ExcavatorPose } from '../../../sim/types'
 import type { MaterialLibrary } from '../../Materials'
 import type { Scene } from '@babylonjs/core/scene'
-import { Matrix, Quaternion } from '@babylonjs/core/Maths/math.vector'
-import { at, boxAt, cylinder, prism, rectProfile, slab, sweep } from '../truck/Geometry'
+import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { at, boxAt, cylinder, prism, rectProfile, slab, sphere, sweep } from '../truck/Geometry'
 import type { P2, P3 } from '../truck/Geometry'
 import { MergeBatch, extrudeYZ } from '../trailer/Merge'
 import { MachineRig, Ram, rotateX } from './Hydraulics'
@@ -24,6 +24,8 @@ export interface ExcavatorVisual {
   root: TransformNodeType
   readonly meshes: readonly AbstractMesh[]
   update(pose: ExcavatorPose): void
+  /** The bucket's lip in world space (where a dumped load pours from), written into `out`. */
+  bucketLip(out: Vector3): Vector3
   dispose(): void
 }
 
@@ -37,6 +39,8 @@ const HOUSE_Y = 0.95
 const BOOM_PIVOT: P3 = [0, 0.55, 1.3]
 const STICK_PIVOT: P3 = [0, 0.55, 5.6]
 const BUCKET_PIVOT: P3 = [0, 0, 2.9]
+/** The bucket's cutting lip in the bucket's own frame. */
+const BUCKET_LIP = new Vector3(0, -0.5, 0.95)
 
 const scratch = { x: 0, y: 0, z: 0 }
 
@@ -249,6 +253,13 @@ export function buildExcavatorModel(scene: Scene, parent: TransformNodeType, mat
   const bucket = rig.node('exc-bucket', stick)
   bucket.position.set(BUCKET_PIVOT[0], BUCKET_PIVOT[1], BUCKET_PIVOT[2])
   buildBucket(rig, bucket)
+  const load = rig.node('exc-load', bucket)
+  load.position.set(0, -0.36, 0.46)
+  const heap = new MergeBatch()
+  heap.add('gravel', at(sphere(0.5, 9, 1.1, 0.55, 0.95), 0, 0, 0))
+  for (let k = 0; k < 6; k++) heap.add('gravel', at(sphere(0.12 + (k % 3) * 0.03, 5, 1, 0.8, 1), -0.36 + k * 0.14, 0.18 + (k % 2) * 0.06, -0.12 + (k % 3) * 0.1))
+  rig.batchOn(load, 'exc-load', heap)
+  load.setEnabled(false)
   const boomRams = [new Ram(rig, house, 'exc-ram-boom-l', 1.3, 1.3, 0.07), new Ram(rig, house, 'exc-ram-boom-r', 1.3, 1.3, 0.07)]
   const stickRam = new Ram(rig, boom, 'exc-ram-stick', 1.5, 1.5, 0.08)
   const bucketRam = new Ram(rig, stick, 'exc-ram-bucket', 1.4, 1.4, 0.07)
@@ -293,7 +304,14 @@ export function buildExcavatorModel(scene: Scene, parent: TransformNodeType, mat
       q.w = pose.rotation.w
       house.rotation.y = pose.swing
       place(pose.boom, pose.stick, pose.bucket)
+      const fill = Math.min(1, Math.max(0, pose.fill ?? 0))
+      load.setEnabled(fill > 0.03)
+      load.scaling.set(1, Math.max(0.05, fill), Math.max(0.4, fill))
       scroll(pose.trackL, pose.trackR)
+    },
+    bucketLip(out) {
+      bucket.computeWorldMatrix(true)
+      return Vector3.TransformCoordinatesToRef(BUCKET_LIP, bucket.getWorldMatrix(), out)
     },
     dispose() {
       rig.dispose()

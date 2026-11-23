@@ -10,6 +10,7 @@ import { buildExcavator } from '../render/models/MachineVisual'
 import type { ExcavatorVisual } from '../render/models/MachineVisual'
 import { buildTrailerVisual } from '../render/models/TrailerVisual'
 import type { TrailerVisual } from '../render/models/TrailerVisual'
+import { HeadBeam } from '../render/models/HeadBeam'
 import { buildTruckVisual } from '../render/models/TruckVisual'
 import type { TruckVisual } from '../render/models/TruckVisual'
 import { createDirtLayer } from '../render/models/DirtLayer'
@@ -41,6 +42,9 @@ import type { RigFit } from './JobRunner'
 import { strapCount } from './Procedures'
 import type { KeyState, MachineView, ProcKey, ProcedureContext, ProcedureStatus, TrailerView, TruckView } from './Procedures'
 import type { TruckHost } from './TruckHost'
+
+/** Headlamp height above the ground (m) for the beam the driven truck throws. */
+const HEADLAMP_Y = 1.15
 
 export interface SessionEvents {
   openDealer(): void
@@ -264,6 +268,9 @@ export class TruckSession {
   private trailerModel: TrailerModel | null = null
   private ownedTruck: OwnedTruck | null = null
   private truckVisual: TruckVisual | null = null
+  private beam: HeadBeam | null = null
+  /** How dark it is (0 midday … 1 night), set by the host each frame; scales the headlight beam. */
+  darkness = 1
   private dirt: DirtLayer | null = null
   private dirtTimer = 0
   private washing = false
@@ -398,6 +405,8 @@ export class TruckSession {
       this.untrackCasters(this.truckVisual.meshes)
       this.truckVisual.dispose()
     }
+    this.beam?.dispose()
+    this.beam = null
     this.truck?.dispose()
     const spawn = this.spawnPoint()
     const truck = new TruckRig(this.host.physics, model, spawn)
@@ -410,6 +419,7 @@ export class TruckSession {
     this.parkingBrake = true
     this.truckVisual = buildTruckVisual(this.host.scene, this.host.frameRoot, model, owned.look, this.host.mats)
     this.trackCasters(this.truckVisual.meshes)
+    this.beam = new HeadBeam(this.host.scene, this.truckVisual.root, model.frontZ, HEADLAMP_Y)
     this.dirt = createDirtLayer(this.host.scene, this.truckVisual.root, this.truckVisual.layout)
     this.dirt.setDirt(owned.dirt)
     this.lastDumpShown = -1
@@ -948,7 +958,7 @@ export class TruckSession {
       const rotation = { x: 0, y: Math.sin(eq.heading / 2), z: 0, w: Math.cos(eq.heading / 2) }
       let machine: ExcavatorPose | LoaderPose
       if (loader.ai.kind === 'excavator') {
-        machine = { position: { x: eq.x, y, z: eq.z }, rotation, swing: arm.swing, boom: arm.boom, stick: arm.stick, bucket: arm.bucket, trackL: 0, trackR: 0 }
+        machine = { position: { x: eq.x, y, z: eq.z }, rotation, swing: arm.swing, boom: arm.boom, stick: arm.stick, bucket: arm.bucket, trackL: 0, trackR: 0, fill: arm.fill }
       } else {
         const reach = 9 * arm.travel
         const fx = Math.sin(eq.heading)
@@ -961,10 +971,11 @@ export class TruckSession {
     }
   }
 
-  private updateVisuals(): void {
+  private updateVisuals(dt: number): void {
     const truck = this.truck
     if (truck && this.truckVisual) {
       this.truckVisual.update(truck.pose())
+      this.beam?.update(truck.headlights, dt, this.darkness)
       if (truck.dump) {
         const fill = truck.dump.loadKg / Math.max(1, truck.model.dump?.capacityKg ?? 1)
         if (Math.abs(fill - this.lastDumpShown) > 0.004) {
@@ -1068,7 +1079,7 @@ export class TruckSession {
       const mp = this.excavator.pose().position
       if (Math.hypot(mp.x - px, mp.z - pz) > MACHINE_REACH * 2) this.controlling = 'truck'
     }
-    this.updateVisuals()
+    this.updateVisuals(dt)
     this.updateParked()
     this.dirtTimer += dt
     if (this.dirtTimer > 1) {
@@ -1243,6 +1254,8 @@ export class TruckSession {
     this.dirt?.dispose()
     this.dirt = null
     if (this.truckVisual) this.truckVisual.dispose()
+    this.beam?.dispose()
+    this.beam = null
     for (const mesh of this.casters) this.host.removeCaster(mesh)
     this.casters.length = 0
     if (this.trailer && this.truck && this.trailer.tractor === this.truck) uncouple(this.truck, this.trailer)

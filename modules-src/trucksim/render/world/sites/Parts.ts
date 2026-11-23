@@ -249,13 +249,62 @@ export function siloCluster(b: SceneryBatch, columns: number, rows: number, r: n
 }
 
 /** A conical stockpile of crushed stone or sand. */
+/**
+ * A stone stockpile as it lies off a stacker: a cone at the material's angle of repose (`h` about 0.7 `r`, 35°) with a slumped
+ * shoulder, two side lumps where loads were dropped, and spilled stones round the toe.
+ */
 export function stockpile(b: SceneryBatch, r: number, h: number, key: string): LocalBox[] {
-  b.cylinder(key, 0, 0, 0, r, h, 14, r * 0.07)
+  b.cylinder(key, 0, 0, 0, r, h * 0.82, 22, r * 0.22)
+  b.cylinder(key, 0, h * 0.82, 0, r * 0.22, h * 0.18, 14, r * 0.04)
+  b.cylinder(key, r * 0.35, 0, -r * 0.2, r * 0.72, h * 0.62, 16, r * 0.14)
+  b.cylinder(key, -r * 0.42, 0, r * 0.28, r * 0.6, h * 0.48, 14, r * 0.16)
+  b.cylinder(key, 0, 0, 0, r * 1.08, h * 0.08, 22, r)
+  for (let k = 0; k < 14; k++) {
+    const a = k * 2.399
+    const d = r * (1.02 + (k % 4) * 0.05)
+    const size = 0.18 + (k % 3) * 0.09
+    b.box(key, Math.cos(a) * d, 0, Math.sin(a) * d, size * 1.3, size, size)
+  }
   const s = r * 0.62
   return [localBox(-s, 0, -s, s, h * 0.7, s)]
 }
 
 /** A crusher plant: a screening frame and hopper with a feed conveyor climbing to a stockpile. */
+/**
+ * A radial stacker: an inclined lattice conveyor from the crusher's discharge (local −x end, low) to the head pulley over a
+ * stockpile (local +x end, high), on an A-frame and a wheeled pivot leg, belt and idlers, and a short spout at the head.
+ * `length` is the run along local x, `rise` the head's height.
+ */
+export function stacker(b: SceneryBatch, length: number, rise: number): LocalBox[] {
+  const x0 = -length / 2
+  const x1 = length / 2
+  const tail = 2.2
+  for (const z of [-0.55, 0.55]) b.beam('metalYellow', x0, tail, z, x1, rise, z, 0.16, 0.22)
+  const panels = Math.max(4, Math.round(length / 3))
+  for (let i = 0; i <= panels; i++) {
+    const t = i / panels
+    const x = x0 + (x1 - x0) * t
+    const y = tail + (rise - tail) * t
+    b.beam('metalYellow', x, y, -0.55, x, y, 0.55, 0.1, 0.1)
+    if (i < panels) {
+      const xn = x0 + (x1 - x0) * (t + 1 / panels)
+      const yn = tail + (rise - tail) * (t + 1 / panels)
+      b.beam('metalYellow', x, y - 0.35, -0.55, xn, yn, -0.55, 0.06, 0.06)
+      b.beam('metalYellow', x, y - 0.35, 0.55, xn, yn, 0.55, 0.06, 0.06)
+    }
+  }
+  b.beam('rubber', x0, tail + 0.18, 0, x1, rise + 0.18, 0, 0.9, 0.04)
+  const mid = x0 + length * 0.55
+  const midY = tail + (rise - tail) * 0.55
+  for (const z of [-0.5, 0.5]) b.beam('metalDark', mid - 1.2, 0, z * 3.2, mid, midY - 0.2, z, 0.18, 0.18)
+  b.cylinder('rubber', mid - 1.2, 0.45, -1.9, 0.45, 0.35, 12, 0.45, 'z')
+  b.cylinder('rubber', mid - 1.2, 0.45, 1.55, 0.45, 0.35, 12, 0.45, 'z')
+  b.box('metalDark', x0 + 0.4, 0, 0, 0.6, tail, 0.6)
+  b.cylinder('metalDark', x1, rise, -0.6, 0.32, 1.2, 12, 0.32, 'z')
+  b.box('metalYellow', x1 + 0.3, rise - 1.1, 0, 0.7, 1.1, 0.9)
+  return [localBox(mid - 1.6, 0, -2, mid + 0.4, midY, 2)]
+}
+
 export function crusherPlant(b: SceneryBatch, wl: number, dl: number): LocalBox[] {
   const cx = wl / 2 - 9
   b.box('concrete', cx, 0, 0, 14, 0.5, dl - 2)
@@ -272,7 +321,9 @@ export function crusherPlant(b: SceneryBatch, wl: number, dl: number): LocalBox[
     const y = 7.5 + 7.5 * t
     b.box('metalDark', x, 0, 0, 0.3, y, 0.3)
   }
-  b.cylinder('rock', px, 0, 0, 8, 14, 16, 0.5)
+  b.cylinder('rock', px, 0, 0, 10, 5.6, 18, 2.4)
+  b.cylinder('rock', px, 5.6, 0, 2.4, 1.3, 12, 0.5)
+  b.cylinder('rock', px + 3.5, 0, 2.5, 6, 3.6, 14, 1.4)
   const s = 8 * 0.62
   return [localBox(cx - 5.5, 0, -4, cx + 5.5, 11, 4), localBox(px - s, 0, -s, px + s, 10, s)]
 }

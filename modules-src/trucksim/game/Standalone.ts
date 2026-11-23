@@ -17,7 +17,7 @@ import { LotRenderer } from '../render/Lots'
 import { MaterialLibrary } from '../render/Materials'
 import { buildTruckVisual } from '../render/models/TruckVisual'
 import type { TruckVisual } from '../render/models/TruckVisual'
-import { lowerTier, resolveTier, saveTier } from '../render/Quality'
+import { lowerTier, qualitySettings, resolveTier, saveTier } from '../render/Quality'
 import { SeeThrough } from '../render/SeeThrough'
 import type { QualityTier } from '../render/Quality'
 import { createWorkZones } from '../render/work/WorkZones'
@@ -38,6 +38,9 @@ import { getTerrain } from '../shared/Terrain'
 import { ALL_ZONES, DEFAULT_SPAWN, LOTS, SITES, SITE_BY_ID, ZONE_BY_ID, lotExtent } from '../shared/WorldLayout'
 import type { LotSpec } from '../shared/WorldLayout'
 import { SimWorld } from '../sim/SimWorld'
+import type { ObstacleSource } from '../sim/SimWorld'
+import { chunkTreeObstacles } from '../render/world/PropsPlacement'
+import { RoadEdgeLayer, railBoxes } from '../render/world/RoadEdges'
 import { TruckAudio } from '../systems/Audio'
 import { Keys } from '../systems/Keys'
 import { MemoryGuard } from '../systems/MemoryGuard'
@@ -176,6 +179,8 @@ export class Standalone implements TruckHost {
     report(0.3, 'Grading the county roads…')
     this.physics = this.scope.track(await SimWorld.create(this.terrain))
     for (const site of SITES) for (const box of siteStaticBoxes(site.id)) this.physics.addStaticBox(box)
+    this.physics.setObstacleSource(this.treeSource())
+    for (const box of railBoxes(this.terrain)) this.physics.addStaticBox(box)
     this.keysSource = this.scope.track(new Keys(window, { canvas: this.canvas }))
     this.cameras = this.scope.track(new CameraRig(scene, this.canvas, (x, z) => this.terrain.heightAt(x, z)))
     report(0.45, 'Raising the sun…')
@@ -185,7 +190,7 @@ export class Standalone implements TruckHost {
     report(0.6, 'Building the sites…')
     this.scope.defer(() => this.seeThrough.dispose())
     const siteLayer = createSiteLayer(scene, this.mats, this.terrain, this.seeThrough)
-    const worldRenderer = this.worldRenderer = this.scope.track(createWorldRenderer(scene, this.frameRoot, this.terrain, this.guard, this.tier, [siteLayer], { atmosphere: this.atmosphere }))
+    const worldRenderer = this.worldRenderer = this.scope.track(createWorldRenderer(scene, this.frameRoot, this.terrain, this.guard, this.tier, [siteLayer, new RoadEdgeLayer(scene, this.mats, this.terrain)], { atmosphere: this.atmosphere }))
     const workZones = this.scope.track(createWorkZones(scene, this.frameRoot, this.mats, ALL_ZONES, (x, z) => this.terrain.heightAt(x, z)))
     this.lotsRenderer = this.scope.track(new LotRenderer(scene, this.frameRoot, this.mats, this.terrain, this.seeThrough))
     this.hud = this.scope.track(new Hud(this.uiRoot))
@@ -353,6 +358,7 @@ export class Standalone implements TruckHost {
       this.clockTimer = 0.25
       this.atmosphere.setTime(this.hours)
       if (this.session.truck) this.session.truck.headlights = this.session.truck.headlights || this.atmosphere.night > 0.6
+      this.session.darkness = this.atmosphere.night
     }
   }
 
@@ -391,6 +397,13 @@ export class Standalone implements TruckHost {
     this.atmosphere.setQuality(tier)
     this.pipeline?.setTier(tier)
     this.worldRenderer?.setTier(tier)
+    this.physics.setObstacleSource(this.treeSource())
+  }
+
+  /** Tree trunks as solid obstacles at the current tier's tree density, so the truck stops at every tree it can see. */
+  private treeSource(): ObstacleSource {
+    const density = qualitySettings(this.tier).propDensity
+    return (cx, cz) => chunkTreeObstacles(this.terrain, cx, cz, density)
   }
 
   private openPanel(open: () => PanelHandle): void {
