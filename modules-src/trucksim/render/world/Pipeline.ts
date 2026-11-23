@@ -9,6 +9,8 @@
  */
 import type { Camera } from '@babylonjs/core/Cameras/camera'
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
+import '@babylonjs/core/Engines/Extensions/engine.multiRender'
+import '@babylonjs/core/Engines/WebGPU/Extensions/engine.multiRender'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { Color4 } from '@babylonjs/core/Maths/math.color'
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
