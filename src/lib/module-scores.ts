@@ -18,6 +18,7 @@ export const scoredModules = {
   foodchain: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you swim, so a dive you leave unfinished still counts, and finalized when your last life is eaten.' },
   keep: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you defend, so a siege you leave unfinished still counts, and finalized when the wall falls.' },
   giant: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 10_000_000, note: 'One ninety-second round. Saved as you toss, and finalized when the clock runs out.' },
+  appleshot: { title: 'Longest Streaks', metric: 'In a row', order: 'desc', unit: 'apples', min: 1, max: 10_000, note: 'Apples split in a row, starting from 20 ft with the volunteer stepping back 1.70 ft after every hit. Saved as you shoot, and finalized when an arrow misses.' },
   cookies: { title: 'Biggest Bakes', metric: 'Cookies', order: 'desc', unit: 'points', min: 1, max: 1_000_000_000_000_000, note: 'Total cookies baked in one five-minute bake-off, spent or not. Saved as you bake, and finalized when the ovens switch off.' },
   hotdog: { title: 'Richest Carts', metric: 'Cash', order: 'desc', unit: 'dollars', min: 1, max: 10_000_000, note: 'Cash on hand after the thirtieth day. Saved when the season ends.' },
   pingpong: { title: 'Longest Rallies', metric: 'Rally', order: 'desc', unit: 'hits', min: 2, max: 10_000, note: 'The longest rally in a match against the CPU, counting both players\' hits. Saved as you play, and finalized at match point.' },
@@ -98,6 +99,7 @@ export function formatScore(module: ScoredModuleId, value: number) {
   if (unit === 'wpm') return `${value.toLocaleString()} wpm`
   if (unit === 'dollars') return `$${value.toLocaleString()}`
   if (unit === 'hits') return `${value.toLocaleString()} hits`
+  if (unit === 'apples') return `${value.toLocaleString()} in a row`
   if (unit === 'cents') return `$${(value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   if (unit === 'multiple') return `${(value / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}×`
   return value.toLocaleString()
