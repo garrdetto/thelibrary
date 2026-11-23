@@ -47,6 +47,7 @@ const PRESETS = [
   { match: /^(sandlot3d\/(athlete|field_detail)|hood\/(sim|vehicles)|proskater\/board)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /^(proskater\/skater|sandlot3d\/toons\/p\d+|gspro\/golfer)\.glb$/, name: 'character', join: false, flatten: false, simplify: 0, textureQuality: 92 },
   { match: /^sandlot3d\//, name: 'figure', join: true, simplify: 0, textureQuality: 92 },
+  { match: /^takeflight\//, name: 'aircraft', join: false, flatten: false, palette: false, keepLeaves: true, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /^tello\//, name: 'kit', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /./, name: 'rig', join: true, flatten: false, simplify: 0, textureQuality: 92 },
 ]
@@ -362,7 +363,7 @@ async function worker() {
     }
     await document.transform(fn.weld())
     if (preset.simplify > 0) await document.transform(fn.simplify({ simplifier: MeshoptSimplifier, ratio: 0, error: preset.simplify, lockBorder: true }))
-    await document.transform(fn.resample(), fn.prune({ keepAttributes: preset.keepAttributes === true }), fn.sparse())
+    await document.transform(fn.resample(), fn.prune({ keepAttributes: preset.keepAttributes === true, keepLeaves: preset.keepLeaves === true }), fn.sparse())
     for (const texture of document.getRoot().listTextures()) {
       const size = texture.getSize()
       const tiny = !size || Math.max(size[0], size[1]) <= 256
