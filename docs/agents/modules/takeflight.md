@@ -4,7 +4,18 @@ Career flight simulator (`modules-src/takeflight/`, module id `takeflight`, page
 
 ## Status
 
-Milestone 1 is in (flight model, Wren T4 trainer, Harrow Field, terrain, chase/cockpit/tower cameras, dev overlay). Milestones 2–8 (scoring and replays, careers and saves, the 200 km region, more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+Milestones 1 and 2 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; then per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records. Milestones 3–8 (careers and saves, the 200 km region, more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+
+**Milestones run back to back (owner, 2026-11-23).** When a milestone's pull request merges, start the next one in the plan without waiting for a prompt, and mark it done in `docs/takeflight/PLAN.md` and here when it merges.
+
+## Scoring, debrief and replays
+
+- `sim/Telemetry.ts` (`FlightRecorder`) listens to every tick: the 12-byte input log, 24 Float32 telemetry channels at 10 Hz (`CH`), and touchdown events at 120 Hz (a touchdown needs 0.2 s airborne before it; its G is the 0.1 s low-passed load factor, not the gear spring's raw spikes).
+- `sim/Scoring.ts` (`scoreFlight`) is pure and exact. Categories and weights: landing 40, approach 20, smoothness 15, procedure 15, operations 10; each metric scores 0..1 with `band(value, good, bad)`. The landing is the last touchdown after 8 s or more airborne; shorter hops within 10 s after it are bounces. Unflown categories score zero and the grade is Incomplete; a crash scores 0. The assists multiplier applies to the total. Change thresholds there and keep `tests/scoring.test.ts` passing.
+- `sim/Starts.ts` places every start with `SimMath` only; `sim/Reflight.ts` re-flies a record (start or snapshot plus input log). `Simulation.saveState/loadState` (full `FlightModel` state including gear contacts, plus wind) must stay complete: `tests/determinism.test.ts` continues from a snapshot bit for bit. Add any new state that survives between ticks to `FlightModel.saveState`.
+- `game/FlightSession.ts` takes a snapshot every 5 s, streams finished minutes to `game/record.worker.ts`, toasts each touchdown, and ends the flight 2.5 s after the aircraft stops on its wheels following a landing (also Pause → End flight, or 2 s after a crash). `game/TouchdownReplay.ts` re-flies 10 s before to 6 s after the touchdown from the nearest snapshot; the camera sits beside the runway (the Camera button swaps to chase; Escape returns to the debrief).
+- Flight records (`shared/FlightRecord.ts`): `TFR1` + raw DEFLATE of framed JSON header, XOR-delta inputs, delta-coded byte-plane telemetry and JSON footer. Bump `RECORD_VERSION` when the layout or anything that changes a re-flown result changes.
+- The sim costs about 20 µs a tick in Node (bundled, unminified), so a replay never re-flies from the start of a long flight; milestone 7 has to measure the Worker's budget against that.
 
 ## Rules that matter
 
@@ -23,6 +34,6 @@ Milestone 1 is in (flight model, Wren T4 trainer, Harrow Field, terrain, chase/c
 The in-app preview often has no free server slots; use the light Vite config and headless Edge:
 
 - Server: `node node_modules/vite/bin/vite.js --config node_modules/.cache/vite.takeflight.config.mjs --port 3091` in the worktree (root `modules-src/takeflight`, public dir `public/`).
-- Shots: `Q="?quality=medium" STEPS='[{"eval":"window.__takeflight.debug.fly({start:\"final09\"})"},{"wait":4000,"shot":"final"}]' node node_modules/.cache/tf-shot.mjs C:/dev/tf` (Playwright, Edge, WebGPU). `window.__takeflight.debug` has `fly(options)`, `view(mode)` and the `sim`.
+- Shots: `Q="?quality=medium" STEPS='[{"eval":"window.__takeflight.debug.fly({start:\"final09\"})"},{"wait":4000,"shot":"final"}]' node node_modules/.cache/tf-shot.mjs C:/dev/tf` (Playwright, Edge, WebGPU). `window.__takeflight.debug` has `fly(options)`, `view(mode)`, `end()` (debrief now), `replay()`, the `sim` and the `session`. To reach a debrief with a landing, pause the sim, drive `sim.pilot` and `sim.stepPilot()` from a script (the scripted pilot in `tests/helpers.ts` is a template), the frame loop opens the debrief once the aircraft has stood still for 2.5 s.
 - `?perf=1` or the backquote key opens the performance overlay.
 - Tests: `node scripts/takeflight-tests.mjs [filter]` (esbuild bundle, `node --test`), also in `pnpm test` after `tsc -p modules-src/takeflight/tsconfig.json`.

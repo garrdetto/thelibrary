@@ -4,6 +4,7 @@ import { FPM, KNOT, SEA_LEVEL_PRESSURE, createAirSample, sampleAir } from '../si
 import { SIM_HZ } from '../sim/Simulation'
 import { DEG } from '../sim/SimMath'
 import { levelTrim } from '../sim/Trim'
+import { HARROW_FIELD } from '../shared/Airports'
 import { TERRAIN } from '../shared/Terrain'
 import { WREN, makeSim } from './helpers'
 
@@ -108,7 +109,7 @@ test('a trimmed approach at 30 % power follows a 3 degree path hands off', () =>
 test('a hard arrival breaks the gear', () => {
   const sim = makeSim()
   const a = sim.aircraft
-  a.place(0, 128 + 4, 0, 90, 2, 0, 30)
+  a.place(0, HARROW_FIELD.elevation + 4, 0, 90, 2, 0, 30)
   a.vy = -7
   sim.settle()
   for (let i = 0; i < SIM_HZ * 3; i++) sim.stepPilot()
@@ -118,7 +119,7 @@ test('a hard arrival breaks the gear', () => {
 test('a gentle landing is recorded as a touchdown with its sink rate', () => {
   const sim = makeSim()
   const a = sim.aircraft
-  a.place(0, 128 + 1.45, 0, 90, 4, 0, 50 * KNOT)
+  a.place(0, HARROW_FIELD.elevation + 1.45, 0, 90, 4, 0, 50 * KNOT)
   a.vy = -0.8
   a.flap = 1
   sim.pilot.flaps = 3
