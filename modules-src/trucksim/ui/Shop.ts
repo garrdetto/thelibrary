@@ -1,8 +1,8 @@
 /**
- * The shop panels: the dealer (trucks and trailers), the paint and parts garage with a live preview, and the fleet screen with
+ * The shop panels: the dealer (trucks and trailers, each truck in a factory design), the paint and parts garage with a live preview, and the fleet screen with
  * select, sell, repair and refuel. Dealer and fleet re-render through `update(profile)` while open so cash and stock stay current.
  */
-import { LOOK_PRICES, TRAILERS, TRAILER_BY_ID, TRUCKS, TRUCK_BY_ID, defaultLook } from '../shared/Catalog'
+import { DESIGNS, DESIGN_BY_ID, LOOK_PRICES, TRAILERS, TRAILER_BY_ID, TRUCKS, TRUCK_BY_ID, defaultLook, designLook, designOf, lookCost, roofAllowed, skirtsAllowed } from '../shared/Catalog'
 import type { TrailerModel, TruckLook, TruckModel } from '../shared/Catalog'
 import { LOOK_OPTIONS } from '../shared/Economy'
 import type { OwnedTruck, OwnedTrailer, Profile } from '../shared/Economy'
@@ -31,7 +31,7 @@ function stat(label: string, value: string): HTMLElement {
 export function openDealer(root: HTMLElement, options: DealerOptions): UpdatableHandle {
   let profile = options.profile
   let tab: 'trucks' | 'trailers' = 'trucks'
-  const picks = new Map<string, { primary: string; secondary: string }>()
+  const picks = new Map<string, { primary: string; secondary: string; design: string }>()
   const content = h('div', { class: 'ts-grid' })
   const cash = h('b', { class: 'ts-cash' })
   const tabs = h('div', { class: 'ts-tabs', attrs: { role: 'tablist' } })
@@ -40,14 +40,23 @@ export function openDealer(root: HTMLElement, options: DealerOptions): Updatable
 
   const truckCard = (model: TruckModel): HTMLElement => {
     const stock = defaultLook(model)
-    const pick = picks.get(model.id) ?? { primary: stock.paint.primary, secondary: stock.paint.secondary }
+    const pick = picks.get(model.id) ?? { primary: stock.paint.primary, secondary: stock.paint.secondary, design: 'factory' }
     picks.set(model.id, pick)
     const owned = profile.trucks.filter((truck) => truck.model === model.id).length
-    const short = profile.cash < model.price
     const capacity = model.dump ? `${decimal1(model.dump.capacityKg / 1000)} t bed` : 'Fifth wheel'
-    const buy = h('button', { class: 'ts-btn primary', text: short ? `Need ${money(model.price - profile.cash)} more` : `Buy ${money(model.price)}`, attrs: { type: 'button', 'data-key': `buy-${model.id}`, ...(short ? { disabled: '' } : {}) }, on: { click: () => options.onBuyTruck(model.id, { ...stock, paint: { ...stock.paint, primary: pick.primary, secondary: pick.secondary } }) } })
-    const primary = colorPicker('Primary colour', pick.primary, (value) => { pick.primary = value })
-    const secondary = colorPicker('Secondary colour', pick.secondary, (value) => { pick.secondary = value })
+    const chosen = (): TruckLook => designLook(model, pick.design, { ...stock, paint: { ...stock.paint, primary: pick.primary, secondary: pick.secondary } })
+    const buy = h('button', { class: 'ts-btn primary', attrs: { type: 'button', 'data-key': `buy-${model.id}` }, on: { click: () => options.onBuyTruck(model.id, chosen()) } })
+    const blurb = h('p', { class: 'ts-note', text: designBlurb(pick.design) })
+    const refreshPrice = (): void => {
+      const price = model.price + lookCost(stock, chosen())
+      const short = profile.cash < price
+      buy.textContent = short ? `Need ${money(price - profile.cash)} more` : `Buy ${money(price)}`
+      buy.disabled = short
+    }
+    const primary = colorPicker('Primary colour', pick.primary, (value) => { pick.primary = value; refreshPrice() })
+    const secondary = colorPicker('Secondary colour', pick.secondary, (value) => { pick.secondary = value; refreshPrice() })
+    const designs = designRow(`design-${model.id}`, 'Design', DESIGN_IDS, () => pick.design, (id) => { pick.design = id; blurb.textContent = designBlurb(id); refreshPrice() }, (id) => lookCost(stock, designLook(model, id, stock)))
+    refreshPrice()
     return h('article', { class: 'ts-card tall' },
       h('div', { class: 'ts-card-main' },
         h('p', { class: 'ts-eyebrow', text: model.brand }),
@@ -59,7 +68,7 @@ export function openDealer(root: HTMLElement, options: DealerOptions): Updatable
           stat('Torque', `${whole(model.torqueNm)} N·m`),
           stat('Axles', String(model.axles.length)),
           stat('Carries', capacity)),
-        primary.element, secondary.element),
+        designs, blurb, primary.element, secondary.element),
       h('div', { class: 'ts-card-side' }, buy))
   }
 
@@ -98,6 +107,36 @@ export function openDealer(root: HTMLElement, options: DealerOptions): Updatable
   return { close: modal.close, update(next: Profile) { profile = next; render() } }
 }
 
+const DESIGN_IDS: readonly string[] = ['factory', ...DESIGNS.map((design) => design.id)]
+
+function designName(id: string): string {
+  return DESIGN_BY_ID[id]?.name ?? 'Factory'
+}
+
+function designBlurb(id: string): string {
+  return DESIGN_BY_ID[id]?.blurb ?? 'The stock parts this truck leaves the factory with.'
+}
+
+/** Segmented picker of factory designs; `extra(id)` is what choosing the design adds to the price. */
+function designRow(key: string, label: string, ids: readonly string[], get: () => string | null, set: (id: string) => void, extra: (id: string) => number): HTMLElement {
+  const row = h('div', { class: 'ts-segments', attrs: { role: 'radiogroup', 'aria-label': label } })
+  const paint = (): void => {
+    row.replaceChildren()
+    for (const id of ids) {
+      const on = get() === id
+      const cost = extra(id)
+      row.appendChild(h('button', {
+        class: `ts-seg${on ? ' on' : ''}`,
+        text: `${designName(id)}${cost > 0 ? ` +${money(cost)}` : ''}`,
+        attrs: { type: 'button', role: 'radio', 'aria-checked': on ? 'true' : 'false', 'data-key': `${key}-${id}` },
+        on: { click: () => { set(id); paint(); row.querySelector<HTMLElement>(`[data-key="${key}-${id}"]`)?.focus() } },
+      }))
+    }
+  }
+  paint()
+  return h('div', { class: 'ts-field' }, h('span', { class: 'ts-label', text: label }), row)
+}
+
 function decimal1(value: number): string {
   return (Math.round(value * 10) / 10).toString()
 }
@@ -114,6 +153,7 @@ const OPTION_LABELS: Record<string, string> = {
   gloss: 'Gloss', metallic: 'Metallic', matte: 'Matte', none: 'None', pinstripe: 'Pinstripe', band: 'Band', swoosh: 'Swoosh',
   single: 'Single', dual: 'Dual', dualTall: 'Dual tall', stock: 'Stock', chrome: 'Chrome', heavy: 'Heavy', cabBar: 'Cab bar', full: 'Full set',
   steel: 'Steel', polished: 'Polished', black: 'Black', plain: 'Plain', air: 'Air horn',
+  twoTone: 'Two-tone', chevron: 'Chevron', bars: 'Chrome bars', slats: 'Slats', mesh: 'Mesh', blackout: 'Blackout', low: 'Low', tall: 'Tall',
 }
 
 function cloneLook(look: TruckLook): TruckLook {
@@ -144,29 +184,49 @@ export function openGarage(root: HTMLElement, options: GarageOptions): PanelHand
   const choice = <K extends 'finish' | 'stripe'>(label: string, key: K, options2: readonly TruckLook['paint'][K][], price: (value: TruckLook['paint'][K]) => number): HTMLElement =>
     optionRow(label, options2 as readonly string[], () => look.paint[key] as string, (value) => { (look.paint as unknown as Record<string, string>)[key] = value; changed() }, (value) => price(value as TruckLook['paint'][K]))
 
-  const part = <K extends 'stacks' | 'bumper' | 'lights' | 'wheels' | 'mudflaps' | 'horn'>(label: string, key: K, values: readonly string[], prices: Record<string, number>): HTMLElement =>
+  const part = <K extends 'stacks' | 'bumper' | 'lights' | 'wheels' | 'mudflaps' | 'horn' | 'grille' | 'roof'>(label: string, key: K, values: readonly string[], prices: Record<string, number>): HTMLElement =>
     optionRow(label, values, () => look[key] as string, (value) => { (look as unknown as Record<string, string>)[key] = value; changed() }, (value) => prices[value] ?? 0)
 
-  const primary = colorPicker('Primary paint', look.paint.primary, (value) => { look.paint.primary = value; changed() })
-  const secondary = colorPicker('Secondary paint', look.paint.secondary, (value) => { look.paint.secondary = value; changed() })
-  const accent = colorPicker('Accent paint', look.paint.accent, (value) => { look.paint.accent = value; changed() })
-  const visor = h('input', { attrs: { type: 'checkbox', id: 'ts-visor' }, on: { change: () => { look.visor = visor.checked; changed() } } })
-  visor.checked = look.visor
-
-  modal.body.append(h('div', { class: 'ts-stack' },
-    h('p', { class: 'ts-note', text: `Cash ${money(profileCash())}. Repainting costs ${money(LOOK_PRICES.repaint)} however many colours you change.` }),
-    h('div', { class: 'ts-garage-grid' },
+  const sheet = h('div', { class: 'ts-garage-grid' })
+  const check = (id: string, label: string, get: () => boolean, set: (on: boolean) => void): HTMLElement => {
+    const box = h('input', { attrs: { type: 'checkbox', id }, on: { change: () => { set(box.checked); changed() } } })
+    box.checked = get()
+    return h('div', { class: 'ts-field' }, h('label', { class: 'ts-check', attrs: { for: id } }, box, h('span', { text: label })))
+  }
+  const fillSheet = (): void => {
+    const primary = colorPicker('Primary paint', look.paint.primary, (value) => { look.paint.primary = value; changed() })
+    const secondary = colorPicker('Secondary paint', look.paint.secondary, (value) => { look.paint.secondary = value; changed() })
+    const accent = colorPicker('Accent paint', look.paint.accent, (value) => { look.paint.accent = value; changed() })
+    rerender(sheet, () => sheet.append(
       h('section', {}, h('h3', { class: 'ts-sub', text: 'Paint' }), primary.element, secondary.element, accent.element,
         choice('Finish', 'finish', LOOK_OPTIONS.finish, (value) => LOOK_PRICES.finish[value]),
         choice('Stripe', 'stripe', LOOK_OPTIONS.stripe, (value) => LOOK_PRICES.stripe[value])),
       h('section', {}, h('h3', { class: 'ts-sub', text: 'Parts' }),
+        part('Grille', 'grille', LOOK_OPTIONS.grille, LOOK_PRICES.grille),
         part('Exhaust stacks', 'stacks', LOOK_OPTIONS.stacks, LOOK_PRICES.stacks),
-        h('div', { class: 'ts-field' }, h('label', { class: 'ts-check', attrs: { for: 'ts-visor' } }, visor, h('span', { text: `Sun visor (${money(LOOK_PRICES.visor)})` }))),
+        check('ts-visor', `Sun visor (${money(LOOK_PRICES.visor)})`, () => look.visor, (on) => { look.visor = on }),
+        model && roofAllowed(model) ? part('Roof fairing', 'roof', LOOK_OPTIONS.roof, LOOK_PRICES.roof) : null,
+        model && skirtsAllowed(model) ? check('ts-skirts', `Side skirts (${money(LOOK_PRICES.skirts)})`, () => look.skirts, (on) => { look.skirts = on }) : null,
         part('Bumper', 'bumper', LOOK_OPTIONS.bumper, LOOK_PRICES.bumper),
         part('Lights', 'lights', LOOK_OPTIONS.lights, LOOK_PRICES.lights),
         part('Wheels', 'wheels', LOOK_OPTIONS.wheels, LOOK_PRICES.wheels),
         part('Mud flaps', 'mudflaps', LOOK_OPTIONS.mudflaps, LOOK_PRICES.mudflaps),
-        part('Horn', 'horn', LOOK_OPTIONS.horn, LOOK_PRICES.horn))),
+        part('Horn', 'horn', LOOK_OPTIONS.horn, LOOK_PRICES.horn))))
+  }
+  const designs = model
+    ? designRow('garage-design', 'Designs', DESIGN_IDS, () => designOf(model, look), (id) => {
+      const next = designLook(model, id, look)
+      Object.assign(look, next, { paint: { ...next.paint } })
+      fillSheet()
+      changed()
+    }, (id) => lookCost(original, designLook(model, id, original)))
+    : null
+  fillSheet()
+
+  modal.body.append(h('div', { class: 'ts-stack' },
+    h('p', { class: 'ts-note', text: `Cash ${money(profileCash())}. Repainting costs ${money(LOOK_PRICES.repaint)} however many colours you change. A design sets the parts, finish and stripe and keeps your colours.` }),
+    designs,
+    sheet,
     h('div', { class: 'ts-actions end' }, total, cancel, save)))
   save.addEventListener('click', () => {
     saved = true

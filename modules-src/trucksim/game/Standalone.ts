@@ -554,6 +554,7 @@ export class Standalone implements TruckHost {
       void this.session.finishWash(place, 0)
       return
     }
+    const own = place === 'own' ? this.session.ownWash() : null
     this.keysSource.clear()
     this.pipeline?.dispose()
     this.pipeline = null
@@ -562,7 +563,9 @@ export class Standalone implements TruckHost {
       scene: this.scene, canvas: this.canvas, cameras: this.cameras, uiRoot: this.uiRoot, layer, audio: this.audio,
       center: this.session.truckCentre(),
       seeThrough: place === 'own' && this.progress.profile.lot !== null ? this.lotsRenderer.meshes(this.progress.profile.lot) : [],
-      place: place === 'own' ? 'Your wash bay' : 'Crossroads truck wash',
+      mats: this.mats,
+      hoseFrom: own?.kind === 'washer' ? own.reel : null,
+      place: place === 'own' ? (own?.kind === 'washer' ? 'Your pressure washer' : 'Your wash bay') : 'Crossroads truck wash',
       cost: place === 'own' ? OWN_WASH_WATER : PUBLIC_WASH_PRICE,
       onFinish: (cleaned) => {
         this.washing = null

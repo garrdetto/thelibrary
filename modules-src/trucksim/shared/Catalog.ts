@@ -506,8 +506,11 @@ export function designLook(model: TruckModel, id: string, base: TruckLook = defa
 
 /** The id of the design `look` matches exactly (parts, finish and stripe), `'factory'` for the stock parts, or null when custom. */
 export function designOf(model: TruckModel, look: TruckLook): string | null {
+  const sameParts = (a: TruckLook, b: TruckLook): boolean =>
+    a.paint.finish === b.paint.finish && a.paint.stripe === b.paint.stripe && a.stacks === b.stacks && a.visor === b.visor && a.bumper === b.bumper &&
+    a.lights === b.lights && a.wheels === b.wheels && a.mudflaps === b.mudflaps && a.horn === b.horn && a.grille === b.grille && a.roof === b.roof && a.skirts === b.skirts
   for (const id of ['factory', ...DESIGNS.map((d) => d.id)]) {
-    if (lookCost(look, designLook(model, id, look)) === 0) return id
+    if (sameParts(look, designLook(model, id, look))) return id
   }
   return null
 }

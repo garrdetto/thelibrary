@@ -1,7 +1,7 @@
 /**
- * The interactive truck wash. The truck stands in a wash lane (the travel center's, or your own wash bay) and the builder's orbit
- * camera circles it; holding the left mouse button sprays a jet of water from the wand to wherever the pointer points, and the
- * `DirtLayer` loses mud around the hit. The toolbar shows how clean the truck is; Done, E or Escape (or getting it all off)
+ * The interactive truck wash. The truck stands in a wash lane (the travel center's, your own wash bay, or within hose reach of
+ * your own pressure washer) and the builder's orbit camera circles it; holding the left mouse button sprays a jet of water from
+ * the wand (`WashGear`, with a hose back to your washer) to wherever the pointer points, and the `DirtLayer` loses mud around the hit. The toolbar shows how clean the truck is; Done, E or Escape (or getting it all off)
  * finishes, and `onFinish` gets the share of the grime removed for the `wash` action. Nothing here touches money.
  */
 import type { ArcRotateCameraPointersInput } from '@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput'
@@ -15,6 +15,9 @@ import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import type { Scene } from '@babylonjs/core/scene'
 import type { DirtLayer } from '../render/models/DirtLayer'
+import type { MaterialLibrary } from '../render/Materials'
+import { WashGear } from '../render/models/WashGear'
+import type { Point3 } from '../render/models/WashGear'
 import type { TruckAudio } from '../systems/Audio'
 import { WashHud } from '../ui/WashHud'
 import type { CameraRig } from './Cameras'
@@ -30,6 +33,9 @@ export interface WashModeOptions {
   place: string
   cost: number
   seeThrough?: readonly AbstractMesh[]
+  mats: MaterialLibrary
+  /** Your pressure washer's hose reel in world space; the wash draws a hose from it to the wand. Null at a wash bay or the public lane. */
+  hoseFrom?: Point3 | null
   onFinish(cleaned: number): void
 }
 
@@ -41,6 +47,7 @@ export class WashMode {
   private readonly cleanup: (() => void)[] = []
   private readonly jet: Mesh
   private readonly jetMaterial: PBRMaterial
+  private readonly gear: WashGear
   private spraying = false
   private pointer: { x: number; y: number } | null = null
   private finished = false
@@ -80,6 +87,7 @@ export class WashMode {
     this.jet.isPickable = false
     this.jet.rotationQuaternion = new Quaternion()
     this.jet.setEnabled(false)
+    this.gear = new WashGear(scene, options.mats, options.hoseFrom ?? null)
     this.hud = new WashHud(options.uiRoot, { place: options.place, cost: options.cost, onDone: () => this.finish() })
     this.hud.setClean(0)
     canvas.style.cursor = 'crosshair'
@@ -127,16 +135,19 @@ export class WashMode {
   /** Sprays for one frame while the trigger is held. */
   update(dt: number): void {
     if (this.finished) return
-    const { scene, cameras, layer } = this.options
-    if (!this.spraying || !this.pointer) {
-      this.jet.setEnabled(false)
-      return
-    }
-    const ray = scene.createPickingRay(this.pointer.x, this.pointer.y, Matrix.Identity(), cameras.build, false)
-    const hit = layer.scrub(ray.origin, ray.direction, dt)
+    const { scene, cameras, layer, center } = this.options
     const camera = cameras.build
+    const ray = this.pointer
+      ? scene.createPickingRay(this.pointer.x, this.pointer.y, Matrix.Identity(), camera, false)
+      : { origin: camera.globalPosition, direction: new Vector3(center.x, center.y + 1.2, center.z).subtract(camera.globalPosition).normalize() }
     const right = Vector3.Cross(ray.direction, UP).normalize()
     const nozzle = camera.globalPosition.add(ray.direction.scale(1.2)).add(right.scale(0.35)).add(UP.scale(-0.45))
+    if (!this.spraying || !this.pointer) {
+      this.jet.setEnabled(false)
+      this.gear.aim(nozzle, ray.direction)
+      return
+    }
+    const hit = layer.scrub(ray.origin, ray.direction, dt)
     const end = hit ? hit.point : ray.origin.add(ray.direction.scale(14))
     const span = end.subtract(nozzle)
     const length = span.length()
@@ -146,6 +157,7 @@ export class WashMode {
       this.jet.scaling.set(1, length, 1)
       const axis = span.scale(1 / length)
       Quaternion.FromUnitVectorsToRef(UP, axis, this.jet.rotationQuaternion!)
+      this.gear.aim(nozzle, axis)
     }
     const clean = 1 - layer.remaining
     this.hud.setClean(clean)
@@ -167,6 +179,7 @@ export class WashMode {
     this.options.canvas.style.cursor = ''
     this.jet.dispose(false, false)
     this.jetMaterial.dispose(false, false)
+    this.gear.dispose()
     this.hud.dispose()
     const pointers = this.options.cameras.build.inputs.attached.pointers as ArcRotateCameraPointersInput | undefined
     if (pointers) pointers.buttons = [0, 1, 2]

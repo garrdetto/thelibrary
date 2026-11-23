@@ -8,7 +8,7 @@
 
 import type { BuildDef } from '../../shared/Catalog'
 import type { BuildItem } from '../../shared/Lots'
-import type { SceneryBatch, UvRect } from './Batch'
+import type { CylinderAxis, SceneryBatch, UvRect } from './Batch'
 
 /** A collision box in a piece's local frame (`y` is the centre height). */
 export interface LocalBox {
@@ -238,6 +238,36 @@ function washBay(b: SceneryBatch, wl: number, dl: number, color: string): LocalB
   return [wall(-(width / 2 - 0.2)), wall(width / 2 - 0.2), roof]
 }
 
+/** Hot-water pressure washer on a two-wheel cart: pump body in the item colour, motor, hose reel, wand on its hook. */
+export function pressureWasher(b: SceneryBatch, wl: number, dl: number, body: string): LocalBox[] {
+  const horizontal = wl > dl
+  const length = horizontal ? wl : dl
+  const half = length / 2
+  const lb = axisBox(b, horizontal)
+  const across: CylinderAxis = horizontal ? 'z' : 'x'
+  const at = (u: number, v: number): [number, number] => (horizontal ? [u, v] : [v, u])
+  const wheel = (u: number, v0: number, y: number, r: number, len: number, key: string): void => {
+    const [x, z] = at(u, v0)
+    b.cylinder(key, x, y, z, r, len, 12, r, across)
+  }
+  lb('darkSteel', 0, 0.3, 0, length - 0.2, 0.08, 0.76)
+  lb(body, -half + 0.75, 0.38, 0, 0.9, 0.62, 0.7)
+  lb('metalWhite', -half + 0.75, 1.0, 0, 0.94, 0.05, 0.74)
+  lb('darkSteel', half - 0.55, 0.38, 0, 0.55, 0.4, 0.5)
+  lb('steel', half - 0.55, 0.78, 0, 0.12, 0.1, 0.12)
+  for (const v of [-0.42, 0.3]) wheel(-half + 0.45, v, 0.22, 0.22, 0.12, 'rubber')
+  wheel(-half + 0.45, -0.3, 0.22, 0.05, 0.6, 'steel')
+  wheel(half - 0.55, -0.27, 1.12, 0.3, 0.06, 'darkSteel')
+  wheel(half - 0.55, 0.21, 1.12, 0.3, 0.06, 'darkSteel')
+  wheel(half - 0.55, -0.21, 1.12, 0.24, 0.42, 'rubber')
+  for (const v of [-0.34, 0.34]) lb('steel', half - 0.12, 0.38, v, 0.05, 1.05, 0.05)
+  lb('steel', half - 0.12, 1.38, 0, 0.05, 0.05, 0.72)
+  lb('metalDark', -half + 0.2, 1.0, 0.36, 0.05, 0.38, 0.04)
+  lb('metalDark', -half + 0.22, 0.55, 0.39, 0.04, 0.9, 0.04)
+  lb('tankRed', -half + 0.22, 1.25, 0.39, 0.07, 0.12, 0.05)
+  return [localBox(-wl / 2, 0, -dl / 2, wl / 2, 1.5, dl / 2)]
+}
+
 export function partsShed(b: SceneryBatch, wl: number, dl: number, wall: string): LocalBox[] {
   b.box('concrete', 0, 0, 0, wl + 0.1, 0.3, dl + 0.1)
   b.box(wall, 0, 0.3, 0, wl, 2.5, dl)
@@ -370,6 +400,7 @@ export function drawItem(b: SceneryBatch, def: BuildDef, item: BuildItem, wl: nu
     case 'office-trailer': return officeTrailer(b, wl, dl, wall)
     case 'fuel-island': return fuelIsland(b, wl, dl, wall)
     case 'wash-bay': return washBay(b, wl, dl, wall)
+    case 'pressure-washer': return pressureWasher(b, wl, dl, wall)
     case 'parts-shed': return partsShed(b, wl, dl, wall)
     case 'tire-rack': return tireRack(b, wl, dl)
     case 'light-pole': return lightPole(b)

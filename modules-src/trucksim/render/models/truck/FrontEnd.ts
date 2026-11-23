@@ -91,17 +91,17 @@ function classicFront(b: PartBatch, L: TruckLayout, grille: GrilleOption): void 
   b.add('chrome', sweep(surround, rectProfile(0.08, 0.1, 0.028), { side: [0, 0, 1], closed: true }))
   b.add('grille', boxAt(-0.5, 0.5, gy0 + 0.03, gy1 - 0.03, noseZ - 0.04, noseZ + 0.012))
   grilleFill(b, grille, noseZ + 0.004, gy0 + 0.04, gy1 - 0.04, () => 0.5, () => {
-  if (L.model.brand === 'Bedrock') {
-    for (let k = 0; k < 9; k++) {
-      const y = mix(gy0 + 0.1, gy1 - 0.12, k / 8)
-      b.add('chrome', slabX(-0.49, 0.49, y - 0.016, y + 0.016, noseZ + 0.006, noseZ + 0.032, 0.008))
+    if (L.model.brand === 'Bedrock') {
+      for (let k = 0; k < 9; k++) {
+        const y = mix(gy0 + 0.1, gy1 - 0.12, k / 8)
+        b.add('chrome', slabX(-0.49, 0.49, y - 0.016, y + 0.016, noseZ + 0.006, noseZ + 0.032, 0.008))
+      }
+    } else {
+      for (let k = 0; k < 15; k++) {
+        const x = mix(-0.45, 0.45, k / 14)
+        b.add('chrome', slab(x - 0.012, x + 0.012, gy0 + 0.04, gy1 - 0.04, noseZ + 0.006, noseZ + 0.032, 0.008))
+      }
     }
-  } else {
-    for (let k = 0; k < 15; k++) {
-      const x = mix(-0.45, 0.45, k / 14)
-      b.add('chrome', slab(x - 0.012, x + 0.012, gy0 + 0.04, gy1 - 0.04, noseZ + 0.006, noseZ + 0.032, 0.008))
-    }
-  }
   })
   badge(b, L.model.brand, 0, gy1 - 0.12, noseZ + 0.04, 0.014)
   fenders(b, L, { frontTop: 1.04, rearTop: 0.9, frontBase: 0.8, rearBase: 0.66, rt: 0.16, crestLift: 0.12 })
