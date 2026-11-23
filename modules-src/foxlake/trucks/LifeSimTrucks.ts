@@ -33,7 +33,12 @@ import type { LotSpec } from '../../trucksim/shared/WorldLayout'
 import type { Terrain } from '../../trucksim/shared/Terrain'
 import { DEFAULT_GROUPS } from '../../trucksim/sim/PhysicsHost'
 import type { PhysicsHost } from '../../trucksim/sim/PhysicsHost'
-import { townToScene } from '../region'
+import { sceneToTown, townToScene } from '../region'
+import { Traffic, buildLanes } from '../../trucksim/sim/Traffic'
+import type { Obstacle } from '../../trucksim/sim/Traffic'
+import { TrafficVisuals } from '../../trucksim/render/TrafficVisuals'
+import { MONTELLO_ROAD_DATA } from '../../trucksim/shared/montello/MontelloRoads'
+import type { Road } from '../../trucksim/shared/WorldLayout'
 
 /** The town's physics as Truck Simulator needs it. */
 export interface TownPhysics {
@@ -47,6 +52,18 @@ const CHASE_BACK = 11
 const CHASE_UP = 4.2
 const CAMERA_EASE = 6
 const HIP_ABOVE_SEAT = 0.1
+/** Background vehicles on Montello's highways and county roads (downtown streets are Life Sim's own). */
+const MONTELLO_TRAFFIC = 14
+const ROAD_KINDS: Road['kind'][] = ['highway', 'road', 'street', 'gravel']
+
+/** Montello's highways and county roads as traffic roads (town frame). */
+function trafficRoads(): Road[] {
+  return MONTELLO_ROAD_DATA.filter((entry) => entry[0] <= 1).map((entry, i) => {
+    const points: [number, number][] = []
+    for (let k = 2; k + 1 < entry.length; k += 2) points.push([entry[k], entry[k + 1]])
+    return { id: `montello-${i}`, name: '', kind: ROAD_KINDS[entry[0]], width: entry[1], points }
+  })
+}
 
 function headingOf(q: { x: number; y: number; z: number; w: number }): number {
   return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x))
@@ -69,6 +86,10 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
   private readonly target = new Vector3()
   private cameraSet = false
   private cameraReady = false
+  private traffic: Traffic | null = null
+  private trafficVisuals: TrafficVisuals | null = null
+  private readonly rigObstacle: Obstacle[] = [{ x: 0, z: 0, vx: 0, vz: 0, half: 4 }]
+  private readonly townPoint = { x: 0, y: 0, z: 0 }
 
   constructor(
     private readonly host: GameHost,
@@ -91,6 +112,8 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
     this.zones = createWorkZones(this.scene, this.frameRoot, this.mats, MONTELLO.zones, this.heightAtTown)
     this.drawLots()
     this.progress.onChange(() => this.drawLots())
+    this.traffic = new Traffic(buildLanes(trafficRoads()), this.heightAtTown, Math.floor(Date.now() / 60000), MONTELLO_TRAFFIC)
+    this.trafficVisuals = new TrafficVisuals(this.scene, this.frameRoot, this.mats, this.physics, this.traffic)
     this.session = new TruckSession(this, {
       openDealer: () => this.toast('The dealer is in Truck Simulator for now: open it from the library to buy trucks', 'info'),
       jobDone: (message, pay) => this.toast(`${message}${pay > 0 ? ` · +$${Math.round(pay).toLocaleString()}` : ''}`, 'good'),
@@ -175,6 +198,7 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
       runPhysics()
       return
     }
+    this.updateTraffic(dt)
     this.view = session.frame(dt, (before) => {
       const off = this.town.onPreStep(before)
       runPhysics()
@@ -182,6 +206,31 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
     })
     this.sync()
     this.camera(dt)
+  }
+
+  /** Moves Montello's traffic around the player (or the rig while driving), treating the rig as traffic. */
+  private updateTraffic(dt: number): void {
+    const traffic = this.traffic
+    const truck = this.session?.truck
+    if (!traffic || !this.trafficVisuals || this.host.hud.modalOpen) return
+    let focus: { x: number; z: number }
+    if (truck) {
+      const pose = truck.pose()
+      const yaw = headingOf(pose.rotation)
+      const o = this.rigObstacle[0]
+      o.x = pose.position.x
+      o.z = pose.position.z
+      o.vx = Math.sin(yaw) * truck.speed
+      o.vz = Math.cos(yaw) * truck.speed
+      o.half = (truck.model.frontZ - truck.model.rearZ) / 2
+    }
+    if (this.driving && truck) focus = truck.pose().position
+    else {
+      const p = this.host.player
+      focus = sceneToTown(p.x, p.y, p.z, this.townPoint)
+    }
+    traffic.update(dt, focus, truck ? this.rigObstacle : [])
+    this.trafficVisuals.sync(dt, this.host.lighting.night > 0.5)
   }
 
   /** Where the rig is in the town frame (for the town's streaming focus points). */
@@ -268,6 +317,7 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
 
   dispose(): void {
     if (this.vehicle) this.host.vehicles.remove(this.vehicle)
+    this.trafficVisuals?.dispose()
     this.session?.dispose()
     this.zones?.dispose()
     this.lots?.dispose()

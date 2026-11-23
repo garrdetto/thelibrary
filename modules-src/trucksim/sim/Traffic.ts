@@ -142,8 +142,11 @@ export function buildLanes(roads: readonly Road[]): Lane[] {
     return { road, xs, zs, arc, length: arc[arc.length - 1], loop: road.loop === true, limit: SPEED_LIMIT[road.kind], offset: road.width * LANE_SHARE, junctions: [] }
   })
   let nextId = 0
+  const boxes = lanes.map((lane) => ({ x0: Math.min(...lane.xs) - 3, x1: Math.max(...lane.xs) + 3, z0: Math.min(...lane.zs) - 3, z1: Math.max(...lane.zs) + 3 }))
   for (let a = 0; a < lanes.length; a++) {
     for (let b = a + 1; b < lanes.length; b++) {
+      const ba = boxes[a], bb = boxes[b]
+      if (ba.x1 < bb.x0 || bb.x1 < ba.x0 || ba.z1 < bb.z0 || bb.z1 < ba.z0) continue
       const A = lanes[a], B = lanes[b]
       for (let i = 0; i + 1 < A.xs.length; i++) {
         for (let j = 0; j + 1 < B.xs.length; j++) {
