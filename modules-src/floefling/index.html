@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Floe Fling · the library</title>
+    <meta name="description" content="A polar bear tosses a fish and swats it off a glacier: time the swing to find the launch angle, then watch restitution and friction decide how far it skips across the ice." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;700;800&display=swap" />
+  </head>
+  <body>
+    <div id="app" class="ff">
+      <canvas id="stage" tabindex="0" aria-label="Glacier and ice plain. Press Space, click or tap once to toss the fish and again to swing."></canvas>
+
+      <header class="ff-top" id="hud" hidden>
+        <div class="ff-chip ff-shots"><span>Fish</span><b id="shotNo">1 / 5</b><i class="ff-pips" id="pips" aria-hidden="true"></i></div>
+        <div class="ff-distance" aria-hidden="true"><b id="dist">0.0</b><small>m</small><span id="distFt">0 ft</span></div>
+        <div class="ff-right">
+          <div class="ff-chip"><span>Best</span><b id="best">—</b></div>
+          <div class="ff-chip"><span>Total</span><b id="total">—</b></div>
+        </div>
+      </header>
+
+      <div class="ff-tools" id="tools" hidden>
+        <button class="ff-icon" id="soundBtn" type="button" aria-pressed="true" title="Sound (M)">🔊</button>
+        <button class="ff-icon" id="lookBtn" type="button" title="Colours (T)">🎨</button>
+        <button class="ff-icon" id="restartBtn" type="button" title="New round (R)">↻</button>
+        <button class="ff-icon tl-full-only" type="button" data-tl-exit-full title="Exit full screen">✕</button>
+      </div>
+
+      <div class="ff-gauge" id="gauge" hidden aria-hidden="true">
+        <div class="ff-gauge-track"><i class="ff-zone"></i><i class="ff-sweet"></i><i class="ff-fish" id="gaugeFish"></i></div>
+        <span>Zone</span>
+      </div>
+
+      <div class="ff-wind" id="wind" hidden aria-hidden="true"><span>Wind</span><b id="windText">0.0 m/s</b></div>
+
+      <div class="ff-callout" id="callout" aria-hidden="true"></div>
+      <div class="ff-readout" id="readout" hidden aria-hidden="true"></div>
+      <div class="ff-prompt" id="prompt" hidden aria-hidden="true"></div>
+
+      <div class="ff-badge" id="badge" title="Renderer">…</div>
+
+      <section class="ff-overlay" id="titleCard" aria-labelledby="titleHeading">
+        <div class="ff-card">
+          <p class="ff-kicker">Launch angle · restitution · friction</p>
+          <h1 id="titleHeading">Floe Fling</h1>
+          <p class="ff-lede">Bruno the polar bear tosses a fish from the ice hole and swats it off the glacier. Swing when the fish drops into the strike zone: catch it in the sweet spot for a 40° line drive, early for a towering pop fly, late for a skipping grounder.</p>
+          <ul class="ff-keys">
+            <li><kbd>Space</kbd> / click / tap: toss, then swing</li>
+            <li>Slick ice slides farther, seals, walruses and snowmen bounce it back up, holes and snowbanks stop it cold</li>
+          </ul>
+          <div class="ff-row">
+            <button class="ff-btn primary" id="startBtn" type="button">Start a five-fish round</button>
+          </div>
+          <div class="ff-row ff-look" role="group" aria-label="Colours">
+            <button class="ff-btn ghost" id="lookOriginal" type="button" aria-pressed="true">Original</button>
+            <button class="ff-btn ghost" id="lookWics" type="button" aria-pressed="false">WICS</button>
+          </div>
+          <div class="ff-scores" id="localScores"></div>
+        </div>
+      </section>
+
+      <section class="ff-overlay" id="endCard" hidden aria-labelledby="endHeading">
+        <div class="ff-card">
+          <p class="ff-kicker">Round complete</p>
+          <h2 id="endHeading">Nice flinging</h2>
+          <div class="ff-stats" id="endStats"></div>
+          <div class="ff-shotlist" id="shotList"></div>
+          <div class="ff-row"><button class="ff-btn primary" id="againBtn" type="button">Another round</button></div>
+          <div class="ff-scores" id="endScores"></div>
+        </div>
+      </section>
+
+      <div class="ff-loading" id="loading" role="status">Setting up the glacier…</div>
+      <p class="sr-only" id="live" aria-live="polite"></p>
+    </div>
+    <script vite-ignore src="module-scores.js"></script>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

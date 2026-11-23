@@ -40,7 +40,7 @@ const defaultAssignments: Partial<Record<ModuleId, string[]>> = {
   sandlot3d: ['sports'], sandlot: ['sports'], fairway: ['sports'], darts: ['sports'], bushleague: ['sports'], proskater: ['sports'], pingpong: ['sports'], pool: ['sports'],
   shorttrack: ['racing'], racing: ['racing'], oval: ['racing'], demoderby: ['racing'], botwreck: ['racing'], county: ['racing', 'worlds'],
   maplestreet: ['worlds'], trucksim: ['worlds'], bridge: ['worlds', 'puzzles'], foxlake: ['worlds', 'outdoors'], hood: ['worlds'], park: ['worlds', 'business'], park2: ['worlds', 'business'],
-  angler: ['outdoors'], rackreel: ['outdoors'], gonefishing: ['arcade', 'outdoors'],
+  angler: ['outdoors'], rackreel: ['outdoors'], floefling: ['arcade', 'outdoors'],
   cookies: ['business'], hotdog: ['business'],
   chess: ['puzzles'], checkers: ['puzzles'], '2048': ['puzzles'], tetradrop: ['puzzles'], sudoku: ['puzzles'], minesweeper: ['puzzles'], recall: ['puzzles'], greible: ['puzzles'], bubbles: ['puzzles'],
   sunvault: ['arcade'], beanstalk: ['arcade'], modollaz: ['arcade'],

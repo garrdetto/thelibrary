@@ -1,0 +1,107 @@
+:root {
+  --ff-ink: #13263a;
+  --ff-panel: rgba(255, 255, 255, 0.86);
+  --ff-line: rgba(19, 38, 58, 0.14);
+  --ff-accent: #ff7a3d;
+  --ff-accent-ink: #ffffff;
+  --ff-cool: #2a6fb0;
+  --ff-shadow: 0 10px 30px rgba(10, 30, 60, 0.18);
+}
+:root[data-look='wics'] {
+  --ff-ink: #13203a;
+  --ff-accent: #0594d0;
+  --ff-cool: #1e3a6e;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #cfe6f8; color: var(--ff-ink); font: 600 15px/1.4 'TL Fox Dollar', 'Nunito', system-ui, sans-serif; }
+.ff { position: relative; width: 100%; height: 100%; user-select: none; -webkit-user-select: none; }
+#stage { display: block; width: 100%; height: 100%; touch-action: none; outline: none; cursor: pointer; }
+#stage:focus-visible { box-shadow: inset 0 0 0 3px var(--ff-accent); }
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.ff-top { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; pointer-events: none; }
+.ff-right { display: flex; gap: 8px; margin-right: 190px; }
+.ff-chip { background: var(--ff-panel); border: 1px solid var(--ff-line); border-radius: 12px; padding: 6px 12px; box-shadow: var(--ff-shadow); min-width: 84px; }
+.ff-chip span { display: block; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.7; }
+.ff-chip b { font: 800 20px/1.1 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.ff-pips { display: flex; gap: 4px; margin-top: 4px; }
+.ff-pips i { width: 10px; height: 10px; border-radius: 50%; background: rgba(19, 38, 58, 0.15); }
+.ff-pips i.done { background: var(--ff-cool); }
+.ff-pips i.now { background: var(--ff-accent); }
+.ff-distance { position: absolute; left: 50%; transform: translateX(-50%); text-align: center; color: #ffffff; text-shadow: 0 2px 0 rgba(10, 30, 60, 0.35), 0 0 18px rgba(10, 30, 60, 0.25); }
+.ff-distance b { font: 800 56px/1 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.ff-distance small { font: 800 24px 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; margin-left: 4px; }
+.ff-distance span { display: block; font-weight: 800; font-size: 15px; letter-spacing: 1px; }
+
+.ff-tools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.ff-icon { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--ff-line); background: var(--ff-panel); box-shadow: var(--ff-shadow); font-size: 18px; cursor: pointer; color: var(--ff-ink); }
+.ff-icon:hover { background: #ffffff; }
+.ff-icon:focus-visible, .ff-btn:focus-visible { outline: 3px solid var(--ff-accent); outline-offset: 2px; }
+.ff-icon[aria-pressed='false'] { opacity: 0.55; }
+
+.ff-gauge { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.ff-gauge span { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #ffffff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.ff-gauge-track { position: relative; width: 22px; height: 220px; border-radius: 12px; background: rgba(19, 38, 58, 0.35); border: 2px solid rgba(255, 255, 255, 0.85); overflow: hidden; }
+.ff-zone { position: absolute; left: 0; right: 0; bottom: var(--zone-bottom, 0%); height: var(--zone-height, 50%); background: rgba(255, 255, 255, 0.35); }
+.ff-sweet { position: absolute; left: 0; right: 0; bottom: var(--sweet-bottom, 20%); height: var(--sweet-height, 10%); background: var(--ff-accent); }
+.ff-fish { position: absolute; left: -2px; right: -2px; height: 6px; bottom: var(--fish, 0%); margin-bottom: -3px; background: #ffffff; border-radius: 3px; box-shadow: 0 0 0 2px var(--ff-ink); }
+
+.ff-wind { position: absolute; left: 10px; bottom: 12px; background: var(--ff-panel); border: 1px solid var(--ff-line); border-radius: 12px; padding: 6px 12px; box-shadow: var(--ff-shadow); }
+.ff-wind span { display: block; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.7; }
+.ff-wind b { font: 800 18px 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; }
+
+.ff-callout { position: absolute; left: 50%; top: 32%; transform: translate(-50%, -50%) scale(0.6); opacity: 0; font: 800 64px/1 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; color: #ffffff; text-align: center; white-space: nowrap; pointer-events: none; text-shadow: 0 4px 0 var(--ff-accent), 0 8px 20px rgba(10, 30, 60, 0.35); transition: transform 0.25s cubic-bezier(.2, 1.6, .4, 1), opacity 0.2s; }
+.ff-callout.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.ff-callout small { display: block; font-size: 20px; text-shadow: 0 2px 0 rgba(10, 30, 60, 0.4); margin-top: 6px; }
+.ff-readout { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); background: var(--ff-panel); border: 1px solid var(--ff-line); border-radius: 999px; padding: 6px 16px; box-shadow: var(--ff-shadow); font-weight: 800; white-space: nowrap; }
+.ff-prompt { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--ff-ink); color: #ffffff; border-radius: 999px; padding: 8px 18px; font-weight: 800; white-space: nowrap; box-shadow: var(--ff-shadow); }
+.ff-prompt kbd, .ff-keys kbd { font: 800 12px 'TL Fox Dollar', 'Nunito', system-ui, sans-serif; border: 1px solid currentColor; border-radius: 6px; padding: 1px 6px; }
+
+.ff-badge { position: absolute; right: 10px; bottom: 10px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #ffffff; background: rgba(19, 38, 58, 0.45); border-radius: 999px; padding: 3px 10px; pointer-events: none; }
+.ff-badge.webgpu::before { content: '● '; color: #7dff9a; }
+.ff-badge.webgl2::before { content: '● '; color: #ffd36b; }
+
+.ff-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(180deg, rgba(19, 38, 58, 0.15), rgba(19, 38, 58, 0.55)); overflow: auto; }
+.ff-card { width: min(560px, 100%); background: rgba(255, 255, 255, 0.95); border-radius: 22px; padding: 22px 24px; box-shadow: 0 24px 60px rgba(10, 30, 60, 0.35); text-align: center; }
+.ff-kicker { margin: 0; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--ff-cool); font-weight: 800; }
+.ff-card h1, .ff-card h2 { margin: 2px 0 8px; font: 800 52px/1 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; color: var(--ff-ink); }
+.ff-card h2 { font-size: 40px; }
+.ff-lede { margin: 0 0 10px; font-weight: 600; }
+.ff-keys { list-style: none; padding: 0; margin: 0 0 14px; font-size: 13px; opacity: 0.85; display: grid; gap: 4px; }
+.ff-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+.ff-btn { border: 0; border-radius: 14px; padding: 12px 20px; font: 800 17px 'TL Fox Dollar', 'Nunito', system-ui, sans-serif; cursor: pointer; }
+.ff-btn.primary { background: var(--ff-accent); color: var(--ff-accent-ink); box-shadow: 0 6px 0 rgba(0, 0, 0, 0.18); }
+.ff-btn.primary:active { transform: translateY(3px); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.18); }
+.ff-btn.ghost { background: transparent; border: 2px solid var(--ff-line); color: var(--ff-ink); padding: 6px 14px; font-size: 14px; }
+.ff-btn.ghost[aria-pressed='true'] { background: var(--ff-cool); border-color: var(--ff-cool); color: #ffffff; }
+.ff-stats { display: flex; justify-content: center; gap: 22px; margin: 6px 0 10px; }
+.ff-stats div span { display: block; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.7; }
+.ff-stats div b { font: 800 30px 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; }
+.ff-shotlist { display: grid; gap: 4px; margin: 0 auto 8px; max-width: 360px; font-size: 14px; }
+.ff-shotlist div { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--ff-line); padding: 2px 0; }
+.ff-shotlist .top b { color: var(--ff-accent); }
+.ff-scores { margin-top: 10px; font-size: 13px; }
+.ff-scores h3 { margin: 0 0 4px; font: 800 14px 'TL Fox Dollar', 'Nunito', system-ui, sans-serif; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ff-cool); }
+.ff-scores ol { margin: 0 auto; padding: 0; list-style: none; max-width: 320px; display: grid; gap: 2px; counter-reset: rank; }
+.ff-scores li { display: flex; justify-content: space-between; counter-increment: rank; }
+.ff-scores li::before { content: counter(rank) '.'; width: 22px; text-align: left; opacity: 0.6; }
+.ff-scores li span { flex: 1; text-align: left; opacity: 0.7; }
+.ff-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 800 22px 'TL Fox Dollar', 'Baloo 2', system-ui, sans-serif; background: #cfe6f8; }
+.ff-loading.error { color: #b3261e; padding: 20px; text-align: center; }
+
+@media (max-width: 720px) {
+  .ff-right { margin-right: 0; margin-top: 50px; flex-direction: column; gap: 6px; }
+  .ff-chip { min-width: 70px; padding: 4px 10px; }
+  .ff-chip b { font-size: 16px; }
+  .ff-distance { top: 50px; }
+  .ff-distance b { font-size: 40px; }
+  .ff-gauge-track { height: 150px; width: 18px; }
+  .ff-callout { font-size: 42px; }
+  .ff-card h1 { font-size: 40px; }
+  .ff-card { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ff-callout { transition: opacity 0.2s; transform: translate(-50%, -50%); }
+  .ff-callout.show { transform: translate(-50%, -50%); }
+}

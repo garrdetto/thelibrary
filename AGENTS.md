@@ -38,6 +38,7 @@ This file loads into every session, so it holds only what applies everywhere. De
 | Kestrel County | `modules-src/county/` | `docs/agents/modules/county.md` |
 | Pro Skater AI | `modules-src/proskater/` | `docs/agents/modules/proskater.md` |
 | Bridge Builder | `modules-src/bridge/` | `docs/agents/modules/bridge.md` |
+| Floe Fling | `modules-src/floefling/` | `docs/agents/modules/floefling.md` |
 | Truck Simulator | `modules-src/trucksim/`, `src/server/routes/trucksim.ts` | `docs/agents/modules/trucksim.md` |
 | Sun Vault, Beanstalk Bounty, Mo' Dollaz | `modules-src/sunvault/`, `beanstalk/`, `modollaz/` | `docs/agents/modules/slots.md` |
 
