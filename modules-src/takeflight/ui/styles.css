@@ -323,7 +323,42 @@
 .tf-replay-track { flex: 1; min-width: 80px; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden; }
 .tf-replay-track i { display: block; height: 100%; width: 0; background: var(--tf-accent); }
 
+.tf-career { display: grid; gap: 8px; margin: 0 0 6px; padding: 12px; background: #151b23; border-radius: 10px; }
+.tf-career-head { display: flex; gap: 12px; align-items: center; }
+.tf-career-head strong { display: block; }
+.tf-level { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; background: rgba(92, 200, 255, 0.14); color: var(--tf-accent); text-align: center; }
+.tf-level b { font: 800 22px/1 'TL Fox Dollar', 'Barlow Condensed', 'Arial Narrow', sans-serif; }
+.tf-level span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; }
+.tf-xp { display: grid; gap: 4px; }
+.tf-career-stats { display: grid; grid-template-columns: repeat(4, auto 1fr); gap: 4px 10px; margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tf-career-stats dt { color: var(--tf-muted); }
+.tf-career-stats dd { margin: 0; font-weight: 700; }
+.tf-good { color: var(--tf-good); }
+.tf-career + .tf-row { margin: 0 0 12px; }
+
+.tf-card.tf-checkrides { width: min(680px, 100%); margin: 2vh 0; }
+.tf-ride-list { display: grid; gap: 8px; }
+.tf-ride { padding: 12px; background: #151b23; border-radius: 10px; border: 1px solid transparent; }
+.tf-ride.ready { border-color: var(--tf-accent); }
+.tf-ride.held { border-color: rgba(69, 196, 111, 0.5); }
+.tf-ride h3 { margin: 0 0 4px; font-size: 15px; }
+.tf-ride h3 small { color: var(--tf-muted); font-weight: 500; }
+.tf-ride p { margin: 0 0 6px; font-size: 13px; }
+.tf-criteria, .tf-reasons { margin: 0 0 8px; padding-left: 18px; font-size: 12px; color: var(--tf-muted); display: grid; gap: 2px; }
+.tf-reasons { color: var(--tf-warn); }
+.tf-criteria.result { list-style: none; padding-left: 0; color: var(--tf-text); font-size: 13px; }
+.tf-criteria.result li::before { display: inline-block; width: 18px; font-weight: 800; }
+.tf-criteria.result li.ok::before { content: '✓'; color: var(--tf-good); }
+.tf-criteria.result li.no::before { content: '✗'; color: var(--tf-bad); }
+
+.tf-outcome p { margin: 0 0 6px; color: var(--tf-text); }
+.tf-outcome-xp b { color: var(--tf-accent); font-size: 18px; }
+.tf-ride-result { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #151b23; border-left: 3px solid var(--tf-bad); }
+.tf-ride-result.pass { border-left-color: var(--tf-good); }
+.tf-ride-result h4 { margin: 0 0 6px; font-size: 14px; }
+
 @media (max-width: 640px) {
+  .tf-career-stats { grid-template-columns: auto 1fr auto 1fr; }
   .tf-facts { grid-template-columns: auto 1fr auto 1fr; }
   .tf-category summary { grid-template-columns: 110px 1fr 56px; }
   .tf-debrief-head { flex-direction: column; align-items: flex-start; }
