@@ -282,6 +282,12 @@ test('Main Street has a concrete wall along the river, level with the street, wi
   assert.ok(runs.length >= 1, 'the wall is there')
   const run = runs[0]
   assert.ok(run.y.length * 2 >= 80, `the wall runs ${run.y.length * 2} m`)
+  const zs = run.pts.filter((_v, k) => k % 2 === 1)
+  assert.ok(Math.min(...zs) < -305, `the wall reaches south past the drop-off (to ${Math.min(...zs).toFixed(0)})`)
+  for (let i = 1; i + 1 < run.y.length; i++) {
+    assert.ok(Math.abs(run.y[i - 1] - 2 * run.y[i] + run.y[i + 1]) < 0.001, `the wall's grade is one straight line (station ${i})`)
+  }
+  assert.ok(Math.abs(run.y[0] - run.y[run.y.length - 1]) < 0.25, 'end to end it is all but level')
   for (let i = 0; i < run.y.length; i++) {
     const x = run.pts[i * 2], z = run.pts[i * 2 + 1]
     const centre = land.heightAt(x, z)
