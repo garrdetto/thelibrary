@@ -43,7 +43,6 @@
     "@webgpu/types": "0.1.69",
     "babylonjs-gltf2interface": "9.34.0",
     "cannon-es": "0.20.0",
-    "colyseus.js": "0.15.28",
     "esbuild": "0.28.2",
     "lucide-react": "0.576.0",
     "matter-js": "^0.20.0",

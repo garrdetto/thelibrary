@@ -1,7 +1,4 @@
-import { ExternalLink } from 'lucide-react'
 import type { AssetStatus } from '../../../modules-src/maplestreet/shared/Assets'
-
-export const DEV_INSTANCE_URL = '/modules/maplestreet.html?dev=1'
 
 const LABEL: Record<AssetStatus, string> = { draft: 'Draft', published: 'Live', retired: 'Retired' }
 
@@ -19,14 +16,11 @@ export function AssetStatusBadge({ status }: { status: AssetStatus }) {
 }
 
 export function AssetStatusActions({ status, onChange }: { status: AssetStatus; onChange: (next: AssetStatus) => void }) {
-  if (status === 'draft') return <>
-    <a href={DEV_INSTANCE_URL} target="_blank" rel="noopener">Try in game <ExternalLink size={12} aria-hidden/></a>
-    <button type="button" onClick={() => onChange('published')}>Publish</button>
-  </>
+  if (status === 'draft') return <button type="button" onClick={() => onChange('published')}>Publish</button>
   if (status === 'published') return <button type="button" onClick={() => onChange('retired')}>Retire</button>
   return <button type="button" onClick={() => onChange('published')}>Restore</button>
 }
 
-export function DevInstanceNote() {
-  return <p className="ms-items-note">Drafts are visible only to you, in the <a href={DEV_INSTANCE_URL} target="_blank" rel="noopener">developer instance</a> of Fox Plains: a private solo game where you can place, buy and drive them before publishing.</p>
+export function DraftsNote() {
+  return <p className="ms-items-note">Drafts are visible only to you, here in the editor. Publish one to put it in Life Sim.</p>
 }

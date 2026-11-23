@@ -25,7 +25,7 @@ This file loads into every session, so it holds only what applies everywhere. De
 | Lens Creator | `src/components/LensCreator.tsx`, `src/lib/lens-*.ts` | `docs/agents/lens.md` |
 | Life Sim and the Montello builder | `modules-src/foxlake/`, `modules-src/tello/`, `src/components/world/` | `docs/agents/modules/lifesim.md` |
 | Rack & Reel | `modules-src/rackreel/` | `docs/agents/modules/rackreel.md` |
-| Fox Plains (classic) | `modules-src/maplestreet/` | `docs/agents/modules/maplestreet.md` |
+| Fox Plains shared code (game retired; used by Life Sim and the admin editors) | `modules-src/maplestreet/` | `docs/agents/modules/maplestreet.md` |
 | Thrill Park and Thrill Park 2 | `server/park/`, `src/lib/park/`, `src/lib/park2/` | `docs/agents/modules/park.md` |
 | Short Track Showdown | `modules-src/shorttrack/` | `docs/agents/modules/shorttrack.md` |
 | Darts | `modules-src/darts/` | `docs/agents/modules/darts.md` |
@@ -60,7 +60,7 @@ The 3D code index is `docs/ENGINE-MAP.md`; the shared 3D engine is `engine/`.
 ## Learning modules
 
 - Site-facing copy calls everything "Learning Modules" on a site named "the library" (always lowercase). Never use the words game(s), gaming or entertainment in visible text, titles or metadata.
-- Engines (three.js 0.186.1, Babylon.js 9.34.0, PlayCanvas 2.23.3, Rapier, PeerJS, colyseus.js, cannon-es) are pinned in `package.json` and bundled; never load them from a CDN. Import Babylon.js by path (`@babylonjs/core/Engines/engine` and so on), never from the package root.
+- Engines (three.js 0.186.1, Babylon.js 9.34.0, PlayCanvas 2.23.3, Rapier, PeerJS, cannon-es) are pinned in `package.json` and bundled; never load them from a CDN. Import Babylon.js by path (`@babylonjs/core/Engines/engine` and so on), never from the package root.
 - Module pages are built from `modules-src/<id>/` into `public/modules/` by `vite.modules.ts` (generated files are git-ignored). Models in `assets-src/models/` are optimized into the committed `public/models/` by `pnpm assets`: after changing a source model, run it and commit `public/models/` too (CI's `pnpm assets:check` fails otherwise); never hand-edit `public/models/`.
 - Keep each module's rules in its renderer-free, deterministic `shared/` or `sim/` code where it has one, because Durable Objects and tests run it too.
 - Every module is embedded in an iframe at `#module-<id>`; the catalog is `src/lib/modules.ts`.

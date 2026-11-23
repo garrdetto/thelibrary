@@ -46,8 +46,8 @@ const navigation = [
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
   { id: 'voice', label: 'Voice generator', icon: AudioLines },
 ] as const
-const moduleIcons: Record<ModuleId, typeof Trophy> = { arena: Target, park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxlake: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers, greible: SpellCheck, sunvault: Coins, beanstalk: Sprout, modollaz: Banknote, bridge: Construction, trucksim: Truck }
-const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { arena: 'room', sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxlake: 'room', fairway: 'room', party: 'room', angler: 'room', rackreel: 'room', pingpong: 'room', darts: 'room' }
+const moduleIcons: Record<ModuleId, typeof Trophy> = { arena: Target, park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, foxlake: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers, greible: SpellCheck, sunvault: Coins, beanstalk: Sprout, modollaz: Banknote, bridge: Construction, trucksim: Truck }
+const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { arena: 'room', sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', foxlake: 'room', fairway: 'room', party: 'room', angler: 'room', rackreel: 'room', pingpong: 'room', darts: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
 type StudioView = StudioMode | 'voice'
@@ -78,7 +78,6 @@ function Studio() {
   const [access, setAccess] = useState<{ username: string | null; isAdmin: boolean; pages: string[]; radar?: boolean; settings: { theme?: string } }>({ username: null, isAdmin: false, pages: [], settings: {} })
   const [accountReady, setAccountReady] = useState(false)
   const [playRoom, setPlayRoom] = useState<string | null>(null)
-  const [devPlay, setDevPlay] = useState(false)
   const playFrame = useRef<HTMLIFrameElement>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -137,7 +136,7 @@ function Studio() {
     if (window.location.hash === '#park') setView('park')
     if (window.location.hash === '#park2') setView('park2')
     if (window.location.hash === '#lens') setView('lens')
-    const playHash = window.location.hash.replace(/^#module-/, '').replace(/^(foxplains2|tello)$/, 'foxlake')
+    const playHash = window.location.hash.replace(/^#module-/, '').replace(/^(maplestreet|foxplains2|tello)$/, 'foxlake')
     if (window.location.hash.startsWith('#module-') && isPlayId(playHash)) setView(playHash)
   }, [])
 
@@ -241,7 +240,6 @@ function Studio() {
     if (lobby.match && next !== 'pool') lobby.leave()
     setSelection(null)
     setPlayRoom(null)
-    setDevPlay(false)
     setView(next)
     window.history.replaceState(null, '', access.isAdmin && studioViews.includes(next) ? `#admin/${next}` : next === 'racing' ? '#racing' : next === 'oval' ? '#oval' : next === 'park' ? '#park' : next === 'park2' ? '#park2' : next === 'lens' ? '#lens' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
     setCurrent(null)
@@ -460,12 +458,9 @@ function Studio() {
   }
 
   const activePlay = playLinks.find(item => item.id === view)
-  const devPlayActive = devPlay && access.isAdmin && activePlay?.id === 'maplestreet'
   const mobileFull = useMobileFullPlay(activePlay?.id, playFrame)
-  const playSrc = activePlay ? `${activePlay.src}?${new URLSearchParams({ ...(access.username ? { name: access.username } : {}), ...(devPlayActive ? { dev: '1', solo: '1', panel: '1' } : playRoom ? { room: playRoom } : {}) })}`.replace(/\?$/, '') : ''
+  const playSrc = activePlay ? `${activePlay.src}?${new URLSearchParams({ ...(access.username ? { name: access.username } : {}), ...(playRoom ? { room: playRoom } : {}) })}`.replace(/\?$/, '') : ''
   function openDevPanel() {
-    if (activePlay?.id === 'foxlake') { playFrame.current?.contentWindow?.postMessage({ type: 'tl-dev-panel' }, window.location.origin); return }
-    if (!devPlayActive) { setDevPlay(true); return }
     playFrame.current?.contentWindow?.postMessage({ type: 'tl-dev-panel' }, window.location.origin)
   }
   const studioView = view === 'chat' || view === 'image' || view === 'lyrics' || view === 'voice'
@@ -509,7 +504,7 @@ function Studio() {
 
         {view === 'home' && access.username && <ScoreNotices username={access.username} onOpen={id => switchView(id)}/>}
         {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
-        {activePlay && <section className={`play-frame${mobileFull.full ? ' is-mobile-full' : ''}`} aria-label={activePlay.label}>{mobileFull.full && !mobileFull.ack && <button type="button" className="play-full-exit" onClick={mobileFull.exit} aria-label="Exit full screen"><Minimize2 size={18}/></button>}<div className="play-frame-bar"><button type="button" className="play-frame-menu" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu size={18}/></button><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}{access.isAdmin && activePlay.id === 'foxlake' && <button type="button" className="play-dev-button" onClick={openDevPanel} title="Opens Life Sim's developer panel (F8 inside the world does the same)"><Wrench size={14}/> Developer Panel</button>}{mobileFull.available && !mobileFull.full && <button type="button" className="play-dev-button" onClick={mobileFull.enter}><Maximize2 size={14}/> Full screen</button>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener" aria-label="Open full screen in a new tab"><ExternalLink size={14} aria-hidden="true"/><span className="play-frame-open-label">Open full screen</span></a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
+        {activePlay && <section className={`play-frame${mobileFull.full ? ' is-mobile-full' : ''}`} aria-label={activePlay.label}>{mobileFull.full && !mobileFull.ack && <button type="button" className="play-full-exit" onClick={mobileFull.exit} aria-label="Exit full screen"><Minimize2 size={18}/></button>}<div className="play-frame-bar"><button type="button" className="play-frame-menu" aria-label="Open navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu size={18}/></button><strong>{activePlay.label}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'foxlake' && <button type="button" className="play-dev-button" onClick={openDevPanel} title="Opens Life Sim's developer panel (F8 inside the world does the same)"><Wrench size={14}/> Developer Panel</button>}{mobileFull.available && !mobileFull.full && <button type="button" className="play-dev-button" onClick={mobileFull.enter}><Maximize2 size={14}/> Full screen</button>}<a href={activePlay.src} target="_blank" rel="noopener" aria-label="Open full screen in a new tab"><ExternalLink size={14} aria-hidden="true"/><span className="play-frame-open-label">Open full screen</span></a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison-v2" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks} archive={shortTrackArchive}/>}
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
         {activePlay?.id === 'rackreel' && <RackReelRecordBoard/>}

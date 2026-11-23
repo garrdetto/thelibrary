@@ -3,18 +3,14 @@ import type { Env } from '../env'
 import { HttpError, json } from '../http'
 import { currentUser } from '../auth'
 
-const WORLD_NAME = 'maple-street'
 export const FOX_LAKE_WORLD_NAME = 'fox-lake'
 const guestParams = z.object({ guest: z.string().regex(/^[A-Za-z0-9]{12,64}$/), name: z.string().max(64).optional() })
 
-/** Classic Fox Plains' world, or Fox Lake's own (`?world=foxlake`): same rules, separate players, lots and money. */
+/** Life Sim's shared world (`?world=foxlake`); the retired Fox Plains world is no longer served. */
 function worldStub(env: Env, world: string | null) {
-  if (world === 'foxlake') {
-    if (!env.FOX_LAKE_WORLD) throw new HttpError(503, 'Life Sim online is not available right now.')
-    return env.FOX_LAKE_WORLD.get(env.FOX_LAKE_WORLD.idFromName(FOX_LAKE_WORLD_NAME))
-  }
-  if (!env.MAPLE_WORLD) throw new HttpError(503, 'Fox Plains online is not available right now.')
-  return env.MAPLE_WORLD.get(env.MAPLE_WORLD.idFromName(WORLD_NAME))
+  if (world !== 'foxlake') throw new HttpError(404, 'This world is no longer available.')
+  if (!env.FOX_LAKE_WORLD) throw new HttpError(503, 'Life Sim online is not available right now.')
+  return env.FOX_LAKE_WORLD.get(env.FOX_LAKE_WORLD.idFromName(FOX_LAKE_WORLD_NAME))
 }
 
 export async function maplestreet(request: Request, env: Env) {

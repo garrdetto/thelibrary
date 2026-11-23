@@ -57,7 +57,7 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
   const pending = <span className="adm-skeleton" aria-label="Loading"/>
   const failed = <span className="adm-muted">Unavailable</span>
   const assetValue = (counts: Counts | null | 'error') => counts === 'error' ? failed : counts ? counts.published : pending
-  const assetDetail = (counts: Counts | null | 'error', noun: string) => counts && counts !== 'error' ? `${counts.drafts} draft${counts.drafts === 1 ? '' : 's'} waiting · published ${noun} appear in the shared town` : ' '
+  const assetDetail = (counts: Counts | null | 'error', noun: string) => counts && counts !== 'error' ? `${counts.drafts} draft${counts.drafts === 1 ? '' : 's'} waiting · published ${noun} appear in Life Sim` : ' '
 
   return <div className="adm-overview">
     <div className="adm-stats">
@@ -65,7 +65,7 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
         detail={<>Featured: <b>{arranged.featured.title}</b>{layout.hidden.length ? ` · ${layout.hidden.length} hidden` : ''}</>} onOpen={() => onOpen('library')} cta="Arrange modules"/>
       <Stat icon={<Users size={18}/>} label="Accounts" value={accounts === 'error' ? failed : people ? people.total : pending}
         detail={people ? `${people.studio} with studio access${people.resets ? ` · ${people.resets} password reset${people.resets === 1 ? '' : 's'} pending` : ''}` : ' '} onOpen={() => onOpen('people')} cta="Manage people"/>
-      <Stat icon={<Package size={18}/>} label="Fox Plains items" value={assetValue(items)} detail={assetDetail(items, 'items')} onOpen={() => onOpen('maplestreet')} cta="Open item editor"/>
+      <Stat icon={<Package size={18}/>} label="Life Sim items" value={assetValue(items)} detail={assetDetail(items, 'items')} onOpen={() => onOpen('maplestreet')} cta="Open item editor"/>
       <Stat icon={<Car size={18}/>} label="Life Sim vehicles" value={assetValue(vehicles)} detail={assetDetail(vehicles, 'vehicles')} onOpen={() => onOpen('vehicles')} cta="Open vehicle editor"/>
       <Stat icon={<FerrisWheel size={18}/>} label="Thrill Park rides" value={assetValue(rides)} detail={rides && rides !== 'error' ? `${rides.drafts} draft${rides.drafts === 1 ? '' : 's'} waiting · published rides appear in every park’s build menu` : ' '} onOpen={() => onOpen('park-rides')} cta="Open ride creator"/>
       <Stat icon={<Flag size={18}/>} label="Short Track race cars" value={assetValue(raceCars)} detail={raceCars && raceCars !== 'error' ? `${raceCars.drafts} draft${raceCars.drafts === 1 ? '' : 's'} waiting · published cars join the Short Track vehicle list` : ' '} onOpen={() => onOpen('shorttrack-cars')} cta="Open car editor"/>
@@ -87,7 +87,6 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
         <button type="button" onClick={() => onOpen('people')}><KeyRound size={16} aria-hidden/> Reset a password</button>
         <button type="button" onClick={() => onOpen('people')}><ShieldCheck size={16} aria-hidden/> Give someone access</button>
         <button type="button" onClick={() => onOpen('music')}><ListMusic size={16} aria-hidden/> Upload music</button>
-        <a href="/modules/maplestreet.html?dev=1" target="_blank" rel="noopener"><Car size={16} aria-hidden/> Open the Fox Plains developer instance</a>
       </div>
     </section>
   </div>

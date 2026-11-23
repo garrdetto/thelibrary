@@ -1,20 +1,20 @@
 import { Component, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { ChevronLeft, ChevronRight, Gauge, Lasso, LoaderCircle, Move3d, Pipette, Plus, RotateCw, Ruler, SquarePen, Upload, WandSparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Lasso, LoaderCircle, Move3d, Pipette, Plus, RotateCw, Ruler, SquarePen, Upload, WandSparkles } from 'lucide-react'
 import type { Object3D } from 'three'
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { BUNDLED_VEHICLES } from '../../../../modules-src/maplestreet/shared/BundledVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
 import { deleteStoreVehicle, fetchStoreVehicleFiles, fetchStoreVehicles, publishStoreVehicle, suggestVehicleParts, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
 import type { AssetStatus } from '@/lib/maplestreet-vehicles'
-import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from '../AssetStatusActions'
+import { AssetStatusActions, AssetStatusBadge, DraftsNote, statusOf, submitStatus } from '../AssetStatusActions'
 import { DeleteAssetButton } from '../DeleteAssetButton'
 import { MeshyPanel } from '../MeshyPanel'
 import type { MeshySourceOption } from '../MeshyPanel'
 import { defaultPart, PART_LABEL, partOf, withPart } from './draft'
 import type { PartKey } from './draft'
-import { DRIVE_TEMPLATES, draftFromRecord, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, QUALITY, REFERENCE_KINDS, REFERENCE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
+import { DRIVE_TEMPLATES, draftFromRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, QUALITY, REFERENCE_KINDS, REFERENCE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
 import { exportScene } from './bodySmooth'
 import { BodySmoothPanel, useBodySmoothing } from './BodySmoothPanel'
 import { SmoothOverlay } from './DentSmoother'
@@ -25,7 +25,6 @@ import { ShapeDesigner } from './ShapeDesigner'
 import { findLampOutline } from './lampDetect'
 import { lampFromOutline } from './lampTrace'
 import { LightsPanel } from './LightsPanel'
-import { TestDrive } from './TestDrive'
 import { useWindows, WindowsPanel } from './WindowsPanel'
 import type { WindowsApi } from './WindowsPanel'
 import { VehicleStage } from './VehicleStage'
@@ -81,8 +80,6 @@ export default function VehicleEditor() {
   const [listError, setListError] = useState<string | null>(null)
   const [listNotice, setListNotice] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [drive, setDrive] = useState<{ record: CustomVehicleRecord; urls: string[] } | null>(null)
-  const [measured, setMeasured] = useState<{ topMph: number; time: number | null } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>('model')
   const [view, setView] = useState<View>('build')
@@ -101,7 +98,7 @@ export default function VehicleEditor() {
   const windows = useWindows(windowsApi, setStatus, bodyChanged)
   const { lasso, setLasso, setSelection, closeLasso } = body
 
-  const patch = useCallback((changes: Partial<Draft>) => { setDraft(current => ({ ...current, ...changes })); setMeasured(null) }, [])
+  const patch = useCallback((changes: Partial<Draft>) => { setDraft(current => ({ ...current, ...changes })) }, [])
 
   const loadVehicles = useCallback(async () => {
     setListError(null)
@@ -109,7 +106,6 @@ export default function VehicleEditor() {
   }, [])
   useEffect(() => { void loadVehicles() }, [loadVehicles])
   useEffect(() => () => { if (url) { useGLTF.clear(url); URL.revokeObjectURL(url) } }, [url])
-  useEffect(() => () => { drive?.urls.forEach(u => URL.revokeObjectURL(u)) }, [drive])
 
   const size = info ? turnedSize(info.raw, draft.yaw) : null
   const length = size ? size.x * draft.scale : 0
@@ -122,7 +118,7 @@ export default function VehicleEditor() {
   const spec = useMemo<CustomVehicleSpec | null>(() => info ? draftSpec(draft, info.raw, info.center) : null, [draft, info])
 
   function openFile(chosen: File, fresh = true) {
-    setStatus(null); setReport(null); setMeasured(null)
+    setStatus(null); setReport(null)
     if (!/\.(glb|gltf)$/i.test(chosen.name)) { setStatus({ tone: 'error', text: 'Choose a .glb or .gltf file.' }); return }
     if (chosen.size > 60 * 1024 * 1024) { setStatus({ tone: 'error', text: 'That file is over 60 MB. Remesh it in Meshy or reduce it before uploading.' }); return }
     fitted.current = false
@@ -158,7 +154,6 @@ export default function VehicleEditor() {
   function refit(template: DriveTemplate, scale?: number, yaw = draft.yaw) {
     if (!info) { setDraft(current => newDraft(template, null, { name: current.name })); return }
     setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, parts: current.parts, lampShapes: current.lampShapes, headOn: current.headOn, tailOn: current.tailOn, maxTriangles: current.maxTriangles, quality: current.quality, ...(template === current.template ? { dealer: current.dealer } : {}) }))
-    setMeasured(null)
   }
 
   function matchSize() {
@@ -180,11 +175,9 @@ export default function VehicleEditor() {
     const perf = templatePerformance(template)
     const base = BUILTIN_TUNING[template]
     setDraft(current => ({ ...current, template, topSpeedMph: perf.topSpeedMph, zeroToSeconds: perf.zeroToSeconds, frictionSlip: base.frictionSlip, maxSteerDeg: Math.round((base.maxSteer * 180) / Math.PI), stiffness: base.suspension.stiffness, mass: Math.round(base.mass * Math.max(0.3, (length || 1) / (BODY_EXTENTS[template].front - BODY_EXTENTS[template].rear))), axles: current.axles.map((a, i) => ({ ...a, steer: base.axles[i]?.steer ?? a.steer, drive: base.axles[i]?.drive ?? a.drive })), hitch: base.hitch ? current.hitch ?? { x: r3(-length / 2 - 0.15), y: base.hitch.y } : null }))
-    setMeasured(null)
   }
 
   const onMarker = useCallback((id: MarkerId, p: { x: number; y: number; z: number }) => {
-    setMeasured(null)
     setDraft(current => {
       const axle = (i: number) => current.axles.map((a, j) => j === i ? { ...a, x: r3(p.x), halfTrack: r3(Math.max(0.2, Math.abs(p.z))) } : a)
       switch (id) {
@@ -230,7 +223,7 @@ export default function VehicleEditor() {
     if (!quiet) setStatus(null)
     try {
       const result = await locateLights(draft)
-      if (result.found.length) { setDraft(current => keepLamps(current, result.draft, result.found)); setMeasured(null) }
+      if (result.found.length) { setDraft(current => keepLamps(current, result.draft, result.found)) }
       const found = listOf(result.found.map(key => LAMP_NAME[key])), missed = listOf(result.missed.map(key => LAMP_NAME[key]))
       if (quiet) { if (result.found.length) setStatus({ tone: 'ok', text: `Found the ${found} on the model and outlined them. Check them in step 3, Lights.` }); return }
       setStatus(result.found.length
@@ -294,7 +287,7 @@ export default function VehicleEditor() {
       const lights = await locateLights(next).catch(() => null)
       if (lights?.found.length) { next = lights.draft; found.push(`outlines of the ${listOf(lights.found.map(key => LAMP_NAME[key]))}`) }
 
-      setDraft(next); setMeasured(null)
+      setDraft(next)
       const list = listOf
       const text = [
         found.length ? `Suggested the ${list(found)}. Drag any marker to fine-tune.` : '',
@@ -341,19 +334,6 @@ export default function VehicleEditor() {
   async function checkSize() {
     setBusy('shrink'); setStatus(null)
     try { await shrink() } catch (error) { setStatus({ tone: 'error', text: (error as Error).message }) } finally { setBusy(null) }
-  }
-
-  async function testDrive() {
-    if (!spec) return
-    setBusy('drive'); setStatus(null)
-    try {
-      const { bytes } = await shrink()
-      const modelUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'model/gltf-binary' }))
-      const wheelUrl = wheelFile ? URL.createObjectURL(wheelFile) : null
-      setDrive({ record: draftRecord(spec, draft.name, modelUrl, wheelUrl), urls: [modelUrl, ...(wheelUrl ? [wheelUrl] : [])] })
-    } catch (error) {
-      setStatus({ tone: 'error', text: (error as Error).message })
-    } finally { setBusy(null) }
   }
 
   async function publish(event: FormEvent) {
@@ -419,7 +399,7 @@ export default function VehicleEditor() {
 
   function startNew() {
     pendingRecord.current = null
-    setEditing(null); setFile(null); setUrl(null); setWheelFile(null); setInfo(null); setReport(null); setMeasured(null); setStatus(null)
+    setEditing(null); setFile(null); setUrl(null); setWheelFile(null); setInfo(null); setReport(null); setStatus(null)
     body.reset(); windows.reset(); bodyChanged()
     fitted.current = false
     setDraft(newDraft('sedan', null)); setReference('sedan'); setStep('model')
@@ -515,7 +495,7 @@ export default function VehicleEditor() {
         </fieldset>}
 
         {step === 'clean' && <>
-          <BodySmoothPanel state={body.panel} disabled={!info} onStartLasso={() => { startDrawing(); windows.setLasso(null) }} savedNote="They’re baked into the model when you test drive, save or publish."/>
+          <BodySmoothPanel state={body.panel} disabled={!info} onStartLasso={() => { startDrawing(); windows.setLasso(null) }} savedNote="They’re baked into the model when you save or publish."/>
           <WindowsPanel state={windows.panel} disabled={!info} onStartLasso={() => { startDrawing(); setLasso(false) }}/>
         </>}
 
@@ -529,8 +509,6 @@ export default function VehicleEditor() {
             <Num label="Top speed" suffix="mph" step={1} min={2} max={LIMITS.topSpeedMphMax} value={draft.topSpeedMph} onChange={topSpeedMph => patch({ topSpeedMph })}/>
             <Num label={`0–${engine.zeroToMph} mph`} suffix="s" step={0.1} min={0.5} max={120} value={draft.zeroToSeconds} onChange={zeroToSeconds => patch({ zeroToSeconds })}/>
           </div>
-          <button type="button" onClick={() => void testDrive()} disabled={!spec || !!busy}>{busy === 'drive' ? <LoaderCircle className="spin" size={14}/> : <Gauge size={14} aria-hidden/>} Test drive</button>
-          {measured && <p className="ms-veh-note" role="status">Test drive measured {measured.topMph} mph and {measured.time == null ? 'never reached' : `${measured.time} s to`} {engine.zeroToMph} mph.</p>}
           <div className="ms-veh-markers" role="group" aria-label="Move a point on the model">
             <Move3d size={14} aria-hidden/>
             {DRIVE_MARKERS.filter(m => m.id !== 'hitch' || draft.hitch).map(marker)}
@@ -606,7 +584,7 @@ export default function VehicleEditor() {
 
         {step === 'publish' && <fieldset>
           <legend>Publish</legend>
-          <p className="ms-veh-note">Vehicles made here are for Life Sim only. Fox Plains never sells them.</p>
+          <p className="ms-veh-note">Vehicles made here are sold at Life Sim’s dealership.</p>
           <label className="ms-veh-inline"><input type="checkbox" checked={draft.dealer.forSale} onChange={event => patch({ dealer: { ...draft.dealer, forSale: event.target.checked } })}/> For sale at Life Sim’s dealership</label>
           <Num label="Price" suffix="$" step={100} min={0} max={LIMITS.priceMax} value={draft.dealer.price} onChange={price => patch({ dealer: { ...draft.dealer, price: Math.round(price) } })}/>
           <div className="ms-veh-choice ms-veh-choice-stack" role="radiogroup" aria-label="Quality">
@@ -654,11 +632,10 @@ export default function VehicleEditor() {
 
     {view === 'meshy' && <MeshyPanel target="vehicle" sources={meshySources} onOpen={onMeshyOpen}/>}
 
-    {drive && <TestDrive record={drive.record} onClose={() => setDrive(null)} onResult={result => setMeasured({ topMph: result.topMph, time: result.time })}/>}
 
     {view === 'library' && <>
-    <p className="adm-help">These are the vehicles published from this creator, including the ones that ship with the game. Everything saved here is for Life Sim only: it is sold at Life Sim’s dealership, never in Fox Plains (Fox Plains keeps its own versions of the built-in vehicles). Change the price and dealer settings here, and tune speed and handling from Life Sim’s developer panel. Retiring takes a vehicle off the dealer lot; players who already own it keep it in their garage. Drafts can always be deleted; a published or retired vehicle can be deleted only while nobody owns one, and built-in vehicles can only be retired.</p>
-    <DevInstanceNote/>
+    <p className="adm-help">These are the vehicles published from this creator, including the ones that ship with the game. Everything saved here is sold at Life Sim’s dealership. Change the price and dealer settings here, and tune speed and handling from Life Sim’s developer panel. Retiring takes a vehicle off the dealer lot; players who already own it keep it in their garage. Drafts can always be deleted; a published or retired vehicle can be deleted only while nobody owns one, and built-in vehicles can only be retired.</p>
+    <DraftsNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadVehicles()}>Retry</button></p>}
     {listNotice && <p role="status" className="ms-items-ok">{listNotice}</p>}
     {vehicles === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading vehicles…</p>}

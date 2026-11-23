@@ -4,13 +4,13 @@ const WORLD_NAME = 'fox-lake'
 
 export type WalletResult = { ok: true; balance: number } | { ok: false; reason: 'refused' | 'unavailable' | 'missing' }
 
-/** Whose Fox Lake money: a signed-in member, or a guest by this browser's Fox Plains guest key. */
+/** Whose Fox Lake money: a signed-in member, or a guest by this browser's world guest key. */
 export type WalletOwner = { member: { id: string; username: string } } | { guest: string }
 
 /**
  * A player's Fox Lake money: the town job pay, the lake country's bounties and shop, and the casino all use the one
- * balance Fox Lake's own world (the `FoxLakeWorld` Durable Object) holds. Classic Fox Plains and standalone Rack &
- * Reel keep their own money. Applies `delta` (0 reads it); a debit that would overdraw is refused, a guest who never
+ * balance Fox Lake's own world (the `FoxLakeWorld` Durable Object) holds. Rack & Reel uses it
+ * too for signed-in players. Applies `delta` (0 reads it); a debit that would overdraw is refused, a guest who never
  * joined the town is `missing`, and `unavailable` means the world could not be reached.
  */
 export async function adjustFoxLakeWallet(env: Env, owner: WalletOwner, delta: number): Promise<WalletResult> {

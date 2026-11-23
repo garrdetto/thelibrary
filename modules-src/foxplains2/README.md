@@ -1,5 +1,5 @@
 # Fox Plains 2 (retired)
 
-Fox Plains 2 was replaced by Fox Lake (`modules-src/foxlake/`, module id `foxlake`); `#module-foxplains2` redirects there. Its Babylon.js town code moved to `modules-src/foxlake/fp/`.
+Fox Plains 2 was replaced by Life Sim (`modules-src/foxlake/`, module id `foxlake`); `#module-foxplains2` redirects there.
 
-`src/` is the earlier PlayCanvas version. It is not built into any page; it stays, unchanged, because Kestrel County (`modules-src/county/`) imports its `MeshBuilder`, physics, avatar, assets and camera classes. Do not edit it.
+`src/` holds only the files Kestrel County (`modules-src/county/`) still imports: its mesh helpers, physics, avatar, assets and camera classes. It is not built into any page. Do not edit it.
