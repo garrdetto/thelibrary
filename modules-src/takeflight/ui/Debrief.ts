@@ -48,6 +48,7 @@ export class Debrief {
   private readonly barLabel: HTMLSpanElement
   private readonly barProgress: HTMLElement
   private readonly speedButton: HTMLButtonElement
+  private careerNode: HTMLElement | null = null
   private recordLine: HTMLElement | null = null
   private recordButton: HTMLButtonElement | null = null
   private recordUrl: string | null = null
@@ -80,7 +81,7 @@ export class Debrief {
     return !this.screen.hidden
   }
 
-  show(score: FlightScore, telemetry: Float32Array, options: { canContinue: boolean; aircraft: string; airport: string }): void {
+  show(score: FlightScore, telemetry: Float32Array, options: { canContinue: boolean; aircraft: string; airport: string; checkride: string | null }): void {
     this.clearRecord()
     const card = this.card
     card.replaceChildren()
@@ -90,9 +91,13 @@ export class Debrief {
     const intro = make('div', 'tf-debrief-intro')
     intro.append(make('h2', '', 'Flight debrief'), make('p', '', `${options.aircraft} · ${options.airport} · ${formatDuration(score.seconds)}`))
     if (score.multiplier < 1) intro.append(make('p', 'tf-muted', `${score.raw.toFixed(1)} before assists, counted ×${score.multiplier.toFixed(2)}`))
+    if (options.checkride) intro.append(make('p', '', options.checkride))
     if (score.crashed) intro.append(make('p', 'tf-bad', `The flight ended in a crash: ${score.crashed}.`))
     head.append(total, intro)
     card.append(head)
+    this.careerNode = make('div', 'tf-career-out')
+    this.careerNode.append(make('p', 'tf-muted', 'Adding the flight to your career…'))
+    card.append(make('h3', '', options.checkride ? 'Checkride and career' : 'Career'), this.careerNode)
 
     if (score.landing) {
       const l = score.landing
@@ -179,6 +184,11 @@ export class Debrief {
     ;(this.card.querySelector('.tf-debrief-actions .tf-btn') as HTMLButtonElement | null)?.focus({ preventScroll: true })
     this.screen.scrollTop = 0
     requestAnimationFrame(() => this.graph?.())
+  }
+
+  /** Fills the career block once the flight has been added to the career. */
+  setCareer(node: HTMLElement): void {
+    this.careerNode?.replaceChildren(node)
   }
 
   setRecord(bytes: Uint8Array | null, raw: number): void {

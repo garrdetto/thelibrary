@@ -4,7 +4,7 @@ Career flight simulator (`modules-src/takeflight/`, module id `takeflight`, page
 
 ## Status
 
-Milestones 1 and 2 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; then per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records. Milestones 3–8 (careers and saves, the 200 km region, more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
+Milestones 1–3 are in: flight model, Wren T4 trainer, Harrow Field, terrain, cameras and dev overlay; per-flight scoring, the debrief, the touchdown graph and replay, and compressed flight records; careers with XP, levels, licences, checkrides, Pilot Rating and saves. Milestones 4–8 (the 200 km region, more aircraft, airlines and ATC, leaderboards with re-simulation, optimisation) are listed in the plan.
 
 **Milestones run back to back (owner, 2026-11-23).** When a milestone's pull request merges, start the next one in the plan without waiting for a prompt, and mark it done in `docs/takeflight/PLAN.md` and here when it merges.
 
@@ -16,6 +16,14 @@ Milestones 1 and 2 are in: flight model, Wren T4 trainer, Harrow Field, terrain,
 - `game/FlightSession.ts` takes a snapshot every 5 s, streams finished minutes to `game/record.worker.ts`, toasts each touchdown, and ends the flight 2.5 s after the aircraft stops on its wheels following a landing (also Pause → End flight, or 2 s after a crash). `game/TouchdownReplay.ts` re-flies 10 s before to 6 s after the touchdown from the nearest snapshot; the camera sits beside the runway (the Camera button swaps to chase; Escape returns to the debrief).
 - Flight records (`shared/FlightRecord.ts`): `TFR1` + raw DEFLATE of framed JSON header, XOR-delta inputs, delta-coded byte-plane telemetry and JSON footer. Bump `RECORD_VERSION` when the layout or anything that changes a re-flown result changes.
 - The sim costs about 20 µs a tick in Node (bundled, unminified), so a replay never re-flies from the start of a long flight; milestone 7 has to measure the Worker's budget against that.
+
+## Careers
+
+- `shared/Career.ts` holds every rule and runs on both sides: `applyFlight(profile, summary, context)` returns the new profile, XP, level change, Pilot Rating change, checkride result and any licence. XP = total × 2 × duration (0.5 + minutes/10, at most 3) × wind (calm 1 → gusty 1.5) × night 1.2, plus a landing bonus; nothing for a crash or under 30 s; at most 2,500 a flight. Level n needs `120 × (n − 1)^1.7` XP (level 100 at about 296,000). The Pilot Rating is the 0.85-decay weighted mean of the last 20 totals per class (three needed), and overall weights classes by hours.
+- Licences: Student → Private → Instrument → Multi-engine → Commercial → Airline Transport. Each `CHECKRIDE_SPECS` entry lists the licences it needs, a level, hours, its class, the flight setup and pass criteria read from the `FlightSummary` (category scores, `category.metric` scores, landing facts, assists, `instrumentsOnly`). Checkrides whose class has no aircraft in `shared/Hangar.ts` stay locked (multi-engine and ATP until a twin and a jet arrive). A checkride flown before the pilot qualifies is recorded as a failed attempt.
+- `shared/Hangar.ts` lists each aircraft's id, family and category for the Worker; `tests/career.test.ts` checks it against the JSON. Add every new aircraft there.
+- Saves: signed in, `/api/takeflight` (`src/server/routes/takeflight.ts`, D1 `takeflight_careers`, migration 0050, table also created on first use) recomputes each flight with `applyFlight`, rejects a flight longer than the time since the last save, and saves only if nobody saved in between. Guests keep the career in browser storage (`takeflight.career.v1`, `game/CareerStore.ts`), as the plan allows. A resumed flight (Keep flying) submits only its extra seconds and replaces its own rating entry.
+- Scores are still the page's numbers; milestone 7 re-flies submitted records on the Worker before leaderboards trust them.
 
 ## Rules that matter
 

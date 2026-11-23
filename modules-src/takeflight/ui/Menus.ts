@@ -9,6 +9,7 @@ import type { AxisAction, KeyAction } from '../input/Bindings'
 import { ACTION_LABELS, AXIS_ACTIONS, BUTTON_ACTIONS, defaultBindings } from '../input/Bindings'
 import type { InputManager } from '../input/InputManager'
 import type { QualityTier } from '../render/Quality'
+import type { CheckrideId } from '../shared/Career'
 import type { StartKind } from '../sim/Starts'
 
 export type { StartKind }
@@ -21,6 +22,8 @@ export interface FlightOptions {
   time: TimeKind
   assists: AssistSettings
   tier: QualityTier
+  /** The checkride being flown, or null for a free flight. */
+  checkride: CheckrideId | null
 }
 
 export interface MenuHandlers {
@@ -30,6 +33,7 @@ export interface MenuHandlers {
   end(): void
   quit(): void
   quality(tier: QualityTier): void
+  checkrides(): void
 }
 
 const START_LABELS: Record<StartKind, string> = {
@@ -81,8 +85,8 @@ export class Menus {
   private readonly multiplierText: HTMLSpanElement
   private returnTo: 'start' | 'pause' = 'start'
 
-  constructor(private readonly parent: HTMLElement, private readonly input: InputManager, private readonly handlers: MenuHandlers, tier: QualityTier, private readonly aircraftName: string) {
-    this.options = { start: 'runway09', wind: 'light', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier }
+  constructor(private readonly parent: HTMLElement, private readonly input: InputManager, private readonly handlers: MenuHandlers, tier: QualityTier, private readonly aircraftName: string, private readonly career: HTMLElement) {
+    this.options = { start: 'runway09', wind: 'light', time: 'noon', assists: { autoTrim: false, stallProtection: false, landingGuidance: true }, tier, checkride: null }
     this.multiplierText = make('span')
     this.start = this.buildStart()
     this.pause = this.buildPause()
@@ -121,7 +125,9 @@ export class Menus {
     }
     const card = make('div', { className: 'tf-card' },
       make('h1', { textContent: 'Take Flight' }),
-      make('p', { textContent: `Student pilot · ${this.aircraftName} at Harrow Field. Learn the controls, fly the pattern and land on the centreline. Every flight is scored on smoothness and skill, with a debrief and touchdown replay when you stop.` }),
+      make('p', { textContent: `${this.aircraftName} at Harrow Field. Every flight is scored on smoothness and skill and earns XP toward your licences; stop after landing for the debrief and touchdown replay.` }),
+      this.career,
+      make('div', { className: 'tf-row' }, button('Licences and checkrides', () => this.handlers.checkrides())),
       choice('Start', START_LABELS, o.start, (v) => (o.start = v)),
       choice('Wind', WIND_LABELS, o.wind, (v) => (o.wind = v)),
       choice('Time of day', TIME_LABELS, o.time, (v) => (o.time = v)),
@@ -130,7 +136,7 @@ export class Menus {
         o.tier = v
         this.handlers.quality(v)
       }),
-      button('Fly', () => this.handlers.fly(this.options), 'tf-btn primary wide'),
+      button('Free flight', () => this.handlers.fly({ ...this.options, checkride: null }), 'tf-btn primary wide'),
       make('div', { className: 'tf-row' }, button('Controls', () => this.showControls('start'))),
       keys,
     )
@@ -265,7 +271,8 @@ export class Menus {
   showStart(): void {
     this.hideAll()
     this.start.hidden = false
-    ;(this.start.querySelector('.tf-btn.primary') as HTMLButtonElement | null)?.focus()
+    ;(this.start.querySelector('.tf-btn.primary') as HTMLButtonElement | null)?.focus({ preventScroll: true })
+    this.start.scrollTop = 0
   }
 
   showPause(): void {
