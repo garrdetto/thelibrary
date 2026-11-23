@@ -525,7 +525,7 @@ export class FlightModel {
       this.tz -= position[1] * thrust
     }
     const lowSpeed = clamp(1 - speed / 70, 0.25, 1)
-    this.ty += engine.torqueYaw * this.thrust * lowSpeed * (0.6 + 0.4 * clamp(alphaDeg / 12, 0, 1))
+    this.ty += engine.torqueYaw * this.thrust * lowSpeed * this.power * (0.6 + 0.4 * clamp(alphaDeg / 12, 0, 1))
     const burn = engine.fuelFlow * engine.count * (0.12 + 0.88 * this.power)
     this.fuelFlow = this.fuel > 0 ? burn : 0
     this.fuel = this.fuel - burn * dt > 0 ? this.fuel - burn * dt : 0

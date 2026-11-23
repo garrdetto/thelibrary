@@ -63,7 +63,8 @@ export class Cockpit {
     if (screen) {
       const texture = new DynamicTexture('takeflight-panel', { width: PANEL_WIDTH, height: PANEL_HEIGHT }, this.scene, true, Texture.TRILINEAR_SAMPLINGMODE)
       texture.anisotropicFilteringLevel = 8
-      texture.wAng = Math.PI
+      texture.wrapV = Texture.WRAP_ADDRESSMODE
+      texture.vScale = -1
       const material = new PBRMaterial('takeflight-panel', this.scene)
       material.albedoTexture = texture
       material.emissiveTexture = texture

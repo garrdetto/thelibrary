@@ -147,7 +147,7 @@ export class TerrainRenderer {
   readonly material: PBRMaterial
   private readonly treeMaterial: PBRMaterial
   private readonly treeTemplate: Mesh
-  private readonly detail: DynamicTexture
+  private readonly detail: DynamicTexture | null
   private readonly tiles = new Map<string, Tile>()
   private readonly visible = new Set<Tile>()
   private readonly wanted: Tile[] = []
@@ -160,7 +160,7 @@ export class TerrainRenderer {
 
   constructor(private readonly scene: Scene, quality: FlightQuality) {
     this.quality = quality
-    this.detail = detailTexture(scene)
+    this.detail = typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined' ? detailTexture(scene) : null
     const material = new PBRMaterial('takeflight-ground', scene)
     material.albedoColor = new Color3(1, 1, 1)
     material.albedoTexture = this.detail
@@ -441,6 +441,6 @@ export class TerrainRenderer {
     this.treeTemplate.dispose()
     this.treeMaterial.dispose()
     this.material.dispose()
-    this.detail.dispose()
+    this.detail?.dispose()
   }
 }
