@@ -559,6 +559,32 @@ An open-world trucking module on a 4 km county with 16 shared player lots (Haule
 - `src/server/routes/trucksim.ts` + `src/server/trucksim.ts` — `/api/trucksim` (see Worker API); `migrations/0049_trucksim.sql` — `trucksim_profiles` and `trucksim_lots`.
 - Contracts: coordinates are metres, Y up, right-handed (`scene.useRightHandedSystem = true`, so Rapier and Babylon share numbers); heading `h` faces `(sin h, 0, cos h)`; a vehicle frame has its origin on the ground under the front axle (trucks) or kingpin (trailers), +Z forward, +X the driver's left, so a positive heading change and a positive steer are left turns. Render code parents everything under the `parent`/`frameRoot` it is given, sim code talks to a `PhysicsHost`, rules read a `HaulWorld`. No custom shaders; Babylon imported by path.
 
+### takeflight — Take Flight (`modules-src/takeflight/`, Babylon.js 9.34 WebGPU with a WebGL2 fallback through Rack & Reel's `createEngine`, own flight model, not on `engine/`; design and decisions in `docs/takeflight/PLAN.md`, rules in `docs/agents/modules/takeflight.md`)
+
+A career flight simulator. Built from `modules-src/takeflight/index.html` + `index.ts` into `public/modules/takeflight.html`; thumbnail `public/images/modules/takeflight.webp`; catalog entry in `src/lib/modules.ts`. Models `public/models/takeflight/wren_lod0..2.glb` and `wren_cockpit.glb` from `assets-src/models/takeflight/`. Tests: `scripts/takeflight-tests.mjs` (in `pnpm test`).
+
+- `sim/SimMath.ts` — bit-exact `sin`, `cos`, `atan`, `atan2`, `asin`, `exp`, `ln`, `pow`, `tanh`, `hash2`, `SimRandom` — every sim and shared file.
+- `sim/Atmosphere.ts` — ISA with temperature offset, indicated altitude and airspeed.
+- `sim/Controls.ts` — `ControlInput`, 12-byte encoding and quantising.
+- `sim/Wind.ts` — `WindField`: steady wind with log profile, seeded gusts and turbulence.
+- `sim/FlightModel.ts` — the aircraft's rigid-body state and `step`: actuators, engine, aerodynamics, stall and spin, ground effect, gear and structure contacts, crashes, touchdown records.
+- `sim/Simulation.ts` — 120 Hz fixed step, interpolation, tick listeners, `stepWith` for replays, `reset`.
+- `sim/Assists.ts` — auto-trim, stall protection, score multiplier. `sim/Trim.ts` — `levelTrim` for starts in the air.
+- `shared/AircraftSpec.ts` — Zod schema for aircraft JSON; `shared/aircraft/wren.json` — Halden Wren T4.
+- `shared/Airports.ts` — airport layouts (Harrow Field), runway frames, `pavementAt`.
+- `shared/Terrain.ts` — seeded terrain with airport flattening, `TERRAIN` ground for the sim, forest and field helpers.
+- `world/AssetManager.ts` — reference-counted glTF containers with an LRU byte budget and the bundled meshopt decoder.
+- `render/Quality.ts` — terrain, tree and gauge settings per tier (sky and post tiers are Truck Simulator's).
+- `render/TerrainRenderer.ts` — quadtree terrain tiles with skirts, vertex colour, detail texture and thin-instanced trees.
+- `render/AirportRenderer.ts` — pavement, geometry markings, lights, PAPI, windsock, hangars, office, tower.
+- `render/AircraftVisual.ts` — LOD swap, control surfaces, prop and disc, wheels, nose steering, lamps.
+- `render/Cockpit.ts` + `render/Instruments.ts` — the interior and its painted six-pack and engine gauges.
+- `game/Cameras.ts` — cockpit, chase and tower views. `game/Standalone.ts` — the page: boot, starts, frame loop, actions.
+- `input/Bindings.ts` + `input/InputManager.ts` — keys, gamepads, yokes and HOTAS with remapping, deadzone and curve.
+- `ui/Hud.ts`, `ui/Menus.ts`, `ui/DevOverlay.ts`, `ui/styles.css` — overlay, screens, performance overlay.
+- `tools/blender/` — `aircraft_kit.py`, `build_wren.py`, `export_aircraft.py` (validator and LOD export). `tools/fly-check.ts`, `tools/approach-check.ts` — quick envelope prints (`npx tsx`).
+- `tests/` — `simmath`, `controls`, `determinism` (bit-identical runs and replay), `flight` (envelope, stall, approach, landing, crash), `terrain`, `memory` (airport 50 load/unload cycles and terrain streaming back to baseline on a `NullEngine`).
+
 ### county — Kestrel County (`modules-src/county/`, PlayCanvas, in `modules.ts` with `public/images/modules/county.webp`)
 A separate 4 × 4 km world (airport and helicopters to come) in a glossy realistic-clipart style. Phase 1 streams the county with graded terrain, a generated road network and a town of houses, with Fox Plains 2's walking and driving imported unchanged; `?lookdev=1` keeps the Phase 0 look-development scene. It imports Fox Plains 2's `MeshBuilder`/`meshEntity`, physics (`Physics`, `Vehicle`, `VehicleModels`, `Character`), `Assets`, `AvatarKits` and `CameraRig`, and Fox Plains' `Input`, `store`, `Wardrobe`, `Economy` and vehicle registry (`CustomVehicles`, `Vehicles`) rather than copying them. Details in `modules-src/county/README.md`.
 - `modules-src/county/index.html`, `index.ts` — page shell with the world HUD, developer panel styles and the look-dev panel — `vite.modules.ts` (→ `public/modules/county.html`).

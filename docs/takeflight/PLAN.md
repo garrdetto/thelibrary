@@ -1,0 +1,28 @@
+# Take Flight — plan and architecture decisions
+
+A career flight simulator: start as a student pilot in a single-engine trainer and earn your way through complex singles and twins, turboprops, business jets, cargo and the airlines. Every flight is scored on smoothness and skill; the score drives licences, aircraft access, contract offers, pay and rank. Built from the owner's build spec (2026-11-22) with the deviations below, which the owner approved.
+
+## Architecture decisions
+
+1. **Location.** `modules-src/takeflight/` (id `takeflight`), not `/games/`: the module build only picks up pages there and every module is embedded at `#module-<id>`. Docs live in `docs/takeflight/` and `docs/agents/modules/takeflight.md`.
+2. **Babylon 9.34.0**, the version the repo pins, not 8.x. WebGPU first with the WebGL2 fallback from Rack & Reel's `createEngine`. Reverse depth buffer for the 5 cm – 100 km range.
+3. **Own aerodynamic model**, no rigid-body physics engine for flight. Coefficient tables against angle of attack, stability and control derivatives with rate damping, stall with loss of roll damping (spins), ground effect, P-factor and propwash, spring-damper gear and structure contacts. 120 Hz fixed step with interpolation.
+4. **Determinism for anti-cheat.** The sim uses its own math (`sim/SimMath.ts`) built only from operations JavaScript defines exactly, and a seeded xorshift generator. Inputs are quantised to bytes, so a flight is its seed, conditions and a 12-byte-per-tick input log, and the Worker can re-fly it to check a submitted score (milestone 7). A 2-hour flight is about 864,000 ticks; the sim runs a tick in a few microseconds, which fits the Worker's CPU limit; this is measured in milestone 7.
+5. **Terrain from a seed.** The region's heights come from deterministic value noise with every airport flattened into it (`shared/Terrain.ts`), not heightmap files: nothing large to ship, the Worker knows the ground for re-simulation, and the renderer and the wheels agree exactly. The renderer is a quadtree of 33 × 33 tiles with skirts, built within a per-frame time budget.
+6. **Blender Python aircraft**, no Meshy unless the owner asks. One exporter validates and writes LOD0–2 and the cockpit in one step; the LOD3 billboard is rendered by the page from LOD2 (milestone 8). KTX2/Basis textures join the asset pipeline in milestone 5, when textured liveries arrive.
+7. **Reuse.** Sky, fog, shadows and the HDR post chain come from Truck Simulator; tiers share its names. TAA and auto exposure arrive in the optimisation milestone.
+8. **No Babylon Inspector bundle.** The full Inspector needs about twenty React and Fluent UI packages; the dev overlay offers wireframe, bounding boxes, resource counts and a scene dump instead.
+9. **Performance targets** are measured on the owner's PC (frame-time overlay and headless probes); the reference RTX 3060 / M1 numbers cannot be measured here.
+10. **Bindings** (keys, gamepad, yoke and HOTAS axes with deadzone and curve) are a per-device convenience kept in browser storage. Careers, ratings and scores go to D1 (milestone 3).
+
+## Milestones
+
+1. **Done.** Engine bootstrap, flight model, Wren T4 trainer, Harrow Field, chase/cockpit/tower cameras, HUD, start/pause/controls screens, dev overlay, Blender pipeline with validator, tests (math, determinism and replay, flight envelope, terrain, airport and terrain load/unload).
+2. Scoring and debrief: per-flight score from 10 Hz telemetry (touchdown sink rate, G, centreline, touchdown zone, bounces, crab; jerk; glidepath and speed holding; procedure; operations), category weights, touchdown replay and graph, tips. Telemetry recording and compression in a worker.
+3. XP, career level 1–100, licences (Student → PPL → Instrument → Multi-engine → Commercial → ATP) with scored checkrides, type ratings, Pilot Rating (recency-weighted per class and overall), saves: D1 when signed in, local for guests.
+4. The 200 × 200 km region: CDLOD terrain with geomorphing and splat detail in a worker, floating origin, all 6–8 airports (grass strip to international hub and a short mountain field), ILS, weather presets and live weather, volumetric clouds, time of day.
+   - Towns and cities (owner's request, 2026-11-22): several airports sit in or beside built-up places. The international hub serves a city with a downtown of skyscrapers (instanced towers with lit windows at night, impostors at distance) that approaches pass over or beside; the regional and mid-size airports sit at the edge of towns with streets, houses and a main street; the cargo hub beside an industrial district. Buildings come from a seeded layout in `shared/` so obstacle heights are known to scoring and the Worker, and stay clear of each runway's approach and departure surfaces.
+5. Turboprops, business jets, cargo aircraft and the cargo career; KTX2 textures and liveries.
+6. Airlines, contracts and ranks (First Officer → Chief Pilot), AI traffic, ATIS and basic ATC.
+7. Leaderboards (career level, Pilot Rating, best landing, per-airport, weekly, hours, per-airline) with server-side re-simulation of submitted flights and rate limits.
+8. Optimisation: zero per-frame allocation audit, TAA, dynamic resolution tuning, the full leak suite (50 load/unload cycles per airport and aircraft, 30-minute scripted route), quality presets, polish.
