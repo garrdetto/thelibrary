@@ -162,6 +162,14 @@ export class Standalone implements TruckHost {
     return lotExtent(spec, land)
   }
 
+  /** The county road under (x, z), or Millbrook (the session tries sites first). */
+  placeName(x: number, z: number): string | null {
+    const town = SITE_BY_ID.town
+    if (town && Math.abs(x - town.x) <= town.w / 2 && Math.abs(z - town.z) <= town.d / 2) return town.name
+    const road = this.terrain.roadAt(x, z)
+    return road && road.distance < road.half + 6 ? road.road.name : null
+  }
+
   spawnPoint(): { x: number; z: number; heading: number } {
     return DEFAULT_SPAWN
   }

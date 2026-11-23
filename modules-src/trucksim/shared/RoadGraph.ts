@@ -351,4 +351,5 @@ export const COUNTY: HaulWorld = {
   site: (id: string) => SITE_BY_ID[id],
   zonesOfKind: (kind: ZoneKind) => ALL_ZONES.filter((zone) => zone.kind === kind),
   routeDistance,
+  route,
 }

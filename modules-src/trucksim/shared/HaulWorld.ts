@@ -4,6 +4,7 @@
  * procedures and pay work the same in both because nothing in `shared/Jobs.ts` or `game/Procedures.ts` reads the county
  * constants directly.
  */
+import type { RoutePath } from './RoadGraph'
 import type { LotSpec, Site, Zone, ZoneKind } from './WorldLayout'
 
 export interface HaulWorld {
@@ -19,4 +20,6 @@ export interface HaulWorld {
   zonesOfKind(kind: ZoneKind): Zone[]
   /** Metres a truck drives from one zone to another on the road network. */
   routeDistance(from: Zone, to: Zone): number
+  /** The drive between two points on this world's roads (the GPS line). */
+  route(fromX: number, fromZ: number, toX: number, toZ: number): RoutePath
 }

@@ -32,4 +32,6 @@ export interface TruckHost {
   toast(text: string, kind?: ToastKind): void
   /** True while a menu or panel has the keyboard; the session ignores driving keys then. */
   paused(): boolean
+  /** The host's own name for where (x, z) is (a road, a town), or null to let the session use the haul world's sites. */
+  placeName?(x: number, z: number): string | null
 }

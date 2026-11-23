@@ -18,7 +18,8 @@ import { applyPublishedTuning, fetchTuning } from './vehicles/TuningClient'
 import { FOX_LAKE_LOOK, FOX_LAKE_SHADOWS, FOX_LAKE_SHADOW_MAP } from './look'
 import { setShadowProxies } from './fp/core/Geo'
 import { loadMap } from '../tello/data/MapData'
-import { WORLD_EDITS_VERSION, WORLD_ID, type WorldEdits } from '../tello/edits/WorldEdits'
+import { WORLD_EDITS_VERSION, WORLD_ID, emptyEdits, type WorldEdits } from '../tello/edits/WorldEdits'
+import { TRUCK_EDIT_PREFIX, truckEdits } from './trucks/TruckEdits'
 import { TelloTerrain } from '../tello/region'
 import type { TelloLand } from '../tello/region'
 import { foxLakeLand } from './lake/Land'
@@ -165,13 +166,19 @@ function startAt(): { x: number; z: number } | null {
   return Number.isFinite(x) && Number.isFinite(z) ? { x, z } : null
 }
 
+/** Truck Simulator's lane, lots and sites go in front of the published edits, so the World Editor can still change them. */
+function withTruckEdits(edits: WorldEdits | null, truck: WorldEdits['ops']): WorldEdits {
+  const base = edits ?? emptyEdits()
+  return { ...base, ops: [...truck, ...base.ops.filter((op) => !op.id.startsWith(TRUCK_EDIT_PREFIX))] }
+}
+
 /**
  * Montello (Tello's map of the real city and the country three miles round it) with the World Editor's edits replayed
  * on it, and where the lake gameplay stands on it.
  */
 async function loadMontello(): Promise<{ land: TelloLand; site: LakeSite }> {
   const [map, edits] = await Promise.all([loadPacked().then((m) => m ?? loadMap(new URL('./tello/', location.href).href)), loadEdits()])
-  const land = foxLakeLand(map.doc, map.grids, edits)
+  const land = foxLakeLand(map.doc, map.grids, withTruckEdits(edits, truckEdits(map.doc, map.grids)))
   if (land.edits?.skipped.length) console.warn(`[foxlake] ${land.edits.skipped.length} world edit(s) skipped`, land.edits.skipped)
   return { land, site: findLakeSite(land) }
 }
