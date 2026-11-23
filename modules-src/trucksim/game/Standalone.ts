@@ -17,7 +17,8 @@ import { LotRenderer } from '../render/Lots'
 import { MaterialLibrary } from '../render/Materials'
 import { buildTruckVisual } from '../render/models/TruckVisual'
 import type { TruckVisual } from '../render/models/TruckVisual'
-import { lowerTier, resolveTier } from '../render/Quality'
+import { lowerTier, resolveTier, saveTier } from '../render/Quality'
+import { SeeThrough } from '../render/SeeThrough'
 import type { QualityTier } from '../render/Quality'
 import { createWorkZones } from '../render/work/WorkZones'
 import { createAtmosphere } from '../render/world/Atmosphere'
@@ -27,8 +28,8 @@ import type { WorldPipeline } from '../render/world/Pipeline'
 import { DEALER_DISPLAY_SPOTS, createSiteLayer, siteStaticBoxes } from '../render/world/Sites'
 import { createWorldRenderer } from '../render/world/WorldRenderer'
 import { truckResale } from '../shared/Actions'
-import { FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, RESALE_SHARE, TRAILER_BY_ID, TRUCKS, TRUCK_BY_ID, defaultLook, lookCost } from '../shared/Catalog'
-import { FUEL_STATION_MARKUP, REPAIR_LABOUR_MARKUP, level } from '../shared/Economy'
+import { FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, RESALE_SHARE, TRAILER_BY_ID, TRUCKS, TRUCK_BY_ID, defaultLook, designLook, lookCost } from '../shared/Catalog'
+import { FUEL_STATION_MARKUP, MAX_TRUCKS, REPAIR_LABOUR_MARKUP, level } from '../shared/Economy'
 import type { Profile } from '../shared/Economy'
 import { generateJobs, jobSlot } from '../shared/Jobs'
 import { hasService } from '../shared/Lots'
@@ -44,12 +45,13 @@ import { Scope } from '../systems/Scope'
 import { Hud } from '../ui/Hud'
 import { openDealer, openFleet, openGarage } from '../ui/Shop'
 import { openHelp, openJobBoard, openMap, openPause, showStart } from '../ui/Panels'
+import { openDevPanel } from '../ui/DevPanel'
 import type { PanelHandle } from '../ui/Panels'
 import { BuildMode } from './BuildMode'
 import { WashMode } from './WashMode'
 import { CameraRig } from './Cameras'
 import type { FollowSubject } from './Cameras'
-import { CountyMap } from './MapDraw'
+import { CountyMap, fullMapToWorld } from './MapDraw'
 import type { MapMarkers } from './MapDraw'
 import { TruckSession } from './TruckSession'
 import type { SessionView, WashPlace } from './TruckSession'
@@ -94,6 +96,10 @@ export class Standalone implements TruckHost {
   private readonly follow: FollowSubject = { x: 0, y: 0, z: 0, heading: 0, span: 10, eye: { x: 0, y: 0, z: 0 }, speed: 0 }
   private readonly highlight = new Set<string>()
   private readonly cameraPos = new Vector3()
+  private readonly lookInput = { yaw: 0, pitch: 0 }
+  private readonly seeThrough = new SeeThrough()
+  private worldRenderer: ReturnType<typeof createWorldRenderer> | null = null
+  private readonly underPoints = [{ x: 0, z: 0 }]
   private dealerVisuals: TruckVisual[] = []
   private guard!: MemoryGuard
   private lastCash = -1
@@ -177,10 +183,11 @@ export class Standalone implements TruckHost {
     this.pipeline = createPipeline(scene, this.cameras.drive, this.tier)
     this.guard = this.scope.track(new MemoryGuard(scene, {}))
     report(0.6, 'Building the sites…')
-    const siteLayer = createSiteLayer(scene, this.mats, this.terrain)
-    const worldRenderer = this.scope.track(createWorldRenderer(scene, this.frameRoot, this.terrain, this.guard, this.tier, [siteLayer], { atmosphere: this.atmosphere }))
+    this.scope.defer(() => this.seeThrough.dispose())
+    const siteLayer = createSiteLayer(scene, this.mats, this.terrain, this.seeThrough)
+    const worldRenderer = this.worldRenderer = this.scope.track(createWorldRenderer(scene, this.frameRoot, this.terrain, this.guard, this.tier, [siteLayer], { atmosphere: this.atmosphere }))
     const workZones = this.scope.track(createWorkZones(scene, this.frameRoot, this.mats, ALL_ZONES, (x, z) => this.terrain.heightAt(x, z)))
-    this.lotsRenderer = this.scope.track(new LotRenderer(scene, this.frameRoot, this.mats, this.terrain))
+    this.lotsRenderer = this.scope.track(new LotRenderer(scene, this.frameRoot, this.mats, this.terrain, this.seeThrough))
     this.hud = this.scope.track(new Hud(this.uiRoot))
     this.session = this.scope.track(new TruckSession(this, {
       openDealer: () => this.openDealerPanel(),
@@ -232,8 +239,17 @@ export class Standalone implements TruckHost {
       })
       const p = this.session.rigPosition()
       this.physics.stream(this.session.excavator ? [p, this.session.excavator.pose().position] : [p], 2)
-      if (this.building === null && this.washing === null) this.cameras.update(dt, this.session.followSubject(this.follow))
+      if (this.building === null && this.washing === null) {
+        const keys = this.keysSource
+        const look = this.panel === null && this.session.controlling === 'truck'
+        this.lookInput.yaw = look ? (keys.down('ArrowLeft') ? 1 : 0) - (keys.down('ArrowRight') ? 1 : 0) : 0
+        this.lookInput.pitch = look ? (keys.down('ArrowUp') ? 1 : 0) - (keys.down('ArrowDown') ? 1 : 0) : 0
+        this.cameras.update(dt, this.session.followSubject(this.follow), this.lookInput)
+      }
       this.washing?.update(dt)
+      this.underPoints[0].x = p.x
+      this.underPoints[0].z = p.z
+      this.seeThrough.update(this.building === null && this.washing === null ? this.underPoints : [], dt)
       const active = this.cameras.active
       this.cameraPos.copyFrom(active.globalPosition)
       worldRenderer.update(this.cameraPos, now)
@@ -358,6 +374,7 @@ export class Standalone implements TruckHost {
     this.markers.rig.heading = p.heading
     this.markers.target = view.target
     this.markers.route = view.route
+    this.markers.waypoint = this.session.waypoint
   }
 
   private updateAudio(view: SessionView): void {
@@ -373,6 +390,7 @@ export class Standalone implements TruckHost {
     this.tier = tier
     this.atmosphere.setQuality(tier)
     this.pipeline?.setTier(tier)
+    this.worldRenderer?.setTier(tier)
   }
 
   private openPanel(open: () => PanelHandle): void {
@@ -391,15 +409,20 @@ export class Standalone implements TruckHost {
     if (!this.started || this.building || this.washing || this.panel) return
     switch (e.code) {
       case 'KeyJ': this.openJobBoardPanel(); break
-      case 'KeyM': this.openPanel(() => openMap(this.uiRoot, { draw: (ctx, w, h) => this.countyMap.drawFull(ctx, w, h, this.markers), onClose: this.closed })); break
+      case 'Escape':
+      case 'KeyM': this.openMapPanel(); break
       case 'KeyO': this.openFleetPanel(); break
       case 'KeyY': this.enterBuildMode(); break
       case 'KeyC': this.cameras.toggleView(); break
       case 'F1': e.preventDefault(); this.openPanel(() => openHelp(this.uiRoot, { onClose: this.closed })); break
       case 'F9': this.session.respawn(); this.hud.toast('Rig brought back to your lot', 'info'); break
-      case 'Escape': this.openPanel(() => openPause(this.uiRoot, {
+      case 'F10': if (this.progress.admin) { e.preventDefault(); this.openDevPanel() } break
+      case 'KeyP': this.openPanel(() => openPause(this.uiRoot, {
         tier: this.tier, volume: this.volume,
-        onTier: (tier) => this.setTier(tier),
+        onTier: (tier) => {
+          saveTier(tier)
+          this.setTier(tier)
+        },
         onVolume: (v) => {
           this.volume = v
           this.audio.setVolume(v)
@@ -408,6 +431,85 @@ export class Standalone implements TruckHost {
       })); break
       default: break
     }
+  }
+
+  private openDevPanel(): void {
+    const progress = this.progress
+    const active = () => progress.profile.trucks.find((t) => t.uid === progress.profile.activeTruck)
+    this.openPanel(() => openDevPanel(this.uiRoot, {
+      sandboxed: progress.sandboxed,
+      tier: this.tier,
+      hours: this.hours,
+      onSandbox: () => {
+        if (progress.enterSandbox()) this.hud.toast('Sandbox on: nothing is saved until you reload', 'info')
+      },
+      onSpawnTruck: async (modelId, designId) => {
+        const model = TRUCK_BY_ID[modelId]
+        if (!model) return
+        progress.sandboxEdit((p) => {
+          while (p.trucks.length >= MAX_TRUCKS) {
+            const spare = p.trucks.findIndex((t) => t.uid !== p.activeTruck)
+            if (spare < 0) break
+            p.trucks.splice(spare, 1)
+          }
+        })
+        const bought = await progress.act({ action: 'buy-truck', model: modelId, look: designLook(model, designId) })
+        const uid = bought.ok ? bought.profile.trucks.at(-1)?.uid : undefined
+        if (uid) await progress.act({ action: 'select', truck: uid, trailer: progress.profile.activeTrailer })
+        this.hud.toast(bought.ok ? `Driving the ${model.brand} ${model.name}` : bought.message, bought.ok ? 'good' : 'warn')
+      },
+      onSpawnTrailer: async (modelId) => {
+        const bought = await progress.act({ action: 'buy-trailer', model: modelId })
+        const uid = bought.ok ? bought.profile.trailers.at(-1)?.uid : undefined
+        if (uid) await progress.act({ action: 'select', truck: progress.profile.activeTruck, trailer: uid })
+        this.hud.toast(bought.ok ? 'Trailer hitched at your lot' : bought.message, bought.ok ? 'good' : 'warn')
+      },
+      onTeleport: (x, z) => this.session.truck?.teleport(x, z, 0),
+      onHours: (hours) => {
+        this.hours = hours
+        this.atmosphere.setTime(hours)
+      },
+      onTier: (tier) => this.setTier(tier),
+      onTruckState: (change) => {
+        const uid = active()?.uid
+        if (!uid) return
+        progress.sandboxEdit((p) => {
+          const truck = p.trucks.find((t) => t.uid === uid)
+          if (!truck) return
+          if (change === 'dirty') truck.dirt = 100
+          else if (change === 'clean') truck.dirt = 0
+          else if (change === 'damage') truck.damage = 60
+          else if (change === 'repair') truck.damage = 0
+          else truck.fuelL = TRUCK_BY_ID[truck.model]?.fuelTankL ?? truck.fuelL
+        })
+      },
+      memory: () => {
+        const report = (window as Window & { __truckMem?: () => { pressure: string; counts: Record<string, number>; drawCalls: number; heapMegabytes: number | null } }).__truckMem?.()
+        if (!report) return 'No memory report yet.'
+        const counts = Object.entries(report.counts).map(([k, v]) => `${k} ${v}`).join(' · ')
+        return `${report.pressure.toUpperCase()} · ${counts} · draw calls ${report.drawCalls}${report.heapMegabytes !== null ? ` · heap ${Math.round(report.heapMegabytes)} MB` : ''}`
+      },
+      onClose: this.closed,
+    }))
+  }
+
+  private openMapPanel(): void {
+    this.openPanel(() => openMap(this.uiRoot, {
+      draw: (ctx, w, h) => this.countyMap.drawFull(ctx, w, h, this.markers),
+      onPick: (x, y, w, h) => {
+        const point = fullMapToWorld(x, y, w, h)
+        if (!point) return
+        this.session.setWaypoint(point)
+        this.markers.waypoint = point
+        this.markers.route = this.session.route
+      },
+      onClearPick: () => {
+        this.session.setWaypoint(null)
+        this.markers.waypoint = null
+        this.markers.route = null
+      },
+      onClose: this.closed,
+    }))
   }
 
   private openJobBoardPanel(): void {

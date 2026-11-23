@@ -163,6 +163,10 @@ const SITE_KIND_NAMES: Record<SiteKind, string> = {
 export interface MapOptions extends PanelOptions {
   draw(ctx: CanvasRenderingContext2D, width: number, height: number): void
   refreshMs?: number
+  /** A click on the map at (x, y) in a `width` × `height` canvas; the map redraws afterwards. */
+  onPick?(x: number, y: number, width: number, height: number): void
+  /** Clears the picked destination (shows a Clear route button when given). */
+  onClearPick?(): void
 }
 
 export interface MapHandle extends PanelHandle {
@@ -180,6 +184,18 @@ export function openMap(root: HTMLElement, options: MapOptions): MapHandle {
   }
   const frame = h('div', { class: 'ts-map-frame' }, canvas)
   const modal = openModal(root, { title: 'County map', className: 'ts-wide ts-map', onClose: () => { window.clearInterval(timer); observer.disconnect(); options.onClose?.() } })
+  if (options.onPick) {
+    canvas.style.cursor = 'crosshair'
+    canvas.addEventListener('click', (event) => {
+      const rect = canvas.getBoundingClientRect()
+      options.onPick?.(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height)
+      redraw()
+    })
+    const clear = options.onClearPick
+      ? h('button', { class: 'ts-btn', text: 'Clear route', attrs: { type: 'button', 'data-key': 'clear-route' }, on: { click: () => { options.onClearPick?.(); redraw() } } })
+      : null
+    modal.body.append(h('div', { class: 'ts-bar' }, h('p', { class: 'ts-note', text: 'Click where you want to go and the route shows on your minimap. Esc or M closes the map.' }), clear))
+  }
   modal.body.append(frame, legend)
   const redraw = (): void => {
     const rect = frame.getBoundingClientRect()

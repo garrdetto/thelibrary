@@ -15,6 +15,7 @@ import { SITES } from '../../shared/WorldLayout'
 import type { Site } from '../../shared/WorldLayout'
 import type { StaticBox } from '../../sim/SimWorld'
 import type { MaterialLibrary } from '../Materials'
+import type { SeeThrough } from '../SeeThrough'
 import { SceneryBatch } from '../lots/Batch'
 import { SceneryMaterials } from '../lots/Palette'
 import { SignAtlas } from '../lots/Signs'
@@ -51,11 +52,13 @@ export function siteStaticBoxes(siteId: string): StaticBox[] {
 class SiteChunk implements ChunkPart {
   private disposed = false
 
-  constructor(private readonly meshes: Mesh[]) {}
+  constructor(private readonly meshes: Mesh[], private readonly unregister: (() => void)[] = []) {}
 
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    for (const fn of this.unregister) fn()
+    this.unregister.length = 0
     for (const mesh of this.meshes) mesh.dispose(false, false)
     this.meshes.length = 0
   }
@@ -69,7 +72,7 @@ export class SiteLayer implements ChunkLayer {
   private readonly env: DrawEnv
   private disposed = false
 
-  constructor(private readonly scene: Scene, mats: MaterialLibrary, private readonly terrain: Terrain) {
+  constructor(private readonly scene: Scene, mats: MaterialLibrary, private readonly terrain: Terrain, private readonly seeThrough: SeeThrough | null = null) {
     this.materials = new SceneryMaterials(scene, mats)
     this.materials.warm()
     this.atlas = new SignAtlas(scene, 'trucksim-sites', { cellWidth: 256, cellHeight: 64, columns: 4, rows: 16 })
@@ -85,23 +88,33 @@ export class SiteLayer implements ChunkLayer {
     if (this.disposed) return null
     const { x0, z0, size } = ctx
     const batch = new SceneryBatch()
+    const overheads: { piece: Piece; batch: SceneryBatch }[] = []
     let any = false
     for (const site of SITES) {
       if (site.kind === 'lotDistrict') continue
       if (site.x + site.w / 2 < x0 || site.x - site.w / 2 > x0 + size || site.z + site.d / 2 < z0 || site.z - site.d / 2 > z0 + size) continue
       for (const piece of this.piecesIn(site, x0, z0, size)) {
-        batch.frame(piece.x - x0, piece.ground, piece.z - z0, piece.rot * QUARTER)
-        piece.build(batch, this.env)
+        const target = piece.overhead && this.seeThrough ? new SceneryBatch() : batch
+        if (target !== batch) overheads.push({ piece, batch: target })
+        target.frame(piece.x - x0, piece.ground, piece.z - z0, piece.rot * QUARTER)
+        piece.build(target, this.env)
         any = true
       }
     }
     if (!any) return null
-    const meshes = batch.build(this.scene, `trucksim-sites-${ctx.cx}-${ctx.cz}`, ctx.root, (key) => (key === 'boardSign' ? this.atlas.material : this.materials.get(key)))
+    const material = (key: string) => (key === 'boardSign' ? this.atlas.material : this.materials.get(key))
+    const meshes = batch.build(this.scene, `trucksim-sites-${ctx.cx}-${ctx.cz}`, ctx.root, material)
+    const unregister: (() => void)[] = []
+    overheads.forEach(({ piece, batch: own }, i) => {
+      const built = own.build(this.scene, `trucksim-overhead-${ctx.cx}-${ctx.cz}-${i}`, ctx.root, material)
+      meshes.push(...built)
+      if (this.seeThrough) unregister.push(this.seeThrough.add(piece.extent, built))
+    })
     for (const mesh of meshes) {
       const key = mesh.name.slice(mesh.name.lastIndexOf('-') + 1)
       if (!NO_SHADOW.has(key)) ctx.addShadowCaster(mesh)
     }
-    return new SiteChunk(meshes)
+    return new SiteChunk(meshes, unregister)
   }
 
   /** Frees the sign atlas and the layer's materials. Chunk parts are disposed by the renderer. */
@@ -114,6 +127,6 @@ export class SiteLayer implements ChunkLayer {
 }
 
 /** Creates the site layer for the world renderer's layer list. */
-export function createSiteLayer(scene: Scene, mats: MaterialLibrary, terrain: Terrain): SiteLayer {
-  return new SiteLayer(scene, mats, terrain)
+export function createSiteLayer(scene: Scene, mats: MaterialLibrary, terrain: Terrain, seeThrough: SeeThrough | null = null): SiteLayer {
+  return new SiteLayer(scene, mats, terrain, seeThrough)
 }

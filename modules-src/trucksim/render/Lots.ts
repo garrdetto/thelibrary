@@ -15,12 +15,14 @@ import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import type { Terrain } from '../shared/Terrain'
 import type { LotSpec } from '../shared/WorldLayout'
+import { itemFootprint } from '../shared/Lots'
 import type { BuildItem } from '../shared/Lots'
 import { BUILDING_BY_ID } from '../shared/Catalog'
 import type { BuildDef } from '../shared/Catalog'
 import type { StaticBox } from '../sim/SimWorld'
 import { Scope } from '../systems/Scope'
 import type { MaterialLibrary } from './Materials'
+import type { Footprint, SeeThrough } from './SeeThrough'
 import { SceneryBatch } from './lots/Batch'
 import { SceneryMaterials } from './lots/Palette'
 import { SignAtlas } from './lots/Signs'
@@ -32,6 +34,9 @@ export interface LotOwner {
   name: string
   company: string
 }
+
+/** Lot pieces with a roof the truck drives under; they fade while it is beneath (see `SeeThrough`). */
+const OVERHEAD_ITEMS = new Set(['fuel-island', 'wash-bay'])
 
 interface LotState {
   scope: Scope
@@ -89,6 +94,7 @@ export class LotRenderer {
     private readonly parent: TransformNode,
     mats: MaterialLibrary,
     private readonly terrain: Terrain,
+    private readonly seeThrough: SeeThrough | null = null,
   ) {
     this.scenery = new SceneryMaterials(scene, mats)
     this.scenery.warm()
@@ -108,6 +114,7 @@ export class LotRenderer {
     const ground = this.terrain.heightAt(lot.x + lot.w / 2, lot.z + lot.d / 2)
     const batch = new SceneryBatch()
     const boxes: StaticBox[] = []
+    const overheads: { batch: SceneryBatch; rect: Footprint }[] = []
     let seq = 0
     for (const item of items) {
       const def = BUILDING_BY_ID[item.def]
@@ -125,13 +132,24 @@ export class LotRenderer {
         continue
       }
       const { wl, dl, cx, cz } = dims(item)
-      batch.frame(lot.x + cx, ground, lot.z + cz, item.rot * QUARTER)
-      const local = drawItem(batch, def, item, wl, dl, uv)
+      const target = OVERHEAD_ITEMS.has(def.id) && this.seeThrough ? new SceneryBatch() : batch
+      if (target !== batch) {
+        const f = itemFootprint(item)
+        overheads.push({ batch: target, rect: { x0: lot.x + f.x, z0: lot.z + f.z, x1: lot.x + f.x + f.w, z1: lot.z + f.z + f.d } })
+      }
+      target.frame(lot.x + cx, ground, lot.z + cz, item.rot * QUARTER)
+      const local = drawItem(target, def, item, wl, dl, uv)
       if (def.solid) for (const box of local) boxes.push(worldBox(box, item.rot, 0, 0, lot.x + cx, lot.z + cz, ground))
     }
     this.drawStakes(batch, lot, ground)
     this.drawGateSign(batch, lot, ground, uv)
-    const meshes = batch.build(this.scene, `lot-${lot.index}`, root, (key) => (key === 'boardSign' ? atlas.material : this.scenery.get(key)))
+    const material = (key: string) => (key === 'boardSign' ? atlas.material : this.scenery.get(key))
+    const meshes = batch.build(this.scene, `lot-${lot.index}`, root, material)
+    overheads.forEach(({ batch: own, rect }, i) => {
+      const built = own.build(this.scene, `lot-${lot.index}-overhead-${i}`, root, material)
+      meshes.push(...built)
+      if (this.seeThrough) scope.defer(this.seeThrough.add(rect, built))
+    })
     for (const mesh of meshes) scope.defer(() => mesh.dispose(false, false))
     this.lots.set(lot.index, { scope, root, meshes, boxes })
   }

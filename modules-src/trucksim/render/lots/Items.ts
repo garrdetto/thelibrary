@@ -182,21 +182,70 @@ export function officeTrailer(b: SceneryBatch, wl: number, dl: number, wall: str
   return [horizontal ? localBox(-half[0], 0, -half[2], half[0], half[1], half[2]) : localBox(-half[2], 0, -half[0], half[2], half[1], half[0])]
 }
 
+/**
+ * Draws a truck-stop diesel island along an axis: `u` runs along the island (length `length`), `v` across it. A raised kerb with
+ * rounded noses and yellow edges, a pair of yellow crash posts at each end, and one fuelling point every `spacing` metres: a tall
+ * high-flow dispenser with a price header and screens on both faces, hoses hanging from overhead retractor booms on both sides, a
+ * smaller DEF pump, and a squeegee bucket and bin. Returns nothing; the caller adds collision.
+ */
+export function dieselIsland(b: SceneryBatch, horizontal: boolean, length: number, color: string, spacing = 20): void {
+  const lb = axisBox(b, horizontal)
+  const at = (u: number, v: number): [number, number] => (horizontal ? [u, v] : [v, u])
+  const post = (u: number, v: number, r: number, h: number, key: string, y = 0): void => {
+    const [x, z] = at(u, v)
+    b.cylinder(key, x, y, z, r, h, 10)
+  }
+  const half = length / 2
+  const width = 1.3
+  lb('concrete', 0, 0, 0, length - width, 0.2, width)
+  for (const end of [-1, 1]) post(end * (half - width / 2), 0, width / 2, 0.2, 'concrete')
+  for (const v of [-1, 1]) lb('metalYellow', 0, 0.2, v * (width / 2 - 0.04), length - width, 0.02, 0.08)
+  for (const end of [-1, 1]) {
+    for (const v of [-0.4, 0.4]) {
+      post(end * (half - 0.35), v, 0.11, 1.15, 'metalYellow', 0.2)
+      post(end * (half - 0.35), v, 0.115, 0.08, 'metalDark', 1.1)
+    }
+    lb('metalYellow', end * (half - 0.35), 1.0, 0, 0.12, 0.1, 0.8)
+  }
+  const stations = Math.max(1, Math.floor((length - 4) / spacing))
+  for (let i = 0; i < stations; i++) {
+    const u = -half + 2 + ((i + 0.5) * (length - 4)) / stations
+    lb('metalWhite', u, 0.2, 0, 1.1, 2.0, 0.62)
+    lb('darkSteel', u, 0.2, 0, 1.14, 0.18, 0.66)
+    lb(color, u, 2.2, 0, 1.16, 0.5, 0.66)
+    lb('boardDark', u, 2.25, 0, 0.9, 0.36, 0.68)
+    for (const v of [-1, 1]) {
+      lb('glassTint', u, 1.35, v * 0.315, 0.5, 0.32, 0.02)
+      lb('metalDark', u - 0.32, 0.9, v * 0.32, 0.16, 0.42, 0.04)
+      lb('metalYellow', u - 0.32, 1.05, v * 0.345, 0.07, 0.12, 0.05)
+      lb('metalDark', u + 0.32, 0.9, v * 0.32, 0.16, 0.42, 0.04)
+      lb('metalYellow', u + 0.32, 1.05, v * 0.345, 0.07, 0.12, 0.05)
+    }
+    post(u + 0.75, 0, 0.06, 3.2, 'steel', 0.2)
+    for (const v of [-1, 1]) {
+      const [ax, az] = at(u + 0.75, 0)
+      const [bx, bz] = at(u + 0.75, v * 1.4)
+      b.beam('steel', ax, 3.35, az, bx, 3.1, bz, 0.06, 0.06)
+      const [hx, hz] = at(u + 0.75, v * 1.35)
+      const [nx, nz] = at(u + 0.32, v * 0.36)
+      b.beam('rubber', hx, 3.05, hz, hx, 1.7, hz, 0.035, 0.035)
+      b.beam('rubber', hx, 1.7, hz, nx, 1.08, nz, 0.035, 0.035)
+    }
+    lb('metalWhite', u - 1.3, 0.2, 0, 0.5, 1.35, 0.45)
+    lb('metalBlue', u - 1.3, 1.55, 0, 0.54, 0.22, 0.49)
+    for (const v of [-1, 1]) lb('metalBlue', u - 1.3, 0.95, v * 0.235, 0.1, 0.3, 0.04)
+    post(u + 1.35, 0.25, 0.17, 0.55, 'metalBlue', 0.2)
+    post(u + 1.35, -0.25, 0.2, 0.85, 'darkSteel', 0.2)
+    lb('steel', u + 1.35, 0.75, 0.25, 0.03, 0.55, 0.03)
+  }
+}
+
 export function fuelIsland(b: SceneryBatch, wl: number, dl: number, color: string): LocalBox[] {
   const horizontal = wl > dl
   const length = horizontal ? wl : dl
   const width = horizontal ? dl : wl
   const lb = axisBox(b, horizontal)
-  lb('concrete', 0, 0, 0, length - 1, 0.25, 1.4)
-  lb('metalYellow', 0, 0.25, 0, length - 1, 0.04, 0.1)
-  for (const u of [-length / 4, length / 4]) {
-    lb('metalWhite', u, 0.25, 0, 0.9, 1.5, 0.55)
-    lb(color, u, 1.3, 0, 0.94, 0.4, 0.6)
-    for (const v of [-1, 1]) {
-      lb('glassTint', u, 0.95, v * 0.28, 0.5, 0.3, 0.04)
-      lb('rubber', u + 0.3, 0.5, v * 0.3, 0.1, 0.7, 0.08)
-    }
-  }
+  dieselIsland(b, horizontal, length - 1, color, Math.max(4.5, (length - 5) / 2))
   lb('metalWhite', 0, 4.4, 0, width, 0.6, length)
   lb(color, 0, 4.58, 0, width + 0.04, 0.26, length + 0.04)
   for (const u of [-length / 4, length / 4]) lb('lampWhite', u, 4.36, 0, 0.8, 0.04, 0.8)

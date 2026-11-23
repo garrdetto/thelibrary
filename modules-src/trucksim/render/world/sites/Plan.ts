@@ -44,6 +44,8 @@ export interface Piece {
   boxes: StaticBox[]
   build: PieceBuild
   overhead: boolean
+  /** The whole footprint (world), also for pieces whose `areas` are only their columns. */
+  extent: Rect
 }
 
 export interface PlaceSpec {
@@ -219,7 +221,7 @@ export class SitePlanner {
     const ground = this.groundAt(spec.x, spec.z)
     const local = spec.build(new SceneryBatch(), STUB_ENV)
     const boxes = spec.solid === false ? [] : local.map((box) => worldBox(box, rot, spec.x, spec.z, ground))
-    this.pieces.push({ name: spec.name, x: spec.x, z: spec.z, rot, ground, areas, boxes, build: spec.build, overhead: spec.overhead === true })
+    this.pieces.push({ name: spec.name, x: spec.x, z: spec.z, rot, ground, areas, boxes, build: spec.build, overhead: spec.overhead === true, extent: footprint(spec.x, spec.z, rot, spec.wl, spec.dl) })
     return true
   }
 
