@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Song Maker</title>
@@ -63,12 +64,26 @@
   @media (max-width: 780px) { .layout { grid-template-columns: 1fr; } }
   @media (max-width: 480px) { .engine, .sliders { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .eq i { animation: none; height: 14px; } }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--wics-text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #fff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] button.primary:disabled { background: #8a97b0; }
+  html:root[data-tl-theme="wics"] .panel { box-shadow: 0 1px 3px rgba(19, 32, 58, .08); }
+  html:root[data-tl-theme="wics"] .panel h2 { color: var(--wics-text); }
+  html:root[data-tl-theme="wics"] .engine label { background: #f3f3ee; }
+  html:root[data-tl-theme="wics"] .engine label:has(input:checked) { background: #e6f3fa; border-color: var(--accent); }
+  html:root[data-tl-theme="wics"] .song { background: #f3f3ee; }
+  html:root[data-tl-theme="wics"] .song .tag { border-color: var(--wics-bar); background: #e8ecf6; }
+  html:root[data-tl-theme="wics"] .eq i { background: var(--wics-bar); }
+  html:root[data-tl-theme="wics"] .busy { background: #eef0e8; border: 1px solid var(--line); }
+  html:root[data-tl-theme="wics"] select, html:root[data-tl-theme="wics"] input[type="text"], html:root[data-tl-theme="wics"] textarea { background: #fff; }
+  [data-tl-theme-toggle] .tl-theme-toggle { font: 600 13px 'TL Fox Dollar', Inter, sans-serif; padding: 9px 14px; border-radius: 9px; }
 </style>
 </head>
 <body>
 <main>
   <header class="top"><h1>Song Maker</h1><div class="stats"><div class="stat"><span>AI SONGS LEFT TODAY</span><b id="left">—</b></div></div></header>
-  <div class="bar"><p>Your lyrics, turned into a song. Make a free instrumental right in your browser with no API key, or have AI sing it when the site has AI vocals set up.</p></div>
+  <div class="bar"><p>Your lyrics, turned into a song. Make a free instrumental right in your browser with no API key, or have AI sing it when the site has AI vocals set up.</p><div data-tl-theme-toggle></div></div>
   <div id="signin" class="panel signin" hidden><h2>Sign in to make songs</h2><p class="empty">Song Maker saves your songs to your account. Sign in on the library page, then come back here.</p></div>
   <div class="layout" id="app" hidden>
     <section class="panel">

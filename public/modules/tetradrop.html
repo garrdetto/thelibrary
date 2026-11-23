@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Tetra Drop</title>
@@ -23,6 +24,11 @@
   .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay .ov-stats > div { display: block; text-align: center; }
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+  [data-tl-theme-toggle] { display: contents; }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #ffffff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .status.hot { color: #0477a8; }
   @media (max-width: 640px), (pointer: coarse) { .touch { display: grid; } }
   @media (max-width: 480px) { .panel.play { padding: 8px; } .stat { min-width: 60px; padding: 6px 8px; } .stat b { font-size: 20px; } }
 </style>
@@ -31,7 +37,7 @@
 <body>
 <main>
   <header class="top"><h1>Tetra Drop</h1><div class="stats"><div class="stat"><span>SCORE</span><b id="score">0</b></div><div class="stat"><span>LINES</span><b id="lines">0</b></div><div class="stat"><span>LEVEL</span><b id="level">1</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
-  <div class="bar"><p>Rotate and slot the falling shapes. Fill a row to clear it.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button></div></div>
+  <div class="bar"><p>Rotate and slot the falling shapes. Fill a row to clear it.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button><span data-tl-theme-toggle></span></div></div>
   <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Tetra Drop well. Arrow keys move, Up rotates, Space drops.">
     <div class="wrap" id="wrap"><canvas id="cv" aria-hidden="true"></canvas></div>
     <p class="status" id="status" aria-live="polite"></p>
@@ -56,6 +62,8 @@ const COLS = 10, ROWS = 20, HID = 2, H = ROWS + HID;
 const DAS = 0.17, ARR = 0.05, LOCK = 0.5, MAX_RESETS = 15, CLEAR_T = 0.24;
 const SHAPES = { I: ['....', 'IIII', '....', '....'], J: ['J..', 'JJJ', '...'], L: ['..L', 'LLL', '...'], O: ['OO', 'OO'], S: ['.SS', 'SS.', '...'], T: ['.T.', 'TTT', '...'], Z: ['ZZ.', '.ZZ', '...'] };
 const COLORS = { I: '#33d1ff', J: '#4d7cff', L: '#ff9f43', O: '#f4cf3c', S: '#2fd6a3', T: '#b388ff', Z: '#ff5a7a' };
+const ORIGINAL_COLORS = { ...COLORS };
+const WICS_COLORS = { I: '#0594d0', J: '#4a5f9e', L: '#dc7f2e', O: '#d4a81c', S: '#1d8a5a', T: '#8466c0', Z: '#c8344f' };
 const TYPES = Object.keys(SHAPES);
 const PIECES = {};
 for (const t of TYPES) {
@@ -93,9 +101,11 @@ function readTheme() {
   const cs = getComputedStyle(document.documentElement);
   const g = n => cs.getPropertyValue(n).trim();
   theme = { cell: g('--cell'), line: g('--line'), panel: g('--panel'), muted: g('--muted'), text: g('--text'), bg: g('--bg') };
+  Object.assign(COLORS, window.TLTheme && TLTheme.isWics() ? WICS_COLORS : ORIGINAL_COLORS);
 }
 readTheme();
 darkMQ.addEventListener && darkMQ.addEventListener('change', () => { readTheme(); draw(); });
+if (window.TLTheme) TLTheme.onChange(() => { readTheme(); draw(); });
 
 function gravityInterval(lv) { const l = Math.min(lv, 30); return Math.max(0.0005, Math.pow(0.8 - (l - 1) * 0.007, l - 1)); }
 function refill() { const b = TYPES.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } bag.push(...b); }

@@ -52,7 +52,10 @@ const OPTIONS: Array<[keyof TruckLook | 'finish' | 'stripe', readonly unknown[]]
   ['mudflaps', ['plain', 'chrome']],
   ['horn', ['stock', 'air']],
   ['finish', ['gloss', 'metallic', 'matte']],
-  ['stripe', ['none', 'pinstripe', 'band', 'swoosh']],
+  ['stripe', ['none', 'pinstripe', 'band', 'swoosh', 'twoTone', 'chevron']],
+  ['grille', ['stock', 'bars', 'slats', 'mesh', 'blackout']],
+  ['roof', ['none', 'low', 'tall']],
+  ['skirts', [true, false]],
 ]
 
 function variant(model: TruckModel, field: string, value: unknown): TruckLook {

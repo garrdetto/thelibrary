@@ -15,11 +15,11 @@ import type { TruckVisual } from '../render/models/TruckVisual'
 import { createDirtLayer } from '../render/models/DirtLayer'
 import type { DirtLayer } from '../render/models/DirtLayer'
 import type { WorkZoneActivity } from '../render/work/WorkZones'
-import { CARGO_BY_ID, DIRT_PER_KM, FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, TRAILER_BY_ID, TRUCK_BY_ID, haulFor } from '../shared/Catalog'
+import { CARGO_BY_ID, CLEAN_DIRT_LIMIT, DIRT_PER_KM, FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, TRAILER_BY_ID, TRUCK_BY_ID, WASHER_REACH_M, haulFor } from '../shared/Catalog'
 import type { TrailerModel, TruckLook, TruckModel } from '../shared/Catalog'
 import { FUEL_STATION_MARKUP, REPAIR_LABOUR_MARKUP } from '../shared/Economy'
 import type { OwnedTruck, Profile } from '../shared/Economy'
-import { hasService, itemFootprint } from '../shared/Lots'
+import { hasService, itemFootprint, washSpots } from '../shared/Lots'
 import { route } from '../shared/RoadGraph'
 import { getTerrain } from '../shared/Terrain'
 import { SITE_BY_ID, SITES, headingDelta, inRect, inZone, lotSpawn } from '../shared/WorldLayout'
@@ -52,6 +52,9 @@ export interface SessionEvents {
 
 /** Where a wash happens: the travel center's lane or your own wash bay. */
 export type WashPlace = 'own' | 'public'
+
+/** Where on your own lot the truck can be washed: inside a wash bay, or within hose reach of a pressure washer (its reel position). */
+export type OwnWash = { kind: 'bay' } | { kind: 'washer'; reel: { x: number; y: number; z: number } }
 
 export interface SessionView {
   gauges: GaugeValues
@@ -734,7 +737,7 @@ export class TruckSession {
     const zone = this.zoneUnderTruck()
     const lot = this.lot
     const atShop = Boolean(lot && hasService(profile.build) && p.x >= lot.x && p.x <= lot.x + lot.w && p.z >= lot.z && p.z <= lot.z + lot.d)
-    const atBay = this.inOwnWashBay(p.x, p.z)
+    const atBay = this.ownWashAt(p.x, p.z) !== null
     if (!zone && !atShop && !atBay) return null
     const press = this.pressed('interact') && owned !== 'interact'
     if (zone?.kind === 'wash' || atBay) {
@@ -742,7 +745,7 @@ export class TruckSession {
       const cost = place === 'own' ? OWN_WASH_WATER : PUBLIC_WASH_PRICE
       if (this.washing || performance.now() < this.washReadyAt) return null
       const dirt = this.dirt?.level ?? owner.dirt
-      if (dirt < 3) return place === 'own' ? 'Your wash bay: the truck is already clean' : 'Truck wash: your truck is already clean'
+      if (dirt < 3) return place === 'own' ? 'Your wash: the truck is already clean' : 'Truck wash: your truck is already clean'
       if (press) {
         if (cost > profile.cash) this.host.toast(`A wash costs $${cost.toLocaleString()}`, 'warn')
         else {
@@ -763,8 +766,9 @@ export class TruckSession {
       const repair = Math.round(damage * REPAIR_COST_PER_POINT * markup)
       const fuel = atShop ? Math.round(missing * FUEL_PRICE_PER_L) : 0
       if (press) void this.serviceRig(atShop)
-      if (repair <= 0 && fuel <= 0) return atShop ? 'Your shop: the rig is fuelled and in good shape' : 'Service bay: nothing to fix'
-      return atShop ? `Press E to fuel and fix up at your shop ($${(repair + fuel).toLocaleString()})` : `Press E for repairs ($${repair.toLocaleString()})`
+      const washHint = atShop && (this.dirt?.level ?? owner.dirt) >= CLEAN_DIRT_LIMIT && washSpots(profile.build).length === 0 ? ' · Put a pressure washer beside your steel shop to wash the truck here' : ''
+      if (repair <= 0 && fuel <= 0) return atShop ? `Your shop: the rig is fuelled and in good shape${washHint}` : 'Service bay: nothing to fix'
+      return atShop ? `Press E to fuel and fix up at your shop ($${(repair + fuel).toLocaleString()})${washHint}` : `Press E for repairs ($${repair.toLocaleString()})`
     }
     if (zone?.kind === 'fuel') {
       const cost = Math.round(missing * FUEL_PRICE_PER_L * FUEL_STATION_MARKUP)
@@ -774,15 +778,33 @@ export class TruckSession {
     return null
   }
 
-  private inOwnWashBay(x: number, z: number): boolean {
+  /** The own-lot wash at truck centre (x, z): a wash bay it stands in, or the nearest pressure washer within `WASHER_REACH_M`. */
+  ownWashAt(x: number, z: number): OwnWash | null {
     const lot = this.lot
-    if (!lot) return false
-    for (const item of this.host.progress.profile.build) {
-      if (item.def !== 'wash-bay') continue
+    if (!lot) return null
+    let washer: OwnWash | null = null
+    let nearest = Infinity
+    for (const item of washSpots(this.host.progress.profile.build)) {
       const f = itemFootprint(item)
-      if (x >= lot.x + f.x - 1 && x <= lot.x + f.x + f.w + 1 && z >= lot.z + f.z - 1 && z <= lot.z + f.z + f.d + 1) return true
+      if (item.def === 'wash-bay') {
+        if (x >= lot.x + f.x - 1 && x <= lot.x + f.x + f.w + 1 && z >= lot.z + f.z - 1 && z <= lot.z + f.z + f.d + 1) return { kind: 'bay' }
+        continue
+      }
+      const cx = lot.x + f.x + f.w / 2
+      const cz = lot.z + f.z + f.d / 2
+      const distance = Math.hypot(x - cx, z - cz)
+      if (distance <= WASHER_REACH_M && distance < nearest) {
+        nearest = distance
+        washer = { kind: 'washer', reel: { x: cx, y: this.terrain.heightAt(cx, cz) + 1.12, z: cz } }
+      }
     }
-    return false
+    return washer
+  }
+
+  /** The own-lot wash where the truck stands now, or null. */
+  ownWash(): OwnWash | null {
+    const p = this.truck?.pose().position
+    return p ? this.ownWashAt(p.x, p.z) : null
   }
 
   private refreshDirt(): void {

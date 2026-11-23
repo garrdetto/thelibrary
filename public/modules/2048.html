@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>2048</title>
@@ -45,17 +46,27 @@
   footer { margin-top: 14px; color: var(--muted); font-size: 13px; line-height: 1.6; }
   @media (max-width: 420px) { h1 { font-size: 44px; } .tile { font-size: 30px; } .score { min-width: 70px; } }
   @media (prefers-reduced-motion: reduce) { .tile { transition: none; } .tile .in { animation: none !important; } }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--wics-text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] .score { box-shadow: 0 1px 2px rgba(19, 32, 58, .06); }
+  html:root[data-tl-theme="wics"] .plus { color: #077db3; }
+  html:root[data-tl-theme="wics"] .board { background: #bfc5d3; border-color: #aab2c4; }
+  html:root[data-tl-theme="wics"] .grid i { background: #dfe1d8; }
+  html:root[data-tl-theme="wics"] #tryAgain { background: #077db3; border-color: #077db3; color: #fff; }
+  html:root[data-tl-theme="wics"] .overlay p { color: #dfe5f2; }
+  .bar:has(.tl-theme-toggle:not([hidden])) { flex-wrap: wrap; }
+  .bar:has(.tl-theme-toggle:not([hidden])) div { flex-wrap: wrap; }
+  [data-tl-theme-toggle] .tl-theme-toggle { font: 600 13px 'TL Fox Dollar', Inter, sans-serif; padding: 9px 14px; border-radius: 9px; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header><h1>2048</h1><div class="scores"><div class="score" id="scoreBox"><span>SCORE</span><b id="score">0</b></div><div class="score"><span>BEST</span><b id="best">0</b></div></div></header>
-  <div class="bar"><p>Join the tiles, reach <b>2048</b>.</p><div><button id="undo" title="Undo last move (U)">Undo</button><button id="new">New</button></div></div>
+  <div class="bar"><p>Join the tiles, reach <b>2048</b>.</p><div data-tl-theme-toggle><button id="undo" title="Undo last move (U)">Undo</button><button id="new">New</button></div></div>
   <div class="board" id="board" aria-label="2048 board" role="application" tabindex="0">
     <div class="grid" aria-hidden="true"></div>
     <div class="tiles" id="tiles"></div>
-    <div class="overlay" id="overlay"><h2 id="ovTitle">Game over</h2><p id="ovText"></p><div><button id="keepGoing">Keep going</button><button id="tryAgain">Try again</button></div></div>
+    <div class="overlay" id="overlay"><h2 id="ovTitle">No moves left</h2><p id="ovText"></p><div><button id="keepGoing">Keep going</button><button id="tryAgain">Try again</button></div></div>
   </div>
   <footer>Arrow keys or WASD to move. Swipe on touch screens. <kbd>U</kbd> undoes one move.</footer>
 </main>
@@ -64,6 +75,8 @@
 'use strict';
 const N = 4;
 const COLORS = { 2: ['#2a3550', '#dfe7ff'], 4: ['#30406a', '#dfe7ff'], 8: ['#2e7bd6', '#fff'], 16: ['#2ba3e8', '#fff'], 32: ['#25c2d9', '#06202a'], 64: ['#2fd6a3', '#04261b'], 128: ['#8be04a', '#132400'], 256: ['#f4cf3c', '#2a2000'], 512: ['#ff9f3b', '#2a1400'], 1024: ['#ff6a3b', '#fff'], 2048: ['#ff3b7a', '#fff'], 4096: ['#b04bff', '#fff'], 8192: ['#7c5cff', '#fff'] };
+const WICS_COLORS = { 2: ['#f7f6f1', '#13203a'], 4: ['#ebe9df', '#13203a'], 8: ['#dde2ee', '#13203a'], 16: ['#c5cfe5', '#13203a'], 32: ['#a6b4d6', '#13203a'], 64: ['#8a9cc6', '#13203a'], 128: ['#6f83b5', '#ffffff'], 256: ['#5a70a8', '#ffffff'], 512: ['#465e9a', '#ffffff'], 1024: ['#2f74b8', '#ffffff'], 2048: ['#0594d0', '#ffffff'], 4096: ['#077db3', '#ffffff'], 8192: ['#13203a', '#ffffff'] };
+const wics = () => !!(window.TLTheme && TLTheme.isWics());
 const grid = document.querySelector('.grid'); for (let i = 0; i < 16; i++) grid.appendChild(document.createElement('i'));
 const tilesEl = document.getElementById('tiles');
 function newKey() { try { return crypto.randomUUID(); } catch (e) { return Date.now().toString(16) + '-' + Math.random().toString(16).slice(2); } }
@@ -77,9 +90,9 @@ function render(newIds = new Set(), mergedIds = new Set()) {
   for (const t of tiles) {
     let el = tilesEl.querySelector(`[data-id="${t.id}"]`);
     if (!el) { el = document.createElement('div'); el.className = 'tile'; el.dataset.id = t.id; el.innerHTML = '<div class="in"></div>'; tilesEl.appendChild(el); }
-    const [bg, fg] = COLORS[t.v] || ['#3b2a6b', '#fff'];
+    const [bg, fg] = wics() ? (WICS_COLORS[t.v] || ['#0b1528', '#ffffff']) : (COLORS[t.v] || ['#3b2a6b', '#fff']);
     const inner = el.firstChild; inner.style.background = bg; inner.style.color = fg; inner.textContent = t.v;
-    inner.style.boxShadow = t.v >= 128 ? `0 0 ${Math.min(30, Math.log2(t.v) * 2)}px ${bg}88` : 'none';
+    inner.style.boxShadow = wics() ? (t.v >= 2048 ? '0 2px 8px rgba(5, 148, 208, .35)' : 'none') : t.v >= 128 ? `0 0 ${Math.min(30, Math.log2(t.v) * 2)}px ${bg}88` : 'none';
     el.style.fontSize = t.v >= 1024 ? '30px' : t.v >= 128 ? '35px' : '';
     el.classList.toggle('new', newIds.has(t.id)); el.classList.toggle('merged', mergedIds.has(t.id));
     place(el, t.r, t.c); el.style.zIndex = mergedIds.has(t.id) ? 2 : 1; seen.add(String(t.id));
@@ -129,7 +142,7 @@ function move(dir) {
     const nid = addRandom(); render(new Set([nid]), mergedIds); busy = false; save();
     if (gained && window.tlScores && tlScores.progress) tlScores.progress('2048', score, { key: runKey });
     if (!won && tiles.some(t => t.v >= 2048)) { won = true; showOverlay('You made 2048!', 'Keep going for a bigger tile?', true); }
-    else if (!canMove()) { over = true; if (window.tlScores) tlScores.submit('2048', score, { key: runKey }); showOverlay('Game over', `Final score ${score}`, false); }
+    else if (!canMove()) { over = true; if (window.tlScores) tlScores.submit('2048', score, { key: runKey }); showOverlay('No moves left', `Final score ${score}`, false); }
   }, 115);
 }
 function undo() { if (!history || busy) return; const h = JSON.parse(history); tiles = h.tiles; score = h.score; over = false; history = null; tilesEl.innerHTML = ''; hideOverlay(); render(); save(); }
@@ -144,7 +157,8 @@ const board = document.getElementById('board');
 board.addEventListener('pointerdown', e => { touch = { x: e.clientX, y: e.clientY }; });
 board.addEventListener('pointerup', e => { if (!touch) return; const dx = e.clientX - touch.x, dy = e.clientY - touch.y; touch = null; if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return; move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up')); });
 window.addEventListener('resize', () => render());
-try { const s = JSON.parse(store.get('2048-state') || 'null'); if (s && Array.isArray(s.tiles) && s.tiles.length) { tiles = s.tiles.map(t => ({ ...t, id: idSeq++ })); score = s.score || 0; if (typeof s.run === 'string' && s.run) runKey = s.run; won = !!s.won; keepPlaying = !!s.keepPlaying; render(); if (!canMove()) { over = true; showOverlay('Game over', `Final score ${score}`, false); } } else newGame(); } catch (e) { newGame(); }
+if (window.TLTheme) TLTheme.onChange(() => render());
+try { const s = JSON.parse(store.get('2048-state') || 'null'); if (s && Array.isArray(s.tiles) && s.tiles.length) { tiles = s.tiles.map(t => ({ ...t, id: idSeq++ })); score = s.score || 0; if (typeof s.run === 'string' && s.run) runKey = s.run; won = !!s.won; keepPlaying = !!s.keepPlaying; render(); if (!canMove()) { over = true; showOverlay('No moves left', `Final score ${score}`, false); } } else newGame(); } catch (e) { newGame(); }
 board.focus();
 </script>
 </body>
