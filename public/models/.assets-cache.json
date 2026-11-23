@@ -1750,9 +1750,9 @@
   "preset": "character"
  },
  "takeflight/wren_cockpit.glb": {
-  "hash": "a79249fb735f17bfe3002511f901288088cdbaeb",
-  "before": 64376,
-  "after": 32840,
+  "hash": "c816d64c0365beb5e080815ad93dfcea4e933c2b",
+  "before": 64384,
+  "after": 32784,
   "primsBefore": 11,
   "primsAfter": 11,
   "matsBefore": 5,
@@ -1760,9 +1760,9 @@
   "preset": "aircraft"
  },
  "takeflight/wren_lod2.glb": {
-  "hash": "7ad94d9b3f35bf88d35468b7504df22131b49841",
-  "before": 115356,
-  "after": 79400,
+  "hash": "d00e7a1fd5073338b50f92713cb51ae6700f6aa8",
+  "before": 115500,
+  "after": 79620,
   "primsBefore": 31,
   "primsAfter": 28,
   "matsBefore": 8,
@@ -1770,9 +1770,9 @@
   "preset": "aircraft"
  },
  "takeflight/wren_lod1.glb": {
-  "hash": "8401413446dc7337605d152be3518d39bd943e3c",
-  "before": 185360,
-  "after": 104808,
+  "hash": "29ac15d72e4d3669330bd4f873e3a0b5e0dd9385",
+  "before": 184768,
+  "after": 104768,
   "primsBefore": 31,
   "primsAfter": 28,
   "matsBefore": 8,
@@ -1780,9 +1780,9 @@
   "preset": "aircraft"
  },
  "takeflight/wren_lod0.glb": {
-  "hash": "7f1abea09e5b972bdbb93fd368c6abe76e33447c",
-  "before": 328208,
-  "after": 147764,
+  "hash": "1e9a4cb6f3597cfe803d57d1227d978f9ed4d749",
+  "before": 326384,
+  "after": 147456,
   "primsBefore": 31,
   "primsAfter": 28,
   "matsBefore": 8,

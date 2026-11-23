@@ -73,8 +73,11 @@ def set_origin(obj, point):
     obj.matrix_world = obj.matrix_world @ Matrix.Translation(offset)
 
 
-def superellipse_ring(half_width, top, bottom, segments, exponent=2.6):
-    """Points of a closed cross-section (y, z) that is round on top and squarer at the bottom like a light-aircraft fuselage."""
+def superellipse_ring(half_width, top, bottom, segments, exponent=2.6, top_exponent=None):
+    """Points of a closed cross-section (y, z) that is round on top and squarer at the bottom like a light-aircraft fuselage.
+
+    `top_exponent` (default `exponent`) shapes the upper half alone: a high value gives square shoulders, as under a high wing.
+    """
     points = []
     centre = (top + bottom) * 0.5
     half_height = (top - bottom) * 0.5
@@ -82,23 +85,25 @@ def superellipse_ring(half_width, top, bottom, segments, exponent=2.6):
         angle = 2 * math.pi * i / segments
         c = math.cos(angle)
         s = math.sin(angle)
-        y = half_width * math.copysign(abs(c) ** (2 / exponent), c)
-        z = centre + half_height * math.copysign(abs(s) ** (2 / exponent), s)
+        e = top_exponent if top_exponent is not None and s > 0 else exponent
+        y = half_width * math.copysign(abs(c) ** (2 / e), c)
+        z = centre + half_height * math.copysign(abs(s) ** (2 / e), s)
         points.append((y, z))
     return points
 
 
 def loft(sections, segments, cap_front=True, cap_back=True):
-    """Builds a closed loft through sections given as (x, half_width, top, bottom[, exponent]); half_width 0 makes a point."""
+    """Builds a closed loft through sections given as (x, half_width, top, bottom[, exponent[, top_exponent]]); half_width 0 makes a point."""
     bm = bmesh.new()
     rings = []
     for section in sections:
         x, half_width, top, bottom = section[:4]
         exponent = section[4] if len(section) > 4 else 2.6
+        top_exponent = section[5] if len(section) > 5 else None
         if half_width <= 1e-4:
             rings.append([bm.verts.new((x, 0.0, (top + bottom) * 0.5))])
             continue
-        rings.append([bm.verts.new((x, y, z)) for (y, z) in superellipse_ring(half_width, top, bottom, segments, exponent)])
+        rings.append([bm.verts.new((x, y, z)) for (y, z) in superellipse_ring(half_width, top, bottom, segments, exponent, top_exponent)])
     for a, b in zip(rings, rings[1:]):
         if len(a) == 1 and len(b) == 1:
             continue
