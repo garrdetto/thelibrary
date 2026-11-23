@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Cookie Factory</title>
@@ -41,13 +42,19 @@
   .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay .ov-stats > div { display: block; text-align: center; }
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+  [data-tl-theme-toggle] { display: contents; }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #ffffff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .golden { box-shadow: 0 2px 8px rgba(19,32,58,.3); }
+  html:root[data-tl-theme="wics"] .item .ic { background: #e0e2d8; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header class="top"><h1>Cookie Factory</h1><div class="stats"><div class="stat"><span>BAKED</span><b id="baked">0</b></div><div class="stat"><span>PER SECOND</span><b id="cps">0</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
-  <div class="bar"><p>Five minutes on the clock. Bake as many cookies as you can.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New bake-off <kbd>R</kbd></button></div></div>
+  <div class="bar"><p>Five minutes on the clock. Bake as many cookies as you can.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New bake-off <kbd>R</kbd></button><span data-tl-theme-toggle></span></div></div>
   <div class="layout">
     <section class="panel bake" id="panel">
       <div class="timer" id="timer" aria-live="off">5:00</div>

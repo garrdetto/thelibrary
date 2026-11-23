@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Chopper Cave</title>
@@ -9,16 +10,31 @@
 <style>
   html, body { margin: 0; height: 100%; background: #070a12; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
   canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  html:root[data-tl-theme="wics"], html:root[data-tl-theme="wics"] body { background: #d7d6cb; }
+  .theme-slot { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 5; }
+  .theme-slot .tl-theme-toggle { font: 600 12px 'TL Fox Dollar', Inter, system-ui, sans-serif; padding: 6px 10px; border-radius: 8px; border: 1px solid #26324c; background: rgba(19, 26, 42, 0.85); color: #e8eefc; }
+  html:root[data-tl-theme="wics"] .theme-slot .tl-theme-toggle { border-color: #c5c7bb; background: #ffffff; color: #13203a; }
+  .theme-slot .tl-theme-toggle:focus-visible { outline: 2px solid #39d0ff; outline-offset: 2px; }
+  html:root[data-tl-theme="wics"] .theme-slot .tl-theme-toggle:focus-visible { outline-color: #0594d0; }
 </style>
 </head>
 <body>
 <canvas id="c" aria-label="Chopper Cave: hold to climb, move left and right to fly forward and back"></canvas>
+<div class="theme-slot" data-tl-theme-toggle></div>
 <script src="module-scores.js"></script>
 <script>
 'use strict';
 /* Chopper Cave — hold the mouse (or Space / touch) to climb, release to drop.
    Move the mouse left and right (or A/D, arrow keys) to fly back and forward. */
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const PALETTES = {
+  original: { page: '#070a12', sky: ['#0d1428', '#141030'], haze: 'rgba(124,92,255,0.06)', rock: ['#2b6b4a', '#1c4a3a'], edge: '#5cffb0', edgeGlow: 10, block: ['#ff5a7a', '#b0204a'], blockGlow: 14, blockShine: 'rgba(255,255,255,0.18)', smoke: '180,200,230', smokeAlpha: 0.35, blade: 'rgba(230,245,255,0.75)', tailBlade: 'rgba(220,240,255,0.7)', hudText: '#e8eefc', hudMuted: '#8796b5', band: 'rgba(7,10,18,0.6)', bandTitle: '#fff', bandText: '#b9c6e4' },
+  wics: { page: '#d7d6cb', sky: ['#eef0e8', '#d7d6cb'], haze: 'rgba(111,131,181,0.05)', rock: ['#8a9cc6', '#6f83b5'], edge: '#13203a', edgeGlow: 0, block: ['#d9506a', '#c8344f'], blockGlow: 0, blockShine: 'rgba(255,255,255,0.28)', smoke: '92,106,130', smokeAlpha: 0.3, blade: 'rgba(19,32,58,0.55)', tailBlade: 'rgba(19,32,58,0.5)', hudText: '#13203a', hudMuted: '#2a3756', band: 'rgba(255,255,255,0.9)', bandTitle: '#13203a', bandText: '#5c6a82' }
+};
+let pal = PALETTES.original;
+function pickPalette() { pal = window.TLTheme && TLTheme.isWics() ? PALETTES.wics : PALETTES.original; }
+pickPalette();
+if (window.TLTheme) TLTheme.onChange(pickPalette);
 const W = 1280, H = 720;
 let dpr = 1, view = { s: 1, ox: 0, oy: 0, cw: W, ch: H };
 function resize() {
@@ -101,45 +117,45 @@ function drawHeli(h, t) {
   ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.tilt);
   const body = ctx.createLinearGradient(0, -14, 0, 14); body.addColorStop(0, '#5ce1ff'); body.addColorStop(1, '#1b6fd1');
   ctx.fillStyle = '#16233d'; ctx.fillRect(-46, -3, 30, 6); ctx.beginPath(); ctx.moveTo(-50, -12); ctx.lineTo(-44, -12); ctx.lineTo(-40, 2); ctx.lineTo(-48, 2); ctx.fill();
-  ctx.save(); ctx.translate(-47, -6); ctx.rotate(t * 40); ctx.fillStyle = 'rgba(220,240,255,0.7)'; ctx.fillRect(-1.5, -9, 3, 18); ctx.restore();
+  ctx.save(); ctx.translate(-47, -6); ctx.rotate(t * 40); ctx.fillStyle = pal.tailBlade; ctx.fillRect(-1.5, -9, 3, 18); ctx.restore();
   ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, 26, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#0b1b33'; ctx.lineWidth = 2; ctx.stroke();
   ctx.fillStyle = 'rgba(200,245,255,0.85)'; ctx.beginPath(); ctx.ellipse(12, -3, 11, 7, -0.2, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#0b1b33'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-14, 14); ctx.lineTo(-16, 19); ctx.moveTo(12, 13); ctx.lineTo(14, 19); ctx.moveTo(-24, 19); ctx.lineTo(24, 19); ctx.stroke();
   ctx.fillStyle = '#0b1b33'; ctx.fillRect(-2, -19, 4, 7);
-  const blade = Math.abs(Math.sin(t * 30)) * 46 + 8; ctx.fillStyle = 'rgba(230,245,255,0.75)'; ctx.fillRect(-blade, -21, blade * 2, 3);
+  const blade = Math.abs(Math.sin(t * 30)) * 46 + 8; ctx.fillStyle = pal.blade; ctx.fillRect(-blade, -21, blade * 2, 3);
   ctx.restore();
 }
 function draw() {
   const s = state, t = s.t;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#070a12'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = pal.page; ctx.fillRect(0, 0, cv.width, cv.height);
   const k = dpr * view.s; ctx.setTransform(k, 0, 0, k, dpr * view.ox, dpr * view.oy);
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
   ctx.save();
   if (s.shake) ctx.translate((Math.random() - 0.5) * s.shake, (Math.random() - 0.5) * s.shake);
-  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0d1428'); bg.addColorStop(1, '#141030'); ctx.fillStyle = bg; ctx.fillRect(-20, -20, W + 40, H + 40);
-  ctx.fillStyle = 'rgba(124,92,255,0.06)'; for (let i = 0; i < 6; i++) { const x = ((i * 280 - s.dist * 0.15) % (W + 300) + W + 300) % (W + 300) - 150; ctx.beginPath(); ctx.arc(x, H * (0.3 + (i % 3) * 0.2), 120, 0, 6.283); ctx.fill(); }
+  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, pal.sky[0]); bg.addColorStop(1, pal.sky[1]); ctx.fillStyle = bg; ctx.fillRect(-20, -20, W + 40, H + 40);
+  ctx.fillStyle = pal.haze; for (let i = 0; i < 6; i++) { const x = ((i * 280 - s.dist * 0.15) % (W + 300) + W + 300) % (W + 300) - 150; ctx.beginPath(); ctx.arc(x, H * (0.3 + (i % 3) * 0.2), 120, 0, 6.283); ctx.fill(); }
   // cave walls
-  const rock = ctx.createLinearGradient(0, 0, 0, H); rock.addColorStop(0, '#2b6b4a'); rock.addColorStop(0.5, '#1c4a3a'); rock.addColorStop(1, '#2b6b4a');
+  const rock = ctx.createLinearGradient(0, 0, 0, H); rock.addColorStop(0, pal.rock[0]); rock.addColorStop(0.5, pal.rock[1]); rock.addColorStop(1, pal.rock[0]);
   ctx.fillStyle = rock;
   ctx.beginPath(); ctx.moveTo(-20, -20); for (const c of s.cave) ctx.lineTo(c.x, c.top); ctx.lineTo(W + 40, -20); ctx.closePath(); ctx.fill();
   ctx.beginPath(); ctx.moveTo(-20, H + 20); for (const c of s.cave) ctx.lineTo(c.x, c.bot); ctx.lineTo(W + 40, H + 20); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#5cffb0'; ctx.lineWidth = 2; ctx.shadowColor = '#5cffb0'; ctx.shadowBlur = 10;
+  ctx.strokeStyle = pal.edge; ctx.lineWidth = 2; ctx.shadowColor = pal.edge; ctx.shadowBlur = pal.edgeGlow;
   ctx.beginPath(); s.cave.forEach((c, i) => i ? ctx.lineTo(c.x, c.top) : ctx.moveTo(c.x, c.top)); ctx.stroke();
   ctx.beginPath(); s.cave.forEach((c, i) => i ? ctx.lineTo(c.x, c.bot) : ctx.moveTo(c.x, c.bot)); ctx.stroke();
   ctx.shadowBlur = 0;
-  for (const b of s.blocks) { const g = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0); g.addColorStop(0, '#ff5a7a'); g.addColorStop(1, '#b0204a'); ctx.fillStyle = g; ctx.shadowColor = '#ff5a7a'; ctx.shadowBlur = 14; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(b.x + 4, b.y + 4, 5, b.h - 8); }
-  for (const p of s.particles) { const k = p.life / p.max; ctx.fillStyle = p.fire ? `hsla(${20 + k * 30},100%,${50 + k * 20}%,${k})` : `rgba(180,200,230,${k * 0.35})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (p.fire ? 1 : 2 - k), 0, 6.283); ctx.fill(); }
+  for (const b of s.blocks) { const g = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0); g.addColorStop(0, pal.block[0]); g.addColorStop(1, pal.block[1]); ctx.fillStyle = g; ctx.shadowColor = pal.block[0]; ctx.shadowBlur = pal.blockGlow; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.shadowBlur = 0; ctx.fillStyle = pal.blockShine; ctx.fillRect(b.x + 4, b.y + 4, 5, b.h - 8); }
+  for (const p of s.particles) { const k = p.life / p.max; ctx.fillStyle = p.fire ? `hsla(${20 + k * 30},100%,${50 + k * 20}%,${k})` : `rgba(${pal.smoke},${k * pal.smokeAlpha})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (p.fire ? 1 : 2 - k), 0, 6.283); ctx.fill(); }
   if (s.mode !== 'dead') drawHeli(s.heli, t);
   ctx.restore();
   // HUD
-  ctx.fillStyle = '#e8eefc'; ctx.font = '700 28px Rajdhani, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(`${Math.floor(s.dist / 10)} m`, 22, 40);
-  ctx.fillStyle = '#8796b5'; ctx.font = '600 14px Inter, sans-serif'; ctx.fillText(`BEST ${best} m`, 22, 62);
+  ctx.fillStyle = pal.hudText; ctx.font = '700 28px Rajdhani, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(`${Math.floor(s.dist / 10)} m`, 22, 40);
+  ctx.fillStyle = pal.hudMuted; ctx.font = '600 14px Inter, sans-serif'; ctx.fillText(`BEST ${best} m`, 22, 62);
   if (s.mode !== 'fly') {
-    ctx.fillStyle = 'rgba(7,10,18,0.6)'; ctx.fillRect(0, H / 2 - 90, W, 180);
-    ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = '700 52px Rajdhani, sans-serif';
+    ctx.fillStyle = pal.band; ctx.fillRect(0, H / 2 - 90, W, 180);
+    ctx.textAlign = 'center'; ctx.fillStyle = pal.bandTitle; ctx.font = '700 52px Rajdhani, sans-serif';
     ctx.fillText(s.mode === 'ready' ? 'CHOPPER CAVE' : (s.newBest ? 'NEW BEST!' : 'CRASHED'), W / 2, H / 2 - 22);
-    ctx.font = '600 16px Inter, sans-serif'; ctx.fillStyle = '#b9c6e4';
+    ctx.font = '600 16px Inter, sans-serif'; ctx.fillStyle = pal.bandText;
     ctx.fillText(s.mode === 'ready' ? 'Hold the mouse button to climb, let go to drop. Move the mouse left/right to fly back and forward.' : `${Math.floor(s.dist / 10)} m — click to fly again`, W / 2, H / 2 + 16);
     ctx.fillText('Space and arrow keys work too. Touch: hold to climb, drag sideways.', W / 2, H / 2 + 44);
   }

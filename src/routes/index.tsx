@@ -3,7 +3,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ArrowDown, ExternalLink, Coins, Sprout, Banknote, LogOut, ArrowRight, Radar, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Minimize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, ScanFace, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X, Castle, Hand, Cookie, Store, Target, SpellCheck, Construction, Truck } from 'lucide-react'
-import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
+import { defaultSiteTheme, isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { usePoolLobby } from '@/components/PoolLobby'
 import { InvitePopups } from '@/components/SitePresence'
@@ -95,7 +95,7 @@ function Studio() {
   const [copied, setCopied] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
-  const [theme, setTheme] = useState<SiteTheme>('midnight')
+  const [theme, setTheme] = useState<SiteTheme>(defaultSiteTheme)
   const [selection, setSelection] = useState<{ start: number; end: number; original: string } | null>(null)
   const [replacement, setReplacement] = useState('')
   const [teach, setTeach] = useState(false)

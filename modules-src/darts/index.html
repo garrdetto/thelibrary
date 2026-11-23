@@ -6,6 +6,7 @@
     <title>Darts · the library</title>
     <meta name="description" content="Projectile motion and probability at a regulation dartboard: 501, 301, Cricket and Count Up, solo, against the computer, pass-and-play or in an online room." />
   <script vite-ignore src="module-fit.js" data-fit=".d-overlay"></script>
+  <script vite-ignore src="/module-theme.js"></script>
 </head>
   <body>
     <div id="stage" aria-label="Dartboard. Tap or click the board to put the target there, or drag the target to move it; arrow keys move it too. Then hold the Throw button or Space to swing the height meter, let go in the green to lock it, and press Throw or Space again to stop the side meter and throw."></div>
@@ -169,6 +170,7 @@
             Tap or click the board to put the target there, or drag it (press near the target to pick it up and nudge it without your finger covering it). Then hold the round <strong>Throw</strong> button and the height meter swings; let go in the green to lock the height, then press <strong>Throw</strong> again while the side meter is in the green to throw. Between the two white lines on either meter is Perfect and flies true; the rest of the green misses slightly (more the further from the lines), and in the yellow and red the dart misses high or low on the height meter and left or right on the side meter. Right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move the target (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green, then press <kbd>Space</kbd> again to stop the side meter; <kbd>Esc</kbd> cancels a throw. <kbd>P</kbd> or <kbd>Esc</kbd> pauses. <span id="classic-help" hidden>With the Classic meter there is no side meter: the dart flies as soon as you let go, and the further from the white lines you let go the further it can stray in any direction.</span> The record book is below the board on this page (in pass &amp; play and tournaments, Player 1 is you; team matches aren't recorded).
           </details>
           <div class="d-actions">
+            <span class="d-theme-slot" data-tl-theme-toggle="d-btn"></span>
             <button type="button" class="d-btn tl-full-only" data-tl-exit-full>Exit full screen</button>
             <button type="button" class="d-btn" id="resume-btn" hidden>Back to the oche</button>
             <button type="submit" class="d-btn is-accent" id="start-btn">Step up</button>
@@ -187,6 +189,7 @@
           <button type="button" class="d-btn" id="pause-setup">New match</button>
           <button type="button" class="d-btn" id="pause-quit">Quit</button>
           <button type="button" class="d-btn tl-full-only" data-tl-exit-full>Exit full screen</button>
+          <span class="d-theme-slot" data-tl-theme-toggle="d-btn"></span>
         </div>
         <h2>Board</h2>
         <div class="d-seg" role="radiogroup" aria-label="Board">

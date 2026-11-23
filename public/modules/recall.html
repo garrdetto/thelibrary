@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hero Recall</title>
@@ -49,6 +50,24 @@
   .scores .head button { padding: 6px 10px; font-size: 12px; }
   @media (max-width: 560px) { .board { grid-template-columns: repeat(4, 1fr); gap: 8px; } .lcd { font-size: 22px; min-width: 104px; } }
   @media (prefers-reduced-motion: reduce) { .inner { transition: none; } .card.matched .front svg { animation: none; } }
+  .scores .head-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+  html:root[data-tl-theme="wics"] { --back1: #6f83b5; --back2: #4d63a0; --face: #ffffff; --faceline: #d9dbd0; }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--wics-text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #fff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .panel { box-shadow: 0 1px 3px rgba(19, 32, 58, .08); }
+  html:root[data-tl-theme="wics"] .overlay p { color: #dfe5f2; }
+  html:root[data-tl-theme="wics"] .lcd { background: #fff; color: var(--wics-text); }
+  html:root[data-tl-theme="wics"] .lcd.peek { color: #8a6400; }
+  html:root[data-tl-theme="wics"] .lcd.run { color: #077db3; }
+  html:root[data-tl-theme="wics"] .back { background: repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 8px, transparent 8px 16px), linear-gradient(160deg, var(--back1), var(--back2)); border: 3px solid #ffffff; box-shadow: 0 0 0 1px #c5c7bb, 0 3px 8px rgba(19, 32, 58, .16); }
+  html:root[data-tl-theme="wics"] .front { box-shadow: 0 0 0 1px #c5c7bb, 0 3px 8px rgba(19, 32, 58, .14); }
+  html:root[data-tl-theme="wics"] .front span { color: var(--wics-text); }
+  html:root[data-tl-theme="wics"] .card.matched .front { box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 35%, transparent), 0 3px 8px rgba(19, 32, 58, .14); }
+  html:root[data-tl-theme="wics"] .scores li { background: #f3f3ee; }
+  html:root[data-tl-theme="wics"] .scores li:nth-child(1) .place { color: #9a6f00; }
+  html:root[data-tl-theme="wics"] .scores li:nth-child(2) .place { color: #66728a; }
+  html:root[data-tl-theme="wics"] .scores li:nth-child(3) .place { color: #a3561f; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
@@ -61,7 +80,7 @@
     <div class="overlay" id="overlay"><h2 id="ovTitle">Cleared!</h2><p id="ovText"></p><div><button class="primary" id="again">Deal again</button><button id="close">View cards</button></div></div>
   </section>
   <section class="panel scores" aria-labelledby="localTitle">
-    <div class="head"><h2 id="localTitle">Your fastest clears</h2><button id="clearLocal" type="button">Clear list</button></div>
+    <div class="head"><h2 id="localTitle">Your fastest clears</h2><div class="head-tools" data-tl-theme-toggle><button id="clearLocal" type="button">Clear list</button></div></div>
     <ol id="localList"></ol>
     <p class="empty" id="localEmpty">No clears on this device yet. Match all ten pairs to post a time.</p>
   </section>

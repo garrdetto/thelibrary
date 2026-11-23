@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Giant's Hand</title>
@@ -18,13 +19,17 @@
   .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px 'TL Fox Dollar', Rajdhani, sans-serif; }
   .overlay .ov-stats > div { display: block; text-align: center; }
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+  [data-tl-theme-toggle] { display: contents; }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #ffffff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
 </style>
 <script src="module-fit.js" data-doc></script>
 </head>
 <body>
 <main>
   <header class="top"><h1>Giant's Hand</h1><div class="stats"><div class="stat"><span>SCORE</span><b id="score">0</b></div><div class="stat"><span>TIME</span><b id="time">90</b></div><div class="stat"><span>JUGGLE</span><b id="mult">x1</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
-  <div class="bar"><p>Ninety seconds. Toss the villagers as high and as far as you can.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button></div></div>
+  <div class="bar"><p>Ninety seconds. Toss the villagers as high and as far as you can.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button><span data-tl-theme-toggle></span></div></div>
   <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Meadow. Press on a villager, drag and release to toss them.">
     <canvas id="cv" width="880" height="500" aria-hidden="true"></canvas>
     <div class="overlay show" id="overlay"><h2 id="ovTitle">Giant's Hand</h2><p id="ovText">A meadow full of tiny villagers and one enormous hand. Fling them skyward, catch them on the way down to build a juggle multiplier, pop balloons and sink them through the moving hoop. Nobody gets hurt: they just get very dizzy.</p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Start the round</button></div></div>
@@ -145,7 +150,8 @@ function drawPerson(p) {
 function draw() {
   ctx.save();
   if (S && S.shake) ctx.translate(rand(-S.shake, S.shake) * 0.5, rand(-S.shake, S.shake) * 0.5);
-  const sky = ctx.createLinearGradient(0, 0, 0, GROUND); sky.addColorStop(0, '#3f8fe0'); sky.addColorStop(1, '#bfe6ff');
+  const wics = !!(window.TLTheme && TLTheme.isWics());
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND); sky.addColorStop(0, wics ? '#7b9cc6' : '#3f8fe0'); sky.addColorStop(1, wics ? '#e3e9ea' : '#bfe6ff');
   ctx.fillStyle = sky; ctx.fillRect(-10, -10, W + 20, H + 20);
   const t = S ? S.t : 0;
   ctx.fillStyle = '#ffe9a6'; ctx.beginPath(); ctx.arc(120, 80, 36, 0, 6.283); ctx.fill();
@@ -173,7 +179,7 @@ function draw() {
     }
     ctx.globalAlpha = 1;
     if (mode === 'play' && S.time < 10) { ctx.fillStyle = 'rgba(255,90,90,' + (0.5 + Math.sin(S.t * 8) * 0.3) + ')'; ctx.font = '700 40px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText(Math.ceil(S.time), W / 2, 60); }
-    if (mode === 'pause') { ctx.fillStyle = 'rgba(5,10,20,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '700 48px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText('Paused', W / 2, H / 2); }
+    if (mode === 'pause') { ctx.fillStyle = wics ? 'rgba(19,32,58,.6)' : 'rgba(5,10,20,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '700 48px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText('Paused', W / 2, H / 2); }
   }
   ctx.restore();
 }

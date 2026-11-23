@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/fox-dollar.js"></script>
+<script src="/module-theme.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Corner Cart</title>
@@ -38,6 +39,11 @@
   .ov-stats span { display: block; font: 600 10px 'TL Fox Dollar', Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
   fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   fieldset:disabled { opacity: .55; }
+  [data-tl-theme-toggle] { display: contents; }
+  html:root[data-tl-theme="wics"] h1 { background: none; color: var(--text); -webkit-text-fill-color: currentColor; }
+  html:root[data-tl-theme="wics"] button.primary { background: #077db3; color: #ffffff; }
+  html:root[data-tl-theme="wics"] button.primary:hover { background: #066c9b; }
+  html:root[data-tl-theme="wics"] .seg button[aria-pressed="true"] { background: #e0e2d8; border-color: #0594d0; }
   @media (max-width: 620px) { .plan { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; } .plan section { padding: 10px; } .plan section:first-child { grid-column: 1 / -1; } .plan h2 { font-size: 18px; margin-bottom: 6px; } .plan h2 small { display: block; margin: 0; } .row { flex-wrap: wrap; } .bar p, .row small, .price + .ledger { display: none; } }
 </style>
 <script src="module-fit.js" data-doc></script>
@@ -45,7 +51,7 @@
 <body>
 <main>
   <header class="top"><h1>Corner Cart</h1><div class="stats"><div class="stat"><span>CASH</span><b id="cash">$0</b></div><div class="stat"><span>DAY</span><b id="day">1/30</b></div><div class="stat"><span>REPUTATION</span><b id="rep">—</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
-  <div class="bar"><p>Thirty days to turn $50 into as much as you can.</p><div><button id="restart">New season <kbd>R</kbd></button></div></div>
+  <div class="bar"><p>Thirty days to turn $50 into as much as you can.</p><div><button id="restart">New season <kbd>R</kbd></button><span data-tl-theme-toggle></span></div></div>
   <section class="panel scene" id="panel">
     <canvas id="cv" width="880" height="300" aria-hidden="true"></canvas>
     <div class="overlay show" id="overlay"><h2 id="ovTitle">Corner Cart</h2><p id="ovText">You have a cart, a grill and $50. Each morning, check the forecast, stock sausages, buns and toppings, pick a corner and set your price. Then watch the day play out. Your score is the cash you have after day 30.</p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Open for business</button></div></div>
