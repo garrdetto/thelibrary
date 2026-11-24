@@ -51,6 +51,15 @@ const TOUCHDOWN_WINDOW = 60
 const AIRBORNE_TICKS = 120
 /** Buildings are checked only this close to the ground (the tallest tower is about 210 m). */
 const OBSTACLE_CEILING = 260
+/** Forgiveness: wheels take 40 % more sink than their rated break speed before the gear collapses, other contacts 25 % more. */
+const WHEEL_TOLERANCE = 1.4
+const STRUCTURE_TOLERANCE = 1.25
+/** A wingtip, tail or belly scrape breaks the airframe only above this many times the aircraft's weight. */
+const SCRAPE_LIMIT = 3
+/** Overstress happens past this multiple of the rated G limits, in the air only: gear loads on landing are the gear's job. */
+const OVERSTRESS_MARGIN = 1.75
+/** Roll damping a fully stalled wing keeps: slightly negative so a wing drops, but the stall does not autorotate into a spin. */
+const STALLED_ROLL_DAMPING = -0.08
 
 /** Everything a `FlightModel` carries from one tick to the next, for exact snapshots (replays start from one). */
 export interface FlightSnapshot {
@@ -416,7 +425,7 @@ export class FlightModel {
       if (!contact.touching) {
         if (c.kind === 'structure') this.strikes++
         const impact = -vn
-        const limit = ground.surface === 'water' ? 0.8 : c.breakSpeed
+        const limit = ground.surface === 'water' ? 0.8 : c.breakSpeed * (c.kind === 'wheel' ? WHEEL_TOLERANCE : STRUCTURE_TOLERANCE)
         if (impact > limit && this.crashed === null) {
           this.crashed = ground.surface === 'water' ? 'ditching' : c.kind === 'wheel' ? 'gear collapse' : c.name.startsWith('prop') ? 'prop strike' : c.name.startsWith('wing') ? 'wing strike' : c.name === 'tail' ? 'tail strike' : 'impact'
         }
@@ -474,7 +483,7 @@ export class FlightModel {
         fx -= tvx * slide
         fy -= tvy * slide
         fz -= tvz * slide
-        if (normalForce > 2 * this.mass * GRAVITY && this.crashed === null) this.crashed = c.name.startsWith('wing') ? 'wing strike' : c.name === 'tail' ? 'tail strike' : 'impact'
+        if (normalForce > SCRAPE_LIMIT * this.mass * GRAVITY && this.crashed === null) this.crashed = c.name.startsWith('wing') ? 'wing strike' : c.name === 'tail' ? 'tail strike' : 'impact'
       }
       const bx = this.m00 * fx + this.m10 * fy + this.m20 * fz
       const by = this.m01 * fx + this.m11 * fy + this.m21 * fz
@@ -614,7 +623,7 @@ export class FlightModel {
     const stalled = smoothstep(stallAlpha, stallAlpha + 5, absAlpha)
     this.stall = smoothstep(stallAlpha - 4, stallAlpha, absAlpha)
     const tailQbar = qbar + this.propwash * thrust
-    const rollCoefficient = aero.rollSideslip * beta + lerp(aero.rollRate, 0.12, stalled) * pHat + lerp(aero.rollYawRate, 0.35, stalled) * rHat + aero.rollControl * this.aileron * (1 - 0.5 * stalled)
+    const rollCoefficient = aero.rollSideslip * beta + lerp(aero.rollRate, STALLED_ROLL_DAMPING, stalled) * pHat + lerp(aero.rollYawRate, 0.35, stalled) * rHat + aero.rollControl * this.aileron * (1 - 0.5 * stalled)
     const pitchCoefficient = aero.pitch0 + aero.pitchAlpha * sin(alpha) + aero.pitchRate * qHat + aero.pitchTrim * this.trim + aero.flapPitch * this.flap
     const yawCoefficient = aero.yawSideslip * beta + aero.yawRate * rHat + aero.yawRollRate * pHat + aero.yawAileron * this.aileron
     const rollMoment = rollCoefficient * qbar * area * span + aero.rollRudder * this.rudder * tailQbar * area * span
@@ -633,7 +642,7 @@ export class FlightModel {
     this.loadFactor = this.bfy / (mass * GRAVITY)
     this.lateralG = this.bfz / (mass * GRAVITY)
     this.fy -= mass * GRAVITY
-    if (this.loadFactor > spec.limits.gPositive * 1.5 || this.loadFactor < spec.limits.gNegative * 1.5) {
+    if (this.wheelLoad <= 0 && (this.loadFactor > spec.limits.gPositive * OVERSTRESS_MARGIN || this.loadFactor < spec.limits.gNegative * OVERSTRESS_MARGIN)) {
       if (this.crashed === null) this.crashed = 'overstress'
     }
 
