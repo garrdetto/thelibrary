@@ -220,7 +220,7 @@ export class Menus {
     }
     assists.append(make('small', {}, this.multiplierText))
     const keys = make('div', { className: 'tf-keys' })
-    for (const [k, what] of [['S / W or ↓ ↑', 'Nose up / down'], ['A / D or ← →', 'Roll'], ['Q / E', 'Rudder'], ['PgUp / PgDn or + −', 'Throttle'], ['F / R', 'Flaps down / up'], ['Space', 'Brakes'], ['[ / ]', 'Trim'], ['C', 'Camera'], ['Esc', 'Pause']]) {
+    for (const [k, what] of [['S / W or ↓ ↑', 'Nose up / down'], ['A / D or ← →', 'Roll'], ['Q / E', 'Rudder'], ['PgUp / PgDn or + −', 'Throttle'], ['F / R', 'Flaps down / up'], ['Space', 'Brakes'], ['[ / ]', 'Trim'], ['C', 'Camera'], ['M', 'Map'], ['T', 'Tips on / off'], ['Esc', 'Pause']]) {
       keys.append(make('kbd', { textContent: k }), make('span', { textContent: what }))
     }
     const card = make('div', { className: 'tf-card' },
@@ -311,7 +311,7 @@ export class Menus {
       }
       list.append(row)
     }
-    const keyActions: KeyAction[] = ['pitchUp', 'pitchDown', 'rollLeft', 'rollRight', 'yawLeft', 'yawRight', 'throttleUp', 'throttleDown', 'flapsDown', 'flapsUp', 'gear', 'brakes', 'parkingBrake', 'trimUp', 'trimDown', 'view', 'lights', 'hud', 'atis', 'devOverlay', 'pause']
+    const keyActions: KeyAction[] = ['pitchUp', 'pitchDown', 'rollLeft', 'rollRight', 'yawLeft', 'yawRight', 'throttleUp', 'throttleDown', 'flapsDown', 'flapsUp', 'gear', 'brakes', 'parkingBrake', 'trimUp', 'trimDown', 'view', 'lights', 'hud', 'map', 'tips', 'atis', 'devOverlay', 'pause']
     for (const action of keyActions) {
       const codes = b.keys[action] ?? []
       const buttons = (BUTTON_ACTIONS as string[]).includes(action) ? b.buttons[action] ?? [] : []
