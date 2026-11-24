@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { commandSteps } from './host-link.mjs'
 import { parseApps, planAction, settleMs, strikesBeforeRestart, trackerName } from './watchdog.mjs'
 
 const running = { name: trackerName, status: 'online', uptimeMs: settleMs + 1 }
@@ -39,8 +40,21 @@ test('a tracker that only just started is given time to open its port', () => {
 
 test('reads the PM2 list past its own notices', () => {
   const now = 1_800_000_000_000
-  const output = `[PM2] Spawning PM2 daemon with pm2_home=C:\\Users\\someone\\.pm2\n[PM2] PM2 Successfully daemonized\n${JSON.stringify([{ name: trackerName, pm2_env: { status: 'online', pm_uptime: now - 5_000 } }])}`
-  assert.deepEqual(parseApps(output, now), [{ name: trackerName, status: 'online', uptimeMs: 5_000 }])
+  const output = `[PM2] Spawning PM2 daemon with pm2_home=C:\\Users\\someone\\.pm2\n[PM2] PM2 Successfully daemonized\n${JSON.stringify([{ name: trackerName, pm2_env: { status: 'online', pm_uptime: now - 5_000, restart_time: 3 }, monit: { memory: 98_600_000 } }])}`
+  assert.deepEqual(parseApps(output, now), [{ name: trackerName, status: 'online', uptimeMs: 5_000, restarts: 3, memoryMb: 99 }])
   assert.deepEqual(parseApps('[PM2] Spawning PM2 daemon\n[]', now), [])
   assert.deepEqual(parseApps('not a list', now), [])
+})
+
+test('Turn on from the site leaves a running tracker alone and starts a stopped one', () => {
+  assert.deepEqual(commandSteps({ action: 'start', openPulse: false }, [running, bot], trackerName), [])
+  assert.deepEqual(commandSteps({ action: 'start', openPulse: false }, [{ ...running, status: 'stopped' }], trackerName), ['restart-tracker'])
+  assert.deepEqual(commandSteps({ action: 'start', openPulse: true }, [bot], trackerName), ['start-tracker', 'open-pulse'])
+  assert.deepEqual(commandSteps({ action: 'start', openPulse: false }, [], trackerName), ['resurrect'])
+})
+
+test('Restart from the site always restarts, and Open Pulse touches nothing in PM2', () => {
+  assert.deepEqual(commandSteps({ action: 'restart', openPulse: false }, [running], trackerName), ['restart-tracker'])
+  assert.deepEqual(commandSteps({ action: 'restart', openPulse: false }, [bot], trackerName), ['start-tracker'])
+  assert.deepEqual(commandSteps({ action: 'open-pulse', openPulse: true }, [], trackerName), ['open-pulse'])
 })

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { ExternalLink, Laptop, LoaderCircle, Plus, RotateCcw, Send, Trash2, Undo2, Wallet } from 'lucide-react'
 import { Streamdown } from 'streamdown'
+import { TrackerHostCard } from './admin/TrackerHostCard'
 
 type Status = 'queued' | 'running' | 'merged' | 'review' | 'answered' | 'failed' | 'reverted'
 type ChangeMessage = {
@@ -273,6 +274,7 @@ export function SiteChanges() {
         <li><b>GitHub</b> ({overview.configured.repo} → Settings → Secrets → Actions): <code>SITE_CHANGES_SECRET</code> (the same value) and <code>ANTHROPIC_API_KEY</code> or <code>CLAUDE_CODE_OAUTH_TOKEN</code></li>
       </ul>
     </div>}
+    <TrackerHostCard/>
     {overview && <CreditsCard credits={overview.credits} configured={overview.configured} onSaved={credits => setOverview({ ...overview, credits })}/>}
     {overview && <div className="change-layout">
       <nav className="change-threads" aria-label="Conversations">
