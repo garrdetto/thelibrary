@@ -10,8 +10,8 @@ import { AIRPORTS, runwayEndFor } from './Airports'
 import { WATER_LEVEL, terrainHeight } from './Terrain'
 import { DEG, SimRandom, cos, sin } from '../sim/SimMath'
 
-export type PlaceKind = 'city' | 'town' | 'industrial' | 'village'
-export type BuildingKind = 'house' | 'shop' | 'office' | 'tower' | 'warehouse'
+export type PlaceKind = 'metro' | 'city' | 'town' | 'industrial' | 'village'
+export type BuildingKind = 'house' | 'shop' | 'office' | 'tower' | 'skyscraper' | 'warehouse'
 
 export interface PlaceSpec {
   id: string
@@ -64,6 +64,20 @@ export const PLACES: readonly PlaceSpec[] = [
   { id: 'fenwick-works', name: 'Fenwick Works', kind: 'industrial', x: -27900, z: 40600, radius: 1200, heading: 40, seed: 9404 },
   { id: 'harrow-village', name: 'Harrow', kind: 'village', x: -1500, z: -2400, radius: 700, heading: 90, seed: 9505 },
   { id: 'millbrook-village', name: 'Millbrook', kind: 'village', x: 14800, z: -8300, radius: 500, heading: 140, seed: 9606 },
+  { id: 'calder-metro', name: 'Calder', kind: 'metro', x: 0, z: 50000, radius: 3400, heading: 25, seed: 9707 },
+  { id: 'bramwell-town', name: 'Bramwell', kind: 'town', x: 30000, z: -10000, radius: 1100, heading: 70, seed: 9808 },
+  { id: 'ketterby-town', name: 'Ketterby', kind: 'town', x: -70000, z: 40000, radius: 1200, heading: 15, seed: 9909 },
+  { id: 'wyndham-town', name: 'Wyndham', kind: 'town', x: 30000, z: 30000, radius: 1100, heading: 160, seed: 10010 },
+  { id: 'ottery-village', name: 'Ottery', kind: 'village', x: -40000, z: -10000, radius: 600, heading: 35, seed: 10111 },
+  { id: 'tarn-hollow-village', name: 'Tarn Hollow', kind: 'village', x: -20000, z: -10000, radius: 550, heading: 100, seed: 10212 },
+  { id: 'hollin-cross-village', name: 'Hollin Cross', kind: 'village', x: -20000, z: 20000, radius: 600, heading: 60, seed: 10313 },
+  { id: 'sedge-end-village', name: 'Sedge End', kind: 'village', x: 70000, z: 20000, radius: 600, heading: 130, seed: 10414 },
+  { id: 'rookham-village', name: 'Rookham', kind: 'village', x: 80000, z: 0, radius: 600, heading: 10, seed: 10515 },
+  { id: 'larkfield-village', name: 'Larkfield', kind: 'village', x: 40000, z: 70000, radius: 650, heading: 80, seed: 10616 },
+  { id: 'dunmere-village', name: 'Dunmere', kind: 'village', x: 20000, z: 80000, radius: 600, heading: 45, seed: 10717 },
+  { id: 'elmstead-village', name: 'Elmstead', kind: 'village', x: -60000, z: 70000, radius: 600, heading: 120, seed: 10818 },
+  { id: 'pellow-village', name: 'Pellow', kind: 'village', x: -90000, z: 0, radius: 600, heading: 20, seed: 10919 },
+  { id: 'ashcombe-village', name: 'Ashcombe', kind: 'village', x: -30000, z: 60000, radius: 600, heading: 170, seed: 11020 },
 ]
 
 const BLOCK = 110
@@ -112,6 +126,9 @@ function slope(x: number, z: number): number {
 function pick(kind: PlaceKind, centre: number, onMain: boolean, random: SimRandom): { kind: BuildingKind; w: number; d: number; h: number } | null {
   const r = random.next()
   if (kind === 'industrial') return { kind: 'warehouse', w: 40 + r * 50, d: 30 + random.next() * 35, h: 9 + random.next() * 9 }
+  if (kind === 'metro' && centre < 0.3) return { kind: 'skyscraper', w: 30 + r * 16, d: 30 + random.next() * 14, h: 150 + (1 - centre / 0.3) * 240 * (0.45 + random.next() * 0.55) }
+  if (kind === 'metro' && centre < 0.5) return { kind: 'tower', w: 26 + r * 18, d: 26 + random.next() * 16, h: 60 + (1 - (centre - 0.3) / 0.2) * 80 * (0.4 + random.next() * 0.6) }
+  if (kind === 'metro' && centre < 0.68) return { kind: 'office', w: 24 + r * 20, d: 20 + random.next() * 18, h: 18 + random.next() * 34 }
   if (kind === 'city' && centre < 0.28) return { kind: 'tower', w: 26 + r * 18, d: 26 + random.next() * 16, h: 60 + (1 - centre / 0.28) * 140 * (0.5 + random.next() * 0.5) }
   if (kind === 'city' && centre < 0.55) return { kind: 'office', w: 24 + r * 20, d: 20 + random.next() * 18, h: 18 + random.next() * 34 }
   if (onMain && centre < 0.7) return { kind: 'shop', w: 14 + r * 10, d: 14 + random.next() * 8, h: 7 + random.next() * 6 }
@@ -150,7 +167,7 @@ export function buildPlace(spec: PlaceSpec): Place {
       const edge = centre > 0.75 ? (centre - 0.75) / 0.25 : 0
       if (random.next() < edge * 0.8) continue
       const onMain = j === -1 || j === 0
-      const slots = spec.kind === 'city' && centre < 0.55 ? 1 : spec.kind === 'industrial' ? 2 : 4
+      const slots = (spec.kind === 'city' && centre < 0.55) || (spec.kind === 'metro' && centre < 0.68) ? 1 : spec.kind === 'industrial' ? 2 : 4
       for (let s = 0; s < slots; s++) {
         const choice = pick(spec.kind, centre, onMain, random)
         if (!choice) continue

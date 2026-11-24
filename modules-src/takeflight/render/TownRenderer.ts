@@ -22,7 +22,10 @@ import { WATER_LEVEL, terrainHeight } from '../shared/Terrain'
 const DETAIL_RANGE = 7000
 const STREET_STEP = 12
 const STREET_LIFT = 0.55
-const KINDS: BuildingKind[] = ['house', 'shop', 'office', 'tower', 'warehouse']
+const KINDS: BuildingKind[] = ['house', 'shop', 'office', 'tower', 'skyscraper', 'warehouse']
+/** Skyscrapers: the shaft takes this share of the height, then a set-back crown at `CROWN_SCALE` of the footprint. */
+const SHAFT_SHARE = 0.8
+const CROWN_SCALE = 0.72
 const DETAIL_KINDS = new Set<BuildingKind>(['house', 'shop'])
 
 const PALETTE: Record<BuildingKind, [number, number, number][]> = {
@@ -30,6 +33,7 @@ const PALETTE: Record<BuildingKind, [number, number, number][]> = {
   shop: [[0.7, 0.66, 0.58], [0.5, 0.32, 0.26], [0.62, 0.64, 0.66], [0.78, 0.72, 0.6]],
   office: [[0.58, 0.6, 0.62], [0.68, 0.66, 0.6], [0.45, 0.48, 0.52]],
   tower: [[0.32, 0.4, 0.48], [0.42, 0.48, 0.52], [0.26, 0.3, 0.34], [0.5, 0.54, 0.56]],
+  skyscraper: [[0.24, 0.34, 0.44], [0.36, 0.44, 0.5], [0.2, 0.24, 0.28], [0.46, 0.52, 0.58], [0.3, 0.38, 0.36]],
   warehouse: [[0.6, 0.62, 0.62], [0.46, 0.5, 0.54], [0.66, 0.6, 0.5], [0.4, 0.44, 0.42]],
 }
 
@@ -102,12 +106,12 @@ export class TownRenderer {
       const list = byKind.get(kind)
       if (!list || list.length === 0) continue
       const material = this.track(matte(`takeflight-${kind}`, scene))
-      if (kind === 'tower' || kind === 'office') {
-        const texture = windowTexture(scene, `takeflight-windows-${kind}`, kind === 'tower' ? 6 : 5, kind === 'tower' ? 24 : 10)
+      if (kind === 'tower' || kind === 'office' || kind === 'skyscraper') {
+        const texture = windowTexture(scene, `takeflight-windows-${kind}`, kind === 'skyscraper' ? 8 : kind === 'tower' ? 6 : 5, kind === 'skyscraper' ? 40 : kind === 'tower' ? 24 : 10)
         this.textures.push(texture)
         material.emissiveTexture = texture
         material.emissiveColor = new Color3(0, 0, 0)
-        if (kind === 'tower') {
+        if (kind === 'tower' || kind === 'skyscraper') {
           material.roughness = 0.55
           material.metallicF0Factor = 0.15
         }
@@ -118,13 +122,22 @@ export class TownRenderer {
       const matrices = new Float32Array(list.length * 16)
       const colors = new Float32Array(list.length * 4)
       const palette = PALETTE[kind]
+      const shaft = kind === 'skyscraper' ? SHAFT_SHARE : 1
       list.forEach((b, i) => {
-        this.writeMatrix(matrices, i, b, b.width, b.height, b.depth, b.base + b.height / 2)
+        this.writeMatrix(matrices, i, b, b.width, b.height * shaft, b.depth, b.base + (b.height * shaft) / 2)
         const c = palette[Math.floor(b.shade * palette.length) % palette.length]
         const tint = 0.9 + b.shade * 0.2
         colors.set([c[0] * tint, c[1] * tint, c[2] * tint, 1], i * 4)
       })
       this.finish(box, matrices, colors, DETAIL_KINDS.has(kind))
+      if (kind === 'skyscraper') {
+        const crown = CreateBox(`takeflight-crowns-${place.spec.id}`, { size: 1, wrap: true }, scene)
+        crown.material = material
+        const crownMatrices = new Float32Array(list.length * 16)
+        const top = 1 - SHAFT_SHARE
+        list.forEach((b, i) => this.writeMatrix(crownMatrices, i, b, b.width * CROWN_SCALE, b.height * top, b.depth * CROWN_SCALE, b.base + b.height * (SHAFT_SHARE + top / 2)))
+        this.finish(crown, crownMatrices, colors.slice(), false)
+      }
       if (kind === 'house') {
         const roofMaterial = this.track(matte('takeflight-roofs', scene))
         const roof = gableRoof(scene)

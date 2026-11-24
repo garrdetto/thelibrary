@@ -7,6 +7,18 @@ import { FLIGHT_QUALITY } from '../render/Quality'
 import { TerrainRenderer } from '../render/TerrainRenderer'
 import { HARROW_FIELD } from '../shared/Airports'
 
+/** Node has no canvas: towns with lit windows paint a DynamicTexture, so give it a 2D context that ignores drawing. */
+if (typeof (globalThis as { OffscreenCanvas?: unknown }).OffscreenCanvas === 'undefined') {
+  const pixels = (w: number, h: number) => ({ data: new Uint8ClampedArray(Math.max(1, w * h * 4)), width: w, height: h })
+  const context = new Proxy({}, { get: (_target, name) => (name === 'getImageData' ? (_x: number, _y: number, w: number, h: number) => pixels(w, h) : name === 'createImageData' ? (w: number, h: number) => pixels(w, h) : () => undefined), set: () => true })
+  ;(globalThis as { OffscreenCanvas?: unknown }).OffscreenCanvas = class {
+    constructor(public width: number, public height: number) {}
+    getContext() {
+      return context
+    }
+  }
+}
+
 function counts(scene: Scene) {
   return { meshes: scene.meshes.length, materials: scene.materials.length, textures: scene.textures.length, geometries: scene.geometries.length, nodes: scene.transformNodes.length }
 }

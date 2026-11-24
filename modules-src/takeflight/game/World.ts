@@ -12,6 +12,7 @@ import type { Scene } from '@babylonjs/core/scene'
 import { AIRPORTS } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
 import { AirportRenderer } from '../render/AirportRenderer'
+import { RoadRenderer } from '../render/RoadRenderer'
 import { TownRenderer } from '../render/TownRenderer'
 import { allPlaces } from '../shared/Towns'
 
@@ -28,6 +29,7 @@ export interface WorldStats {
   rebases: number
   airports: number
   towns: number
+  roads: number
 }
 
 export class World {
@@ -39,13 +41,15 @@ export class World {
   private readonly loadedList: AirportRenderer[] = []
   private readonly towns = new Map<string, TownRenderer>()
   private onRebaseListeners: (() => void)[] = []
+  private readonly roads: RoadRenderer
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode('takeflight-world', scene)
+    this.roads = new RoadRenderer(scene, this.root, (mesh) => this.refresh(mesh))
   }
 
   get stats(): WorldStats {
-    return { originX: this.originX, originZ: this.originZ, rebases: this.rebases, airports: this.airports.size, towns: this.towns.size }
+    return { originX: this.originX, originZ: this.originZ, rebases: this.rebases, airports: this.airports.size, towns: this.towns.size, roads: this.roads.count }
   }
 
   /** Airport renderers currently built. */
@@ -106,7 +110,8 @@ export class World {
   }
 
   /** Builds towns coming into range, releases those left behind, and lights their windows by `night`. */
-  updateTowns(worldX: number, worldZ: number, night: number): void {
+  updateTowns(worldX: number, worldZ: number, night: number, force = false): void {
+    this.roads.update(worldX, worldZ, force)
     for (const place of allPlaces()) {
       const dx = worldX - place.spec.x
       const dz = worldZ - place.spec.z
@@ -137,6 +142,7 @@ export class World {
     this.loadedList.length = 0
     for (const town of this.towns.values()) town.dispose()
     this.towns.clear()
+    this.roads.dispose()
     this.root.dispose(false, false)
   }
 }

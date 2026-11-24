@@ -50,7 +50,7 @@ const BRAKE_SHARE = 0.68
 const TOUCHDOWN_WINDOW = 60
 const AIRBORNE_TICKS = 120
 /** Buildings are checked only this close to the ground (the tallest tower is about 210 m). */
-const OBSTACLE_CEILING = 260
+const OBSTACLE_CEILING = 460
 /** Forgiveness: wheels take 40 % more sink than their rated break speed before the gear collapses, other contacts 25 % more. */
 const WHEEL_TOLERANCE = 1.4
 const STRUCTURE_TOLERANCE = 1.25

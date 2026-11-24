@@ -369,6 +369,7 @@ export class Standalone {
     this.cameras.originX = this.world.originX
     this.cameras.originZ = this.world.originZ
     this.world.updateAirports(a.px, a.pz)
+    this.world.updateTowns(a.px, a.pz, this.atmosphere.night, true)
     this.towerAirport = airport
     this.cameras.setTower(...airport.tower)
     this.sim.interpolate(1, this.state)
