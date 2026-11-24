@@ -22,6 +22,22 @@ export function gridGeometry(w: World): { GRID_S: number; GRID_ROW: number; PACE
   return { GRID_S: w.track.S_LINE - w.track.P / 2, GRID_ROW, PACE_LEAD: Math.max(GRID_ROW, 2 * 4.7 * w.cfg.carScale) * 1.6 }
 }
 
+/**
+ * Rolling-start files. Classic: the inside file on the groove (-3.6) and the outside one beside it (0.6), level.
+ * Next model: the outside file runs up by the wall, the inside file a car length further down the track and staggered
+ * a car length back (`stagger`), so neither file is door to door.
+ */
+export function gridLanes(w: World): { outer: number; inner: number; stagger: number } {
+  if (w.model !== 'next') return { outer: 0.6, inner: -3.6, stagger: 0 }
+  let fl = 0, fw = 0
+  for (const c of w.cars.values()) if (!c.isPace) {
+    fl = Math.max(fl, c.fl || 1)
+    fw = Math.max(fw, c.fw || 1)
+  }
+  const CS = w.cfg.carScale, len = 2 * 2.35 * CS * (fl || 1), outer = w.track.HW - 1.3 * CS * (fw || 1) - (w.track.dirt ? 1.3 : 1.1)
+  return { outer, inner: outer - len, stagger: len }
+}
+
 const formCache = new WeakMap<World, number>()
 
 /** Drops the cached formation speed, for when the world's handling changes. */
@@ -38,7 +54,8 @@ export function formV(w: World): number {
   if (v === undefined) {
     const T = w.track, R = T.R
     v = w.cfg.aiPaceSpeed
-    for (const lat of [-3.6, 0.6]) for (let i = 0; i <= 8; i++) {
+    const { outer, inner } = gridLanes(w)
+    for (const lat of [inner, outer]) for (let i = 0; i <= 8; i++) {
       const s = T.T1 + (T.TURN * i) / 8
       v = Math.min(v, ((0.9 * Math.sqrt(T.aMaxAt(s, lat, w.cfg.aiGrip) * (R + lat))) * R) / (R + lat))
     }
@@ -50,7 +67,7 @@ export function formV(w: World): number {
 /** + = behind the slot. */
 function slotErr(w: World, c: SimCar): number {
   const { GRID_ROW, PACE_LEAD } = gridGeometry(w), P = w.track.P
-  const off = c.isPace ? PACE_LEAD : -(c.gridRow || 0) * GRID_ROW
+  const L = gridLanes(w), off = c.isPace ? PACE_LEAD : -(c.gridRow || 0) * GRID_ROW - (c.fileLane < L.outer - 0.1 ? L.stagger : 0)
   let e = mod(w.track.S_LINE + (w.race.formP ?? 0) + off - c.tp.s, P)
   if (e > P / 2) e -= P
   return e
@@ -110,11 +127,12 @@ export function setPhase(w: World, ph: Phase): void {
   if (ph === 'green') {
     race.greenT = n
     race.gn = false
+    const inner = gridLanes(w).inner
     if (wasPace) w.cars.forEach((c) => {
       if (c.ai && c.local && !c.isPace && c.gridRow != null) {
         c.passOff = 0
         c.relLane = null
-        c.startFile = c.fileLane > -1 ? 1 : 0
+        c.startFile = c.fileLane > inner + 0.1 ? 1 : 0
         c.startHoldT = 4.5 + c.gridRow * 0.3
         c.laneT = c.startHoldT + w.rand() * 1.5
       }
@@ -180,12 +198,15 @@ export function raceControl(w: World, dt: number): void {
   }
 }
 
+/** Top speed added per position behind the leader on the next vehicle model (the classic model keeps `CFG.packBoost`). */
+export const NEXT_PACK_BOOST = 0.05
+
 /** Pack boost: +packBoost top speed per position behind the leader, tapering over 2 s after a pass. */
 export function updateBoosts(w: World, dt: number): void {
-  const race = w.race, on = race.ph === 'green' || race.ph === 'checkered'
+  const race = w.race, on = race.ph === 'green' || race.ph === 'checkered', per = w.model === 'next' ? NEXT_PACK_BOOST : w.cfg.packBoost
   standings(w).forEach((c, i) => {
     if (!c.local) return
-    const tgt = on && !c.fin ? 1 + w.cfg.packBoost * i : 1
+    const tgt = on && !c.fin ? 1 + per * i : 1
     if (tgt >= c.boost) {
       c.boost = tgt
       c.boostRate = 0
@@ -295,14 +316,16 @@ export function beginRace<C extends SimCar>(w: World, grid: GridEntry[], o: { at
     c.lapDirty = true
   })
   for (const c of made) w.cars.set(c.id, c)
-  const { GRID_S, GRID_ROW } = gridGeometry(w)
-  made.forEach((c) => {
+  const { GRID_S, GRID_ROW } = gridGeometry(w), lanes = gridLanes(w)
+  made.forEach((c, i) => {
     const row = c.gridRow || 0
+    c.fileLane = i % 2 ? lanes.outer : lanes.inner
+    const back = i % 2 ? 0 : lanes.stagger
     if (o.attack) {
       place(w, c, T.S_LINE - 70, -2)
       c.cross = 1
     } else {
-      place(w, c, GRID_S - row * GRID_ROW, c.fileLane)
+      place(w, c, GRID_S - row * GRID_ROW - back, c.fileLane)
       c.cross = 1
       rollAt(w, c, formV(w))
     }
