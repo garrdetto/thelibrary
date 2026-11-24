@@ -171,6 +171,8 @@ export interface GameExtension {
   greeting?(): string
   /** E in a vehicle: true when the host world uses this press itself (a truck prompt), so it does not get the player out. */
   claimsInteract?(): boolean
+  /** A key press the host world uses itself right now (a truck's gears, horn or landing gear while driving), so the game's own action for that key is skipped. */
+  claimsKey?(code: string): boolean
   /** The prompt line while driving a land vehicle (a truck's fuel, wash or job step), '' for none. */
   vehiclePrompt?(): string
 }
@@ -1050,6 +1052,7 @@ export class Game {
       this.keys.add(e.code)
       if (ARROW_KEYS.has(e.code) || e.code === 'Space' || (e.code === 'Tab' && this.mode === 'bowfish')) e.preventDefault()
       if (e.repeat) return
+      if (this.ext?.claimsKey?.(e.code)) return
       if (this.mode === 'bowfish' && this.bowfish.key(e.code)) return
       if (this.mode === 'bowfish' && (e.code === 'KeyR' || e.code === 'KeyI' || e.code === 'KeyF')) return
       if (e.code === 'Digit1') this.pickTool('rod')

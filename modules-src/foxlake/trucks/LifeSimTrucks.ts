@@ -19,7 +19,7 @@ import type { GameHost } from '../../rackreel/game/Game'
 import type { DriveInput, ExternalDriver, Vehicle as RrVehicle } from '../../rackreel/systems/VehicleController'
 import { driverEye } from '../../trucksim/game/Cameras'
 import { TruckSession } from '../../trucksim/game/TruckSession'
-import type { SessionView } from '../../trucksim/game/TruckSession'
+import type { SessionEvents, SessionView } from '../../trucksim/game/TruckSession'
 import type { ToastKind, TruckHost } from '../../trucksim/game/TruckHost'
 import { Progress } from '../../trucksim/net/Progress'
 import { MaterialLibrary } from '../../trucksim/render/Materials'
@@ -90,6 +90,9 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
   private trafficVisuals: TrafficVisuals | null = null
   private readonly rigObstacle: Obstacle[] = [{ x: 0, z: 0, vx: 0, vz: 0, half: 4 }]
   private readonly townPoint = { x: 0, y: 0, z: 0 }
+  private readonly highlight = new Set<string>()
+  /** True while another view (the lot builder) holds the camera, so the chase camera stays out of it. */
+  holdCamera = false
 
   constructor(
     private readonly host: GameHost,
@@ -98,6 +101,7 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
     private readonly heightAtTown: (x: number, z: number) => number,
     private readonly addStatic: (box: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotY?: number }) => unknown,
     private readonly removeStatic: (handle: never) => void,
+    private readonly events: Partial<SessionEvents> = {},
   ) {
     this.scene = host.ctx.scene
     this.mats = new MaterialLibrary(this.scene)
@@ -120,6 +124,7 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
       horn: () => {},
       airBrake: () => {},
       startWash: (place) => void this.session?.finishWash(place, 1),
+      ...this.events,
     })
     this.standIn = new TransformNode('truck-cab-seat', this.scene)
     this.standIn.rotationQuaternion = new Quaternion()
@@ -129,6 +134,24 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
     const label = model ? `${model.brand} ${model.name}` : 'truck'
     this.vehicle = this.host.vehicles.addExternal(this.standIn, this, new Vector3(), 0, new Vector3(-eye.x, eye.y - 0.75 + HIP_ABOVE_SEAT, eye.z), new Vector3(-(half + 1.2), 0, eye.z), label)
     this.sync()
+  }
+
+  /** The Haulers Lane lots as drawn (for the lot builder's ghost and land preview). */
+  get lotRenderer(): LotRenderer | null {
+    return this.lots
+  }
+
+  /** The last frame's view of the session (gauges, job, steps, route), or null before the first frame. */
+  get lastView(): SessionView | null {
+    return this.view
+  }
+
+  /** Seats the player in the rig's cab (Rack & Reel's own getting in), wherever they stand. */
+  enterCab(): boolean {
+    if (!this.vehicle || !this.session?.truck) return false
+    this.sync()
+    this.host.enterVehicle(this.vehicle)
+    return true
   }
 
   get keys(): ReadonlySet<string> {
@@ -205,7 +228,25 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
       off()
     })
     this.sync()
+    this.updateZones(dt)
     this.camera(dt)
+  }
+
+  /** Builds the work-zone equipment near the rig (or the player on foot) and runs the loaders, as the standalone page does. */
+  private updateZones(dt: number): void {
+    const zones = this.zones
+    const session = this.session
+    if (!zones || !session) return
+    if (this.driving || !session.truck) {
+      const p = session.rigPosition()
+      zones.setFocus(p.x, p.z)
+    } else {
+      const p = this.host.player
+      const t = sceneToTown(p.x, p.y, p.z, this.townPoint)
+      zones.setFocus(t.x, t.z)
+    }
+    zones.update(dt, session.zoneActivity())
+    zones.highlight(session.highlightZones(this.highlight))
   }
 
   /** Moves Montello's traffic around the player (or the rig while driving), treating the rig as traffic. */
@@ -266,6 +307,11 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
   }
 
   private camera(dt: number): void {
+    if (this.holdCamera) {
+      this.cameraSet = false
+      this.cameraReady = false
+      return
+    }
     if (!this.driving) {
       if (this.cameraSet) this.host.setCameraShot(null)
       this.cameraSet = false
@@ -291,7 +337,7 @@ export class LifeSimTrucks implements TruckHost, ExternalDriver {
     this.host.setCameraShot({ eye: this.eye, target: this.target })
   }
 
-  private drawLots(): void {
+  drawLots(): void {
     const lots = this.lots
     if (!lots) return
     for (const handle of this.lotBoxes) this.removeStatic(handle as never)

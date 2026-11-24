@@ -29,8 +29,9 @@ any `TruckHost`, jobs read a `HaulWorld`, rigs take a `PhysicsHost` whose collis
    the town `Physics` as `PhysicsHost`, Montello's land for `heightAt`, Rack & Reel's keys and HUD root. The truck joins
    Life Sim's driving through `VehicleController.addExternal`, so getting in and out (E) and walking are Life Sim's own,
    with Life Sim's tailored person and rig. The lots, outskirts sites and work-zone equipment are drawn into Montello.
-3. **Truck Simulator page on Montello.** `#module-trucksim` opens Life Sim in trucking mode (or the page boots the Montello
-   world with the truck host), starting at your lot's gravel driveway; the county stays in the code until this lands.
+3. **Truck Simulator page on Montello (done).** The Truck Simulator page boots Montello in trucking mode (`foxlake/boot.ts`
+   with `trucking`, `foxlake/trucks/TruckingMode.ts`): you start in your rig at your Haulers Lane lot with Truck Simulator's
+   dash, job board, dealer, fleet and garage, a Montello map and the lot builder; `?world=county` still opens the county.
 4. **Realism.** The excavator swings, digs and dumps each bucket into the bed with the load growing per bucket; the quarry gets
    benches, haul road, stockpiles and a crusher with real gravel textures; Rapier tuning toward real mass, load transfer and
    tyre grip; curbs on town streets and guardrails on embankments and bridges; trees and buildings solid for the truck;

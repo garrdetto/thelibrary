@@ -13,6 +13,8 @@
  * only when the account owns them (`Account.rides`).
  */
 import { LifeSimTrucks } from '../trucks/LifeSimTrucks'
+import { TruckingMode } from '../trucks/TruckingMode'
+import { BINDINGS } from '../../trucksim/systems/Keys'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
@@ -74,6 +76,8 @@ const NEAR_ON_FOOT = 0.08
 const NEAR_DRIVING = 0.4
 /** Rack & Reel's cabin lights, in the sealed lake country. */
 const SEALED_LIGHTS = ['cabin-lamp', 'cabin-stove']
+/** Truck Simulator's driving and rig keys, which belong to the truck while you sit in its cab. */
+const TRUCK_KEY_CODES: ReadonlySet<string> = new Set(BINDINGS.filter((b) => b.group !== 'menu').flatMap((b) => b.codes))
 const GARAGE_KEY = 'KeyV'
 const HOME_KEY = 'KeyH'
 const GO_HOME_COOLDOWN_MS = 15 * 60 * 1000
@@ -101,6 +105,8 @@ export interface TownOptions {
   site: LakeSite
   /** `?at=`: a Montello map point (metres) to stand on once play starts, the World Editor's "Open in Life Sim". */
   at?: { x: number; z: number } | null
+  /** Truck Simulator's page: Montello in trucking mode (`TruckingMode`), starting in your rig at your Haulers Lane lot. */
+  trucking?: boolean
 }
 
 /** What the places in town (the outfitter's counter) call to open Rack & Reel's gear, wardrobe and catalog. */
@@ -115,8 +121,10 @@ export class FoxLakeTown implements GameExtension {
   readonly drivesClock = true
   private host!: GameHost
   private root!: TransformNode
-  /** Truck Simulator in Montello (`?trucks`), or null. */
+  /** Truck Simulator in Montello (`?trucks`, or the Truck Simulator page), or null. */
   private trucks: LifeSimTrucks | null = null
+  /** The Truck Simulator page's dash, panels and lot builder over the truck host, or null in Life Sim. */
+  private trucking: TruckingMode | null = null
   private gfx!: TownGfx
   private physics!: Physics
   private mats!: Mats
@@ -242,9 +250,15 @@ export class FoxLakeTown implements GameExtension {
     const sky = scene.getMeshByName('sky') as Mesh | null
     if (sky) this.gfx.bakeSky(sky)
     this.cars = new Cars(scene, this.physics, this.models, host.vehicles)
-    if (new URLSearchParams(location.search).has('trucks')) {
-      const physics = this.physics
-      this.trucks = new LifeSimTrucks(host, this.root, physics, (x, z) => this.land.heightAt(x, -z), (b) => physics.addStaticBox({ cx: b.x, cy: b.y, cz: b.z, hx: b.hx, hy: b.hy, hz: b.hz, rotY: b.rotY }), (c) => physics.removeStatic(c))
+    const physics = this.physics
+    const heightAt = (x: number, z: number) => this.land.heightAt(x, -z)
+    const makeTrucks = (events: ConstructorParameters<typeof LifeSimTrucks>[6] = {}) => new LifeSimTrucks(host, this.root, physics, heightAt, (b) => physics.addStaticBox({ cx: b.x, cy: b.y, cz: b.z, hx: b.hx, hy: b.hy, hz: b.hz, rotY: b.rotY }), (c) => physics.removeStatic(c), events)
+    if (this.opts.trucking) {
+      this.trucking = new TruckingMode(host, makeTrucks, heightAt)
+      this.trucks = this.trucking.trucks
+      void this.trucking.start().catch((error) => console.error('Truck Simulator could not start in Montello', error))
+    } else if (new URLSearchParams(location.search).has('trucks')) {
+      this.trucks = makeTrucks()
       void this.trucks.start().catch((error) => console.error('Truck Simulator could not start in Montello', error))
     }
     this.cars.ground = (x, z) => this.land.heightAt(x, -z)
@@ -274,7 +288,7 @@ export class FoxLakeTown implements GameExtension {
       drivingKind: () => this.cars.driving()?.kind ?? null,
     })
     await Promise.all([STARTER_TRUCK, 'trailer', 'mower'].map((k) => this.models.preload(k).catch(() => null)))
-    this.placeStarterCars()
+    if (!this.opts.trucking) this.placeStarterCars()
     this.wading = new Wading(host.terrain, this.cars, (text) => host.hud.toast(text, 'warn'))
     this.cars.flooded = (car) => this.wading?.flooded(car) ?? false
     this.map = new TelloMap({
@@ -509,6 +523,7 @@ export class FoxLakeTown implements GameExtension {
     }
     if (this.trucks) this.trucks.frame(dt, run)
     else run()
+    this.trucking?.frame(dt)
     this.cars.syncAll()
     const night = this.host.lighting.night
     this.cars.visuals(night)
@@ -688,6 +703,11 @@ export class FoxLakeTown implements GameExtension {
   }
 
   /** E in a land vehicle: the truck keeps it while one of its prompts is showing. */
+  /** While driving the rig, Truck Simulator's driving and rig keys (gears, horn, lights, landing gear, bed) are the truck's. */
+  claimsKey(code: string): boolean {
+    return code !== 'KeyE' && (this.trucks?.driving ?? false) && TRUCK_KEY_CODES.has(code)
+  }
+
   claimsInteract(): boolean {
     return this.trucks?.claimsInteract() ?? false
   }
@@ -714,7 +734,7 @@ export class FoxLakeTown implements GameExtension {
       if (ctrl) this.map.hide()
       return
     }
-    if (!this.host.playing || this.host.hud.modalOpen) return
+    if (!this.host.playing || this.host.hud.modalOpen || this.claimsKey(e.code)) return
     if (ctrl) this.map?.show()
     else if (e.code === GARAGE_KEY) this.swapGarageVehicle()
     else if (e.code === HOME_KEY) this.goHome()

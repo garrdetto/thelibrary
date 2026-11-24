@@ -1,8 +1,10 @@
 # Truck Simulator
 
-An open-world trucking module for the library. You start with a paid-off Ridgeline RD-10 dump truck and $3,000 on a 4 km × 4 km
-county, haul loads with the real loading and unloading steps for each trailer, earn your way into semis, paint and part them, and
-build up your own truck lot on Haulers Row (16 lots shared by every signed-in player). Babylon.js 9.34 (WebGPU, WebGL2 fallback
+An open-world trucking module for the library, played on Montello, Life Sim's map of Montello, Wisconsin (the page boots it in
+trucking mode: `foxlake/boot.ts`, `foxlake/trucks/TruckingMode.ts`). You start in a paid-off Ridgeline RD-10 dump truck with $3,000
+at your lot on Haulers Lane, east of Foxtails off State Highway 23, haul loads with the real loading and unloading steps for each
+trailer, earn your way into semis, paint and part them, build up your lot (16 lots shared by every signed-in player), and can climb
+out of the cab and walk the town. `?world=county` still opens the original 4 km × 4 km county with Haulers Row on `game/Standalone.ts`. Babylon.js 9.34 (WebGPU, WebGL2 fallback
 through Rack & Reel's `createEngine`) draws it, Rapier 0.14 drives it, and money, jobs and lots go through one rule set that runs in
 the Worker (`/api/trucksim`, D1) and in the page for guests. Every make and model is original.
 

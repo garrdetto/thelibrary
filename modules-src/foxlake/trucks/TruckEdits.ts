@@ -1,14 +1,17 @@
 /**
  * The world edits that make room for Truck Simulator in Montello, merged in front of the published World Editor edits at load
- * (`foxlake/index.ts`): Haulers Lane as a graded street north off State Highway 23 just east of Foxtails, each truck lot and
+ * (`foxlake/boot.ts`): Haulers Lane as a graded street north off State Highway 23 just east of Foxtails, each truck lot and
  * each outskirts site levelled to its own average height and cleared of trees, and every site's driveway as a gravel road from
  * the public road into the site. Built from Truck Simulator's Montello world (`trucksim/shared/montello/MontelloWorld.ts`,
  * Life Sim's town frame) and turned into Tello's map frame (z north = −town z). Heights are map metres read from the grids
  * before any edit, so the result is the same every load. Op ids start with `trucks-`.
  */
+import { COVER } from '../../tello/data/MapData'
 import type { MapGrids, MapDoc } from '../../tello/data/MapData'
 import type { EditOp } from '../../tello/edits/WorldEdits'
+import type { TelloLand } from '../../tello/region'
 import { HAULERS_LANE, MONTELLO_LOTS, MONTELLO_SITES, montelloDriveways } from '../../trucksim/shared/montello/MontelloWorld'
+import { MAX_LAND_STRIPS, lotExtent } from '../../trucksim/shared/WorldLayout'
 
 export const TRUCK_EDIT_PREFIX = 'trucks-'
 const LOT_FALLOFF = 10
@@ -62,4 +65,38 @@ export function truckEdits(doc: MapDoc, grids: MapGrids): EditOp[] {
     ops.push({ ...base, id: `${TRUCK_EDIT_PREFIX}drive-${i}`, type: 'road', pts: [a[0], -a[1], b[0], -b[1]], curve: 0, w: 7, k: 3, n: 'Driveway', grade: { shoulder: 1, falloff: 5, smooth: 20 } })
   })
   return ops
+}
+
+/** Bare ground this far round each truck lot and site, so the yard's edge has no grass growing into it. */
+const BARE_PAD = 3
+
+/**
+ * Marks every truck lot (at its largest, with all its land strips, out to Haulers Lane) and every outskirts site as bare ground on
+ * the land's cover grid, so no meadow grass grows through the gravel, paving and buildings drawn on them. Run once on the land
+ * after the edits are replayed and before the town is built.
+ */
+export function clearTruckGround(land: TelloLand): void {
+  const cover = land.grids.cover
+  const n = land.side
+  const bare = (x0: number, z0: number, x1: number, z1: number) => {
+    const i0 = Math.max(0, Math.floor((x0 - BARE_PAD - land.x0) / land.cell))
+    const i1 = Math.min(n - 1, Math.ceil((x1 + BARE_PAD - land.x0) / land.cell))
+    const j0 = Math.max(0, Math.floor((z0 - BARE_PAD - land.z0) / land.cell))
+    const j1 = Math.min(n - 1, Math.ceil((z1 + BARE_PAD - land.z0) / land.cell))
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const k = j * n + i
+        if (cover[k] !== COVER.water) cover[k] = COVER.bare
+      }
+    }
+  }
+  for (const spec of MONTELLO_LOTS) {
+    const lot = lotExtent(spec, MAX_LAND_STRIPS)
+    const x0 = Math.min(lot.x, HAULERS_LANE.x), x1 = Math.max(lot.x + lot.w, HAULERS_LANE.x)
+    bare(x0, -(lot.z + lot.d), x1, -lot.z)
+  }
+  for (const site of MONTELLO_SITES) {
+    if (site.w <= 60 || site.kind === 'lotDistrict') continue
+    bare(site.x - site.w / 2, -(site.z + site.d / 2), site.x + site.w / 2, -(site.z - site.d / 2))
+  }
 }

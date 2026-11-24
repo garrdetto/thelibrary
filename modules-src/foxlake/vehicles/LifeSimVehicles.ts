@@ -1,6 +1,6 @@
 /**
  * Vehicles that ship with Life Sim only: ordinary `custom:<id>` records (maplestreet/shared/CustomVehicles.ts) tagged
- * `game: 'lifesim'`, registered by Life Sim's page (foxlake/index.ts) and by its world's authority (FoxLakeWorld), so
+ * `game: 'lifesim'`, registered by Life Sim's page (foxlake/boot.ts) and by its world's authority (FoxLakeWorld), so
  * the dealership, garages and fuel treat them like any other vehicle. Fox Plains never sells them. Renderer-free: the
  * Worker imports this file.
  *

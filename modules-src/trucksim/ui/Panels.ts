@@ -167,6 +167,12 @@ export interface MapOptions extends PanelOptions {
   onPick?(x: number, y: number, width: number, height: number): void
   /** Clears the picked destination (shows a Clear route button when given). */
   onClearPick?(): void
+  /** The panel's title (default "County map"). */
+  title?: string
+  /** The keys that close the map, for its note (default "Esc or M"). */
+  closeKeys?: string
+  /** Names for site kinds in the legend where the world calls them something else (Montello's lots are on Haulers Lane). */
+  kindNames?: Partial<Record<SiteKind, string>>
 }
 
 export interface MapHandle extends PanelHandle {
@@ -175,15 +181,16 @@ export interface MapHandle extends PanelHandle {
 
 /** A big canvas the game paints the county on, with a legend of site kinds. Repaints on resize and every `refreshMs` (default 250). */
 export function openMap(root: HTMLElement, options: MapOptions): MapHandle {
-  const canvas = h('canvas', { class: 'ts-map-canvas', attrs: { role: 'img', 'aria-label': 'County map' } })
+  const title = options.title ?? 'County map'
+  const canvas = h('canvas', { class: 'ts-map-canvas', attrs: { role: 'img', 'aria-label': title } })
   const legend = h('ul', { class: 'ts-legend', attrs: { 'aria-label': 'Map legend' } })
   for (const kind of Object.keys(SITE_KIND_NAMES) as SiteKind[]) {
     const swatch = h('i', { attrs: { 'aria-hidden': 'true' } })
     swatch.style.background = SITE_KIND_COLORS[kind]
-    legend.appendChild(h('li', {}, swatch, h('span', { text: SITE_KIND_NAMES[kind] })))
+    legend.appendChild(h('li', {}, swatch, h('span', { text: options.kindNames?.[kind] ?? SITE_KIND_NAMES[kind] })))
   }
   const frame = h('div', { class: 'ts-map-frame' }, canvas)
-  const modal = openModal(root, { title: 'County map', className: 'ts-wide ts-map', onClose: () => { window.clearInterval(timer); observer.disconnect(); options.onClose?.() } })
+  const modal = openModal(root, { title, className: 'ts-wide ts-map', onClose: () => { window.clearInterval(timer); observer.disconnect(); options.onClose?.() } })
   if (options.onPick) {
     canvas.style.cursor = 'crosshair'
     canvas.addEventListener('click', (event) => {
@@ -194,7 +201,7 @@ export function openMap(root: HTMLElement, options: MapOptions): MapHandle {
     const clear = options.onClearPick
       ? h('button', { class: 'ts-btn', text: 'Clear route', attrs: { type: 'button', 'data-key': 'clear-route' }, on: { click: () => { options.onClearPick?.(); redraw() } } })
       : null
-    modal.body.append(h('div', { class: 'ts-bar' }, h('p', { class: 'ts-note', text: 'Click where you want to go and the route shows on your minimap. Esc or M closes the map.' }), clear))
+    modal.body.append(h('div', { class: 'ts-bar' }, h('p', { class: 'ts-note', text: `Click where you want to go and the route shows on your minimap. ${options.closeKeys ?? 'Esc or M'} closes the map.` }), clear))
   }
   modal.body.append(frame, legend)
   const redraw = (): void => {
