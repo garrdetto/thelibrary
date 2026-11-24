@@ -179,7 +179,8 @@ export function collidePair(w: World, a: SimCar, b: SimCar): void {
   a.z += (best.nz * best.o * am) / wt
   b.x -= (best.nx * best.o * bm) / wt
   b.z -= (best.nz * best.o * bm) / wt
-  const rub = 1 - CFG.contactSlow / 120
+  const next = w.model === 'next', drag = next ? CFG.contactDrag : 1
+  const rub = 1 - (CFG.contactSlow * drag) / 120
   if (am) {
     a.vx *= rub
     a.vz *= rub
@@ -201,7 +202,7 @@ export function collidePair(w: World, a: SimCar, b: SimCar): void {
       b.vz -= jz
       b.av += yk * (-(best.pz - b.z) * jx + (best.px - b.x) * jz)
     }
-    const hit = -vn, loss = 1 - Math.min(0.08, hit * 0.012)
+    const hit = -vn, loss = 1 - Math.min(0.08, hit * 0.012) * drag
     {
       const ds = sgnDs(w, a.tp.s, b.tp.s), front = ds > 0 ? a : b
       if (front.ai && Math.abs(a.tp.lat - b.tp.lat) < AI_TOUCH(w, front) * 0.85 && hit < 3.5) front.looseT = 0.7
@@ -214,6 +215,10 @@ export function collidePair(w: World, a: SimCar, b: SimCar): void {
       b.vx *= loss
       b.vz *= loss
     }
+    if (next && hit > HIT_GRIP_MIN) {
+      hitGrip(w, a, best.px, best.pz, hit)
+      hitGrip(w, b, best.px, best.pz, hit)
+    }
     if (hit > 2.2) {
       impact(w, a, best.px, best.pz, best.nx, best.nz, hit, 'car')
       impact(w, b, best.px, best.pz, -best.nx, -best.nz, hit, 'car')
@@ -221,12 +226,39 @@ export function collidePair(w: World, a: SimCar, b: SimCar): void {
   }
 }
 
+/** Closing speeds (m/s) below this cost no grip: rubbing and light taps stay clean. */
+export const HIT_GRIP_MIN = 0.6
+/** Most grip a hit can take: the front can push hard, the rear only gets loose enough to step out, never to spin. */
+export const HIT_GRIP_MAX = { front: 0.45, rear: 0.3 }
+
+/**
+ * A car-to-car hit (next model) takes grip away for a moment in proportion to how hard it was: the axle at the contact
+ * loses the most. The car whose nose hits pushes (front grip), the car hit in the tail gets loose (rear grip), and a
+ * door-to-door hit costs both axles a little so the car slides sideways. `dynamics.ts` fades it out, gives the rear
+ * back as soon as the tail steps out and for 2 s holds back any rotation past a slide, so a hit unsettles a car but
+ * doesn't spin it.
+ */
+export function hitGrip(w: World, c: SimCar, px: number, pz: number, hit: number): void {
+  if (!c.local || c.isPace) return
+  const CFG = w.cfg, k = CFG.contactGrip
+  if (k <= 0) return
+  const sh = Math.sin(c.h), ch = Math.cos(c.h), dx = px - c.x, dz = pz - c.z
+  const along = clamp((dx * sh + dz * ch) / (2.35 * CFG.carScale * (c.fl || 1)), -1, 1)
+  const sev = clamp((hit - HIT_GRIP_MIN) * 0.06, 0, 0.45) * k
+  const front = along > 0.35 ? 1 : along < -0.35 ? 0.2 : 0.55, rear = along < -0.35 ? 1 : along > 0.35 ? 0.15 : 0.55
+  const fade = Math.min(1, c.hitGripT / 0.3)
+  c.hitGripF = Math.min(HIT_GRIP_MAX.front, Math.max(c.hitGripF * fade, sev * front))
+  c.hitGripR = Math.min(HIT_GRIP_MAX.rear, Math.max(c.hitGripR * fade, sev * rear))
+  c.hitGripT = Math.max(c.hitGripT, 0.45 + Math.min(0.75, hit * 0.09))
+  c.hitHoldT = Math.max(c.hitHoldT, 2)
+}
+
 export function impact(w: World, c: SimCar, px: number, pz: number, ix: number, iz: number, v: number, kind: 'wall' | 'car'): void {
   const CFG = w.cfg
   const sh = Math.sin(c.h), ch = Math.cos(c.h), dx = px - c.x, dz = pz - c.z
   const lx = (dx * ch - dz * sh) / CFG.carScale, lz = (dx * sh + dz * ch) / CFG.carScale, dlx = ix * ch - iz * sh, dlz = ix * sh + iz * ch
   const zone: Zone = Math.abs(lz) > 1.6 * (c.fl || 1) ? (lz > 0 ? 'f' : 'r') : lx > 0 ? 'l' : 'rt'
-  const amt = Math.max(0, v - (kind === 'car' ? 2 : 1.3)) * (kind === 'car' ? 2.6 : 3.3) * CFG.damageScale
+  const amt = (Math.max(0, v - (kind === 'car' ? 2 : 1.3)) * (kind === 'car' ? 2.6 : 3.3) * CFG.damageScale) / (w.model === 'next' ? Math.max(0.1, CFG.strength) : 1)
   if (c.local && amt > 0.3) damageCar(w, c, [lx, 0.55, lz], [dlx, 0, dlz], amt, zone)
   if (kind === 'car' && !c.local) return
   w.events.push({ t: 'impact', id: c.id, x: px, y: w.track.heightAt(c.tp.s, c.tp.lat) + 0.45, z: pz, v, vx: c.vx, vz: c.vz, nx: ix, nz: iz, k: kind })

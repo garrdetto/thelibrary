@@ -96,6 +96,34 @@ function airflow(w: World, c: SimCar): { drag: number; side: number; draft: numb
   return { drag: 1 - draft + (side !== 0 ? 0.05 : 0), side, draft }
 }
 
+/**
+ * Grip still missing after a car-to-car hit (`physics.ts` `hitGrip`): it holds, then fades over the last 0.3 s. The rear
+ * share is handed back as the tail steps out (body slip past about 3°, all of it by about 9°), so a hit lets the car
+ * slide and wiggle without spinning it.
+ */
+export function contactGripLoss(c: SimCar, u: number, v: number, dt: number): { f: number; r: number } {
+  if (!(c.hitGripT > 0)) return { f: 0, r: 0 }
+  c.hitGripT = Math.max(0, c.hitGripT - dt)
+  const fade = Math.min(1, c.hitGripT / 0.3), beta = Math.abs(Math.atan2(v, Math.max(Math.abs(u), 3)))
+  const out = { f: c.hitGripF * fade, r: c.hitGripR * fade * clamp(1 - (beta - 0.05) / 0.1, 0, 1) }
+  if (c.hitGripT === 0) c.hitGripF = c.hitGripR = 0
+  return out
+}
+
+/** Slip angle (rad) past which a car that was just hit is held back from rotating further: a slide, not a spin. */
+export const HIT_HOLD_BETA = { asphalt: 0.3, dirt: 0.5 }
+
+/** For a moment after a car-to-car hit, yaw beyond what the steering asks for is taken out once the car slides past
+ * `HIT_HOLD_BETA`, so the tail can step out and come back but the car does not spin around. */
+function holdAfterHit(c: SimCar, d: Dyn, u: number, v: number, delta: number, L: number, dirt: boolean, dt: number): void {
+  c.hitHoldT = Math.max(0, c.hitHoldT - dt)
+  const beta = Math.abs(Math.atan2(v, Math.max(Math.abs(u), 3))), start = dirt ? HIT_HOLD_BETA.dirt : HIT_HOLD_BETA.asphalt
+  const k = clamp((beta - start) / 0.25, 0, 1) * Math.min(1, c.hitHoldT / 0.5)
+  if (k <= 0) return
+  const excess = d.r - (u * Math.tan(delta)) / L
+  d.r -= excess * Math.min(1, dt * 10 * k)
+}
+
 export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap: number | null): void {
   const CFG = w.cfg, T = w.track, DIRT = T.dirt
   const d = (c.dyn ??= newDyn())
@@ -123,6 +151,7 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
   // normal load per unit mass from the in-plane balance (last step's force toward the bottom), plus downforce
   const muSurface = (apron ? CFG.apronGrip : CFG.grip) * NEXT_TUNE.grip * (TRACK_GRIP[w.def.rec] ?? 1) * (DIRT ? DIRT_TUNE.grip : 1) * (c.gripB || 1)
   const gripF = Math.max(0.8, 1 - 0.0012 * (dmg.l + dmg.rt) - 0.0006 * (dmg.f + dmg.r))
+  const hit = contactGripLoss(c, u, v, dt)
   const N = Math.max(0.2 * CFG.g, (CFG.g + d.fb * sinT) / cosT)
   const aeroF = Math.max(0.4, 1 - 0.004 * dmg.f), aeroR = Math.max(0.4, 1 - 0.004 * dmg.r)
   const down = AERO.downforce * speed * speed, downF = down * (1 - AERO.rearShare) * aeroF, downR = down * AERO.rearShare * aeroR
@@ -182,7 +211,7 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
     const target = Math.atan2(vw, Math.max(Math.abs(uw), 3))
     d.alpha[i] += (target - d.alpha[i]) * Math.min(1, (Math.max(Math.abs(uw), 1) * dt) / sigma)
     const mu = muSurface * gripF * Math.max(0.6, 1 - loadSens * (fz[i] / Math.max(fz0, 1e-3) - 1))
-    caps[i] = mu * fz[i] * (front ? (DIRT ? frontGrip : 1) : rearGrip)
+    caps[i] = mu * fz[i] * (front ? (DIRT ? frontGrip : 1) : rearGrip) * (1 - (front ? hit.f : hit.r))
     fys[i] = -caps[i] * magic(d.alpha[i], tB, tC, tE)
     uws[i] = uw
     vws[i] = vw
@@ -246,6 +275,7 @@ export function stepCarNext(w: World, c: SimCar, dt: number, ctl: Controls, cap:
   c.vz += az * dt
   d.r += (Mz / GEO.iz) * dt
   d.r *= Math.exp(-dt * 0.6)
+  if (c.hitHoldT > 0) holdAfterHit(c, d, u, v, delta, L, DIRT, dt)
   c.h += d.r * dt
   if (!c.thr && Math.hypot(c.vx, c.vz) < 0.15) {
     c.vx = c.vz = 0

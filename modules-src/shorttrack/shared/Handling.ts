@@ -5,6 +5,7 @@ export const HANDLING_TRACKS: TrackId[] = ['prison', 'bullring', 'dells', 'dells
 
 type CfgKey = 'grip' | 'aiGrip' | 'apronGrip' | 'power' | 'maxAccel' | 'brake' | 'engineBrake' | 'drag' | 'steerLow' | 'steerSpeed' | 'steerRampIn' | 'steerRampOut'
   | 'dirtFrontGrip' | 'dirtRearGrip' | 'dirtWheelspin' | 'dirtRearC' | 'dirtFrontSigma'
+  | 'strength' | 'damageLook' | 'contactDrag' | 'contactGrip'
 
 export type HandlingSetting = {
   key: string
@@ -15,6 +16,8 @@ export type HandlingSetting = {
   fields: CfgKey[]
   /** Only on dirt tracks (Beaver Dam Raceway). */
   dirt?: boolean
+  /** Shown under the Contact and damage heading. */
+  contact?: boolean
 }
 
 /** Handling settings, each a multiplier on the track's stock numbers (1 = stock). */
@@ -34,6 +37,10 @@ export const HANDLING_SETTINGS = [
   { key: 'wheelspin', label: 'Throttle oversteer', help: 'How much the gas pushes the tail out when the rears spin. Lift to tuck it back in. AI cars never go above stock.', min: 0, max: 2.5, fields: ['dirtWheelspin'], dirt: true },
   { key: 'rearFalloff', label: 'Rear let-go', help: 'How much grip the rears lose once they slide. Higher keeps a slide going but makes it snappier.', min: 0.85, max: 1.15, fields: ['dirtRearC'], dirt: true },
   { key: 'frontBite', label: 'Front bite delay', help: 'Higher makes the front take longer to grab after you turn in, for a lazier turn-in.', min: 0.5, max: 2, fields: ['dirtFrontSigma'], dirt: true },
+  { key: 'strength', label: 'Vehicle strength', help: 'How much a hit takes to hurt the car: higher means less damage to grip, power and aero from each hit. 100% is already 50% stronger than the old cars.', min: 0.5, max: 3, fields: ['strength'], contact: true },
+  { key: 'damageLook', label: 'Damage looks', help: 'How big the dents, crumples and scrapes look on the body. Only changes the looks, not the damage itself.', min: 0.3, max: 2.5, fields: ['damageLook'], contact: true },
+  { key: 'contactSlow', label: 'Contact slowdown', help: 'How much speed cars lose when they hit each other. 100% loses 60% less than the old cars; 250% is the old amount.', min: 0, max: 2.5, fields: ['contactDrag'], contact: true },
+  { key: 'contactGrip', label: 'Contact grip loss', help: 'How much a hit unsettles the car, by how hard it was: the car that hits pushes, the car hit in the rear gets loose. Grip comes back before the car can spin. 0% turns it off.', min: 0, max: 2.5, fields: ['contactGrip'], contact: true },
 ] as const satisfies readonly HandlingSetting[]
 
 export type HandlingKey = (typeof HANDLING_SETTINGS)[number]['key']

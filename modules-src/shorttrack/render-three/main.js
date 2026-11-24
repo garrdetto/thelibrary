@@ -1050,18 +1050,24 @@ function refreshNumberFonts(){
   const upd=c=>{if(!c)return;const N=c.m.numbers;if(((N&&!N.fontOk)||(c.m.custom&&c.m.liveryFontOk===false))&&numFontReady(c.lv.numFont))mountNumbers(c.m,c.lv);};
   cars.forEach(upd);upd(menuCar);if(mode==='garage')renderGarage();
 }
+// Dents follow the damage the sim applied, scaled up by how much stronger the cars are (CFG.strength) and the admin's
+// Damage looks setting (CFG.damageLook), so stronger cars still crumple visibly: wider, deeper dents with creases and scrapes.
+const damageLookK=()=>WORLD.model==='next'?Math.max(0.1,CFG.strength)*Math.max(0,CFG.damageLook):1;
 function deformCar(c,lp,dir,amt){
+  const v=amt*damageLookK();if(v<=0.05)return;
   const s=c.m.modelScale,L=[lp[2]/s,lp[1]/s,-lp[0]/s],D=[dir[2],dir[1],-dir[0]];
-  const r=(0.8+Math.min(0.9,amt*0.035))/s,push=Math.min(0.3,amt*0.015)/s,cap=0.42/s;
+  const r=(0.85+Math.min(1.35,v*0.042))/s,push=Math.min(0.5,v*0.02)/s,cap=0.62/s,crease=Math.min(1,v/14);
   for(const part of c.m.deform){const g=part.geo,pa=g.attributes.position,ca=part.scuff?g.attributes.color:null,o=part.orig;
     for(let i=0;i<pa.count;i++){
       const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i),dx=x-L[0],dy=(y-L[1])*0.6,dz=z-L[2],d=Math.sqrt(dx*dx+dy*dy+dz*dz);
       if(d>=r)continue;const k=(1-d/r)**2,ox=o[i*3],oy=o[i*3+1],oz=o[i*3+2];
       const hs=Math.sin(ox*91.7+oy*47.3+oz*13.1)*43758.5453,jit=hs-Math.floor(hs)-0.5;
-      let ex=x+D[0]*push*k*(1+jit*0.8)+jit*push*k*0.25-ox,ey=y-push*k*(0.2+jit*0.5)-oy,ez=z+D[2]*push*k*(1+jit*0.8)-oz;
+      const wr=Math.sin(ox*s*23.1+oz*s*17.7)*Math.sin(oy*s*31.3+ox*s*7.9)*crease;
+      const pk=push*k*(1+jit*1.1+wr*0.45);
+      let ex=x+D[0]*pk+jit*push*k*0.35-ox,ey=y-push*k*(0.25+jit*0.6+wr*0.2)-oy,ez=z+D[2]*pk-oz;
       const el=Math.hypot(ex,ey,ez);if(el>cap){const f=cap/el;ex*=f;ey*=f;ez*=f;}
       pa.setXYZ(i,ox+ex,oy+ey,oz+ez);
-      if(ca){const cv=Math.max(0.32,ca.getX(i)-0.42*k*(0.75+jit*0.5));ca.setXYZ(i,cv,cv*0.98,cv*0.96);}
+      if(ca){const cv=Math.max(0.22,ca.getX(i)-0.5*k*(0.75+jit*0.5)*Math.min(1.4,0.6+v/20));ca.setXYZ(i,cv,cv*0.96,cv*0.92);}
     }
     pa.needsUpdate=true;if(ca)ca.needsUpdate=true;g.computeVertexNormals();}
 }
@@ -1086,8 +1092,8 @@ class Car{
 function drainSim(){
   for(const e of WORLD.events){
     if(e.t==='sparks')SPARKS.scrape(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.k,e.n,sparkGround(e.x,e.z));
-    else if(e.t==='impact'){const c=cars.get(e.id);SPARKS.burst(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.v,e.k==='car'?0.5:1,sparkGround(e.x,e.z));if(e.v>6)spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);
-      if(GPU&&GPU.debris&&e.v>=7){const tp=toTrack(e.x,e.z);GPU.debris.spawn(e.x,e.y,e.z,normalAt(tp.s,tp.lat,_v),e.vx,e.vz,e.v,c&&c.lv?c.lv.primary:undefined);}
+    else if(e.t==='impact'){const c=cars.get(e.id);const lk=Math.min(2,damageLookK()/1.5);SPARKS.burst(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.v*(0.8+0.25*lk),e.k==='car'?0.5:1,sparkGround(e.x,e.z));if(e.v>6/Math.max(0.5,lk)){spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);if(e.v>9)spawnSmoke(e.x,e.y+0.3,e.z,e.vx,e.vz,true,1.2+Math.min(1.2,e.v*0.06));}
+      if(GPU&&GPU.debris&&e.v>=Math.max(4,7/Math.max(0.5,lk))){const tp=toTrack(e.x,e.z),hard=e.v>=10&&lk>=1?2:1;for(let k=0;k<hard;k++)GPU.debris.spawn(e.x,e.y,e.z,normalAt(tp.s,tp.lat,_v),e.vx,e.vz,e.v,c&&c.lv?c.lv.primary:undefined);}
       const now=performance.now();if(c&&now-c.sndT>150){c.sndT=now;crashSnd(e.v,camera.position.distanceTo(_v.set(e.x,e.y,e.z)));}}
     else if(e.t==='damage'){const c=cars.get(e.id);if(c)deformCar(c,e.lp,e.dir,e.amt);
       if(NET.online){const msg={t:'d',i:e.id,p:e.lp,n:e.dir,a:+e.amt.toFixed(2),z:e.zone};NET.host?sendAll(msg):sendHost(msg);}}
@@ -1212,6 +1218,12 @@ function sendAll(msg,except){if(!NET.online||!NET.host)return;for(const [id,c] o
 function sendHost(msg){if(NET.hc&&NET.hc.open)try{NET.hc.send(msg);}catch(e){}}
 function broadcastLobby(){sendAll({t:'lobby',players:[...NET.players.values()],set:settings,racing:race.ph!=='idle',track:TRACK_ID});renderLobby();}
 function makeCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ';let s='';for(let i=0;i<5;i++)s+=A[Math.floor(Math.random()*A.length)];return s;}
+// Track Test: with AI cars picked (in the TRACK TEST panel or on the setup screen) the test runs as a solo race.
+function startTestRun(){
+  const n=TT.aiCars();if(!n){startTimeAttack();return;}
+  $('sAI').value=String(n);$('sDiff').value=TT.aiDiff();
+  resetNet();NET.host=true;NET.online=false;NET.myId='host';NET.players.set('host',{id:'host',lv:myLv});hostStart();
+}
 function startTimeAttack(){
   resetNet();NET.host=true;NET.online=false;NET.myId='host';NET.players.set('host',{id:'host',lv:myLv});
   beginRace({t:'start',set:{...settings,attack:true,ai:0},grid:[{id:'host',lv:myLv,ai:false}]});
@@ -1425,7 +1437,7 @@ function carVisual(c,dt){
   c.aLong=lerp(c.aLong,(vf-c.prevVf)*idt,k);c.aLat=lerp(c.aLat,vf*wrapA(c.h-c.prevH)*idt,k);c.prevVf=vf;c.prevH=c.h;c.vf=vf;
   m.body.rotation.z=clamp(c.aLat*0.0035,-0.07,0.07);m.body.rotation.x=clamp(-c.aLong*0.004,-0.04,0.04);
   c.wheelRot+=vf*dt/0.34;for(const w of m.wheels){if(w.spinZ)w.w.rotation.z=-c.wheelRot;else w.w.rotation.x=c.wheelRot;if(w.front)w.pivot.rotation.y=c.steer*0.45;}
-  const d=c.dmg;
+  const lk=damageLookK()/1.5,dv=c.dmg,d={f:Math.min(100,dv.f*lk),r:Math.min(100,dv.r*lk),l:Math.min(100,dv.l*lk),rt:Math.min(100,dv.rt*lk)};
   m.bumperF.rotation.x=d.f>55?0.12+(d.f-55)*0.006:0;m.bumperF.position.y=d.f>55?0.32-(d.f-55)*0.003:0.32;m.bumperF.visible=d.f<92;
   m.bumperR.rotation.x=d.r>55?-0.12-(d.r-55)*0.006:0;m.bumperR.position.y=d.r>55?0.38-(d.r-55)*0.003:0.38;m.bumperR.visible=d.r<92;
   m.brakeMat.emissiveIntensity=c.brk&&c.vf>0.5?3.5:0.2;
@@ -1610,14 +1622,15 @@ loadCustomCars().then(()=>{
 $('vehSel').addEventListener('change',e=>setVehicle(e.target.value));
 $('gVehSel').addEventListener('change',e=>{setVehicle(e.target.value);renderGarage();});
 function showTrack(){mode='track';syncNightToggle();$('trackSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?2:1);renderTrackCards();renderVehCards();showScreen('scrTrack');}
-function showSetup(){mode='setup';const att=WIZ.flow==='attack';$('setupSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?3:2);
-  $('setupTitle').textContent=att?'Time Attack setup':WIZ.flow==='multi'?'Room setup':'Race setup';$('setupTrack').textContent=`${TRACK.name} \u00b7 ${TRACK.miles} \u00b7 ${DIRT?'dirt':'asphalt'}`;
-  $('raceFields').classList.toggle('hidden',att);$('setupNext').innerHTML=att?'START &rarr;':WIZ.flow==='multi'?'OPEN ROOM &rarr;':'START RACE &rarr;';
-  $('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;syncNightToggle();$('sDiff').value=settings.diff||'medium';showScreen('scrSetup');}
+function showSetup(){mode='setup';const test=WIZ.flow==='attack'&&TT.isTesting(),att=WIZ.flow==='attack'&&!test;$('setupSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?3:2);
+  $('setupTitle').textContent=test?'Track Test setup':att?'Time Attack setup':WIZ.flow==='multi'?'Room setup':'Race setup';$('setupTrack').textContent=`${TRACK.name} \u00b7 ${TRACK.miles} \u00b7 ${DIRT?'dirt':'asphalt'}`;
+  $('raceFields').classList.toggle('hidden',att);$('setupNext').innerHTML=test||att?'START &rarr;':WIZ.flow==='multi'?'OPEN ROOM &rarr;':'START RACE &rarr;';
+  $('sLaps').value=String(settings.laps);$('sAI').value=test?TT.aiCars():settings.ai;syncNightToggle();$('sDiff').value=test?TT.aiDiff():settings.diff||'medium';showScreen('scrSetup');}
 async function wizardNext(){readHostSettings();
   if(myLv.veh==='car'&&!CAR_ASSET&&!(await carAssetReady))toast('The car could not load, so the truck will be used');
   if(carIdOf(myLv.veh)&&!customCarReady(myLv.veh)){const [a]=await Promise.all([ensureCustomCar(myLv.veh),carAssetReady]);if(!a)toast('That car could not load, so the stock car will be used');}
-  if(WIZ.flow==='attack')startTimeAttack();
+  if(WIZ.flow==='attack'&&TT.isTesting()){TT.setAi(settings.ai,settings.diff);startTestRun();}
+  else if(WIZ.flow==='attack')startTimeAttack();
   else if(WIZ.flow==='solo'){resetNet();NET.host=true;NET.online=false;NET.myId='host';NET.players.set('host',{id:'host',lv:myLv});hostStart();}
   else startHost(true);}
 wrap.addEventListener('click',e=>{const t=e.target.closest('[data-track]');if(!t)return;WIZ.track=t.dataset.track;renderTrackCards();});
@@ -1655,7 +1668,7 @@ function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)
 fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
 if(REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
-const TT=initTrackTest({cfg:CFG,trackId:TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack'),resetCar:()=>{if(!player||mode!=='race')return false;simResetCar(WORLD,player);return true;}});
+const TT=initTrackTest({cfg:CFG,trackId:TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack'),resetCar:()=>{if(!player||mode!=='race')return false;simResetCar(WORLD,player);return true;},restart:()=>startTestRun()});
 
 // ===================== INPUT =====================
 const keys={};
