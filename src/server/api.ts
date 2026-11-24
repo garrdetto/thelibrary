@@ -46,6 +46,7 @@ import { asset, learning, library, lyricPresets, studio } from './routes/studio'
 import { voice } from './routes/voice'
 import { axiomRadar } from './routes/axiom-radar'
 import { axiomBot } from './routes/axiom-bot'
+import { axiomHost } from './routes/axiom-host'
 import { music } from './routes/music'
 import { gspro } from './routes/gspro'
 
@@ -113,6 +114,9 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/admin/axiom/bot/sync': axiomBot,
   '/api/admin/axiom/bot/settings': axiomBot,
   '/api/admin/axiom/bot/command': axiomBot,
+  '/api/admin/axiom/host': axiomHost,
+  '/api/admin/axiom/host/sync': axiomHost,
+  '/api/admin/axiom/host/command': axiomHost,
 }
 
 export async function handleApi(request: Request, env: Env) {
