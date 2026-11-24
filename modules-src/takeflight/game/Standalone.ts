@@ -59,6 +59,9 @@ import { AssetManager } from '../world/AssetManager'
 import { CareerPanel } from '../ui/CareerPanel'
 import { Debrief } from '../ui/Debrief'
 import { DevOverlay } from '../ui/DevOverlay'
+import { FlightMap } from '../ui/FlightMap'
+import { FlightTips } from '../ui/FlightTips'
+import type { TipContext } from '../ui/FlightTips'
 import { Hud } from '../ui/Hud'
 import type { HudExtras } from '../ui/Hud'
 import { Menus, savedLivery } from '../ui/Menus'
@@ -95,6 +98,11 @@ export class Standalone {
   private readonly cameras: CameraRig
   private readonly input: InputManager
   private readonly hud: Hud
+  private readonly tips: FlightTips
+  private readonly map: FlightMap
+  private readonly mapAircraft = { x: 0, z: 0, heading: 0 }
+  private lastApproach: ApproachState | null = null
+  private tipContext: TipContext | null = null
   private readonly menus: Menus
   private readonly dev: DevOverlay
   private readonly session: FlightSession
@@ -152,6 +160,8 @@ export class Standalone {
     this.input = this.scope.track(new InputManager(canvas))
     this.hud = this.scope.track(new Hud(ui))
     this.hud.setVisible(false)
+    this.tips = this.scope.track(new FlightTips(this.hud.root, () => this.input.bindings))
+    this.map = this.scope.track(new FlightMap(this.hud.root, ui))
     this.radio = new Radio(this.hud.radio)
     this.dev = this.scope.track(new DevOverlay(ui, this.scene, engine, {
       simMs: () => this.simMs,
@@ -451,6 +461,9 @@ export class Standalone {
     this.input.enabled = true
     this.menus.hide()
     this.hud.setVisible(true)
+    this.tips.reset()
+    this.map.setOpen(false)
+    this.map.setDestination(options.route?.to ?? options.job?.to ?? null)
     this.setView(options.start === 'stand' ? 'cockpit' : 'chase')
     if (options.job) this.hud.toast(`Cargo: ${options.job.kg.toLocaleString('en-US')} kg of ${options.job.goods} to ${airportById(options.job.to)?.name ?? options.job.to}. Release the parking brake (P) and go.`, 8)
     else if (options.route) this.hud.toast(`${options.route.flight} to ${airportById(options.route.to)?.name ?? options.route.to}: ${options.route.passengers} passengers, block ${options.route.block} min. Release the parking brake (P) and go.`, 8)
@@ -493,6 +506,7 @@ export class Standalone {
     this.input.enabled = false
     this.menus.hide()
     this.hud.setVisible(false)
+    this.map.setOpen(false)
     const { score, record } = this.session.finish(reason, this.sim.aircraft.crashed, this.spec, this.instrumentsOnly)
     const options = this.options
     const checkride = options?.checkride ?? null
@@ -588,6 +602,10 @@ export class Standalone {
         this.stopReplay()
         return
       }
+      if (this.phase === 'flying' && this.map.open) {
+        this.map.setOpen(false)
+        return
+      }
       if (this.phase === 'flying') {
         this.phase = 'paused'
         this.sim.paused = true
@@ -617,6 +635,10 @@ export class Standalone {
       const next = VIEW_ORDER[(VIEW_ORDER.indexOf(this.cameras.mode) + 1) % VIEW_ORDER.length]
       this.setView(next)
     } else if (action === 'lights') this.lightsOn = !this.lightsOn
+    else if (action === 'map') {
+      this.map.toggle()
+      this.canvas.focus()
+    } else if (action === 'tips') this.hud.toast(this.tips.toggle() ? 'Flight tips on (T turns them off)' : 'Flight tips off (T turns them back on)')
     else if (action === 'hud') {
       if (this.options?.checkride && CHECKRIDE_SPECS[this.options.checkride].setup.instrumentsOnly) {
         this.hud.toast('Instrument checkride: the HUD stays on the essentials')
@@ -640,6 +662,7 @@ export class Standalone {
     extras.lights = this.lightsOn
     extras.parkingBrake = this.parkingBrake
     const approach = this.approach()
+    this.lastApproach = approach
     extras.glidepath = approach && this.options?.assists.landingGuidance && approach.distance < 12000 ? approach.glideslope : null
     if (approach && approach.ils) {
       this.ilsNeedles.name = approach.end.name
@@ -710,7 +733,22 @@ export class Standalone {
     this.water.position.x = Math.round(camera.position.x / 1000) * 1000
     this.water.position.z = Math.round(camera.position.z / 1000) * 1000
     this.cockpit.update(sim.applied, FLIGHT_QUALITY[this.tier].gaugeHz, dt)
-    if (this.phase === 'flying' || this.phase === 'paused') this.hud.update(aircraft, sim.applied, this.hudExtras(), dt)
+    if (this.phase === 'flying' || this.phase === 'paused') {
+      this.hud.update(aircraft, sim.applied, this.hudExtras(), dt)
+      const m = this.mapAircraft
+      m.x = aircraft.px
+      m.z = aircraft.pz
+      m.heading = aircraft.heading
+      this.map.update(m, this.traffic.poses, this.traffic.count, dt)
+      if (this.phase === 'flying') {
+        const context = this.tipContext ?? (this.tipContext = { aircraft, input: sim.applied, approach: null, parkingBrake: false })
+        context.aircraft = aircraft
+        context.input = sim.applied
+        context.approach = this.lastApproach
+        context.parkingBrake = this.parkingBrake
+        this.tips.update(context, dt)
+      }
+    }
     this.dev.update(frameMs, dt)
     this.resolution.update(performance.now(), this.engine.getFps())
     if (this.phase === 'flying') {

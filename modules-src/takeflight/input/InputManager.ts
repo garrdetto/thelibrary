@@ -8,9 +8,9 @@ import type { ControlInput } from '../sim/Controls'
 import type { AxisAction, Bindings, KeyAction } from './Bindings'
 import { AXIS_ACTIONS, loadBindings, saveBindings, shapeAxis } from './Bindings'
 
-export type PilotAction = 'flapsDown' | 'flapsUp' | 'gear' | 'parkingBrake' | 'view' | 'lights' | 'pause' | 'hud' | 'atis' | 'devOverlay'
+export type PilotAction = 'flapsDown' | 'flapsUp' | 'gear' | 'parkingBrake' | 'view' | 'lights' | 'pause' | 'hud' | 'atis' | 'devOverlay' | 'map' | 'tips'
 
-const ONE_SHOT: PilotAction[] = ['flapsDown', 'flapsUp', 'gear', 'parkingBrake', 'view', 'lights', 'pause', 'hud', 'atis', 'devOverlay']
+const ONE_SHOT: PilotAction[] = ['flapsDown', 'flapsUp', 'gear', 'parkingBrake', 'view', 'lights', 'pause', 'hud', 'atis', 'devOverlay', 'map', 'tips']
 const THROTTLE_RATE = 0.55
 
 export interface AxisCapture {

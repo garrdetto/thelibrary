@@ -8,7 +8,7 @@ import { z } from 'zod'
 
 export type AxisAction = 'pitch' | 'roll' | 'yaw' | 'throttle' | 'brakeLeft' | 'brakeRight'
 export type ButtonAction = 'flapsDown' | 'flapsUp' | 'gear' | 'brakes' | 'parkingBrake' | 'trimUp' | 'trimDown' | 'view' | 'lights' | 'pause' | 'spoilers' | 'reverse' | 'throttleUp' | 'throttleDown'
-export type KeyAction = ButtonAction | 'pitchUp' | 'pitchDown' | 'rollLeft' | 'rollRight' | 'yawLeft' | 'yawRight' | 'throttleIdle' | 'throttleFull' | 'hud' | 'atis' | 'devOverlay' | 'lookBack'
+export type KeyAction = ButtonAction | 'pitchUp' | 'pitchDown' | 'rollLeft' | 'rollRight' | 'yawLeft' | 'yawRight' | 'throttleIdle' | 'throttleFull' | 'hud' | 'atis' | 'devOverlay' | 'lookBack' | 'map' | 'tips'
 
 const axisBinding = z.object({
   /** Gamepad id substring ('' = any device). */
@@ -76,6 +76,8 @@ export const ACTION_LABELS: Record<AxisAction | KeyAction, string> = {
   atis: 'Read the nearest ATIS',
   devOverlay: 'Performance overlay',
   lookBack: 'Look around (hold)',
+  map: 'Region map',
+  tips: 'Flight tips on or off',
 }
 
 const linear = (axis: number, invert = false, unit = false): AxisBinding => ({ device: '', axis, invert, deadzone: 0.08, curve: 1.4, unit })
@@ -110,6 +112,8 @@ export function defaultBindings(): Bindings {
       atis: ['KeyI'],
       devOverlay: ['Backquote'],
       lookBack: ['ShiftLeft'],
+      map: ['KeyM'],
+      tips: ['KeyT'],
     },
     axes: {
       roll: [linear(0)],
@@ -135,7 +139,7 @@ export function defaultBindings(): Bindings {
       spoilers: [],
       reverse: [],
     },
-    keyRate: 2.2,
+    keyRate: 1.7,
     mouseYoke: false,
   }
 }

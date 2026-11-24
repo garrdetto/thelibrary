@@ -129,3 +129,14 @@ test('a gentle landing is recorded as a touchdown with its sink rate', () => {
   assert.ok(a.touchdowns >= 1)
   assert.ok(a.lastTouchdown !== null && a.lastTouchdown.sinkRate < 2, `sink ${a.lastTouchdown?.sinkRate}`)
 })
+
+test('a firm arrival of about 1,000 fpm is forgiven: the gear holds', () => {
+  const sim = makeSim()
+  const a = sim.aircraft
+  a.place(0, HARROW_FIELD.elevation + 1.5, 0, 90, 6, 0, 50 * KNOT)
+  a.vy = -5.2
+  sim.settle()
+  for (let i = 0; i < SIM_HZ * 4; i++) sim.stepPilot()
+  assert.equal(a.crashed, null)
+  assert.ok(a.touchdowns >= 1)
+})
