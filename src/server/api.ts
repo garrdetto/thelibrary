@@ -15,6 +15,7 @@ import { takeflight } from './routes/takeflight'
 import { trucksim } from './routes/trucksim'
 import { casino } from './routes/casino'
 import { sunvault } from './routes/sunvault'
+import { slotWallet } from './routes/slot-wallet'
 import { beanstalk } from './routes/beanstalk'
 import { modollaz } from './routes/modollaz'
 import { bushleague } from './routes/bushleague'
@@ -71,6 +72,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/trucksim': trucksim,
   '/api/casino': casino,
   '/api/sunvault': sunvault,
+  '/api/slot-wallet': slotWallet,
   '/api/beanstalk': beanstalk,
   '/api/modollaz': modollaz,
   '/api/bushleague': bushleague,
