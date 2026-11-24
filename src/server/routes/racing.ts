@@ -12,13 +12,13 @@ import { carCountsForRecords, carIdOf } from '../../../modules-src/shorttrack/sh
 import { getCar } from '../shorttrack-cars'
 
 const trackNames: Record<z.infer<typeof trackIds>, string> = {
-  circuit: 'Max Secure Circuit', oval: 'Oval Speedway', shorttrack: 'Madison International Raceway', dells: 'Fox Speedway', dellswide: 'Dells Raceway Park', prison: 'Prison Speedway', dirt: 'Beaver Dam Raceway',
-  'shorttrack-v2': 'Madison International Raceway', 'dells-v2': 'Fox Speedway', 'dellswide-v2': 'Dells Raceway Park', 'prison-v2': 'Prison Speedway', 'dirt-v2': 'Beaver Dam Raceway',
+  circuit: 'Max Secure Circuit', oval: 'Oval Speedway', shorttrack: 'Madison International Raceway', dells: 'Fox Speedway', dellswide: 'Dells Raceway Park', prison: 'Prison Speedway', dirt: 'Beaver Dam Raceway', parkoval: 'Thrill Park Speedway',
+  'shorttrack-v2': 'Madison International Raceway', 'dells-v2': 'Fox Speedway', 'dellswide-v2': 'Dells Raceway Park', 'prison-v2': 'Prison Speedway', 'dirt-v2': 'Beaver Dam Raceway', 'parkoval-v2': 'Thrill Park Speedway',
 }
 const modeNames: Record<z.infer<typeof raceModes>, string> = { practice: 'Time trial', multiplayer: 'Online', 'time-attack': 'Time Attack', race: 'Solo Race' }
-const closedTracks =new Set(['shorttrack', 'dells', 'dellswide', 'prison', 'dirt'])
+const closedTracks =new Set(['shorttrack', 'dells', 'dellswide', 'prison', 'dirt', 'parkoval'])
 const raceModes = z.enum(['practice', 'multiplayer', 'time-attack', 'race'])
-const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells', 'dellswide', 'prison', 'dirt', 'shorttrack-v2', 'dells-v2', 'dellswide-v2', 'prison-v2', 'dirt-v2'])
+const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells', 'dellswide', 'prison', 'dirt', 'shorttrack-v2', 'dells-v2', 'dellswide-v2', 'prison-v2', 'dirt-v2', 'parkoval', 'parkoval-v2'])
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const vehicleIds = z.enum(['challenger', 'escalade', 'lamborghini', 'ram', 'muscle-red'])
 const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])

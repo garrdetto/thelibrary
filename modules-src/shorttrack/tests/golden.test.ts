@@ -61,7 +61,10 @@ function replay(f: Fixture, onTick: (tickNo: number, cars: Map<string, SimCar>) 
   return w.cars
 }
 
-for (const track of Object.keys(TRACKS) as TrackId[]) {
+/** Tracks the classic module raced (and so has recordings of); newer tracks only exist on the next model. */
+const CLASSIC_TRACKS: TrackId[] = ['prison', 'bullring', 'dells', 'dellswide', 'dirt']
+
+for (const track of CLASSIC_TRACKS) {
   test(`golden: TS sim matches the classic recording on ${track} within 1e-6 over 3 laps`, () => {
     const f = load(`${track}-medium.json`)
     const frames = new Map(f.states.map(([t, rows]) => [t, rows]))

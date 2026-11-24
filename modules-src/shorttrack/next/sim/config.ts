@@ -1,4 +1,4 @@
-export type TrackId = 'prison' | 'bullring' | 'dells' | 'dellswide' | 'dirt'
+export type TrackId = 'prison' | 'bullring' | 'dells' | 'dellswide' | 'dirt' | 'parkoval'
 
 export type TrackDef = {
   name: string
@@ -20,7 +20,7 @@ export type TrackDef = {
   apronGrip?: number
   gripUp: number
   minLap: number
-  theme?: 'prison'
+  theme?: 'prison' | 'park'
   surface?: 'dirt'
   bareInfield?: boolean
 }
@@ -73,6 +73,16 @@ export const TRACKS: Record<TrackId, TrackDef> = {
     grip: 0.72, apronGrip: 0.6, gripUp: 1.4,
     minLap: 8000,
     surface: 'dirt',
+  },
+  parkoval: {
+    name: 'Thrill Park Speedway', miles: '0.33 mi', rec: 'parkoval',
+    L: 163, R: 33.5, W: 16, APRON: 6,
+    turnBank: 12, straightBank: 4, bankIn: 55, bankOut: 42,
+    grooveHigh: 4.5, grooveLow: -4.7,
+    steer: 0.95, smooth: 1.6,
+    gripUp: 1.1,
+    minLap: 9000,
+    theme: 'park',
   },
 }
 

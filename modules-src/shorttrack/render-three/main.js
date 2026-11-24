@@ -8,6 +8,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from '../shorttrack-numbers.js';
+import { createParkSpeedway, PARK_MAP } from '../park-speedway';
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from '../prison-speedway.js';
 import { batchStatic } from '../../_shared/static-batch.js';
 import { initEmbedFull } from '../../_shared/embed-full.js';
@@ -230,7 +231,10 @@ addMesh(ribbon(pt(-HW-AP),pt(-HW),0,P,SEG,6,'across'),new THREE.MeshStandardMate
 addMesh(ribbon(pt(-HW+0.15,0.015),pt(-HW+0.45,0.015),0,P,SEG,10,'across'),lineMat(0xf2c200));
 addMesh(ribbon(pt(HW-0.6,0.015),pt(HW-0.35,0.015),0,P,SEG,10,'across'),lineMat(0xf0f0f0));
 addMesh(ribbon(pt(-HW,0.025),pt(HW,0.025),S_LINE-0.7,S_LINE+0.7,2,1.4,'across'),new THREE.MeshStandardMaterial({map:TEX.checker,roughness:.6,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
-{const gp=new THREE.Mesh(new THREE.PlaneGeometry(2800,2800).rotateX(-Math.PI/2),new THREE.MeshStandardMaterial({map:TEX.grass,normalMap:TEX.grassNormal,normalScale:new THREE.Vector2(0.6,0.6),roughness:1}));gp.position.y=-0.06;gp.receiveShadow=true;scene.add(gp);}
+{const gm=new THREE.MeshStandardMaterial({map:TEX.grass,normalMap:TEX.grassNormal,normalScale:new THREE.Vector2(0.6,0.6),roughness:1});
+ // Thrill Park Speedway: the park's own terrain covers its map, so the flat grass only fills the land around it
+ const pieces=TRACK.theme==='park'?[[-1400,PARK_MAP.x0,-1400,1400],[PARK_MAP.x1,1400,-1400,1400],[PARK_MAP.x0,PARK_MAP.x1,-1400,PARK_MAP.z0],[PARK_MAP.x0,PARK_MAP.x1,PARK_MAP.z1,1400]]:[[-1400,1400,-1400,1400]];
+ for(const [x0,x1,z0,z1] of pieces){const gp=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,z1-z0).rotateX(-Math.PI/2),gm);gp.position.set((x0+x1)/2,-0.06,(z0+z1)/2);gp.receiveShadow=true;scene.add(gp);}}
 const wallMat=new THREE.MeshStandardMaterial({map:TEX.wall,roughness:.7,side:DS});
 addMesh(ribbon(ptY(HW+0.15,()=>0),ptY(HW+0.15,wallTop),0,P,SEG,-24,'along'),wallMat);
 addMesh(ribbon(ptY(HW+0.15,wallTop),ptY(HW+3,wallTop),0,P,360,6,'across'),new THREE.MeshStandardMaterial({map:TEX.concrete,roughness:.95,side:DS}));
@@ -253,7 +257,7 @@ function trackTube(lat,yf,r,mat){const pts=[];for(let i=0;i<480;i++){const s2=i/
 // grandstands wrap the whole bowl
 const ROWS=16;
 const sY=k=>s=>wallTop(s)+0.75*(k+1);
-const PRISON=TRACK.theme==='prison';
+const PRISON=TRACK.theme==='prison',PARK=TRACK.theme==='park';
 const treadA=new THREE.MeshStandardMaterial({color:PRISON?PRISON_STANDS.treadA:0x2f4a78,roughness:.8,side:DS}),treadB=new THREE.MeshStandardMaterial({color:PRISON?PRISON_STANDS.treadB:0x7a2f35,roughness:.8,side:DS}),riserMat=new THREE.MeshStandardMaterial({color:PRISON?PRISON_STANDS.riser:0x8b9097,roughness:.9,side:DS});
 for(let k=0;k<ROWS;k++){
   const la=HW+3+k*1.1,lb=la+1.1;
@@ -358,6 +362,7 @@ drawPylon([]);
 // trees and distant hills
 const treeParts=[];
 function buildTrees(n){
+  if(PARK)n=0;
   treeParts.forEach(m=>{scene.remove(m);m.geometry.dispose();m.material.dispose();});treeParts.length=0;
   const foliage=mergeGeometries([new THREE.ConeGeometry(3.2,7,8).translate(0,6,0),new THREE.ConeGeometry(2.5,5.5,8).translate(0,9,0),new THREE.ConeGeometry(1.7,4,8).translate(0,11.6,0)]);
   const F=new THREE.InstancedMesh(foliage,new THREE.MeshStandardMaterial({roughness:.9,flatShading:true}),n),T=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3,0.45,3,6).translate(0,1.5,0),new THREE.MeshStandardMaterial({color:0x5a3d22,roughness:1}),n);
@@ -390,6 +395,7 @@ const flagMat=new THREE.MeshBasicMaterial({color:0xffcc00,side:DS});
 
 const BATCH=new URLSearchParams(location.search).get('batch')!=='0';
 if(BATCH)batchStatic(scene,[sky,skyDay,clouds]);
+let parkScenery=null;
 
 // ===================== EFFECTS =====================
 const MARKS=DIRT?14000:7000;
@@ -1357,7 +1363,7 @@ function setNight(n){
   hemi.intensity=n?0.4:DAY.hemiInt;hemi.color.set(n?0x8899cc:DAY.hemiSky);hemi.groundColor.set(n?0x402f1a:DAY.hemiGround);
   sun.intensity=n?1.7:DAY.sunInt;sun.color.set(n?0xeef3ff:DAY.sunColor);if(n)SUN_OFF.set(10,130,5);else SUN_OFF.set(...DAY.sunDir);
   skyDay.material.uniforms.sunPosition.value.copy(SUN_OFF).normalize();clouds.material.color.set(DAY.cloudTint);clouds.material.opacity=DAY.cloudOpacity;
-  towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.12:DAY.paintEnv;if(GROOVE_MAT)GROOVE_MAT.roughness=DIRT?0.95:n?0.8:0.55;glassMat.emissiveIntensity=n?0.6:0;if(prisonInfield)prisonInfield.setNight(n);
+  towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.12:DAY.paintEnv;if(GROOVE_MAT)GROOVE_MAT.roughness=DIRT?0.95:n?0.8:0.55;glassMat.emissiveIntensity=n?0.6:0;if(prisonInfield)prisonInfield.setNight(n);if(parkScenery)parkScenery.setNight(n);
   bloom.enabled=n;bloom.strength=0.25;bloom.threshold=0.85;scene.fog.near=n?1500:DAY.fogNear;scene.fog.far=n?3800:DAY.fogFar;
   const upd=c=>c&&c.m.paints.forEach(m=>{if(m.userData.r0==null){m.userData.r0=m.roughness;m.userData.cc0=m.clearcoat||0;}m.envMap=envTex;m.envMapIntensity=ENVK;m.roughness=n?Math.max(0.5,m.userData.r0):m.userData.r0;m.clearcoat=n?m.userData.cc0*0.3:m.userData.cc0;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?.7:DAY.exposure;
 }
@@ -1732,7 +1738,7 @@ function simulate(dt){
   simSimulate(WORLD,dt,()=>AUTOPILOT?null:mode==='paused'?{thr:0,brk:0,steer:0}:playerCtl());
 }
 function frame(now){
-  requestAnimationFrame(frame);CLASSIC_STATUS.frames++;const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
+  requestAnimationFrame(frame);CLASSIC_STATUS.frames++;const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(parkScenery)parkScenery.update(dt);if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
   const simOn=!SIM.frozen&&(mode==='race'||mode==='results'||(mode==='paused'&&NET.online));
   if(simOn){
     acc+=dt;let n=0;while(acc>=STEP&&n<24){simulate(STEP);acc-=STEP;n++;}if(n>=24)acc=0;drainSim();
@@ -1798,6 +1804,7 @@ addEventListener('message',e=>{
 
 // ===================== INIT =====================
 {const room=new URLSearchParams(location.search).get('room');if(room){$('joinCode').value=room.toUpperCase().replace(/[^A-Z]/g,'').slice(0,5);setTimeout(doJoin,300);}}
+if(PARK)createParkSpeedway(quality==='low'?320:520).then(p=>{parkScenery=p;scene.add(p.root);p.setNight(settings.night);}).catch(e=>console.warn('Thrill Park scenery unavailable',e));
 rebuildMenuCar();applyQuality();setNight(settings.night);showScreen('scrMain');requestAnimationFrame(frame);
 carAssetReady.then(ok=>{if(ok&&myLv.veh==='car'&&!player)rebuildMenuCar();});
 NUM_FONTS.forEach(f=>loadNumFont(f.id).then(refreshNumberFonts));

@@ -1,7 +1,7 @@
 import { TRACKS } from '../next/sim/config'
 import type { Config, TrackId } from '../next/sim/config'
 
-export const HANDLING_TRACKS: TrackId[] = ['prison', 'bullring', 'dells', 'dellswide', 'dirt']
+export const HANDLING_TRACKS: TrackId[] = ['prison', 'bullring', 'dells', 'dellswide', 'dirt', 'parkoval']
 
 type CfgKey = 'grip' | 'aiGrip' | 'apronGrip' | 'power' | 'maxAccel' | 'brake' | 'engineBrake' | 'drag' | 'steerLow' | 'steerSpeed' | 'steerRampIn' | 'steerRampOut'
   | 'dirtFrontGrip' | 'dirtRearGrip' | 'dirtWheelspin' | 'dirtRearC' | 'dirtFrontSigma'
