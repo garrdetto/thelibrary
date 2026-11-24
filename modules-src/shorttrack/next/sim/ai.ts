@@ -16,12 +16,12 @@ const cache = new WeakMap<World, Map<string, AiConsts>>()
 
 /** Racecraft spacing for car `c`: lengths follow its footprint length, lateral gaps its width (smaller bodies race closer). */
 export function aiConsts(w: World, c?: Pick<SimCar, 'fl' | 'fw'>): AiConsts {
-  const fl = c?.fl || 1, fw = c?.fw || 1, key = `${fl}:${fw}`
+  const fl = c?.fl || 1, fw = c?.fw || 1, key = `${fl}:${fw}:${w.model}`
   let byCar = cache.get(w)
   if (!byCar) cache.set(w, (byCar = new Map()))
   let k = byCar.get(key)
   if (!k) {
-    const CS = w.cfg.carScale, DIRT = w.track.dirt, room = (DIRT ? 1.0 : 0.6) * Math.min(1, fw * 1.4), AI_TOUCH = 2 * CS * fw, AI_GAP = AI_TOUCH + room
+    const CS = w.cfg.carScale, DIRT = w.track.dirt, room = (DIRT ? 1.0 : 0.6) * Math.min(1, fw * 1.4) + (w.model === 'next' && !DIRT ? 0.35 : 0), AI_TOUCH = 2 * CS * fw, AI_GAP = AI_TOUCH + room
     k = {
       AI_TOUCH, AI_GAP, AI_PASS: AI_GAP + 0.9 * Math.min(1, fw * 1.4), AI_SHIFT: DIRT ? 2.2 : 2.8, AI_CORNER: DIRT ? 0.975 : 0.998, CAR_LEN: 5.5 * CS * fl, AI_LINE_MAX: w.track.LINE_MAX - 0.5,
       SIDE_LEN: 6.6 * CS * fl, SIDE_TIGHT: AI_GAP + 0.2, SIDE_ROOM: Math.min(1, fw * 1.4),
@@ -164,10 +164,12 @@ export function aiCtl(w: World, c: SimCar, dt: number): Controls {
       }
     }
     const gap = ahead ? aheadD - CAR_LEN : 1e9
+    const next = w.model === 'next', inT1 = s >= T1 && s < T1 + TURN, inT2 = s >= T2, into = inT1 ? (s - T1) / TURN : inT2 ? (s - T2) / TURN : -1
+    const bumpZone = !next || into < 0 || into > 0.6
     if (!slow) {
       const held = !!ahead && !ahead.isPace && gap < 10 && ahead.vf < v + 1.5 && !isHazard(w, ahead, v)
       c.heldT = held ? (c.heldT || 0) + dt : Math.max(0, (c.heldT || 0) - dt * 2)
-      if (held && ahead && !c.bumpT && !c.bumpCD && c.heldT > lerp(7, 2.5, c.aggr ?? 0.5)) {
+      if (held && ahead && bumpZone && !c.bumpT && !c.bumpCD && c.heldT > lerp(7, 2.5, c.aggr ?? 0.5)) {
         c.bumpT = 1.8
         c.bumpOn = ahead.id
         c.bumpCD = 9 + w.rand() * 5
@@ -195,9 +197,7 @@ export function aiCtl(w: World, c: SimCar, dt: number): Controls {
       return Math.min(lim, Math.sqrt(((CFG.g * (mu + t)) / (1 - mu * t)) * (R + laneNow)) * 0.95 * c.skill * aiCornerK(c))
     }
     const vE = vAt(T.bankAt(T1)), vM = vAt((CFG.turnBank * Math.PI) / 180)
-    const inT1 = s >= T1 && s < T1 + TURN, inT2 = s >= T2
     if (inT1 || inT2) {
-      const into = (inT1 ? s - T1 : s - T2) / TURN
       target = into < 0.2 ? lerp(vE, vM, into / 0.2) : into > 0.55 ? vM * 1.04 : vM
     } else {
       const dT = (s < T1 ? T1 : T2) - s
@@ -211,7 +211,7 @@ export function aiCtl(w: World, c: SimCar, dt: number): Controls {
       if (gap < safe) target = Math.min(target, ahead.vf - (safe - gap) * 0.6)
       else if (!bumping && gap < safe + (cl * cl) / 10) target = Math.min(target, ahead.vf + (gap - safe) * 0.5)
       if (bumping) {
-        target = Math.min(target, ahead.vf + 1.6)
+        target = Math.min(target, ahead.vf + (next ? (bumpZone ? 1.0 : 0.4) : 1.6))
         if (gap < 0.5) {
           c.bumpT = Math.min(c.bumpT, 0.35)
           c.laneT = 0
@@ -229,6 +229,7 @@ export function aiCtl(w: World, c: SimCar, dt: number): Controls {
       else if (hazD < 35) target = Math.min(target, v * 0.985)
     }
     if (c.looseT > 0) target *= 0.95
+    if (next && c.hitGripT > 0) target *= 1 - c.hitGripR * 0.35
     {
       const room = HW - 1.3 * CFG.carScale * (c.fw || 1) - c.tp.lat, drift = latVel(w, c)
       if (drift > 0 && room < drift * (DIRT ? 0.7 : 0.9)) target = Math.min(target, v - (DIRT ? 0.8 : 0.6))
@@ -244,7 +245,8 @@ export function aiCtl(w: World, c: SimCar, dt: number): Controls {
       }
     } else c.stuckT = 0
     c.aiTurn = (inT1 || inT2) && ph !== 'pace'
-    c.brkTight = !!(haz && hazD < 35) || !!(ahead && gap < (DIRT ? 2.6 : 1.6) + Math.max(0, v) * 0.06)
+    const closing = ahead ? Math.max(0, v - ahead.vf) : 0, bumpingNow = !!ahead && c.bumpT > 0 && ahead.id === c.bumpOn
+    c.brkTight = !!(haz && hazD < 35) || !!(ahead && gap < (DIRT ? 2.6 : 1.6) + Math.max(0, v) * 0.06) || (next && !!ahead && !bumpingNow && closing > 1.5 && gap < 2 + closing * 1.3)
     c.brkAt = ahead && gap < 14 ? 0.8 : 2.5
   }
   const Ld = 8 + Math.abs(v) * 0.45, tg = T.center(s + Ld)

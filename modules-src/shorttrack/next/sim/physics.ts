@@ -228,15 +228,20 @@ export function collidePair(w: World, a: SimCar, b: SimCar): void {
 
 /** Closing speeds (m/s) below this cost no grip: rubbing and light taps stay clean. */
 export const HIT_GRIP_MIN = 0.6
-/** Most grip a hit can take: the front can push hard, the rear only gets loose enough to step out, never to spin. */
-export const HIT_GRIP_MAX = { front: 0.45, rear: 0.3 }
+/** Most grip a hit can take: the front never loses grip to a hit, the rear only gets loose enough to step out, never to spin. */
+export const HIT_GRIP_MAX = { front: 0, rear: 0.3 }
+
+/** Share of the rear grip loss by where the car was hit, from `along` (-1 the rear bumper, +1 the nose): the full loss
+ * on the tail, a little less on the rear quarters, fading to none by the middle of the doors; the front half loses none. */
+export function hitRearShare(along: number): number {
+  return along <= -0.35 ? 1 : along >= 0 ? 0 : 0.7 * (-along / 0.35)
+}
 
 /**
- * A car-to-car hit (next model) takes grip away for a moment in proportion to how hard it was: the axle at the contact
- * loses the most. The car whose nose hits pushes (front grip), the car hit in the tail gets loose (rear grip), and a
- * door-to-door hit costs both axles a little so the car slides sideways. `dynamics.ts` fades it out, gives the rear
- * back as soon as the tail steps out and for 2 s holds back any rotation past a slide, so a hit unsettles a car but
- * doesn't spin it.
+ * A car-to-car hit (next model) takes grip away for a moment in proportion to how hard it was, only from the car hit
+ * in the tail or a rear quarter: it gets loose (rear grip). The car that does the hitting, and any car touched on its
+ * nose or front doors, keeps all its grip. `dynamics.ts` fades it out, gives the rear back as soon as the tail steps out
+ * and for 2 s holds back any rotation past a slide, so a hit unsettles a car but doesn't spin it.
  */
 export function hitGrip(w: World, c: SimCar, px: number, pz: number, hit: number): void {
   if (!c.local || c.isPace) return
@@ -244,10 +249,11 @@ export function hitGrip(w: World, c: SimCar, px: number, pz: number, hit: number
   if (k <= 0) return
   const sh = Math.sin(c.h), ch = Math.cos(c.h), dx = px - c.x, dz = pz - c.z
   const along = clamp((dx * sh + dz * ch) / (2.35 * CFG.carScale * (c.fl || 1)), -1, 1)
+  const rear = hitRearShare(along)
+  if (rear <= 0) return
   const sev = clamp((hit - HIT_GRIP_MIN) * 0.06, 0, 0.45) * k
-  const front = along > 0.35 ? 1 : along < -0.35 ? 0.2 : 0.55, rear = along < -0.35 ? 1 : along > 0.35 ? 0.15 : 0.55
   const fade = Math.min(1, c.hitGripT / 0.3)
-  c.hitGripF = Math.min(HIT_GRIP_MAX.front, Math.max(c.hitGripF * fade, sev * front))
+  c.hitGripF = 0
   c.hitGripR = Math.min(HIT_GRIP_MAX.rear, Math.max(c.hitGripR * fade, sev * rear))
   c.hitGripT = Math.max(c.hitGripT, 0.45 + Math.min(0.75, hit * 0.09))
   c.hitHoldT = Math.max(c.hitHoldT, 2)

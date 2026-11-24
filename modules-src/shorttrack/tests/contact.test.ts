@@ -5,7 +5,7 @@ import { createCar } from '../next/sim/car'
 import type { SimCar } from '../next/sim/car'
 import { contactGripLoss } from '../next/sim/dynamics'
 import { rng } from '../next/sim/math'
-import { HIT_GRIP_MAX, collidePair, impact, place } from '../next/sim/physics'
+import { HIT_GRIP_MAX, collidePair, hitRearShare, impact, place } from '../next/sim/physics'
 import { createWorld } from '../next/sim/race'
 import type { VehicleModel, World } from '../next/sim/world'
 import { applyHandling, handlingBase, sanitizeHandling, settingsFor } from '../shared/Handling'
@@ -26,14 +26,27 @@ function rearHit(closing: number, model: VehicleModel = 'next', tune: (w: World)
   return { w, a, b }
 }
 
-test('a rear hit makes the car that hits push and the car that is hit loose, by how hard it was', () => {
+test('a rear hit loosens only the car that is hit, by how hard it was; the car that hits keeps all its grip', () => {
   const soft = rearHit(2), hard = rearHit(6)
-  assert.ok(hard.a.hitGripF > hard.a.hitGripR, 'the hitter loses mostly front grip')
-  assert.ok(hard.b.hitGripR > hard.b.hitGripF, 'the car hit in the tail loses mostly rear grip')
-  assert.ok(hard.b.hitGripR > soft.b.hitGripR && hard.a.hitGripF > soft.a.hitGripF, 'a harder hit costs more grip')
+  assert.equal(hard.a.hitGripF, 0, 'the hitter keeps its front grip')
+  assert.equal(hard.a.hitGripR, 0, 'the hitter keeps its rear grip')
+  assert.equal(hard.a.hitGripT, 0, 'the hitter is not unsettled at all')
+  assert.equal(hard.b.hitGripF, 0, 'the car hit in the tail keeps its front grip')
+  assert.ok(hard.b.hitGripR > 0, 'the car hit in the tail gets loose')
+  assert.ok(hard.b.hitGripR > soft.b.hitGripR, 'a harder hit costs more grip')
   const wreck = rearHit(20)
-  assert.ok(wreck.b.hitGripR <= HIT_GRIP_MAX.rear && wreck.a.hitGripF <= HIT_GRIP_MAX.front, 'grip loss is capped')
+  assert.ok(wreck.b.hitGripR <= HIT_GRIP_MAX.rear && wreck.a.hitGripF === 0, 'grip loss is capped')
   assert.ok(wreck.b.hitHoldT > 0, 'the hit car is held back from spinning for a moment')
+})
+
+test('where a car is hit decides its grip loss: full on the tail, some on a rear quarter, none from the doors forward', () => {
+  assert.equal(hitRearShare(-1), 1)
+  assert.equal(hitRearShare(-0.35), 1)
+  const quarter = hitRearShare(-0.2)
+  assert.ok(quarter > 0 && quarter < 1, 'a rear-quarter hit loosens it a little')
+  assert.equal(hitRearShare(0), 0)
+  assert.equal(hitRearShare(0.5), 0)
+  assert.equal(hitRearShare(1), 0)
 })
 
 test('rubbing below the threshold, a zero Contact grip loss setting and the classic model cost no grip', () => {
@@ -82,4 +95,21 @@ test('contact and damage settings show on every track and scale their stock numb
   assert.equal(cfg.contactDrag, 0.2)
   assert.ok(Math.abs(cfg.damageLook - 2.4) < 1e-9)
   assert.equal(cfg.contactGrip, 1)
+})
+
+test('rolling start on the next model: the outside file runs up by the wall, the inside file a car length down and a car length back', async () => {
+  const { beginRace, buildGrid, gridLanes, simCarFactory } = await import('../next/sim/race')
+  const w = createWorld(TRACKS.prison, rng(3), () => 0, 'next')
+  const grid = buildGrid(rng(4), [{ id: 'me', number: '7' }], ['1', '2', '3', '4', '5'], { ai: 5, diff: 'medium' }, null, 20)
+  const cars = beginRace(w, grid, { attack: false, laps: 5, mode: 'race', myId: 'me', host: true, make: simCarFactory(() => true) })
+  const L = gridLanes(w), T = w.track
+  assert.ok(L.outer > T.HW - 3 && L.outer < T.HW - 2, 'outside file near the wall')
+  const len = 2 * 2.35 * w.cfg.carScale
+  assert.ok(Math.abs(L.outer - L.inner - len) < 1e-9 && Math.abs(L.stagger - len) < 1e-9)
+  const [inside, outside] = cars
+  assert.ok(Math.abs(outside.tp.lat - L.outer) < 0.05 && Math.abs(inside.tp.lat - L.inner) < 0.05)
+  const back = ((outside.tp.s - inside.tp.s) % T.P + T.P) % T.P
+  assert.ok(Math.abs(back - len) < 0.3, `inside car ${back.toFixed(2)} m behind`)
+  const classic = createWorld(TRACKS.prison, rng(3), () => 0, 'classic')
+  assert.deepEqual(gridLanes(classic), { outer: 0.6, inner: -3.6, stagger: 0 })
 })
