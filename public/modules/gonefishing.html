@@ -45,7 +45,8 @@ const SWING_ART = {"px": 200.0, "ox": 350.0, "oy": 630.0, "w": 760, "h": 760};
 const SWEET = [[-0.5251, 2.6203], [-0.9809, 2.3818], [-1.2499, 1.9853], [-1.2682, 1.4642], [-0.4033, 1.1309], [1.0034, 0.9824], [1.4139, 1.2487], [0.7294, 1.9841], [-0.2804, 2.3021]];
 const FRAME_T = [0, 0.03, 0.06, 0.09, 0.115, 0.14, 0.19, 0.25, 0.32], CONTACT_FRAME = 5, CONTACT_T = FRAME_T[CONTACT_FRAME];
 const HOLD_T = 0.55, BLEND_T = 0.25, SWING_FRAMES = FRAME_T.length;
-const BEAR_X = -SWEET[CONTACT_FRAME][0], CONTACT = { x: 0, y: SWEET[CONTACT_FRAME][1] };
+const BEAR_SCALE = 0.92, BEAR_BACK = 0.32, FLY_FAST = 2.2;
+const BEAR_X = -SWEET[CONTACT_FRAME][0] * BEAR_SCALE, CONTACT = { x: 0, y: BEAR_BACK + SWEET[CONTACT_FRAME][1] * BEAR_SCALE };
 const ART = {
   fish: { px: 412.9, ox: 289, oy: 128, w: 512, h: 256 },
   hole: { px: 140, ox: 210, oy: 80, w: 420, h: 160 },
@@ -273,7 +274,6 @@ function stepFish(f, dt) {
       if (-f.vy > 3.2 && f.bounces < 2) {
         f.vy = -f.vy * (0.08 + 0.42 * Math.pow(1 - th / (Math.PI / 2), 0.6)); f.vx *= 0.82 - 0.5 * Math.sin(th); f.bounces++;
         burst(f.x, 0.02, 16, P.snow, 'up', 2.5 + f.bounces); cam.shake = reduce ? 0 : 3; tone('bounce');
-        label(f.x, 1.2, f.bounces === 1 ? 'bounce' : 'bounce again', P.text);
       } else {
         f.vx *= 1 - 0.5 * Math.sin(th); f.vy = 0; f.state = 'slide'; burst(f.x, 0.02, 12, P.snow, 'up', 2); tone('slide');
       }
@@ -299,7 +299,8 @@ function update(dt) {
     if (S.armT > HOLD_T + BLEND_T) S.armT = -1;
   }
   if (f) {
-    const steps = Math.max(1, Math.ceil(dt * 240)), h = dt / steps;
+    const fast = f.state === 'fly' || f.state === 'slide' ? 1 + (FLY_FAST - 1) * clamp((S.hitT - 0.4) / 0.5, 0, 1) : 1;
+    const steps = Math.max(1, Math.ceil(dt * fast * 240)), h = dt * fast / steps;
     for (let i = 0; i < steps && (f.state === 'fly' || f.state === 'slide'); i++) stepFish(f, h);
     if (f.state !== 'fly' && f.state !== 'slide') stepFish(f, dt);
     if (f.state === 'fly' || f.state === 'slide') { f.trail.push({ x: f.x, y: f.y }); if (f.trail.length > 22) f.trail.shift(); }
@@ -371,27 +372,6 @@ function drawIce() {
     ctx.drawImage(img, x - ART.shanty.ox * k, y - ART.shanty.oy * k, ART.shanty.w * k, ART.shanty.h * k);
   }
 }
-function drawMarkers() {
-  const step = cam.s > 40 ? 2 : cam.s > 18 ? 5 : cam.s > 8 ? 10 : cam.s > 4.5 ? 25 : 50;
-  const startYd = Math.max(step, Math.floor((cam.x - HOLE_SX / cam.s) / YD / step) * step);
-  const endYd = (cam.x + (W - HOLE_SX) / cam.s + 2) / YD;
-  ctx.font = "700 12px 'TL Fox Dollar', Rajdhani, sans-serif"; ctx.textAlign = 'center';
-  for (let yd = startYd; yd <= endYd; yd += step) {
-    const x = sx(yd * YD), major = yd % (step * 2) === 0;
-    ctx.fillStyle = P.iceLine; ctx.fillRect(x - 1, GROUND_Y - 2, 2, major ? 34 : 20);
-    if (major) { ctx.fillStyle = P.markerText; ctx.fillText(yd + ' yd', x, GROUND_Y + 50); }
-  }
-  if (best > 0) drawFlag(best / 100 * YD, P.best, 'BEST', true);
-  if (S) for (let i = 0; i < S.results.length; i++) { const d = S.results[i]; if (d > 0 && !(S.fish && S.fish.state === 'rest' && i === S.results.length - 1)) drawFlag(d / 100 * YD, P.marker, '#' + (i + 1), false); }
-}
-function drawFlag(xm, color, text, dashed) {
-  const x = sx(xm); if (x < -40 || x > W + 40) return;
-  const h = dashed ? 64 : 42;
-  ctx.strokeStyle = color; ctx.lineWidth = 2; if (dashed) ctx.setLineDash([4, 4]);
-  ctx.beginPath(); ctx.moveTo(x, GROUND_Y + 8); ctx.lineTo(x, GROUND_Y - h); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(x, GROUND_Y - h); ctx.lineTo(x + 26, GROUND_Y - h + 7); ctx.lineTo(x, GROUND_Y - h + 14); ctx.closePath(); ctx.fill();
-  ctx.font = "700 11px 'TL Fox Dollar', Rajdhani, sans-serif"; ctx.textAlign = 'left'; ctx.fillStyle = color; ctx.fillText(text, x + 4, GROUND_Y - h - 4);
-}
 function drawHole() {
   const img = IMG[look].hole, k = cam.s / ART.hole.px, x = sx(0), y = GROUND_Y + 4;
   if (!img || x < -ART.hole.w * k || x > W + ART.hole.w * k) return;
@@ -403,7 +383,7 @@ function drawHole() {
   }
 }
 function drawBear() {
-  const A = SWING_ART, k = cam.s / A.px, bx = sx(BEAR_X), by = sy(0);
+  const A = SWING_ART, k = cam.s * BEAR_SCALE / A.px, bx = sx(BEAR_X), by = sy(BEAR_BACK);
   if (bx < -A.w * k || bx > W + A.w * k) return;
   const sh = ctx.createRadialGradient(bx + 20 * k, by, 0, bx + 20 * k, by, 200 * k); sh.addColorStop(0, 'rgba(20,45,80,0.3)'); sh.addColorStop(1, 'rgba(20,45,80,0)');
   ctx.save(); ctx.translate(bx + 20 * k, by); ctx.scale(1, 0.16); ctx.translate(-bx - 20 * k, -by); ctx.fillStyle = sh; ctx.fillRect(bx - 200 * k, by - 200 * k, 400 * k, 400 * k); ctx.restore();
@@ -421,7 +401,7 @@ function drawBear() {
     ctx.strokeStyle = 'rgba(255,255,255,' + (0.45 * fade) + ')'; ctx.lineWidth = Math.max(2, 9 * k); ctx.lineCap = 'round';
     ctx.beginPath();
     const last = Math.min(frame, 6);
-    for (let i = 2; i <= last; i++) { const px = sx(BEAR_X + SWEET[i][0]), py = sy(SWEET[i][1]); if (i === 2) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+    for (let i = 2; i <= last; i++) { const px = sx(BEAR_X + SWEET[i][0] * BEAR_SCALE), py = sy(BEAR_BACK + SWEET[i][1] * BEAR_SCALE); if (i === 2) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
     ctx.stroke();
   }
 }
@@ -486,10 +466,6 @@ function drawMessage() {
   ctx.font = "600 14px 'TL Fox Dollar', Inter, sans-serif"; ctx.lineWidth = 4; ctx.strokeText(m.sub, W / 2, y + 24); ctx.fillStyle = look === 'wics' ? '#13203a' : '#eaf4ff'; ctx.fillText(m.sub, W / 2, y + 24);
   ctx.globalAlpha = 1;
 }
-function drawRestFlag() {
-  const f = S && S.fish; if (!f || f.state !== 'rest') return;
-  const d = S.results[S.results.length - 1]; drawFlag(f.x, P.flag, fmt(d), false);
-}
 function drawHint() {
   if (!S || mode !== 'play' || !S.fish || S.fish.state !== 'wait' || S.n > 1 || S.idle > 6) return;
   ctx.textAlign = 'center'; ctx.font = "600 14px 'TL Fox Dollar', Inter, sans-serif"; ctx.fillStyle = look === 'wics' ? '#1e3a6e' : 'rgba(255,255,255,0.92)';
@@ -500,8 +476,8 @@ function draw(dt) {
   ctx.save();
   if (cam.shake > 0) ctx.translate(rand(-cam.shake, cam.shake) * 0.5, rand(-cam.shake, cam.shake) * 0.5);
   if (!S) S = fresh();
-  drawSky(); drawFar(); drawIce(); drawMarkers(); drawHole();
-  drawBear(); drawFish(S.fish); drawRestFlag(); drawFx();
+  drawSky(); drawFar(); drawIce();
+  drawBear(); drawHole(); drawFish(S.fish); drawFx();
   ctx.restore();
   drawSnow(dt); drawMessage(); drawHint();
 }
