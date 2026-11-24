@@ -56,7 +56,7 @@ const studioViews: readonly string[] = ['chat', 'image', 'lyrics', 'voice']
 const isPlayId = isEmbeddedModuleId
 const shortTrackModes = ['time-attack', 'race', 'multiplayer'] as const
 const shortTrackModeNames = { 'time-attack': 'Time Attack', race: 'Solo Race', multiplayer: 'Online' }
-const shortTrackTracks = [{ id: 'prison-v2', name: 'Prison Speedway (0.29 mi)' }, { id: 'shorttrack-v2', name: 'Madison International Raceway (0.5 mi)' }, { id: 'dells-v2', name: 'Fox Speedway (0.3 mi)' }, { id: 'dellswide-v2', name: 'Dells Raceway Park (0.27 mi)' }, { id: 'dirt-v2', name: 'Beaver Dam Raceway (0.3 mi)' }] as const
+const shortTrackTracks = [{ id: 'prison-v2', name: 'Prison Speedway (0.29 mi)' }, { id: 'shorttrack-v2', name: 'Madison International Raceway (0.5 mi)' }, { id: 'dells-v2', name: 'Fox Speedway (0.3 mi)' }, { id: 'dellswide-v2', name: 'Dells Raceway Park (0.27 mi)' }, { id: 'dirt-v2', name: 'Beaver Dam Raceway (0.3 mi)' }, { id: 'parkoval-v2', name: 'Thrill Park Speedway (0.33 mi)' }] as const
 const shortTrackArchive = { label: 'Classic', note: 'Laps set on the classic vehicle physics. This book is read-only.', trackOf: (track: string) => track.replace(/-v2$/, '') }
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']
