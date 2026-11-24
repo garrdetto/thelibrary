@@ -5,9 +5,19 @@ import { HttpError } from './http'
 export const TEXT_MODEL = 'gemini-3-flash-preview'
 export const IMAGE_MODEL = 'gemini-3.1-flash-image'
 
+export type GeminiBackend = 'studio' | 'vertex'
+
+export function geminiBackend(apiKey: string, setting?: string): GeminiBackend {
+  const chosen = (setting ?? '').trim().toLowerCase()
+  if (chosen === 'vertex' || chosen === 'studio') return chosen
+  return apiKey.trim().startsWith('AQ.') ? 'vertex' : 'studio'
+}
+
 export function gemini(env: Env) {
   if (!env.GEMINI_API_KEY) throw new HttpError(503, 'AI features are not set up yet. Ask the site owner to add a Gemini API key.')
-  return new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, httpOptions: { timeout: 55000 } })
+  const apiKey = env.GEMINI_API_KEY.trim()
+  const vertexai = geminiBackend(apiKey, env.GEMINI_BACKEND) === 'vertex'
+  return new GoogleGenAI({ apiKey, vertexai, httpOptions: { timeout: 55000 } })
 }
 
 export function base64ToBytes(data: string) {
