@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { ArrowLeft, EyeOff, ListMusic, Radar, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowLeft, EyeOff, ListMusic, Radar, ShieldCheck, Sparkles, Wallet } from 'lucide-react'
 import { MODULE_PREFIX, MUSIC_GRANT, MUSIC_TRACK_PREFIX, RADAR_GRANT, moduleGrants, musicTrackGrants, studioGrants } from '@/lib/access'
 import { formatTrackTime } from '@/lib/music'
 import type { MusicTrack } from '@/lib/music'
 import { learningModules } from '@/lib/modules'
 import { useModuleLayout } from '@/lib/use-module-layout'
+import { SlotWallet } from './SlotWallet'
 
 export type Account = { id: string; username: string; pages: string[]; grants: string[]; radar: boolean; isAdmin: boolean; isOwner: boolean; needsPassword: boolean; createdAt: number }
 
@@ -141,6 +142,10 @@ export function PersonAccess({ account, viewerIsOwner, busy, onBack, onSave, onS
           <input type="checkbox" checked={has(`${MODULE_PREFIX}${id}`)} onChange={event => set(`${MODULE_PREFIX}${id}`, event.target.checked)}/>
           {moduleTitles.get(id)}{!(layout.hidden as string[]).includes(id) && <small> (visible to everyone now)</small>}
         </label>)}</div> : <p className="adm-muted">Every module is visible to everyone. Hide one in Module order to share it with only certain people.</p>}
+      </Group>
+
+      <Group icon={<Wallet size={16}/>} title="Slot balance" help="Play money shared by Sun Vault, Beanstalk Bounty and Mo' Dollaz. Adding money takes effect straight away and doesn't need Save changes.">
+        <SlotWallet userId={account.id} username={account.username}/>
       </Group>
     </fieldset>
 

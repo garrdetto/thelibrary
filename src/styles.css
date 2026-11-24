@@ -2695,3 +2695,9 @@ html:has(.site-ribbon .ribbon-item:not([hidden])){--tl-ribbon-h:calc(42px + env(
   .signin-gate-note{margin-top:14px;padding-top:12px}
 }
 @media (max-width:480px){.signin-gate{padding:calc(env(safe-area-inset-top,0px) + 14px) 12px 16px}.signin-gate-intro,.signin-gate-form{padding:24px 20px}.signin-gate-intro h1{font-size:28px}}
+.adm-wallet{display:grid;gap:10px}
+.adm-wallet-balance{margin:0;font-size:15.5px;color:var(--lib-soft)}
+.adm-wallet-balance strong{color:var(--lib-strong);font-size:18px}
+.adm-wallet-quick{display:flex;flex-wrap:wrap;gap:8px}
+.adm-wallet-custom{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
+.adm-wallet-custom .adm-field{flex:1 1 140px}
