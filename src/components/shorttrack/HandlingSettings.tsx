@@ -81,10 +81,13 @@ export default function HandlingSettings() {
       })}
     </div>
     <ul className="sth-list">
-      {settingsFor(track).map(setting => {
+      {settingsFor(track).map((setting, index, list) => {
         const value = draft[setting.key] ?? 1
         const id = `sth-${setting.key}`
+        const contact = 'contact' in setting && setting.contact
+        const head = contact && !list.slice(0, index).some(other => 'contact' in other && other.contact)
         return <li key={setting.key} className={`sth-row${value !== 1 ? ' is-changed' : ''}`}>
+          {head && <h4 className="sth-head">Contact and damage</h4>}
           <label htmlFor={id}>{setting.label}</label>
           <output htmlFor={id}>{percent(value)}{(liveTune[setting.key] ?? 1) !== value ? ` (live ${percent(liveTune[setting.key] ?? 1)})` : ''}</output>
           <input id={id} type="range" min={setting.min} max={setting.max} step={0.01} value={value} aria-describedby={`${id}-help`} aria-valuetext={percent(value)}

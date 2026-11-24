@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { TRACKS, makeConfig, trackIdOf } from '../next/sim/config'
+import { NEXT_CONTACT_KEYS, TRACKS, makeConfig, trackIdOf } from '../next/sim/config'
 import type { TrackId } from '../next/sim/config'
 import { Track } from '../next/sim/track'
 
@@ -34,7 +34,7 @@ for (const [id, expected] of Object.entries(fixture)) {
   test(`${id}: geometry matches the classic module exactly`, () => {
     const def = TRACKS[id as TrackId]
     const cfg = makeConfig(def)
-    const classicCfg = Object.fromEntries(Object.entries(cfg).filter(([key]) => !key.startsWith('dirt')))
+    const classicCfg = Object.fromEntries(Object.entries(cfg).filter(([key]) => !key.startsWith('dirt') && !(NEXT_CONTACT_KEYS as readonly string[]).includes(key)))
     assert.deepEqual(classicCfg, expected.cfg)
     const g = new Track(def, cfg)
     const dirt = g.dirt

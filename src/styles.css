@@ -1509,6 +1509,7 @@ body{background:var(--paper);color:var(--tone-0)}
 .adm-areas button.is-active{background:var(--lib-panel);color:var(--lib-strong);box-shadow:0 1px 4px -1px var(--lib-shadow,rgba(0,0,0,.35))}
 .adm-areas button.is-active svg{color:var(--lib-accent)}
 .adm-areas button:focus-visible,.sth-row input:focus-visible{outline:2px solid var(--lib-accent);outline-offset:2px}
+.sth-head{grid-column:1/-1;margin:0 0 4px;font-size:13px;font-weight:750;text-transform:uppercase;letter-spacing:.04em;color:var(--lib-muted)}
 .sth-tracks{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
 .sth-tracks button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 12px;border:1px solid var(--lib-line);border-radius:10px;background:var(--lib-panel2);color:var(--lib-text);font:inherit;font-size:15px;font-weight:650;cursor:pointer}
 .sth-tracks button small{font-size:13.5px;font-weight:500;color:var(--lib-muted)}

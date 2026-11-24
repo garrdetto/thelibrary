@@ -1,6 +1,7 @@
 // Live handling for this track (/api/shorttrack-handling, published from the admin console) and the admin-only
 // Track Test: a side panel that changes the handling while driving and pushes the tested settings live for this track.
-// `opts`: { cfg, trackId, trackName, toast(text), onApply(), startTest(), resetCar() }.
+// `opts`: { cfg, trackId, trackName, toast(text), onApply(), startTest(), resetCar(), restart() }.
+// The admin can bring AI cars into the test (`aiCars()`, `aiDiff()`): a test with AI cars runs as a solo race with a rolling start.
 // Once Track Test starts, no lap is saved to the records, whether or not the settings are live.
 import { applyHandling, handlingBase, sameHandling, sanitizeHandling, settingsFor } from './shared/Handling';
 
@@ -25,6 +26,13 @@ const CSS = `
 #ttPanel button.pri{background:var(--acc);border-color:transparent;color:#111}
 #ttPanel button:disabled{opacity:.45;cursor:default}
 #ttPanel button:focus-visible,#ttPanel input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#ttPanel .tt-head{margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--line);font:900 12px "Arial Black",Impact,sans-serif;letter-spacing:.5px;color:var(--acc)}
+#ttPanel .tt-ai{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;align-items:end}
+#ttPanel .tt-ai label{display:flex;flex-direction:column;gap:3px;font-weight:700}
+#ttPanel .tt-ai select{padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:#232b38;color:var(--txt);font:700 12px system-ui}
+#ttPanel .tt-ai button{grid-column:1/-1}
+#ttPanel .tt-ai small{grid-column:1/-1;color:var(--dim)}
+#ttPanel select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #ttPanel .tt-note{margin:8px 0 0;color:var(--dim);min-height:16px}
 #ttPanel .tt-note.bad{color:#ff8a8a}
 .tile.tt-tile{border-color:rgba(255,204,0,.45)}
@@ -34,7 +42,8 @@ const CSS = `
 export function initTrackTest(opts) {
   const { cfg, trackId, trackName } = opts;
   const base = handlingBase(cfg), SETTINGS = settingsFor(trackId), clean = raw => sanitizeHandling(raw, trackId);
-  let live = {}, draft = null, admin = false, busy = false, warned = false, testing = false;
+  let live = {}, draft = null, admin = false, busy = false, warned = false, testing = false, aiCars = 0, aiDiff = 'medium';
+  let aiSel = null, diffSel = null;
   let panel = null, note = null, pushBtn = null, revertBtn = null, stockBtn = null, resetBtn = null;
   const rows = new Map();
 
@@ -96,7 +105,27 @@ export function initTrackTest(opts) {
     panel.innerHTML = `<header><b>TRACK TEST<small></small></b><button type="button" class="tt-min-btn" aria-expanded="true" title="Hide or show (T)">Hide</button></header><div class="tt-body"></div>`;
     panel.querySelector('header small').textContent = trackName;
     const body = panel.querySelector('.tt-body');
+    const ai = document.createElement('div');
+    ai.className = 'tt-ai';
+    ai.innerHTML = `<label>AI cars<select data-tt="ai">${Array.from({ length: 20 }, (_, n) => `<option value="${n}">${n ? n : 'None'}</option>`).join('')}</select></label><label>AI difficulty<select data-tt="diff"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label><button type="button" data-tt="restart" title="Start the test run again with these AI cars">Restart test run</button><small>With AI cars the test runs as a race with a rolling start; with none it is a lone run.</small>`;
+    aiSel = ai.querySelector('[data-tt="ai"]');
+    diffSel = ai.querySelector('[data-tt="diff"]');
+    aiSel.value = String(aiCars);
+    diffSel.value = aiDiff;
+    aiSel.addEventListener('change', () => { aiCars = Number(aiSel.value) || 0; });
+    diffSel.addEventListener('change', () => { aiDiff = diffSel.value; });
+    const restartBtn = ai.querySelector('[data-tt="restart"]');
+    restartBtn.addEventListener('click', () => { restartBtn.blur(); opts.restart && opts.restart(); });
+    body.appendChild(ai);
+    let contactHead = false;
     for (const s of SETTINGS) {
+      if (s.contact && !contactHead) {
+        contactHead = true;
+        const head = document.createElement('h3');
+        head.className = 'tt-head';
+        head.textContent = 'CONTACT AND DAMAGE';
+        body.appendChild(head);
+      }
       const el = document.createElement('div');
       el.className = 'tt-row';
       const id = `tt-${s.key}`;
@@ -185,5 +214,14 @@ export function initTrackTest(opts) {
     },
     /** True in Track Test mode, where the car can be reset at any speed. */
     isTesting() { return testing; },
+    /** AI cars the admin wants in the test run (0 for a lone run) and their difficulty. */
+    aiCars() { return aiCars; },
+    aiDiff() { return aiDiff; },
+    setAi(n, diff) {
+      aiCars = Math.max(0, Math.min(19, Math.round(Number(n) || 0)));
+      if (diff === 'easy' || diff === 'medium' || diff === 'hard') aiDiff = diff;
+      if (aiSel) aiSel.value = String(aiCars);
+      if (diffSel) diffSel.value = aiDiff;
+    },
   };
 }

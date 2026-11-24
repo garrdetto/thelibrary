@@ -88,11 +88,19 @@ export type Config = {
   brake: number; reverseMax: number; scrub: number; slideScrub: number; wheelbase: number; steerLow: number; steerSpeed: number
   steerRampIn: number; steerRampOut: number; steerDamp: number; carScale: number; spinThreshold: number; spinRate: number
   wallRest: number; carRest: number; carBounce: number; damageScale: number
+  /** Contact and damage on the next vehicle model (the classic model ignores them, so its golden traces hold): damage
+   * taken is divided by `strength`; `damageLook` scales how big the dents look; `contactDrag` is the share of the classic
+   * contact speed loss a car-to-car hit still costs; `contactGrip` scales how much grip a hit takes away for a moment
+   * (the nose of the car that hits pushes, the tail of the car that is hit gets loose, a side hit slides both axles). */
+  strength: number; damageLook: number; contactDrag: number; contactGrip: number
   paceSpeed: number; aiPaceSpeed: number; cautionSpeed: number; cautionTime: number; aiDecel: number; maxCars: number
   /** Dirt only (the next vehicle model): front and rear tire grip, how much throttle wheelspin costs the rears in side
    * grip, how far the rears fall away past their peak (magic-formula C) and the fronts' relaxation length (m). */
   dirtFrontGrip: number; dirtRearGrip: number; dirtWheelspin: number; dirtRearC: number; dirtFrontSigma: number
 }
+
+/** Config fields only the next vehicle model reads (contact and damage), left out of the classic comparisons. */
+export const NEXT_CONTACT_KEYS = ['strength', 'damageLook', 'contactDrag', 'contactGrip'] as const
 
 /** Stock dirt tire numbers for the next model. AI cars never run a looser rear or a grippier front than these (`dynamics.ts`), so a
  * looser Track Test setting changes how the drivers' cars slide without spinning the AI field. */
@@ -107,6 +115,7 @@ export function makeConfig(track: TrackDef): Config {
     wheelbase: 2.8, steerLow: 0.47, steerSpeed: 0.07, steerRampIn: 8, steerRampOut: 6, steerDamp: 0,
     carScale: 1.15, spinThreshold: 1.6, spinRate: 0.8,
     wallRest: 0.22, carRest: 0.15, carBounce: 0.7, damageScale: 0.7,
+    strength: 1.5, damageLook: 1.6, contactDrag: 0.4, contactGrip: 1,
     paceSpeed: 31.0, aiPaceSpeed: 30.50, cautionSpeed: 29, cautionTime: 25, aiDecel: 5.5, maxCars: 20,
     ...DIRT_STOCK,
   }

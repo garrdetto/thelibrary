@@ -35,6 +35,9 @@ export type SimCar = {
   relLane: number | null; evadeLane: number; evadeT: number; looseT: number
   bumpT: number; bumpCD: number; bumpOn: string | null; heldT: number
   aiTurn: boolean; brkTight: boolean; brkAt: number
+  /** Grip a car-to-car hit took from the front and rear tires (0..1 shares) and how long it lasts (s); `hitHoldT` is the
+   * longer window after a hit in which the car is kept from spinning around. */
+  hitGripF: number; hitGripR: number; hitGripT: number; hitHoldT: number
   /** State of the Phase 4 vehicle model (`World.model === 'next'`). */
   dyn?: Dyn
 }
@@ -51,7 +54,7 @@ export function createCar(id: string, o: { local?: boolean; ai?: boolean; pace?:
     gripB: 1, powB: 1, gripB0: 1, powB0: 1, passD: 20, laneCD: 3, aggr: 0.5, lapTgt: 0, paceK: 1, paceCk: null,
     sideId: null, sideMode: null, sideT: 0, gridRow: null, startFile: 0, startHoldT: 0,
     relLane: null, evadeLane: 0, evadeT: 0, looseT: 0, bumpT: 0, bumpCD: 0, bumpOn: null, heldT: 0,
-    aiTurn: false, brkTight: false, brkAt: 0,
+    aiTurn: false, brkTight: false, brkAt: 0, hitGripF: 0, hitGripR: 0, hitGripT: 0, hitHoldT: 0,
   }
 }
 
