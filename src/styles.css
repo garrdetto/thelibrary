@@ -1467,6 +1467,14 @@ body{background:var(--paper);color:var(--tone-0)}
 .change-composer-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:4px 4px 0}
 .change-toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px}
 .change-toggles{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px}
+.tracker-host .change-credits-main>.tracker-host-actions{display:flex;flex-wrap:wrap;gap:8px;margin-right:0}
+.tracker-host-actions button{display:inline-flex;align-items:center;gap:6px}
+.tracker-host-state.is-good{color:var(--success,#2f9e44)}
+.tracker-host-state.is-warn{color:var(--warning,#c77c02)}
+.tracker-host-state.is-bad{color:var(--danger,#d0453a)}
+.tracker-host-command{display:flex;align-items:center;gap:6px;margin:10px 0 0;font-size:14px;overflow-wrap:anywhere}
+.tracker-host-command.is-failed,.tracker-host-command.is-expired{color:var(--danger,#d0453a)}
+.tracker-host-link{display:inline-flex;align-items:center;gap:4px;margin-top:10px;font-size:14px}
 .change-laptop-status{font-size:14px;opacity:.75}
 .change-laptop-status.is-online{color:var(--success,#2f9e44);opacity:1}
 .change-laptop-status.is-offline,.change-laptop-status.is-missing{color:var(--warning,#c77c02);opacity:1}

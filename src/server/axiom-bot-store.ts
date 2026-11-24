@@ -1,6 +1,6 @@
 import type { Env } from './env.js'
 
-export type BotStateKey = 'bot-settings' | 'bot-report' | 'bot-command'
+export type BotStateKey = 'bot-settings' | 'bot-report' | 'bot-command' | 'host-report' | 'host-command'
 
 let tableReady: Promise<unknown> | null = null
 function ensureTable(env: Env) {
