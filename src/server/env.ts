@@ -41,6 +41,8 @@ export type Env = {
   DARTS_ROOM?: DurableObjectNamespace
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
+  /** `vertex` (Vertex AI express mode) or `studio` (Google AI Studio); unset picks Vertex for keys starting with AQ. */
+  GEMINI_BACKEND?: string
   ANTHROPIC_API_KEY?: string
   SITE_CHANGES_GITHUB_TOKEN?: string
   SITE_CHANGES_SECRET?: string
