@@ -5,7 +5,7 @@ import { gunzipSync } from 'node:zlib'
 import { isGzip, parseGrids, type MapDoc } from '../../tello/data/MapData'
 import { emptyEdits } from '../../tello/edits/WorldEdits'
 import { foxLakeLand } from '../lake/Land'
-import { TRUCK_EDIT_PREFIX, truckEdits } from '../trucks/TruckEdits'
+import { TRUCK_EDIT_PREFIX, clearTruckGround, truckEdits } from '../trucks/TruckEdits'
 import { HAULERS_LANE, MONTELLO_LOTS, MONTELLO_SITES } from '../../trucksim/shared/montello/MontelloWorld'
 
 const dir = 'public/modules/tello/'
@@ -56,5 +56,19 @@ test('every truck lot and outskirts site is level enough to build and drive on',
       }
     }
     assert.ok(hi - lo < 0.5, `${site.name} varies ${(hi - lo).toFixed(2)} m`)
+  }
+})
+
+test('no meadow grass grows on the truck lots or the outskirts sites', () => {
+  const bareLand = foxLakeLand(doc, freshGrids(), edits)
+  clearTruckGround(bareLand)
+  for (const lot of MONTELLO_LOTS) {
+    for (const [x, z] of [[lot.x + 2, lot.z + 2], [lot.x + lot.w / 2, lot.z + lot.d / 2], [lot.x + lot.w - 2, lot.z + lot.d - 2]]) {
+      assert.equal(bareLand.grassAt(x, -z), false, `lot ${lot.index} at (${x}, ${z})`)
+    }
+  }
+  for (const site of MONTELLO_SITES) {
+    if (site.w <= 60 || site.kind === 'lotDistrict') continue
+    assert.equal(bareLand.grassAt(site.x, -site.z), false, site.id)
   }
 })

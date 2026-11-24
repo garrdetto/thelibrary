@@ -1,0 +1,4 @@
+#truck-hud{position:fixed;inset:0;pointer-events:none;z-index:9}
+#truck-panels{position:fixed;inset:0;pointer-events:none;z-index:45}
+#truck-panels>*{pointer-events:auto}
+body.ts-driving #hud-tl,body.ts-driving #hud-tr,body.ts-driving #minimap,body.ts-driving #controls,body.ts-driving #help-hint{display:none!important}

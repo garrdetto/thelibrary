@@ -27,15 +27,13 @@ import { createPipeline } from '../render/world/Pipeline'
 import type { WorldPipeline } from '../render/world/Pipeline'
 import { DEALER_DISPLAY_SPOTS, createSiteLayer, siteStaticBoxes } from '../render/world/Sites'
 import { createWorldRenderer } from '../render/world/WorldRenderer'
-import { truckResale } from '../shared/Actions'
-import { FUEL_PRICE_PER_L, OWN_WASH_WATER, PUBLIC_WASH_PRICE, REPAIR_COST_PER_POINT, RESALE_SHARE, TRAILER_BY_ID, TRUCKS, TRUCK_BY_ID, defaultLook, designLook, lookCost } from '../shared/Catalog'
-import { FUEL_STATION_MARKUP, MAX_TRUCKS, REPAIR_LABOUR_MARKUP, level } from '../shared/Economy'
+import { OWN_WASH_WATER, PUBLIC_WASH_PRICE, TRUCKS, TRUCK_BY_ID, defaultLook, designLook } from '../shared/Catalog'
+import { MAX_TRUCKS, level } from '../shared/Economy'
 import type { Profile } from '../shared/Economy'
 import { generateJobs, jobSlot } from '../shared/Jobs'
-import { hasService } from '../shared/Lots'
 import { COUNTY } from '../shared/RoadGraph'
 import { getTerrain } from '../shared/Terrain'
-import { ALL_ZONES, DEFAULT_SPAWN, LOTS, ROADS, SITES, SITE_BY_ID, ZONE_BY_ID, lotExtent } from '../shared/WorldLayout'
+import { ALL_ZONES, DEFAULT_SPAWN, LOTS, ROADS, SITES, SITE_BY_ID, lotExtent } from '../shared/WorldLayout'
 import { Traffic, buildLanes } from '../sim/Traffic'
 import type { Obstacle } from '../sim/Traffic'
 import { TrafficVisuals } from '../render/TrafficVisuals'
@@ -50,16 +48,16 @@ import { Keys } from '../systems/Keys'
 import { MemoryGuard } from '../systems/MemoryGuard'
 import { Scope } from '../systems/Scope'
 import { Hud } from '../ui/Hud'
-import { openDealer, openFleet, openGarage } from '../ui/Shop'
-import { openHelp, openJobBoard, openMap, openPause, showStart } from '../ui/Panels'
+import { openHelp, openMap, openPause, showStart } from '../ui/Panels'
 import { openDevPanel } from '../ui/DevPanel'
 import type { PanelHandle } from '../ui/Panels'
 import { BuildMode } from './BuildMode'
 import { WashMode } from './WashMode'
-import { CameraRig } from './Cameras'
+import { CameraRig, cameraBuildView } from './Cameras'
 import type { FollowSubject } from './Cameras'
-import { CountyMap, fullMapToWorld } from './MapDraw'
+import { HaulMap, fullMapToWorld } from './MapDraw'
 import type { MapMarkers } from './MapDraw'
+import { TruckPanels } from './TruckPanels'
 import { TruckSession } from './TruckSession'
 import type { SessionView, WashPlace } from './TruckSession'
 import type { ToastKind, TruckHost } from './TruckHost'
@@ -102,7 +100,7 @@ export class Standalone implements TruckHost {
   private hours = 8.5
   private audio = new TruckAudio()
   private volume = 0.7
-  private countyMap = new CountyMap()
+  private countyMap = new HaulMap()
   private readonly markers: MapMarkers = { rig: { x: 0, z: 0, heading: 0 }, target: null, route: null, ownLot: null }
   private readonly follow: FollowSubject = { x: 0, y: 0, z: 0, heading: 0, span: 10, eye: { x: 0, y: 0, z: 0 }, speed: 0 }
   private readonly highlight = new Set<string>()
@@ -115,6 +113,8 @@ export class Standalone implements TruckHost {
   private worldRenderer: ReturnType<typeof createWorldRenderer> | null = null
   private readonly underPoints = [{ x: 0, z: 0 }]
   private dealerVisuals: TruckVisual[] = []
+  private panelSet: TruckPanels | null = null
+
   private guard!: MemoryGuard
   private lastCash = -1
   private lastBuildKey = ''
@@ -140,6 +140,22 @@ export class Standalone implements TruckHost {
     await host.build(report)
     boot.watchFirstFrame()
     return host
+  }
+
+  private get panels(): TruckPanels {
+    const host = this
+    return (this.panelSet ??= new TruckPanels({
+      uiRoot: this.uiRoot,
+      get progress() {
+        return host.progress
+      },
+      world: COUNTY,
+      session: () => this.session,
+      toast: (text, kind) => this.hud.toast(text, kind),
+      open: (make) => this.openPanel(make),
+      closed: () => this.closed(),
+      lotFor: (index) => this.lotFor(index),
+    }))
   }
 
   get keys(): ReadonlySet<string> {
@@ -579,141 +595,15 @@ export class Standalone implements TruckHost {
   }
 
   private openJobBoardPanel(): void {
-    const siteName = (id: string) => {
-      const zone = ZONE_BY_ID[id]
-      return zone ? `${SITE_BY_ID[zone.site]?.name ?? zone.site} · ${zone.label}` : id
-    }
-    this.openPanel(() => {
-      const board = openJobBoard(this.uiRoot, {
-        jobs: generateJobs(COUNTY, jobSlot(Date.now())),
-        profile: this.progress.profile,
-        canTake: (job) => this.session.canTake(job),
-        siteName,
-        onAccept: async (job) => {
-          const result = await this.progress.act({ action: 'accept-job', job: job.id })
-          this.hud.toast(result.message || (result.ok ? 'Job accepted' : 'Could not take that job'), result.ok ? 'good' : 'warn')
-          if (result.ok) {
-            board.close()
-          } else board.update(this.progress.profile)
-        },
-        onAbandon: async () => {
-          const result = await this.progress.act({ action: 'abandon-job' })
-          this.hud.toast(result.message || 'Job abandoned', result.ok ? 'info' : 'warn')
-          board.update(this.progress.profile)
-        },
-        onClose: this.closed,
-      })
-      return board
-    })
+    this.panels.jobBoard()
   }
 
   private openDealerPanel(): void {
-    this.openPanel(() => {
-      const dealer = openDealer(this.uiRoot, {
-        profile: this.progress.profile,
-        onBuyTruck: async (model, look) => {
-          const result = await this.progress.act({ action: 'buy-truck', model, look })
-          this.hud.toast(result.message || (result.ok ? 'Bought! It is waiting at your lot' : 'Could not buy that'), result.ok ? 'good' : 'warn')
-          dealer.update(this.progress.profile)
-        },
-        onBuyTrailer: async (model) => {
-          const result = await this.progress.act({ action: 'buy-trailer', model })
-          this.hud.toast(result.message || (result.ok ? 'Bought! It is waiting at your lot' : 'Could not buy that'), result.ok ? 'good' : 'warn')
-          dealer.update(this.progress.profile)
-        },
-        onClose: this.closed,
-      })
-      return dealer
-    })
-  }
-
-  private atServiceOrShop(): boolean {
-    const p = this.session.rigPosition()
-    const lot = this.lotFor(this.progress.profile.lot)
-    if (lot && hasService(this.progress.profile.build) && p.x >= lot.x && p.x <= lot.x + lot.w && p.z >= lot.z && p.z <= lot.z + lot.d) return true
-    return ALL_ZONES.some((zone) => zone.kind === 'service' && Math.abs(p.x - zone.x) < zone.w / 2 + 6 && Math.abs(p.z - zone.z) < zone.d / 2 + 6)
+    this.panels.dealer()
   }
 
   private openFleetPanel(): void {
-    const profile = () => this.progress.profile
-    const shop = () => hasService(profile().build)
-    this.openPanel(() => {
-      const fleet = openFleet(this.uiRoot, {
-        profile: profile(),
-        onSelect: async (truck, trailer) => {
-          const result = await this.progress.act({ action: 'select', truck, trailer })
-          this.hud.toast(result.message || (result.ok ? 'Your rig is ready at the lot' : 'Could not switch rigs'), result.ok ? 'good' : 'warn')
-          fleet.update(profile())
-        },
-        onSell: async (kind, uid) => {
-          const result = await this.progress.act(kind === 'truck' ? { action: 'sell-truck', uid } : { action: 'sell-trailer', uid })
-          this.hud.toast(result.message || (result.ok ? 'Sold' : 'Could not sell that'), result.ok ? 'good' : 'warn')
-          fleet.update(profile())
-        },
-        onRepair: async (uid) => {
-          if (!this.atServiceOrShop()) {
-            this.hud.toast('Drive to a service bay or a shop on your lot for repairs', 'warn')
-            return
-          }
-          const result = await this.progress.act({ action: 'repair', uid })
-          this.hud.toast(result.message || (result.ok ? 'Repaired' : 'Could not repair'), result.ok ? 'good' : 'warn')
-          fleet.update(profile())
-        },
-        onRefuel: () => this.hud.toast('Pull into a fuel lane (or your own fuel island) and press E', 'info'),
-        onCustomise: (uid) => {
-          if (uid !== profile().activeTruck) {
-            this.hud.toast('Select that truck first, then customise it', 'info')
-            return
-          }
-          fleet.close()
-          this.openGaragePanel()
-        },
-        repairCost: (uid) => {
-          const truck = profile().trucks.find((t) => t.uid === uid)
-          const trailer = profile().trailers.find((t) => t.uid === uid)
-          const damage = truck?.damage ?? trailer?.damage ?? 0
-          return Math.round(damage * REPAIR_COST_PER_POINT * (shop() ? 1 : REPAIR_LABOUR_MARKUP))
-        },
-        refuelCost: (uid) => {
-          const truck = profile().trucks.find((t) => t.uid === uid)
-          const model = truck ? TRUCK_BY_ID[truck.model] : null
-          return truck && model ? Math.round(Math.max(0, model.fuelTankL - truck.fuelL) * FUEL_PRICE_PER_L * FUEL_STATION_MARKUP) : 0
-        },
-        sellValue: (kind, uid) => {
-          if (kind === 'truck') {
-            const truck = profile().trucks.find((t) => t.uid === uid)
-            const model = truck ? TRUCK_BY_ID[truck.model] : null
-            return truck && model ? truckResale(model.price, truck.damage) : 0
-          }
-          const trailer = profile().trailers.find((t) => t.uid === uid)
-          const model = trailer ? TRAILER_BY_ID[trailer.model] : null
-          return trailer && model ? Math.round(model.price * RESALE_SHARE * (1 - trailer.damage / 200)) : 0
-        },
-        onClose: this.closed,
-      })
-      return fleet
-    })
-  }
-
-  private openGaragePanel(): void {
-    const profile = this.progress.profile
-    const truck = profile.trucks.find((t) => t.uid === profile.activeTruck)
-    if (!truck) return
-    this.openPanel(() => openGarage(this.uiRoot, {
-      profile,
-      truck,
-      onPreview: (look) => this.session.previewLook(look),
-      price: (look) => lookCost(truck.look, look),
-      onSave: async (look) => {
-        const result = await this.progress.act({ action: 'customize', uid: truck.uid, look })
-        this.hud.toast(result.message || (result.ok ? 'Fresh look saved' : 'Could not save that look'), result.ok ? 'good' : 'warn')
-        this.session.previewLook(null)
-      },
-      onClose: () => {
-        this.session.previewLook(null)
-        this.closed()
-      },
-    }))
+    this.panels.fleet()
   }
 
   private startWash(place: WashPlace): void {
@@ -758,7 +648,7 @@ export class Standalone implements TruckHost {
     this.pipeline = null
     this.hud.setVisible(false)
     this.building = new BuildMode({
-      scene: this.scene, canvas: this.canvas, cameras: this.cameras, lots: this.lotsRenderer, progress: this.progress, uiRoot: this.uiRoot, lot,
+      canvas: this.canvas, view: cameraBuildView(this.scene, this.canvas, this.cameras), lots: this.lotsRenderer, progress: this.progress, uiRoot: this.uiRoot, lot,
       currentLot: () => this.lotFor(this.progress.profile.lot) ?? lot,
       heightAt: (x, z) => this.terrain.heightAt(x, z),
       toast: (text, kind) => this.hud.toast(text, kind),

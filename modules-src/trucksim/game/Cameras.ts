@@ -6,9 +6,12 @@
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
 import type { Camera } from '@babylonjs/core/Cameras/camera'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import type { ArcRotateCameraPointersInput } from '@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput'
+import '@babylonjs/core/Culling/ray'
+import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { Scene } from '@babylonjs/core/scene'
 import type { TruckModel } from '../shared/Catalog'
+import type { BuildView } from './BuildMode'
 
 export type CameraMode = 'chase' | 'cab' | 'build'
 
@@ -220,5 +223,33 @@ export class CameraRig {
     this.build.detachControl()
     this.drive.dispose()
     this.build.dispose()
+  }
+}
+
+/**
+ * The lot builder's view through the standalone page's orbit camera: middle-drag turns it, right-drag pans, the wheel zooms, and
+ * the scene is the session's right-handed frame, so picks need no conversion.
+ */
+export function cameraBuildView(scene: Scene, canvas: HTMLCanvasElement, cameras: CameraRig): BuildView {
+  cameras.setMode('build')
+  const pointers = cameras.build.inputs.attached.pointers as ArcRotateCameraPointersInput | undefined
+  if (pointers) pointers.buttons = [1, 2]
+  return {
+    focus: (x, z, extent) => cameras.focusBuild(x, z, extent),
+    pick: (clientX, clientY, groundY) => {
+      const rect = canvas.getBoundingClientRect()
+      const ray = scene.createPickingRay(clientX - rect.left, clientY - rect.top, Matrix.Identity(), cameras.build, false)
+      if (Math.abs(ray.direction.y) < 1e-4) return null
+      const t = (groundY - ray.origin.y) / ray.direction.y
+      if (t <= 0) return null
+      return { x: ray.origin.x + ray.direction.x * t, z: ray.origin.z + ray.direction.z * t }
+    },
+    spin: (radians) => {
+      cameras.build.alpha += radians
+    },
+    release: () => {
+      if (pointers) pointers.buttons = [0, 1, 2]
+      cameras.setMode('chase')
+    },
   }
 }

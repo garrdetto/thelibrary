@@ -5,10 +5,6 @@
  * shows whether the shared `validateItem` rule accepts it. Every placement is one `build` action, so the server stays the
  * authority; the lot is redrawn from the saved profile. The Land tab buys the next 30 m strip (`buy-land`), shading it while hovered.
  */
-import type { ArcRotateCameraPointersInput } from '@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput'
-import '@babylonjs/core/Culling/ray'
-import { Matrix } from '@babylonjs/core/Maths/math.vector'
-import type { Scene } from '@babylonjs/core/scene'
 import type { ProgressClient } from '../net/Progress'
 import type { LotRenderer } from '../render/Lots'
 import { BUILDING_BY_ID, landStripPrice } from '../shared/Catalog'
@@ -20,12 +16,25 @@ import type { LotSpec } from '../shared/WorldLayout'
 
 import { BuilderBar } from '../ui/BuilderBar'
 import type { LandOffer } from '../ui/BuilderBar'
-import type { CameraRig } from './Cameras'
+
+/**
+ * The camera the builder looks through: the standalone page's orbit camera (`cameraBuildView` in `Cameras.ts`) or Life Sim's
+ * camera held over the lot (`foxlake/trucks/TownBuildView.ts`). Points are in the session's right-handed frame.
+ */
+export interface BuildView {
+  /** Frames the top-down view over a rectangle centred at (x, z). */
+  focus(x: number, z: number, extent: number): void
+  /** Where the pointer at client (x, y) meets level ground at height `y`, or null. */
+  pick(clientX: number, clientY: number, groundY: number): { x: number; z: number } | null
+  /** Turns the view round its target (Q and E). */
+  spin(radians: number): void
+  /** Hands the camera back to driving. */
+  release(): void
+}
 
 export interface BuildModeOptions {
-  scene: Scene
   canvas: HTMLCanvasElement
-  cameras: CameraRig
+  view: BuildView
   lots: LotRenderer
   progress: ProgressClient
   uiRoot: HTMLElement
@@ -58,12 +67,9 @@ export class BuildMode {
   private disposed = false
 
   constructor(private readonly options: BuildModeOptions) {
-    const { lot, cameras, canvas } = options
+    const { lot, view, canvas } = options
     this.height = options.heightAt(lot.x + lot.w / 2, lot.z + lot.d / 2)
-    cameras.setMode('build')
-    cameras.focusBuild(lot.x + lot.w / 2, lot.z + lot.d / 2, Math.max(lot.w, lot.d))
-    const pointers = cameras.build.inputs.attached.pointers as ArcRotateCameraPointersInput | undefined
-    if (pointers) pointers.buttons = [1, 2]
+    view.focus(lot.x + lot.w / 2, lot.z + lot.d / 2, Math.max(lot.w, lot.d))
     this.bar = new BuilderBar(options.uiRoot, {
       cash: options.progress.profile.cash,
       onPick: (id) => this.pick(id),
@@ -115,8 +121,8 @@ export class BuildMode {
     }
     const key = (e: KeyboardEvent) => {
       if (e.code === 'KeyR') this.rotate()
-      else if (e.code === 'KeyQ') cameras.build.alpha += 0.12
-      else if (e.code === 'KeyE') cameras.build.alpha -= 0.12
+      else if (e.code === 'KeyQ') view.spin(0.12)
+      else if (e.code === 'KeyE') view.spin(-0.12)
       else if (e.code === 'Escape' || e.code === 'KeyY') this.exit()
     }
     canvas.addEventListener('pointerdown', down)
@@ -163,7 +169,7 @@ export class BuildMode {
     this.options.toast(result.message || (result.ok ? 'Land bought' : 'Could not buy land'), result.ok ? 'good' : 'warn')
     if (result.ok) {
       const lot = this.lot
-      this.options.cameras.focusBuild(lot.x + lot.w / 2, lot.z + lot.d / 2, Math.max(lot.w, lot.d))
+      this.options.view.focus(lot.x + lot.w / 2, lot.z + lot.d / 2, Math.max(lot.w, lot.d))
     }
   }
 
@@ -188,15 +194,11 @@ export class BuildMode {
 
   /** Where the pointer meets the lot's level ground, in lot-local metres snapped to the 1 m grid. */
   private groundPoint(e: PointerEvent): { x: number; z: number } | null {
-    const { scene, cameras } = this.options
     const lot = this.lot
-    const rect = this.options.canvas.getBoundingClientRect()
-    const ray = scene.createPickingRay(e.clientX - rect.left, e.clientY - rect.top, Matrix.Identity(), cameras.build, false)
-    if (Math.abs(ray.direction.y) < 1e-4) return null
-    const t = (this.height - ray.origin.y) / ray.direction.y
-    if (t <= 0) return null
-    const x = ray.origin.x + ray.direction.x * t - lot.x
-    const z = ray.origin.z + ray.direction.z * t - lot.z
+    const hit = this.options.view.pick(e.clientX, e.clientY, this.height)
+    if (!hit) return null
+    const x = hit.x - lot.x
+    const z = hit.z - lot.z
     if (x < -10 || z < -10 || x > lot.w + 10 || z > lot.d + 10) return null
     return { x: Math.round(x), z: Math.round(z) }
   }
@@ -286,9 +288,7 @@ export class BuildMode {
     for (const fn of this.cleanup) fn()
     this.options.lots.preview(null, null, false)
     this.options.lots.previewLand(null)
-    const pointers = this.options.cameras.build.inputs.attached.pointers as ArcRotateCameraPointersInput | undefined
-    if (pointers) pointers.buttons = [0, 1, 2]
     this.bar.dispose()
-    this.options.cameras.setMode('chase')
+    this.options.view.release()
   }
 }
