@@ -1050,9 +1050,11 @@ function refreshNumberFonts(){
   const upd=c=>{if(!c)return;const N=c.m.numbers;if(((N&&!N.fontOk)||(c.m.custom&&c.m.liveryFontOk===false))&&numFontReady(c.lv.numFont))mountNumbers(c.m,c.lv);};
   cars.forEach(upd);upd(menuCar);if(mode==='garage')renderGarage();
 }
-// Dents follow the damage the sim applied, scaled up by how much stronger the cars are (CFG.strength) and the admin's
-// Damage looks setting (CFG.damageLook), so stronger cars still crumple visibly: wider, deeper dents with creases and scrapes.
-const damageLookK=()=>WORLD.model==='next'?Math.max(0.1,CFG.strength)*Math.max(0,CFG.damageLook):1;
+// Dents follow the damage the sim applied (already divided by CFG.strength), times the admin's Damage looks setting
+// (CFG.damageLook) at the stock strength: a weaker car takes more damage per hit and looks worse, a stronger one less.
+const STOCK_STRENGTH=1.5;
+const damageLookK=()=>WORLD.model==='next'?STOCK_STRENGTH*Math.max(0,CFG.damageLook):1;
+const impactLookK=()=>WORLD.model==='next'?damageLookK()*STOCK_STRENGTH/Math.max(0.1,CFG.strength):1;
 function deformCar(c,lp,dir,amt){
   const v=amt*damageLookK();if(v<=0.05)return;
   const s=c.m.modelScale,L=[lp[2]/s,lp[1]/s,-lp[0]/s],D=[dir[2],dir[1],-dir[0]];
@@ -1092,7 +1094,7 @@ class Car{
 function drainSim(){
   for(const e of WORLD.events){
     if(e.t==='sparks')SPARKS.scrape(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.k,e.n,sparkGround(e.x,e.z));
-    else if(e.t==='impact'){const c=cars.get(e.id);const lk=Math.min(2,damageLookK()/1.5);SPARKS.burst(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.v*(0.8+0.25*lk),e.k==='car'?0.5:1,sparkGround(e.x,e.z));if(e.v>6/Math.max(0.5,lk)){spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);if(e.v>9)spawnSmoke(e.x,e.y+0.3,e.z,e.vx,e.vz,true,1.2+Math.min(1.2,e.v*0.06));}
+    else if(e.t==='impact'){const c=cars.get(e.id);const lk=Math.min(2.5,impactLookK()/1.5);SPARKS.burst(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.v*(0.8+0.25*lk),e.k==='car'?0.5:1,sparkGround(e.x,e.z));if(e.v>6/Math.max(0.5,lk)){spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);if(e.v>9)spawnSmoke(e.x,e.y+0.3,e.z,e.vx,e.vz,true,1.2+Math.min(1.2,e.v*0.06));}
       if(GPU&&GPU.debris&&e.v>=Math.max(4,7/Math.max(0.5,lk))){const tp=toTrack(e.x,e.z),hard=e.v>=10&&lk>=1?2:1;for(let k=0;k<hard;k++)GPU.debris.spawn(e.x,e.y,e.z,normalAt(tp.s,tp.lat,_v),e.vx,e.vz,e.v,c&&c.lv?c.lv.primary:undefined);}
       const now=performance.now();if(c&&now-c.sndT>150){c.sndT=now;crashSnd(e.v,camera.position.distanceTo(_v.set(e.x,e.y,e.z)));}}
     else if(e.t==='damage'){const c=cars.get(e.id);if(c)deformCar(c,e.lp,e.dir,e.amt);
