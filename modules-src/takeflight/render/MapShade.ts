@@ -1,9 +1,13 @@
 /**
  * Paints the region for the maps: one RGBA pixel per cell of a `size` × `size` grid over the whole 200 km square, coloured by
- * height (water, lowland, hills, mountains, snow) with a hill shade lit from the north-west. Pure, so the map worker and the
- * tests can both run it.
+ * height (water, lowland, hills, mountains, snow), woodland, the farmland patchwork, built-up ground around towns and a hill
+ * shade lit from the north-west. Pure, so the map worker and the tests can both run it.
  */
-import { REGION_HALF, WATER_LEVEL, terrainHeight } from '../shared/Terrain'
+import { REGION_HALF, WATER_LEVEL, fieldShade, forestDensity, terrainHeight } from '../shared/Terrain'
+import { townWeight } from '../shared/Towns'
+
+/** Field tints for the patchwork: pasture, ripe grain, young crop, ploughed earth, hay. */
+const FIELDS: [number, number, number][] = [[0.99, 1.01, 0.97], [1.1, 1.04, 0.84], [0.94, 1.03, 0.92], [1.03, 0.95, 0.86], [1.05, 1.04, 0.9]]
 
 const STOPS: [number, number, number, number][] = [
   [WATER_LEVEL, 112, 148, 92],
@@ -35,6 +39,11 @@ function land(height: number, out: number[]): void {
   }
 }
 
+function smooth(t: number): number {
+  const c = t < 0 ? 0 : t > 1 ? 1 : t
+  return c * c * (3 - 2 * c)
+}
+
 export function shadeMap(size: number): Uint8ClampedArray {
   const cell = (REGION_HALF * 2) / size
   const heights = new Float32Array((size + 1) * (size + 1))
@@ -61,6 +70,29 @@ export function shadeMap(size: number): Uint8ClampedArray {
         continue
       }
       land(height, colour)
+      const x = -REGION_HALF + (i + 0.5) * cell
+      const z = -REGION_HALF + (j + 0.5) * cell
+      const forest = height < 1350 ? forestDensity(x, z) : 0
+      const town = townWeight(x, z)
+      if (height < 420 && forest < 0.5 && town < 0.5) {
+        const tint = FIELDS[Math.floor(fieldShade(x, z) * FIELDS.length) % FIELDS.length]
+        const share = (1 - forest * 2) * (1 - smooth((height - 300) / 120))
+        colour[0] *= 1 + (tint[0] - 1) * share
+        colour[1] *= 1 + (tint[1] - 1) * share
+        colour[2] *= 1 + (tint[2] - 1) * share
+      }
+      if (forest > 0) {
+        const f = forest * 0.7
+        colour[0] += (58 - colour[0]) * f
+        colour[1] += (94 - colour[1]) * f
+        colour[2] += (56 - colour[2]) * f
+      }
+      if (town > 0) {
+        const t = town * 0.8
+        colour[0] += (196 - colour[0]) * t
+        colour[1] += (186 - colour[1]) * t
+        colour[2] += (172 - colour[2]) * t
+      }
       const dx = (h10 + h11 - h00 - h01) / (2 * cell)
       const dz = (h01 + h11 - h00 - h10) / (2 * cell)
       const light = Math.max(0.55, Math.min(1.35, 1 + (dx + dz) * 2.2))

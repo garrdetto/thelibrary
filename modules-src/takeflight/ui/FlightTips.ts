@@ -24,7 +24,7 @@ type TipId =
 const URGENT = new Set<TipId>(['stall', 'bank', 'overspeed', 'flapSpeed', 'flare', 'gearDown', 'rotate'])
 
 const CODE_NAMES: Record<string, string> = {
-  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Space: 'Space', PageUp: 'PgUp', PageDown: 'PgDn',
+  ArrowUp: 'Up arrow', ArrowDown: 'Down arrow', ArrowLeft: 'Left arrow', ArrowRight: 'Right arrow', Space: 'Space', PageUp: 'PgUp', PageDown: 'PgDn',
   BracketLeft: '[', BracketRight: ']', Equal: '+', Minus: '−', Period: '.', Slash: '/', Backquote: '`', Escape: 'Esc',
   ShiftLeft: 'Shift', NumpadAdd: 'Num +', NumpadSubtract: 'Num −', NumpadEnter: 'Num Enter', Numpad0: 'Num 0',
 }
@@ -106,7 +106,8 @@ export class FlightTips {
   private key(action: KeyAction, fallback: string): string {
     const codes = this.bindings().keys[action]
     if (!codes || codes.length === 0) return fallback
-    return codeName(codes[0])
+    const letter = codes.find((code) => code.startsWith('Key'))
+    return codeName(letter ?? codes[0])
   }
 
   /** Builds every tip's wording once per aircraft and binding set. */

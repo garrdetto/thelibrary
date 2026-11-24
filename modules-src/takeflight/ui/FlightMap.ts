@@ -7,10 +7,22 @@
 import { AIRPORTS, airportById } from '../shared/Airports'
 import type { AirportSpec } from '../shared/Airports'
 import { REGION_HALF } from '../shared/Terrain'
-import { PLACES } from '../shared/Towns'
+import { allRoads } from '../shared/Roads'
+import { PLACES, allPlaces } from '../shared/Towns'
+import type { BuildingKind, Place } from '../shared/Towns'
 import type { TrafficPose } from '../shared/Traffic'
 
-const SHADE_SIZE = 1024
+const SHADE_SIZES = [768, 2048]
+/** Town plans are drawn once at this many metres per pixel. */
+const TOWN_MPP = 4
+const BUILDING_COLOURS: Record<BuildingKind, string> = { house: '#c79f86', shop: '#d6b48e', office: '#9ba4ae', tower: '#7d8996', skyscraper: '#56667a', warehouse: '#aab0b4' }
+
+interface TownPlan {
+  canvas: HTMLCanvasElement
+  x0: number
+  z0: number
+  size: number
+}
 const MINI_RANGE = 7000
 const MINI_REFRESH = 1 / 12
 const BIG_REFRESH = 1 / 20
@@ -87,6 +99,8 @@ export class FlightMap {
   }
   private readonly subtitles = new Map<AirportSpec, string>()
   private bigWidth = 0
+  private readonly plans = new Map<string, TownPlan>()
+  private roadPaths: { path: Path2D; main: boolean }[] | null = null
   private bigHeight = 0
   onToggle: ((open: boolean) => void) | null = null
 
@@ -188,7 +202,7 @@ export class FlightMap {
       this.worker = null
       return
     }
-    this.worker.onmessage = (event: MessageEvent<{ size: number; pixels: Uint8ClampedArray }>) => {
+    this.worker.onmessage = (event: MessageEvent<{ size: number; pixels: Uint8ClampedArray; last: boolean }>) => {
       const { size, pixels } = event.data
       const canvas = document.createElement('canvas')
       canvas.width = size
@@ -198,8 +212,10 @@ export class FlightMap {
         context.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer as ArrayBuffer), size, size), 0, 0)
         this.shade = canvas
       }
-      this.worker?.terminate()
-      this.worker = null
+      if (event.data.last) {
+        this.worker?.terminate()
+        this.worker = null
+      }
       this.miniSince = MINI_REFRESH
       this.bigSince = BIG_REFRESH
     }
@@ -207,7 +223,7 @@ export class FlightMap {
       this.worker?.terminate()
       this.worker = null
     }
-    this.worker.postMessage({ size: SHADE_SIZE })
+    this.worker.postMessage({ sizes: SHADE_SIZES })
   }
 
   get open(): boolean {
@@ -324,6 +340,7 @@ export class FlightMap {
       ctx.imageSmoothingEnabled = true
       ctx.drawImage(this.shade, -REGION_HALF, -REGION_HALF, REGION_HALF * 2, REGION_HALF * 2)
     }
+    this.drawRoads(ctx, mpp)
     this.drawPlaces(ctx, mpp)
     this.drawRunways(ctx, mpp)
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
@@ -341,8 +358,21 @@ export class FlightMap {
       ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2)
       ctx.fill()
     }
-    ctx.font = '600 10px Inter, system-ui, sans-serif'
+    ctx.font = 'italic 600 10px Inter, system-ui, sans-serif'
     ctx.textAlign = 'center'
+    ctx.lineJoin = 'round'
+    for (const place of PLACES) {
+      project(place.x, place.z, p)
+      const dx = p.x - radius
+      const dy = p.y - radius
+      if (dx * dx + dy * dy > (radius - 22) * (radius - 22)) continue
+      ctx.lineWidth = 3
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
+      ctx.strokeText(place.name, p.x, p.y + 4)
+      ctx.fillStyle = '#f3e3c8'
+      ctx.fillText(place.name, p.x, p.y + 4)
+    }
+    ctx.font = '600 10px Inter, system-ui, sans-serif'
     for (const airport of AIRPORTS) {
       project(airport.x, airport.z, p)
       const dx = p.x - radius
@@ -440,13 +470,98 @@ export class FlightMap {
     }
   }
 
-  /** Towns as soft discs (world coordinates). */
-  private drawPlaces(ctx: CanvasRenderingContext2D, mpp: number): void {
-    ctx.fillStyle = 'rgba(214, 196, 170, 0.55)'
-    for (const place of PLACES) {
+  /** A town's plan (streets and building footprints), drawn once into its own canvas. */
+  private plan(place: Place): TownPlan | null {
+    const ready = this.plans.get(place.spec.id)
+    if (ready) return ready
+    const size = Math.ceil((place.spec.radius * 2.2) / TOWN_MPP)
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    const x0 = place.spec.x - place.spec.radius * 1.1
+    const z0 = place.spec.z - place.spec.radius * 1.1
+    ctx.scale(1 / TOWN_MPP, 1 / TOWN_MPP)
+    ctx.translate(-x0, -z0)
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(place.spec.x, place.spec.z, place.spec.radius * 0.96, 0, Math.PI * 2)
+    ctx.clip()
+    ctx.lineCap = 'round'
+    for (const street of place.streets) {
+      ctx.strokeStyle = street.main ? '#f4f1ea' : '#e2ddd3'
+      ctx.lineWidth = Math.max(street.width, TOWN_MPP * 1.2)
       ctx.beginPath()
-      ctx.arc(place.x, place.z, Math.max(place.radius, 3 * mpp), 0, Math.PI * 2)
-      ctx.fill()
+      ctx.moveTo(street.ax, street.az)
+      ctx.lineTo(street.bx, street.bz)
+      ctx.stroke()
+    }
+    ctx.restore()
+    for (const b of place.buildings) {
+      const h = b.yaw * DEG
+      ctx.save()
+      ctx.translate(b.x, b.z)
+      ctx.rotate(h)
+      ctx.fillStyle = BUILDING_COLOURS[b.kind]
+      ctx.fillRect(-b.depth / 2, -b.width / 2, b.depth, b.width)
+      if (b.kind === 'skyscraper' || b.kind === 'tower') {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)'
+        ctx.fillRect(-b.depth / 2 + b.depth * 0.18, -b.width / 2 + b.width * 0.18, b.depth * 0.64, b.width * 0.64)
+      }
+      ctx.restore()
+    }
+    const plan = { canvas, x0, z0, size: size * TOWN_MPP }
+    this.plans.set(place.spec.id, plan)
+    return plan
+  }
+
+  /** Town plans (built one per draw so none stalls a frame) and soft discs for those not drawn yet, in world coordinates. */
+  private drawPlaces(ctx: CanvasRenderingContext2D, mpp: number): void {
+    let built = false
+    for (const place of allPlaces()) {
+      let plan = this.plans.get(place.spec.id) ?? null
+      if (!plan && !built) {
+        plan = this.plan(place)
+        built = true
+      }
+      if (plan) {
+        ctx.fillStyle = 'rgba(206, 196, 180, 0.6)'
+        ctx.beginPath()
+        ctx.arc(place.spec.x, place.spec.z, Math.max(place.spec.radius, 3 * mpp), 0, Math.PI * 2)
+        ctx.fill()
+        ctx.drawImage(plan.canvas, plan.x0, plan.z0, plan.size, plan.size)
+      } else {
+        ctx.fillStyle = 'rgba(214, 196, 170, 0.55)'
+        ctx.beginPath()
+        ctx.arc(place.spec.x, place.spec.z, Math.max(place.spec.radius, 3 * mpp), 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  }
+
+  /** Country roads in world coordinates: a dark casing under a pale (or, for main roads, yellow) line. */
+  private drawRoads(ctx: CanvasRenderingContext2D, mpp: number): void {
+    if (!this.roadPaths) {
+      this.roadPaths = allRoads().map((road) => {
+        const path = new Path2D()
+        const p = road.points
+        path.moveTo(p[0], p[1])
+        for (let i = 2; i < p.length; i += 2) path.lineTo(p[i], p[i + 1])
+        return { path, main: road.main }
+      })
+    }
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    for (const road of this.roadPaths) {
+      ctx.strokeStyle = 'rgba(60, 50, 40, 0.55)'
+      ctx.lineWidth = Math.max(road.main ? 14 : 10, (road.main ? 3.6 : 2.6) * mpp)
+      ctx.stroke(road.path)
+    }
+    for (const road of this.roadPaths) {
+      ctx.strokeStyle = road.main ? '#f6d778' : '#fbf7ee'
+      ctx.lineWidth = Math.max(road.main ? 9 : 7, (road.main ? 2.2 : 1.4) * mpp)
+      ctx.stroke(road.path)
     }
   }
 
@@ -493,6 +608,7 @@ export class FlightMap {
       ctx.lineTo(REGION_HALF, g)
     }
     ctx.stroke()
+    this.drawRoads(ctx, mpp)
     this.drawPlaces(ctx, mpp)
     this.drawRunways(ctx, mpp)
     ctx.restore()
