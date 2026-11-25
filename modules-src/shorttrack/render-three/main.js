@@ -259,13 +259,19 @@ const ROWS=16;
 const sY=k=>s=>wallTop(s)+0.75*(k+1);
 const PRISON=TRACK.theme==='prison',PARK=TRACK.theme==='park';
 const treadA=new THREE.MeshStandardMaterial({color:PRISON?PRISON_STANDS.treadA:0x2f4a78,roughness:.8,side:DS}),treadB=new THREE.MeshStandardMaterial({color:PRISON?PRISON_STANDS.treadB:0x7a2f35,roughness:.8,side:DS}),riserMat=new THREE.MeshStandardMaterial({color:PRISON?PRISON_STANDS.riser:0x8b9097,roughness:.9,side:DS});
+const STAND0=PARK?-14:0,STAND1=PARK?L+14:P,STAND_SEG=PARK?Math.ceil((STAND1-STAND0)/2):360;
 for(let k=0;k<ROWS;k++){
   const la=HW+3+k*1.1,lb=la+1.1;
-  addMesh(ribbon(ptY(la,sY(k)),ptY(lb,sY(k)),0,P,360,10,'across'),k%4<2?treadA:treadB);
-  addMesh(ribbon(ptY(la,s=>sY(k)(s)-0.75),ptY(la,sY(k)),0,P,360,10,'across'),riserMat);
+  addMesh(ribbon(ptY(la,sY(k)),ptY(lb,sY(k)),STAND0,STAND1,STAND_SEG,10,'across'),k%4<2?treadA:treadB);
+  addMesh(ribbon(ptY(la,s=>sY(k)(s)-0.75),ptY(la,sY(k)),STAND0,STAND1,STAND_SEG,10,'across'),riserMat);
 }
 const backLat=HW+3+ROWS*1.1;
-addMesh(ribbon(ptY(backLat,()=>0),ptY(backLat,s=>sY(ROWS-1)(s)+3),0,P,360,10,'across'),riserMat);
+addMesh(ribbon(ptY(backLat,()=>0),ptY(backLat,s=>sY(ROWS-1)(s)+3),STAND0,STAND1,STAND_SEG,10,'across'),riserMat);
+if(PARK)for(const s of [STAND0,STAND1]){ // Thrill Park Speedway: front-stretch stands only, closed at both ends
+  const c=center(s),prof=[[HW+3,0],[HW+3,wallTop(s)]];for(let k=0;k<ROWS;k++)prof.push([HW+3+k*1.1,sY(k)(s)],[HW+3+(k+1)*1.1,sY(k)(s)]);prof.push([backLat,sY(ROWS-1)(s)+3],[backLat,0]);
+  const pos=[];for(let i=1;i<prof.length-2;i++)for(const [lat,y] of [prof[0],prof[i],prof[i+1]])pos.push(c.x+c.nx*lat,y,c.z+c.nz*lat);
+  const lo=prof.length-2;for(const [lat,y] of [prof[0],prof[lo],prof[lo+1]])pos.push(c.x+c.nx*lat,y,c.z+c.nz*lat);
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.computeVertexNormals();addMesh(g,riserMat);}
 // ---- crowd: seated fans built from torso+arms, head, legs and caps; they stand and cheer via a vertex shader ----
 const crowdU={uTime:{value:0},uLift:{value:0.6}};
 function crowdMat(){const m=new THREE.MeshStandardMaterial({roughness:.85});
@@ -292,7 +298,7 @@ function buildCrowd(n){
   const pants=['#1f2a44','#2b2b2b','#3d405b','#4a4e69','#5e503f','#2f3e46','#6b705c'];
   if(PRISON){shirts.splice(0,shirts.length,...PRISON_CROWD.shirts);pants.splice(0,pants.length,...PRISON_CROWD.pants);}
   const caps=PRISON?PRISON_CROWD.caps:shirts,capChance=PRISON?PRISON_CROWD.capChance:0.4;
-  const seats=[];for(let k=0;k<ROWS;k++){for(let s=0.3;s<P;s+=0.62)seats.push([k,s]);}
+  const seats=[];for(let k=0;k<ROWS;k++){for(let s=STAND0+0.3;s<STAND1-0.3;s+=0.62)seats.push([k,s]);}
   const prob=Math.min(1,n/seats.length);let i=0;
   for(const [k,s] of seats){if(i>=n)break;if(r()>prob)continue;
     const lat=HW+3+k*1.1+0.42+(r()-0.5)*0.06,c=center(s+(r()-0.5)*0.12);
