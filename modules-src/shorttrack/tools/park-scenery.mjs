@@ -3,24 +3,38 @@
 // With no input it reads the Demo Derby's park (modules-src/demoderby/data/park.json, the same "Land of Speed" park).
 // It clears the lot south of the rides (rows LOT_TILES), levels it with a blended skirt, eases the map's border toward the
 // lot height so the flat ground outside the park meets it, builds extra coasters (park presets) and flat rides on the free land
-// within RING tiles of the lot so rides stand close around the track, drops guests, staff, news and litter, and writes the trimmed save.
+// within RING tiles of the lot so rides stand close around the track (first TALL_COASTERS, extra-tall out-and-back coasters laid along the
+// back stretch), drops guests, staff, news and litter, and writes the trimmed save.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { dirname, resolve } from 'node:path'
-import { applyCommand, deserializePark, serializePark, tileIndex, FLAT_RIDES } from '../../../server/park/index.mjs'
+import { applyCommand, deserializePark, serializePark, tileIndex, FLAT_RIDES, COASTER_PRESETS } from '../../../server/park/index.mjs'
 
 const TILE = 4
 const here = dirname(new URL(import.meta.url).pathname)
 /** The speedway's footprint in module metres: the oval, the grandstands that wrap it and the light towers, with a margin. */
-const LOT = { x0: -152, x1: 152, z0: -68, z1: 68 }
+const LOT = { x0: -136, x1: 136, z0: -52, z1: 68 }
 /** The lot in park tiles (may run past the map edge, where the module's own flat ground continues). */
-const LOT_TILES = { x0: 26, y0: 95, x1: 101, y1: 128 }
+const LOT_TILES = { x0: 30, y0: 99, x1: 97, y1: 128 }
 /** Quarter turn 2: the front stretch (module +z) faces away from the rides, so the park rises behind the back stretch. */
 const TURN = 2
 const BORDER = 6
 const SKIRT = 4
 /** Rides placed on the free land right around the lot (within RING tiles of it), nearest spot first, so coasters and rides stand close to the track. */
 const RING = 14
+const flat = n => Array.from({ length: n }, () => ({ c: 0, s: 0 }))
+const lift = (n, sp = 'chain') => [{ c: 0, s: 1, sp }, ...Array.from({ length: n }, () => ({ c: 0, s: 2, sp })), { c: 0, s: 1, sp }, { c: 0, s: 0, sp }]
+const drop = n => [{ c: 0, s: -1 }, ...Array.from({ length: n }, () => ({ c: 0, s: -2 })), { c: 0, s: -1 }, { c: 0, s: 0 }]
+const hill = n => [{ c: 0, s: 1 }, ...Array.from({ length: n }, () => ({ c: 0, s: 2 })), { c: 0, s: 1 }, { c: 0, s: 0 }, { c: 0, s: -1 }, ...Array.from({ length: n }, () => ({ c: 0, s: -2 })), { c: 0, s: -1 }, { c: 0, s: 0 }]
+/** Extra-tall out-and-back coasters built only for the speedway, laid along the back stretch (closest spot first) before the ring rides. */
+const TALL_COASTERS = {
+  speedwaySkyline: { name: 'Skyline Tempest', style: 'extreme', station: 3, pieces: [...flat(1), ...lift(11), ...drop(11), ...hill(3), { c: 0, s: 0, sp: 'loop' }, ...flat(1), { c: 0, s: 0, sp: 'corkscrew' }, ...flat(1), { c: 1, s: 0 }] },
+  speedwayBolt: { name: 'Sky Bolt', style: 'launch', station: 3, pieces: [...flat(1), { c: 0, s: 0, sp: 'booster' }, { c: 0, s: 0, sp: 'booster' }, ...lift(10), ...drop(10), ...hill(4), ...hill(2), { c: -1, s: 0 }] },
+  speedwayTitan: { name: 'Thunder Titan', style: 'steel', station: 3, pieces: [...flat(1), ...lift(9), ...drop(9), { c: 0, s: 0, sp: 'loop' }, ...flat(1), ...hill(3), ...hill(2), { c: 1, s: 0 }] },
+  speedwayTimber: { name: 'Timber Giant', style: 'wooden', station: 3, pieces: [...flat(1), ...lift(6), ...drop(6), ...hill(3), ...hill(2), ...hill(1), { c: -1, s: 0 }] },
+}
+Object.assign(COASTER_PRESETS, TALL_COASTERS)
+const TALL_ROWS = 10
 const RING_RIDES = [
   { preset: 'ridge' }, { flat: 'ferris' }, { preset: 'comet' }, { flat: 'dropTower' }, { preset: 'rattler' }, { flat: 'zipper' },
   { preset: 'coilSpring' }, { flat: 'topSpin' }, { preset: 'nightHeron' }, { flat: 'gravitron' }, { preset: 'tempestKnot' }, { flat: 'ship' },
@@ -105,6 +119,26 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (band(x, y)) spots.pu
 spots.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0])
 const towardLot = (x, y) => (y < r.y0 ? 2 : x < r.x0 ? 1 : 3)
 const added = []
+for (let y = r.y0 - TALL_ROWS; y < r.y0; y++) for (let x = 0; x < W; x++) {
+  const i = tileIndex(map, x, y)
+  if (map.path[i] && !state.entities[map.obj[i]]) { map.path[i] = 0; map.pathElevation[i] = 0; map.pathOrder[i] = 0 }
+}
+const mirror = design => ({ ...design, pieces: design.pieces.map(piece => ({ ...piece, c: -piece.c })) })
+for (const key of Object.keys(TALL_COASTERS)) COASTER_PRESETS[`${key}Mirror`] = mirror(TALL_COASTERS[key])
+for (const key of Object.keys(TALL_COASTERS)) {
+  let made = null
+  for (const [x, y] of spots) {
+    if (y >= r.y0 || r.y0 - y > TALL_ROWS || x < r.x0 - 4 || x > r.x1 + 4) continue
+    for (const [dir, preset] of [[0, key], [2, key], [0, `${key}Mirror`], [2, `${key}Mirror`]]) {
+      const result = applyCommand(state, { t: 'preset', preset, x, y, dir }, 0)
+      if (result.ok && state.entities[result.id]?.complete) { made = { x, y }; break }
+      if (result.ok) applyCommand(state, { t: 'demolish', id: result.id }, 0)
+    }
+    if (made) break
+  }
+  if (made) added.push(`${key}@${made.x},${made.y}`)
+  else console.log(`${key} did not fit behind the back stretch`)
+}
 for (const pick of RING_RIDES) {
   let made = null
   for (const [x, y] of spots) {
