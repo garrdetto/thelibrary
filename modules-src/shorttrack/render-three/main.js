@@ -384,7 +384,7 @@ function buildTrees(n){
 const towers=[],towerHeadMat=new THREE.MeshStandardMaterial({color:0x222222,emissive:0xffffff,emissiveIntensity:0.15});
 {const poleMat=new THREE.MeshStandardMaterial({color:0x777d85,metalness:.6,roughness:.4});
  for(let i=0;i<10;i++){
-  const s=i*P/10+8,c=center(s),lat=backLat+5,x=c.x+c.nx*lat,z=c.z+c.nz*lat;
+  const s=i*P/10+8,c=center(s),sw=s>P+STAND0?s-P:s,lat=PARK&&(sw<STAND0||sw>STAND1)?HW+5:backLat+5,x=c.x+c.nx*lat,z=c.z+c.nz*lat;
   const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.7,46,8),poleMat);pole.position.set(x,23,z);scene.add(pole);
   const head=new THREE.Mesh(new THREE.BoxGeometry(8,4,0.8),towerHeadMat);head.position.set(x,46,z);head.rotation.y=Math.atan2(-c.nx,-c.nz);scene.add(head);
   const gl=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xfff6e0,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true}));
