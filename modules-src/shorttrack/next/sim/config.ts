@@ -80,7 +80,7 @@ export const TRACKS: Record<TrackId, TrackDef> = {
     turnBank: 12, straightBank: 4, bankIn: 55, bankOut: 42,
     grooveHigh: 4.5, grooveLow: -4.7,
     steer: 0.95, smooth: 1.6,
-    gripUp: 1.1,
+    grip: 1.2, apronGrip: 0.94, gripUp: 1.15,
     minLap: 9000,
     theme: 'park',
   },
