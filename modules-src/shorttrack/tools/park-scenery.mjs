@@ -2,11 +2,12 @@
 // Usage: node modules-src/shorttrack/tools/park-scenery.mjs [park.json | view.json | save.json] [Park name] [Owner]
 // With no input it reads the Demo Derby's park (modules-src/demoderby/data/park.json, the same "Land of Speed" park).
 // It clears the lot south of the rides (rows LOT_TILES), levels it with a blended skirt, eases the map's border toward the
-// lot height so the flat ground outside the park meets it, drops guests, staff, news and litter, and writes the trimmed save.
+// lot height so the flat ground outside the park meets it, builds extra coasters (park presets) and flat rides on the free land
+// within RING tiles of the lot so rides stand close around the track, drops guests, staff, news and litter, and writes the trimmed save.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { dirname, resolve } from 'node:path'
-import { deserializePark, serializePark, tileIndex, FLAT_RIDES } from '../../../server/park/index.mjs'
+import { applyCommand, deserializePark, serializePark, tileIndex, FLAT_RIDES } from '../../../server/park/index.mjs'
 
 const TILE = 4
 const here = dirname(new URL(import.meta.url).pathname)
@@ -18,6 +19,14 @@ const LOT_TILES = { x0: 26, y0: 95, x1: 101, y1: 128 }
 const TURN = 2
 const BORDER = 6
 const SKIRT = 4
+/** Rides placed on the free land right around the lot (within RING tiles of it), nearest spot first, so coasters and rides stand close to the track. */
+const RING = 14
+const RING_RIDES = [
+  { preset: 'ridge' }, { flat: 'ferris' }, { preset: 'comet' }, { flat: 'dropTower' }, { preset: 'rattler' }, { flat: 'zipper' },
+  { preset: 'coilSpring' }, { flat: 'topSpin' }, { preset: 'nightHeron' }, { flat: 'gravitron' }, { preset: 'tempestKnot' }, { flat: 'ship' },
+  { preset: 'slingshot' }, { flat: 'swings' }, { preset: 'knotHollow' }, { flat: 'trapdoor' }, { preset: 'gristmill' }, { flat: 'carousel' },
+  { preset: 'mapleTwister' }, { flat: 'dropTower' }, { preset: 'zephyr' }, { flat: 'ferris' },
+]
 
 const [input = resolve(here, '../../demoderby/data/park.json'), parkName = 'Land of Speed', owner = 'stoegbauer'] = process.argv.slice(2)
 const raw = JSON.parse(readFileSync(input, 'utf8'))
@@ -77,6 +86,46 @@ for (let y = 0; y <= H; y++) for (let x = 0; x <= W; x++) {
   map.corners[y * CW + x] = half(v)
 }
 
+const lotDistance = (x, y) => Math.max(r.x0 - x, x - r.x1, r.y0 - y, y - r.y1, 0)
+const band = (x, y) => { const d = lotDistance(x, y); return d >= 1 && d <= RING }
+const parked = []
+for (const e of Object.values(state.entities)) {
+  if (e.type !== 'scenery' || !band(e.x, e.y)) continue
+  map.obj[tileIndex(map, e.x, e.y)] = 0
+  delete state.entities[e.id]
+  parked.push(e)
+}
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) map.owner[tileIndex(map, x, y)] = band(x, y) ? 0 : 255
+const p0 = state.parks[0]
+p0.cash = 1e12
+p0.named = true
+state.ended = false
+const spots = []
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (band(x, y)) spots.push([x, y, lotDistance(x, y)])
+spots.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0])
+const towardLot = (x, y) => (y < r.y0 ? 2 : x < r.x0 ? 1 : 3)
+const added = []
+for (const pick of RING_RIDES) {
+  let made = null
+  for (const [x, y] of spots) {
+    for (const turn of [0, 1, 3, 2]) {
+      const rot = (towardLot(x, y) + turn) % 4
+      const result = pick.preset ? applyCommand(state, { t: 'preset', preset: pick.preset, x, y, dir: rot }, 0) : applyCommand(state, { t: 'flat', ride: pick.flat, x, y, rot }, 0)
+      if (result.ok && (!pick.preset || state.entities[result.id]?.complete)) { made = { id: result.id, x, y }; break }
+      if (result.ok) applyCommand(state, { t: 'demolish', id: result.id }, 0)
+    }
+    if (made) break
+  }
+  if (made) added.push(`${pick.preset ?? pick.flat}@${made.x},${made.y}`)
+}
+for (const e of parked) {
+  const i = tileIndex(map, e.x, e.y)
+  if (map.obj[i] || map.path[i] || state.trackCells?.has?.(i)) continue
+  state.entities[e.id] = e
+  map.obj[i] = e.id
+}
+console.log(`added ${added.length} rides: ${added.join(' ')}`)
+
 map.owner.fill(0)
 map.litter.fill(0)
 for (const e of Object.values(state.entities)) {
@@ -84,6 +133,7 @@ for (const e of Object.values(state.entities)) {
   e.queue = []; e.riders = []; e.queueLength = 0
   if (e.trains) e.trains = e.trains.map(t => ({ ...t, riders: [] }))
   if (e.kind === 'flat' && FLAT_RIDES[e.ride]) { e.status = 'open'; e.cycle = { phase: 'running', timer: 0 } }
+  if (e.kind === 'coaster' && e.complete) e.status = 'open'
 }
 state.time.dayFraction = 0.58
 state.weather = { kind: 'sunny', temp: 24, timer: 0, next: 'sunny' }
