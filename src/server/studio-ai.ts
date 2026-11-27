@@ -3,6 +3,8 @@ import type { Content, GenerateContentConfig, GenerateContentResponse, Part } fr
 import type { Env } from './env'
 import { HttpError } from './http'
 import { TEXT_MODEL, gemini } from './gemini'
+import { openAIChat, studioProvider } from './studio-openai'
+import type { OpenAIMessage } from './studio-openai'
 
 export const STUDIO_TEXT_MODEL = TEXT_MODEL
 
@@ -26,6 +28,7 @@ export type StudioReply = { text: string; data: unknown; refused: boolean }
 const BLOCKED_FINISH = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY', 'RECITATION'])
 
 export function studioReady(env: Env) {
+  if (studioProvider(env) === 'openai') return
   gemini(env)
 }
 
@@ -56,9 +59,22 @@ function readJson(text: string) {
   try { return JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) } catch { return null }
 }
 
+function toOpenAI(system: string, messages: StudioMessage[]): OpenAIMessage[] {
+  return [{ role: 'system', content: system }, ...messages.map((message): OpenAIMessage => ({
+    role: message.role,
+    content: typeof message.content === 'string' || message.role === 'assistant'
+      ? (typeof message.content === 'string' ? message.content : message.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+      : message.content.map(block => block.type === 'text' ? { type: 'text' as const, text: block.text } : { type: 'image_url' as const, image_url: { url: `data:${block.mimeType};base64,${block.data}` } }),
+  }))]
+}
+
 export async function askStudio(env: Env, request: StudioRequest): Promise<StudioReply> {
-  const ai = gemini(env)
   const system = request.json ? `${request.system}\nReply with only the JSON object described by the response schema (the ${request.json.name} fields), with no other text.` : request.system
+  if (studioProvider(env) === 'openai') {
+    const reply = await openAIChat(env, { messages: toOpenAI(system, request.messages), maxTokens: request.maxTokens, json: request.json })
+    return { text: reply.text, data: request.json && reply.text ? readJson(reply.text) : null, refused: reply.refused }
+  }
+  const ai = gemini(env)
   const config: GenerateContentConfig = {
     systemInstruction: system,
     maxOutputTokens: request.maxTokens,
