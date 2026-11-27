@@ -5,6 +5,7 @@ import { HttpError } from './http'
 import { TEXT_MODEL, gemini } from './gemini'
 import { openAIChat, openAIKey, studioProvider } from './studio-openai'
 import type { OpenAIMessage } from './studio-openai'
+import { freeChat, freeTextAvailable } from './studio-free'
 
 export const STUDIO_TEXT_MODEL = TEXT_MODEL
 export const STUDIO_FALLBACK_TEXT_MODEL = 'gemini-2.5-flash'
@@ -30,7 +31,8 @@ export type StudioReply = { text: string; data: unknown; refused: boolean }
 const BLOCKED_FINISH = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY', 'RECITATION'])
 
 export function studioReady(env: Env) {
-  if (studioProvider(env) === 'openai') return
+  const provider = studioProvider(env)
+  if (provider === 'openai' || (!provider && freeTextAvailable(env))) return
   gemini(env)
 }
 
@@ -99,7 +101,29 @@ function toOpenAI(system: string, messages: StudioMessage[]): OpenAIMessage[] {
 
 export async function askStudio(env: Env, request: StudioRequest): Promise<StudioReply> {
   const system = request.json ? `${request.system}\nReply with only the JSON object described by the response schema (the ${request.json.name} fields), with no other text.` : request.system
-  if (studioProvider(env) === 'openai') {
+  const provider = studioProvider(env)
+  const reply = (result: { text: string; refused: boolean }): StudioReply => ({ text: result.text, data: request.json && result.text ? readJson(result.text) : null, refused: result.refused })
+  const free = async () => {
+    try {
+      return reply(await freeChat(env, { messages: toOpenAI(system, request.messages), maxTokens: request.maxTokens, json: request.json }))
+    } catch (error) {
+      if (!request.messages.some(message => typeof message.content !== 'string')) throw error
+      const textOnly = request.messages.map(message => ({ ...message, content: typeof message.content === 'string' ? message.content : message.content.filter(block => block.type === 'text').map(block => block.text).join('\n') }))
+      return reply(await freeChat(env, { messages: toOpenAI(system, textOnly), maxTokens: request.maxTokens, json: request.json }))
+    }
+  }
+  if (!provider && freeTextAvailable(env)) return free()
+  try {
+    return await askPaid(env, request, system, provider)
+  } catch (error) {
+    if (!freeTextAvailable(env)) throw error
+    console.error('Paid studio AI failed, using Workers AI', errorStatus(error))
+    return free()
+  }
+}
+
+async function askPaid(env: Env, request: StudioRequest, system: string, provider: 'gemini' | 'openai' | null): Promise<StudioReply> {
+  if (provider === 'openai') {
     const reply = await openAIChat(env, { messages: toOpenAI(system, request.messages), maxTokens: request.maxTokens, json: request.json })
     return { text: reply.text, data: request.json && reply.text ? readJson(reply.text) : null, refused: reply.refused }
   }

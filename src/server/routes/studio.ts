@@ -257,7 +257,7 @@ export async function studio(request: Request, env: Env) {
     if (useOpenAI) {
       const refused = await paintWithOpenAI()
       if (refused) return refused
-    } else try {
+    } else if (studioProvider(env) === 'gemini') try {
       const result = await withRetries(() => gemini(env).models.generateContent({
         model: IMAGE_MODEL,
         contents: pixelSource && sourceType ? [{ role: 'user', parts: [
