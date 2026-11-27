@@ -7,7 +7,7 @@ import { parseRailVehicle } from './next/sim/railCar'
 import type { RailVehicle } from './next/sim/railCar'
 import { newRailState } from './next/sim/railDynamics'
 import type { RailState } from './next/sim/railDynamics'
-import { lineLat, newRailDriver, railDriverControls, railDriverLap, railDriverRelearn, railRecover } from './next/sim/railDriver'
+import { lineLat, newRailDriver, railDriverControls, railDriverLap, railDriverRelearn, railPhase, railRecover } from './next/sim/railDriver'
 import type { RailDriver } from './next/sim/railDriver'
 import type { World } from './next/sim/world'
 
@@ -45,6 +45,8 @@ const MAX_LAPS = 24
 const IN = 0.0254, LB = 4.4482216, DEG = 180 / Math.PI
 
 type LapStats = { minClear: number; bottomT: number; bumpT: number; liftT: number; maxRoll: number; maxPitch: number; minPitch: number; balance: number; balN: number; top: number; low: number }
+const PHASE_NAMES = { straight: 'Straight, on the wall', entry: 'Corner entry', apex: 'Apex, on the apron', exit: 'Corner exit' } as const
+
 type Lap = { id: number; n: number; setup: string; driver: 'Test driver' | 'You'; time: number | null; incident: boolean; data: Float32Array; len: number; stats: LapStats }
 
 const newStats = (): LapStats => ({ minClear: Infinity, bottomT: 0, bumpT: 0, liftT: 0, maxRoll: 0, maxPitch: -Infinity, minPitch: Infinity, balance: 0, balN: 0, top: 0, low: Infinity })
@@ -736,6 +738,7 @@ export function initRailTest(api: RailTestApi) {
       <div class="row"><span>Body roll</span><b>${(((st.pf + st.pr) / 2) * DEG).toFixed(2)}°</b></div>
       <div class="row"><span title="+ nose up: nose lift on throttle, − dive on the brakes">Pitch</span><b>${st.th >= 0 ? '+' : ''}${(st.th * DEG).toFixed(2)}°${st.th * DEG > 0.6 ? ' nose lift' : st.th * DEG < -0.6 ? ' dive' : ''}</b></div>
       <div class="row"><span>Ride (body)</span><b>${st.z >= 0 ? '+' : ''}${(st.z / IN).toFixed(2)} in</b></div>
+      ${auto && !replay ? `<div class="row"><span title="Where the test driver is in its corner loop">Driver</span><b>${PHASE_NAMES[railPhase(T, car.tp.s)]}</b></div><div class="row"><span>Gas / brake</span><b>${(driver.thr * 100).toFixed(0)}% / ${(driver.brk * 100).toFixed(0)}%</b></div>` : ''}
       <div class="row"><span>Engine</span><b>${st.rpm.toFixed(0)} rpm · ${st.ratio.toFixed(2)}:1</b></div>
       <div class="row"><span>Downforce</span><b>${((st.downF + st.downR) / LB).toFixed(0)} lb</b></div>
       <h3>BALANCE</h3><div class="rt-bal" role="img" aria-label="Balance ${balShown.toFixed(1)} degrees"><i style="left:${pos}%"></i></div><div class="rt-bal-l"><span>Tight</span><b>${balShown >= 0 ? '+' : ''}${balShown.toFixed(1)}°</b><span>Loose</span></div>
