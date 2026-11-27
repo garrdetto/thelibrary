@@ -78,7 +78,7 @@ export const TRACKS: Record<TrackId, TrackDef> = {
   },
   parkoval: {
     name: 'Thrill Park Speedway', miles: '0.33 mi', rec: 'parkoval',
-    L: 163, R: 33.5, W: 16, APRON: 6,
+    L: 136.6, R: 41.9, W: 16, APRON: 6,
     turnBank: 12, straightBank: 4, bankIn: 55, bankOut: 42,
     grooveHigh: 4.5, grooveLow: -4.7,
     steer: 0.95, smooth: 1.6,
@@ -168,8 +168,13 @@ export const TRUCK_SCALE = 0.9
  * The Setup Lab's test track: Thrill Park Speedway's setting with the Lab's corner radius (ft) and banking (°). The
  * overall length stays Thrill Park Speedway's, so the straights shorten as the turns open up and the track keeps to its lot.
  */
+export const LAB_BASE = { L: 163, R: 33.5 }
+
+/** The turn radius (m) the saved park's lot was cleared around; tracks with other radii move the scenery to keep its room. */
+export const PARK_LOT_R = 33.5
+
 export function labTrack(spec: { radiusFt: number; bankDeg: number; straightBankDeg: number }): TrackDef {
-  const base = TRACKS.parkoval, R = clamp(spec.radiusFt * 0.3048, 12, 92)
+  const base = { ...TRACKS.parkoval, ...LAB_BASE }, R = clamp(spec.radiusFt * 0.3048, 12, 92)
   const L = Math.max(24, base.L + 2 * (base.R - R)), P = 2 * L + 2 * Math.PI * R
   const span = (L / 2 + (Math.PI * R) / 2) / (base.L / 2 + (Math.PI * base.R) / 2)
   return {
@@ -181,4 +186,4 @@ export function labTrack(spec: { radiusFt: number; bankDeg: number; straightBank
 }
 
 /** How far the park scenery moves (m, along z) so its lot keeps the same room behind the back stretch. */
-export const labParkShift = (def: TrackDef): number => TRACKS.parkoval.R - def.R
+export const labParkShift = (def: TrackDef): number => PARK_LOT_R - def.R

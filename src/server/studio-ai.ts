@@ -3,10 +3,12 @@ import type { Content, GenerateContentConfig, GenerateContentResponse, Part } fr
 import type { Env } from './env'
 import { HttpError } from './http'
 import { TEXT_MODEL, gemini } from './gemini'
-import { openAIChat, studioProvider } from './studio-openai'
+import { openAIChat, openAIKey, studioProvider } from './studio-openai'
 import type { OpenAIMessage } from './studio-openai'
 
 export const STUDIO_TEXT_MODEL = TEXT_MODEL
+export const STUDIO_FALLBACK_TEXT_MODEL = 'gemini-2.5-flash'
+const RETRY_DELAYS = [1200, 3000]
 
 export type StudioImageType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 export type StudioBlock =
@@ -46,6 +48,33 @@ export function geminiFailure(error: unknown): never {
   throw new HttpError(503, 'The assistant is unavailable right now. Please try again shortly.')
 }
 
+export function errorStatus(error: unknown) {
+  if (error instanceof HttpError) return error.status
+  return typeof error === 'object' && error && 'status' in error ? Number((error as { status: unknown }).status) : 0
+}
+
+export function retryable(error: unknown) {
+  const status = errorStatus(error)
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) return true
+  const message = error instanceof Error ? error.message : ''
+  return !status && /RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded|rate limit|quota|timed? ?out|fetch failed/i.test(message)
+}
+
+function wait(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+export async function withRetries<T>(task: () => Promise<T>, delays = RETRY_DELAYS): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await task()
+    } catch (error) {
+      if (attempt >= delays.length || !retryable(error)) throw error
+      await wait(delays[attempt] * (0.75 + Math.random() * 0.5))
+    }
+  }
+}
+
 function toContents(messages: StudioMessage[]): Content[] {
   return messages.map(message => ({
     role: message.role === 'assistant' ? 'model' : 'user',
@@ -82,10 +111,21 @@ export async function askStudio(env: Env, request: StudioRequest): Promise<Studi
     ...(request.webSearch ? { tools: [{ googleSearch: {} }] } : {}),
     ...(request.relaxedSafety ? { safetySettings: [HarmCategory.HARM_CATEGORY_HARASSMENT, HarmCategory.HARM_CATEGORY_HATE_SPEECH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT].map(category => ({ category, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH })) } : {}),
   }
+  const contents = toContents(request.messages)
   let result: GenerateContentResponse
   try {
-    result = await ai.models.generateContent({ model: STUDIO_TEXT_MODEL, contents: toContents(request.messages), config })
-  } catch (error) { geminiFailure(error) }
+    result = await withRetries(() => ai.models.generateContent({ model: STUDIO_TEXT_MODEL, contents, config }))
+  } catch (error) {
+    if (!retryable(error)) geminiFailure(error)
+    console.error('Gemini text busy, trying fallback', errorStatus(error))
+    try {
+      result = await withRetries(() => ai.models.generateContent({ model: STUDIO_FALLBACK_TEXT_MODEL, contents, config }), [2000])
+    } catch (fallbackError) {
+      if (!openAIKey(env)) geminiFailure(fallbackError)
+      const reply = await openAIChat(env, { messages: toOpenAI(system, request.messages), maxTokens: request.maxTokens, json: request.json })
+      return { text: reply.text, data: request.json && reply.text ? readJson(reply.text) : null, refused: reply.refused }
+    }
+  }
   const text = (result.candidates?.[0]?.content?.parts ?? []).filter(part => part.text && !part.thought).map(part => part.text).join('').trim()
   return { text, data: request.json && text ? readJson(text) : null, refused: !text && blockedResponse(result) }
 }

@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { Lab } from '../../railsetup/sim/lab'
 import { railVehicle } from '../../railsetup/sim/vehicle'
 import { createCar } from '../next/sim/car'
-import { TRACKS, labTrack, labParkShift, makeConfig, STEP } from '../next/sim/config'
+import { LAB_BASE, labTrack, labParkShift, makeConfig, STEP } from '../next/sim/config'
 import { rng } from '../next/sim/math'
 import { place } from '../next/sim/physics'
 import { createWorld, simulate } from '../next/sim/race'
@@ -44,7 +44,7 @@ function hold(veh: RailVehicle, ctl: Controls, seconds: number, speed = 25, lat 
 }
 
 test('the Lab’s track keeps Thrill Park Speedway’s length and takes the Lab’s radius and banking', () => {
-  const base = TRACKS.parkoval
+  const base = LAB_BASE
   for (const radiusFt of [40, 120, 300]) {
     const def = labTrack({ radiusFt, bankDeg: 15, straightBankDeg: 5 }), T = new Track(def, makeConfig(def))
     assert.ok(Math.abs(T.R - radiusFt * 0.3048) < 1e-9)

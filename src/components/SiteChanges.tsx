@@ -222,7 +222,7 @@ export function SiteChanges() {
   async function send(event?: FormEvent) {
     event?.preventDefault()
     const prompt = text.trim()
-    if (!prompt || sending || threadActive) return
+    if (!prompt || sending) return
     setSending(true); setError(''); setNotice('')
     try {
       const result = await api<{ thread: string } & Queued>({ action: 'send', text: prompt, autoMerge, runner: useLaptop ? 'laptop' : 'github', ...(threadId ? { thread: threadId } : {}) })
@@ -300,7 +300,7 @@ export function SiteChanges() {
         <form className="change-composer" onSubmit={send}>
           <label className="visually-hidden" htmlFor="site-change-input">Message Claude</label>
           <textarea id="site-change-input" ref={composer} value={text} onChange={event => setText(event.target.value)} onKeyDown={onComposerKey} rows={3} maxLength={8000}
-            placeholder={threadActive ? 'Claude is working on your last message…' : threadId ? 'Reply or ask for another change…' : 'Describe the change you want…'} disabled={!ready || sending || threadActive}/>
+            placeholder={threadActive ? 'Claude is still working — you can send another message now…' : threadId ? 'Reply or ask for another change…' : 'Describe the change you want…'} disabled={!ready || sending}/>
           <div className="change-composer-bar">
             <div className="change-toggles">
               <label className="change-toggle"><input type="checkbox" checked={autoMerge} onChange={event => setAutoMerge(event.target.checked)} disabled={!ready}/> Publish automatically when it builds</label>
@@ -310,7 +310,7 @@ export function SiteChanges() {
                 {useLaptop && overview.runner && <span className={`change-laptop-status is-${overview.runner.laptop}`}>({laptopLabels[overview.runner.laptop]})</span>}
               </label>
             </div>
-            <button type="submit" disabled={!ready || sending || threadActive || !text.trim()}>{sending ? <LoaderCircle className="spin" size={14}/> : <Send size={14}/>} Send</button>
+            <button type="submit" disabled={!ready || sending || !text.trim()}>{sending ? <LoaderCircle className="spin" size={14}/> : <Send size={14}/>} Send</button>
           </div>
         </form>
       </div>
