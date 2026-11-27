@@ -261,6 +261,7 @@ function headTexture(L,i){
 const RIG_S=1.5;          // rig units -> feet across
 const RIG_H=.75;          // whole-body scale: a 1.00-height build stands 4'6" (applied to all three axes, never to height alone)
 const TOON_HEAD=.85;
+const TOON_TORSO=.75;      // draft characters' torsos were fitted to the adult athlete's length; the chest bone shortens them back along its own axis
 const HAIR_STYLE={bun:'long',dreads:'dreads',curly:'curly',wild:'curly',messy:'short',bob:'long',mohawk:'short',short:'short',buzz:'buzz',long:'long',bald:'bald'};
 // [height, shoulder width, limb mass, head size] per roster slot
 const BUILD=[[0.95,0.94,0.92,1.00],[1.05,1.05,1.01,1.00],[1.00,0.95,0.96,0.98],[1.00,1.00,0.98,1.00],[1.02,0.96,0.96,1.00],[1.06,1.06,1.02,1.00],[1.02,0.95,0.95,0.98],[1.06,1.04,1.01,1.00],[1.00,0.98,0.96,1.00],[0.98,0.96,0.96,1.00],[1.06,1.07,1.02,1.02],[1.00,0.96,0.96,1.00],[0.95,0.94,0.92,1.04],[0.96,0.94,0.93,1.00],[1.00,0.94,0.93,1.00],[0.94,0.94,0.92,1.04],[1.03,0.98,0.97,1.00],[1.04,0.94,0.93,1.00],[0.95,0.94,0.92,1.02],[0.98,0.94,0.92,1.00],[0.97,0.94,0.95,1.00],[1.03,0.98,0.96,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.93,1.00],[1.06,1.04,1.00,1.00],[1.06,1.07,1.02,0.98],[1.03,0.97,0.96,1.00],[1.00,0.95,0.96,1.00],[1.03,1.09,1.10,1.00],[0.97,0.94,0.95,1.00],[1.00,0.96,0.96,1.00],[1.00,1.06,1.10,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.92,1.00]];
@@ -523,7 +524,7 @@ class Rig{
       const s=new THREE.SkinnedMesh(p.geometry,mat);s.castShadow=true;s.receiveShadow=true;s.frustumCulled=false;this.root.add(s);s.bind(skel,p.bindMatrix);return s});
     if(this.body)this.body.forEach(s=>s.visible=false);
     for(const g of[...(this.arm||[]),...(this.leg||[])])g.mesh.visible=false;if(this.abs)this.abs.mesh.visible=false;
-    this.hips.visible=false;this.ft.forEach(f=>f.visible=false);
+    this.hips.visible=false;this.ft.forEach(f=>f.visible=false);this.tk=TOON_TORSO;this.neck.position.y=1.34*this.tk;
     this.hand.forEach(h=>h.children.forEach(c=>{if(c!==this.glove)c.visible=false}));
     this.bones=bones}
   buildTrunk(){
@@ -672,19 +673,20 @@ class Rig{
     this.chest.rotation.set(p.ch[0],p.ch[1],p.ch[2],'YXZ');
     let hy=p.hd[1],hp=p.hd[0];
     if(o.look){_d.copy(o.look);r.worldToLocal(_d);const yawBody=p.hr[1]+p.ch[1];
-      const ly=Math.atan2(_d.x-p.hip[0],_d.z-p.hip[2])-yawBody,lp=-Math.atan2(_d.y-(p.hip[1]+1.85),Math.hypot(_d.x-p.hip[0],_d.z-p.hip[2]))*.6;
+      const ly=Math.atan2(_d.x-p.hip[0],_d.z-p.hip[2])-yawBody,lp=-Math.atan2(_d.y-(p.hip[1]+.1+1.75*(this.tk||1)),Math.hypot(_d.x-p.hip[0],_d.z-p.hip[2]))*.6;
       const yy=Math.atan2(Math.sin(ly),Math.cos(ly));hy=cl(yy,-1.75,1.75);hp=cl(lp,-.5,.5)-p.ch[0]*.6}
     this.neck.rotation.set(hp*.4,hy*.35,0,'YXZ');this.head.rotation.set(hp*.6,hy*.65,0,'YXZ');
     this.hips.updateMatrix();this.chest.updateMatrix();_m.multiplyMatrices(this.hips.matrix,this.chest.matrix);
-    const body=!!this.bones,side=['L','R'],bw=body?1:this.bw;
-    if(body){this.setBoneMatrix('hips',this.hips.matrix,1,1,1);this.setBoneMatrix('chest',_m,1,1,1);
+    const body=!!this.bones,side=['L','R'],bw=body?1:this.bw,tk=this.toon?this.tk:1;
+    if(body){this.setBoneMatrix('hips',this.hips.matrix,1,1,1);this.setBoneMatrix('chest',_m,1,tk,1);
       this.neck.updateMatrix();_mn.multiplyMatrices(_m,this.neck.matrix);this.setBoneMatrix('neck',_mn,1,1,1);
       if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,TOON_HEAD,TOON_HEAD,TOON_HEAD)}}
     else this.updateAbdomen();
     // arms: shoulder -> elbow -> wrist, biceps side facing away from the elbow pole
-    const HL=V3(...p.hl),HR=V3(...p.hr_);
+    const HL=V3(...p.hl),HR=V3(...p.hr_),dH=V3();
+    if(tk!==1){_mi.copy(_m).invert();const sq=v=>{const o=v.clone();v.applyMatrix4(_mi);if(v.y>0)v.y*=tk;v.applyMatrix4(_m);return o.sub(v).negate()};dH.addVectors(sq(HL),sq(HR)).multiplyScalar(.5)}
     if(o.reach){this.reachW=lerp(this.reachW,1,.25);_d.copy(o.reach);r.worldToLocal(_d);HL.lerp(_d,this.reachW)}else this.reachW=lerp(this.reachW,0,.2);
-    for(const s of[0,1]){const sg=s?-1:1,S=V3(sg*.45*bw,1.15,0).applyMatrix4(_m),T=s?HR:HL;
+    for(const s of[0,1]){const sg=s?-1:1,S=V3(sg*.45*bw,1.15*tk,0).applyMatrix4(_m),T=s?HR:HL;
       const pole=V3(sg*.7,-1,-.7).transformDirection(_m),E=V3(),Te=V3();ik(S,T,LA[0],LA[1],pole,E,Te);
       const h=this.hand[s];h.position.copy(Te);
       if(body){limbFrames(S,E,Te,pole.negate());this.setBone('upperarm_'+side[s],S,_t1,_n1,1,1,1);this.setBone('forearm_'+side[s],E,_t2,_n2,1,1,1);_mb.makeBasis(_bx.crossVectors(_t2,_n2),_t2,_n2)}
@@ -701,10 +703,10 @@ class Rig{
       const f=this.ft[s],fp=p.fp?p.fp[s]:F[1]>.15?-.35:0;f.position.set(Te.x,Math.max(0,Te.y-.19)+Math.max(0,Math.sin(fp))*.14,Te.z);f.rotation.set(fp,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ');
       if(this.toon){_mt.compose(_d.set(Te.x,f.position.y+.19,Te.z),f.quaternion,_bs.set(1,1,1));this.setBoneMatrix('foot_'+side[s],_mt,1,1,1)}}
     this.bat.visible=p.bat>.5&&!o.noBat;
-    if(this.bat.visible){const dvec=batDir(p.ba[0],p.ba[1],_a);this.bat.position.set(p.bg[0]-dvec.x*.1,p.bg[1]-dvec.y*.1,p.bg[2]-dvec.z*.1);this.bat.quaternion.setFromUnitVectors(UP,dvec)}
+    if(this.bat.visible){const dvec=batDir(p.ba[0],p.ba[1],_a);this.bat.position.set(p.bg[0]-dvec.x*.1,p.bg[1]-dvec.y*.1,p.bg[2]-dvec.z*.1).add(dH);this.bat.quaternion.setFromUnitVectors(UP,dvec)}
     this.glove.visible=!!o.glove;
     this.blob.position.set(p.hip[0],.05,p.hip[2])}}
-const _mb=new THREE.Matrix4(),_mn=new THREE.Matrix4(),_mt=new THREE.Matrix4(),_mh=new THREE.Matrix4(),_bx=V3(),_bs=V3(),_t1=V3(),_n1=V3(),_t2=V3(),_n2=V3(),_lq=new THREE.Quaternion();
+const _mi=new THREE.Matrix4(),_mb=new THREE.Matrix4(),_mn=new THREE.Matrix4(),_mt=new THREE.Matrix4(),_mh=new THREE.Matrix4(),_bx=V3(),_bs=V3(),_t1=V3(),_n1=V3(),_t2=V3(),_n2=V3(),_lq=new THREE.Quaternion();
 // upper and lower limb frames: the front direction projected off the upper bone, then carried through the joint bend
 function limbFrames(A,B,C,front){_t1.subVectors(B,A).normalize();_t2.subVectors(C,B).normalize();
   _n1.copy(front).addScaledVector(_t1,-front.dot(_t1));if(_n1.lengthSq()<1e-8)_n1.set(_t1.y,-_t1.x,0);if(_n1.lengthSq()<1e-8)_n1.set(0,0,1);_n1.normalize();
