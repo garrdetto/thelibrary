@@ -11,6 +11,7 @@ import { lineLat, newRailDriver, railDriverControls, railDriverLap, railDriverRe
 import type { RailDriver } from './next/sim/railDriver'
 import { Pedals, PEDAL_CSS, mountPedalPanel } from './rail-pedals'
 import { CHASSIS_CSS, mountChassis } from './rail-chassis'
+import { createCutaway } from './rail-cutaway'
 import type { World } from './next/sim/world'
 
 /**
@@ -159,7 +160,7 @@ export function initRailTest(api: RailTestApi) {
     <button type="button" id="rtExag" aria-pressed="false" title="Shows roll, pitch and ride height 3× bigger so you can see them; numbers stay true">Motion ×3</button>
     <button type="button" id="rtTelBtn" aria-pressed="false" title="Telemetry: loads, travel, clearance, balance">Data</button>
     <button type="button" id="rtLapsBtn" aria-pressed="false">Laps</button>
-    <button type="button" id="rtChBtn" aria-pressed="false" title="Live top view of the chassis: tire loads, grip in use, travel, roll, pitch and g">Show chassis</button>
+    <button type="button" id="rtChBtn" aria-pressed="false" title="See-through car with its chassis and suspension moving live (springs, shocks, sway bar, track bar, weight transfer), plus a top view of tire loads, grip in use, travel, roll, pitch and g">Show chassis</button>
     <button type="button" id="rtPedBtn" aria-pressed="false" title="Throttle and brake curves for Drive yourself">Pedals</button>
     <span class="grow"></span>
     <span class="setup"><small id="rtSetup"></small></span>
@@ -578,6 +579,7 @@ export function initRailTest(api: RailTestApi) {
     return m.railRig
   }
 
+  const cutaway = createCutaway(api.carScale)
   function visual(c: LabCar) {
     const st = c.rail, m = c.m
     if (!st || !m.tmg) return
@@ -600,6 +602,7 @@ export function initRailTest(api: RailTestApi) {
       _q2.setFromAxisAngle(_y, steer)
       w.pivot.quaternion.copy(_q).multiply(R.gq).multiply(_q2)
     })
+    cutaway.update(m, st, R.corner, api.wrap.classList.contains('chassis'))
   }
 
   // ---------- cameras ----------
