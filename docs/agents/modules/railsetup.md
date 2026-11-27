@@ -1,0 +1,15 @@
+# Straight Rail Setup Lab
+
+Chassis setup and suspension-geometry module (module id `railsetup`, `modules-src/railsetup/`). It is a web port of the owner's Windows app StraightRailSetupLab.exe (version 1), whose teardown is in `architecture_teardown.md` at the root of the owner's checkout (not committed). Keep this file current when the module changes.
+
+## Calculations (`sim/`, renderer-free and deterministic)
+
+- `sim/kin.ts`: typed line-for-line port of the app's `kin.js`. Front double A-arm corner (`build`, `poseAt`, `poseH`, `angles`, `ics`, `rollCenter`, `antiDive`, `shockLen`, `selfTest`) and the rear solid axle on four links (`rearBuild`, `rearAdjust`, `rearSolve`, `rearPose`). `rearResidual` says how far a solved axle pose misses the link lengths; above 1e-6 the links can't reach that pose.
+- `sim/hardpoints.ts`: the CAD mounting points (`CAD`, app frame: x forward, y left, z up, inches), `reseat` (puts each front tire on flat ground, as the app does), the front sway-bar end-link ball joint centers read from the original 3D model (`END_LINKS`, used by the bar-twist plot), and the Zod schema for hardpoint files (`parseHardpoints`).
+- `sim/inputs.ts`: every setup input with the original element ids, ranges and defaults (`SETUP_INPUTS`, `DEFAULTS`). Heave, roll and steer are view controls (`POSE_INPUTS`) and are not saved with a setup, exactly as in the original. Front adjustments `ADJ0`, rear link moves `RADJ0`, slug sizes `SLUGS`.
+- `sim/lab.ts`: class `Lab`, a port of the app's setup model: wheel and tire geometry, scale weights, ride heights, the at-rest wedge solve (rounds, caster jacking from steer, bar preload, chassis twist), Advanced mode (`advSolve`: springs and tires set the ride heights and cross), the steady-state turn (`calc`: roll shared front and rear through the frame's twist stiffness, roll centers, jacking, banking, anti-dive and anti-squat, gapped bump springs, grip balance), coilover motion-ratio tables, steering rack, 3rd-link loads, and the plot series (`frontRollAll`, `steerAll`, `rearRollAll`, `rearHeaveAll`, `thirdAll`, `sweep`). `update()` re-solves after an input change and rebuilds the corners when a wheel input changed; `recompute()` after a geometry change. `warnings()` adds one message the original lacked: when the rear links can't reach the solved pose.
+- `sim/files.ts`: setup file import (`parseSetupFile`) that accepts the original app's export (`{app, kind: 'setup', setup}`) and keeps only known input ids.
+
+## Tests
+
+`node scripts/railsetup-tests.mjs` (part of `pnpm test`). `tests/parity.test.ts` replays 24 cases recorded from the original app (`tests/fixtures/parity.json`, numbers only) and requires every output to match within 1e-6. Outputs the original itself could not solve (rear axle poses the links can't reach, where both versions return noise) are skipped, and such a case must raise the reach warning. To re-record, extract the original app's `web/` folder from the exe (Go `embed.FS`; see the teardown) and run `node modules-src/railsetup/tools/capture-parity.mjs <web folder>` (Playwright with Edge).
