@@ -468,7 +468,6 @@ export async function siteChanges(request: Request, env: Env) {
 
   if (input.action === 'send') {
     const threadId = input.thread ?? crypto.randomUUID()
-    if (input.thread && await threadBusy(env, threadId)) throw new HttpError(409, 'Claude is still working on your last message in this conversation.')
     if (input.runner) await setSetting(env, 'runner', input.runner)
     const queued = await queue(request, env, { thread_id: threadId, mode: 'change', request: input.text, target: null, auto_merge: input.autoMerge ? 1 : 0 }, input.runner)
     return json({ thread: threadId, ...queued })
@@ -498,7 +497,6 @@ export async function siteChanges(request: Request, env: Env) {
         : 'Stopped waiting. If a workflow run is still going, cancel it from the Actions tab on GitHub.', Date.now(), row.id).run()
     return json({ ok: true })
   }
-  if (await threadBusy(env, row.thread_id)) throw new HttpError(409, 'Claude is still working on your last message in this conversation.')
   if (input.action === 'retry') {
     if (row.status !== 'failed') throw new HttpError(400, 'Only failed messages can be retried.')
     return json(await queue(request, env, { thread_id: row.thread_id, mode: row.mode, request: row.request, target: row.target, auto_merge: row.auto_merge }))

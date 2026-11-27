@@ -63,13 +63,19 @@ export function openAIFailure(status: number, message: string): never {
 async function call(env: Env, path: string, init: RequestInit) {
   const key = openAIKey(env)
   if (!key) throw new HttpError(503, 'AI features are not set up yet. Ask the site owner to add an API key.')
-  let response: Response
-  try {
-    response = await fetch(`${OPENAI_BASE}${path}`, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(110000) })
-  } catch (error) {
-    openAIFailure(0, error instanceof Error ? error.message : '')
+  let response: Response | null = null
+  for (const delay of [0, 1500, 4000]) {
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay * (0.75 + Math.random() * 0.5)))
+    try {
+      response = await fetch(`${OPENAI_BASE}${path}`, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(110000) })
+    } catch (error) {
+      openAIFailure(0, error instanceof Error ? error.message : '')
+    }
+    if (response.status !== 429 && response.status < 500) break
+    const code = response.status === 429 ? (await response.clone().json().catch(() => null) as { error?: { code?: string } } | null)?.error?.code : ''
+    if (code === 'insufficient_quota') break
   }
-  return response
+  return response!
 }
 
 export async function openAIChat(env: Env, request: OpenAIChatRequest): Promise<{ text: string; refused: boolean }> {

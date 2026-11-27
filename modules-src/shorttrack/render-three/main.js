@@ -50,7 +50,7 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ?lab=1: the Straight Rail Setup Lab's track test (rail-test.ts) on a track shaped by the Lab (?rad= ft, ?bank= °) in Thrill Park Speedway's setting.
 const LAB=new URLSearchParams(location.search).get('lab')==='1';
 const TRACK_ID=LAB?'parkoval':trackIdOf(new URLSearchParams(location.search).get('track')),TRACK=LAB?labTrack(labTrackSpec(new URLSearchParams(location.search))):TRACKS[TRACK_ID];
-const PARK_DZ=LAB?labParkShift(TRACK):0;
+const PARK_DZ=TRACK.theme==='park'?labParkShift(TRACK):0;
 let LABT=null;
 // The next engine (Babylon on WebGPU, next/sim/dynamics.ts physics) is the default; ?engine=classic keeps the three.js
 // renderer and the classic vehicle model for one release, and &physics=classic keeps only the classic model.
