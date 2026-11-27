@@ -11,6 +11,7 @@ import { labTrackSpec, parseRailVehicle } from '../next/sim/railCar'
 import type { Controls } from '../next/sim/car'
 import type { RailVehicle } from '../next/sim/railCar'
 import { newRailState } from '../next/sim/railDynamics'
+import { lineLat, railPhase } from '../next/sim/railDriver'
 import { Track } from '../next/sim/track'
 import { runRail } from './railRun'
 
@@ -70,6 +71,33 @@ test('the test driver runs clean, repeatable laps', () => {
   assert.equal(a.recovered, 0)
   assert.equal(a.laps.length, 5)
   for (const t of a.laps) assert.ok(t > 17 && t < 22, `lap ${t}`)
+})
+
+test('the test driver runs the wall on the straights, the apron at the apex, and brakes and accelerates hard', () => {
+  for (const radiusFt of [60, 120, 300]) {
+    const T = new Track(labTrack({ ...SPEC, radiusFt }), makeConfig(labTrack({ ...SPEC, radiusFt })))
+    const apex = T.T1 + T.TURN / 2
+    assert.ok(lineLat(T, T.S_LINE) > T.HW - 1.4, 'by the wall mid-straight')
+    assert.ok(lineLat(T, apex) < -T.HW + 1.1, 'on the apron at the apex')
+    assert.ok(lineLat(T, apex) > -T.HW + 0.9, 'tires stay on the track')
+    assert.deepEqual([railPhase(T, T.S_LINE), railPhase(T, apex - T.TURN * 0.3), railPhase(T, apex), railPhase(T, apex + T.TURN * 0.3)], ['straight', 'entry', 'apex', 'exit'])
+  }
+  const seen = { straightThr: 0, brakePeak: 0, apexBrake: 0, apexThr: [] as number[], wallLat: [] as number[], apexLat: [] as number[] }
+  runRail(DEF, SPEC, 5, undefined, (w, c, d) => {
+    if (d.laps < 3) return
+    const T = w.track, ph = railPhase(T, c.tp.s), mid = Math.abs((((c.tp.s - T.T1 - T.TURN / 2) % T.P) + T.P) % T.P) < 2
+    if (ph === 'straight') seen.straightThr = Math.max(seen.straightThr, d.thr)
+    if (ph === 'straight' || ph === 'entry') seen.brakePeak = Math.max(seen.brakePeak, d.brk)
+    if (ph === 'apex') seen.apexBrake = Math.max(seen.apexBrake, d.brk)
+    if (mid) seen.apexThr.push(d.thr), seen.apexLat.push(c.tp.lat)
+    if (Math.abs(c.tp.s % T.P - T.S_LINE) < 2) seen.wallLat.push(c.tp.lat)
+  })
+  assert.equal(seen.straightThr, 1, 'flat out on the straights')
+  assert.ok(seen.brakePeak > 0.7, `hard on the brakes into the turn (${seen.brakePeak})`)
+  assert.ok(seen.apexBrake < 0.2, `off the brakes at the apex (${seen.apexBrake})`)
+  assert.ok(mean(seen.apexThr) < 0.4, `maintenance throttle at the apex (${mean(seen.apexThr)})`)
+  assert.ok(mean(seen.wallLat) > 6, `up by the wall on the straight (${mean(seen.wallLat)})`)
+  assert.ok(mean(seen.apexLat) < -5, `down low at the apex (${mean(seen.apexLat)})`)
 })
 
 test('throttle lifts the nose and squats the rear; brakes dive the nose', () => {

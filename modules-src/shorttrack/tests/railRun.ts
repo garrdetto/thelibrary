@@ -7,7 +7,9 @@ import type { RailVehicle } from '../next/sim/railCar'
 import { newRailDriver, railDriverControls, railDriverLap, railRecover, lineLat } from '../next/sim/railDriver'
 import { newRailState } from '../next/sim/railDynamics'
 import type { RailState } from '../next/sim/railDynamics'
-import type { Controls } from '../next/sim/car'
+import type { Controls, SimCar } from '../next/sim/car'
+import type { RailDriver } from '../next/sim/railDriver'
+import type { World } from '../next/sim/world'
 
 export type RailRun = {
   laps: number[]
@@ -24,7 +26,7 @@ export type RailRun = {
 }
 
 /** Drives `laps` timed laps with the track test's driver (plus an out lap) and reports what the car did. */
-export function runRail(veh: RailVehicle, spec = { radiusFt: 120, bankDeg: 12, straightBankDeg: 4 }, laps = 6, override?: (t: number) => Controls | null): RailRun {
+export function runRail(veh: RailVehicle, spec = { radiusFt: 120, bankDeg: 12, straightBankDeg: 4 }, laps = 6, override?: (t: number) => Controls | null, probe?: (w: World, c: SimCar, d: RailDriver) => void): RailRun {
   let clock = 0
   const w = createWorld(labTrack(spec), rng(7), () => clock, 'next')
   const T = w.track
@@ -47,6 +49,7 @@ export function runRail(veh: RailVehicle, spec = { radiusFt: 120, bankDeg: 12, s
     clock += STEP
     tick++
     simulate(w, STEP, (car) => override?.(clock) ?? railDriverControls(w, car, d))
+    probe?.(w, c, d)
     const st = c.rail
     if (!Number.isFinite(c.x + c.z + c.vx + c.vz + st.z + st.pf)) { nan = true; break }
     if (c.tp.lat > T.HW - 0.3) wall++
