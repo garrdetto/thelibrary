@@ -259,8 +259,9 @@ function headTexture(L,i){
      cleats, cleatTrim, sole, cap, bill, capLogo, helmet, name.
    At runtime: rig.setLook({...}) for one player, setUniform(team,{...}) for a whole side. */
 const RIG_S=1.5;          // rig units -> feet across
-const RIG_H=.75;          // height squash: a 1.00-height build stands 4'6"
-const TOON_HEAD=.8,TOON_HEAD_Y=1.12;
+const RIG_H=.75;          // whole-body scale: a 1.00-height build stands 4'6" (applied to all three axes, never to height alone)
+const TOON_HEAD=.85;
+const TOON_TORSO=.75;      // draft characters' torsos were fitted to the adult athlete's length; the chest bone shortens them back along its own axis
 const HAIR_STYLE={bun:'long',dreads:'dreads',curly:'curly',wild:'curly',messy:'short',bob:'long',mohawk:'short',short:'short',buzz:'buzz',long:'long',bald:'bald'};
 // [height, shoulder width, limb mass, head size] per roster slot
 const BUILD=[[0.95,0.94,0.92,1.00],[1.05,1.05,1.01,1.00],[1.00,0.95,0.96,0.98],[1.00,1.00,0.98,1.00],[1.02,0.96,0.96,1.00],[1.06,1.06,1.02,1.00],[1.02,0.95,0.95,0.98],[1.06,1.04,1.01,1.00],[1.00,0.98,0.96,1.00],[0.98,0.96,0.96,1.00],[1.06,1.07,1.02,1.02],[1.00,0.96,0.96,1.00],[0.95,0.94,0.92,1.04],[0.96,0.94,0.93,1.00],[1.00,0.94,0.93,1.00],[0.94,0.94,0.92,1.04],[1.03,0.98,0.97,1.00],[1.04,0.94,0.93,1.00],[0.95,0.94,0.92,1.02],[0.98,0.94,0.92,1.00],[0.97,0.94,0.95,1.00],[1.03,0.98,0.96,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.93,1.00],[1.06,1.04,1.00,1.00],[1.06,1.07,1.02,0.98],[1.03,0.97,0.96,1.00],[1.00,0.95,0.96,1.00],[1.03,1.09,1.10,1.00],[0.97,0.94,0.95,1.00],[1.00,0.96,0.96,1.00],[1.00,1.06,1.10,1.00],[1.04,1.00,0.98,1.00],[1.00,0.94,0.92,1.00]];
@@ -487,7 +488,7 @@ class Rig{
     if(ATHLETE)this.buildBody();else this.buildTrunk();
     const collar=M(new THREE.TorusGeometry(.158,.022,8,28),m.trim);collar.rotation.x=PI/2-.12;collar.scale.set(1.05,1,.95);collar.position.y=.035;this.neck.add(collar);this.collar=collar;
     this.headMat=SKIN('#ffffff');this.paintHead();
-    this.head=M(GEO.head,this.headMat);this.head.scale.set(HEAD_S[0]*lk.head,HEAD_S[1]*lk.head/RIG_H,HEAD_S[2]*lk.head);this.head.position.y=.42;this.neck.add(this.head);
+    this.head=M(GEO.head,this.headMat);this.head.scale.set(HEAD_S[0]*lk.head,HEAD_S[1]*lk.head,HEAD_S[2]*lk.head);this.head.position.y=.42;this.neck.add(this.head);
     for(const s of[1,-1]){const e=M(GEO.sph,m.skin);e.scale.set(.09,.26,.16);e.position.set(s*.86,-.06,-.06);e.rotation.y=s*.25;this.head.add(e);const lobe=M(GEO.sph,m.skin,false);lobe.scale.set(.6,.35,.5);lobe.position.set(0,-.75,.1);e.add(lobe)}
     this.face(i);batchStatic(this.head);this.buildHair();this.buildHeadwear();
     if(!ATHLETE)this.buildLimbs();
@@ -496,8 +497,8 @@ class Rig{
     this.glove=fieldersGlove(m.glove,m.gloveLace);batchStatic(this.glove);this.hand[0].add(this.glove);this.glove.visible=false;
     this.bat=M(GEO.bat,STD('#c99a5e',{roughness:.45}));root.add(this.bat);this.bat.visible=false;
     // contact shadow + team ring (kept at their old on-field size)
-    this.blob=new THREE.Mesh(blobGeo,new THREE.MeshBasicMaterial({map:blobTex,transparent:true,depthWrite:false,opacity:.9}));this.blob.position.y=.05;this.blob.scale.set(2.2,1,2.2);root.add(this.blob);
-    this.ring=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:team==='you'?0xe0482f:0x3d7be0,transparent:true,opacity:.75,depthWrite:false}));this.ring.position.y=.07;this.ring.scale.setScalar(1.1/RIG_S);root.add(this.ring);
+    this.blob=new THREE.Mesh(blobGeo,new THREE.MeshBasicMaterial({map:blobTex,transparent:true,depthWrite:false,opacity:.9}));this.blob.position.y=.05;this.blob.scale.set(2.2/RIG_H,1,2.2/RIG_H);root.add(this.blob);
+    this.ring=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:team==='you'?0xe0482f:0x3d7be0,transparent:true,opacity:.75,depthWrite:false}));this.ring.position.y=.07;this.ring.scale.setScalar(1.1/(RIG_S*RIG_H));root.add(this.ring);
     this.state='idle';this.snap=null;this.fadeT=0;this.fade=.2;this.t0=0;this.one=null;this.yaw=0;this.phase=0;this.speed=0;this.prev=null;this.last=null;
     this.pos=V3();this.reach=null;this.reachW=0;this.lookW=0;this.lookT=V3();this.mirror=false;
     this.dressFor(team);this.setHeadwear('cap');
@@ -523,7 +524,7 @@ class Rig{
       const s=new THREE.SkinnedMesh(p.geometry,mat);s.castShadow=true;s.receiveShadow=true;s.frustumCulled=false;this.root.add(s);s.bind(skel,p.bindMatrix);return s});
     if(this.body)this.body.forEach(s=>s.visible=false);
     for(const g of[...(this.arm||[]),...(this.leg||[])])g.mesh.visible=false;if(this.abs)this.abs.mesh.visible=false;
-    this.hips.visible=false;this.ft.forEach(f=>f.visible=false);
+    this.hips.visible=false;this.ft.forEach(f=>f.visible=false);this.tk=TOON_TORSO;this.neck.position.y=1.34*this.tk;
     this.hand.forEach(h=>h.children.forEach(c=>{if(c!==this.glove)c.visible=false}));
     this.bones=bones}
   buildTrunk(){
@@ -656,14 +657,14 @@ class Rig{
     const mir=!!o.mirror;
     r.position.set(x,0,z);r.rotation.y=mir?-this.yaw:this.yaw;
     const sp=cl(this.speed/(24*ks),0,1.2),amp=.35+.55*Math.min(1,sp);
-    if(st==='run')this.phase+=d/ks/(2*amp*1.35*RIG_S*this.bh)*PI;   // stride length grows with the player, so feet don't skate
+    if(st==='run')this.phase+=d/ks/(2*amp*1.35*RIG_S*RIG_H*this.bh)*PI;   // stride length grows with the player, so feet don't skate
     const t=(now-this.t0)/1000,ctx={phase:this.phase,amp,sp:Math.min(1,sp)};
     let p=this.one?seqPose(this.one.name,(now-this.one.t0)/1000,ctx):resolve(POSE[st](t,ctx));
     if(this.snap){const w=cl((now-this.fadeT)/1000/this.fade,0,1);if(w<1)p=lerpPose(this.snap,p,ease(w));else this.snap=null}
     this.last=p;
     this.mirrorState(mir);
     this.apply(p,o,now);
-    const vs=(o.vis||1)*this.bh*RIG_S;r.scale.set(mir?-vs:vs,vs*RIG_H,vs);this.ring.visible=o.ring!==false}
+    const vs=(o.vis||1)*this.bh*RIG_S*RIG_H;r.scale.set(mir?-vs:vs,vs,vs);this.ring.visible=o.ring!==false}
   // mirrored (left-handed) stance flips the model; flip the lettering back so it still reads correctly
   mirrorState(mm){if(mm===this.mirror)return;this.mirror=mm;for(const t of[this.mats.jersey.map,this.mats.logo.map])if(t){t.repeat.x=mm?-1:1;t.offset.x=mm?(t===this.mats.jersey.map?.5:1):0}}
   apply(p,o,now){
@@ -672,39 +673,40 @@ class Rig{
     this.chest.rotation.set(p.ch[0],p.ch[1],p.ch[2],'YXZ');
     let hy=p.hd[1],hp=p.hd[0];
     if(o.look){_d.copy(o.look);r.worldToLocal(_d);const yawBody=p.hr[1]+p.ch[1];
-      const ly=Math.atan2(_d.x-p.hip[0],_d.z-p.hip[2])-yawBody,lp=-Math.atan2(_d.y-(p.hip[1]+1.85),Math.hypot(_d.x-p.hip[0],_d.z-p.hip[2]))*.6;
+      const ly=Math.atan2(_d.x-p.hip[0],_d.z-p.hip[2])-yawBody,lp=-Math.atan2(_d.y-(p.hip[1]+.1+1.75*(this.tk||1)),Math.hypot(_d.x-p.hip[0],_d.z-p.hip[2]))*.6;
       const yy=Math.atan2(Math.sin(ly),Math.cos(ly));hy=cl(yy,-1.75,1.75);hp=cl(lp,-.5,.5)-p.ch[0]*.6}
     this.neck.rotation.set(hp*.4,hy*.35,0,'YXZ');this.head.rotation.set(hp*.6,hy*.65,0,'YXZ');
     this.hips.updateMatrix();this.chest.updateMatrix();_m.multiplyMatrices(this.hips.matrix,this.chest.matrix);
-    const body=!!this.bones,side=['L','R'];
-    if(body){const bw=this.bw;this.setBoneMatrix('hips',this.hips.matrix,bw,1,1);this.setBoneMatrix('chest',_m,bw,1,.88+.12*bw);
+    const body=!!this.bones,side=['L','R'],bw=body?1:this.bw,tk=this.toon?this.tk:1;
+    if(body){this.setBoneMatrix('hips',this.hips.matrix,1,1,1);this.setBoneMatrix('chest',_m,1,tk,1);
       this.neck.updateMatrix();_mn.multiplyMatrices(_m,this.neck.matrix);this.setBoneMatrix('neck',_mn,1,1,1);
-      if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,TOON_HEAD,TOON_HEAD*TOON_HEAD_Y,TOON_HEAD)}}
+      if(this.toon){_mt.compose(this.head.position,this.head.quaternion,_bs.set(1,1,1));_mh.multiplyMatrices(_mn,_mt);this.setBoneMatrix('head',_mh,TOON_HEAD,TOON_HEAD,TOON_HEAD)}}
     else this.updateAbdomen();
     // arms: shoulder -> elbow -> wrist, biceps side facing away from the elbow pole
-    const HL=V3(...p.hl),HR=V3(...p.hr_),lb=this.lb,lg=Math.pow(lb,.8);
+    const HL=V3(...p.hl),HR=V3(...p.hr_),dH=V3();
+    if(tk!==1){_mi.copy(_m).invert();const sq=v=>{const o=v.clone();v.applyMatrix4(_mi);if(v.y>0)v.y*=tk;v.applyMatrix4(_m);return o.sub(v).negate()};dH.addVectors(sq(HL),sq(HR)).multiplyScalar(.5)}
     if(o.reach){this.reachW=lerp(this.reachW,1,.25);_d.copy(o.reach);r.worldToLocal(_d);HL.lerp(_d,this.reachW)}else this.reachW=lerp(this.reachW,0,.2);
-    for(const s of[0,1]){const sg=s?-1:1,S=V3(sg*.45*this.bw,1.15,0).applyMatrix4(_m),T=s?HR:HL;
+    for(const s of[0,1]){const sg=s?-1:1,S=V3(sg*.45*bw,1.15*tk,0).applyMatrix4(_m),T=s?HR:HL;
       const pole=V3(sg*.7,-1,-.7).transformDirection(_m),E=V3(),Te=V3();ik(S,T,LA[0],LA[1],pole,E,Te);
       const h=this.hand[s];h.position.copy(Te);
-      if(body){limbFrames(S,E,Te,pole.negate());this.setBone('upperarm_'+side[s],S,_t1,_n1,lb,1,lb);this.setBone('forearm_'+side[s],E,_t2,_n2,lb,1,lb);_mb.makeBasis(_bx.crossVectors(_t2,_n2),_t2,_n2)}
+      if(body){limbFrames(S,E,Te,pole.negate());this.setBone('upperarm_'+side[s],S,_t1,_n1,1,1,1);this.setBone('forearm_'+side[s],E,_t2,_n2,1,1,1);_mb.makeBasis(_bx.crossVectors(_t2,_n2),_t2,_n2)}
       else{const A=this.arm[s];A.update(S,E,Te,pole.clone().negate(),-sg);_mb.makeBasis(A.endB,A.endT,A.endN)}
       h.quaternion.setFromRotationMatrix(_mb);
       if(this.toon){_mt.compose(h.position,h.quaternion,_bs.set(1,1,1));this.setBoneMatrix('hand_'+side[s],_mt,1,1,1)}
       else h.userData.fingers.forEach(f=>f.visible=!(s===0&&o.glove))}
     // legs: hip -> knee -> ankle, knee leading toward the facing direction
     _e.set(0,p.hr[1],0);_q.setFromEuler(_e);const fwd=V3(0,.2,1).applyQuaternion(_q);
-    for(const s of[0,1]){const sg=s?-1:1,Hj=V3(sg*.25*this.bw,-.12,0).applyMatrix4(this.hips.matrix),F=s?p.fr:p.fl,T=V3(F[0],F[1]+.2,F[2]);
+    for(const s of[0,1]){const sg=s?-1:1,Hj=V3(sg*.25*bw,-.12,0).applyMatrix4(this.hips.matrix),F=s?p.fr:p.fl,T=V3(F[0],F[1]+.2,F[2]);
       const Kn=V3(),Te=V3();ik(Hj,T,LL[0],LL[1],fwd,Kn,Te);
-      if(body){limbFrames(Hj,Kn,Te,fwd);this.setBone('thigh_'+side[s],Hj,_t1,_n1,lg,1,lg);this.setBone('shin_'+side[s],Kn,_t2,_n2,lg,1,lg)}
+      if(body){limbFrames(Hj,Kn,Te,fwd);this.setBone('thigh_'+side[s],Hj,_t1,_n1,1,1,1);this.setBone('shin_'+side[s],Kn,_t2,_n2,1,1,1)}
       else this.leg[s].update(Hj,Kn,Te,fwd,-sg);
       const f=this.ft[s],fp=p.fp?p.fp[s]:F[1]>.15?-.35:0;f.position.set(Te.x,Math.max(0,Te.y-.19)+Math.max(0,Math.sin(fp))*.14,Te.z);f.rotation.set(fp,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ');
       if(this.toon){_mt.compose(_d.set(Te.x,f.position.y+.19,Te.z),f.quaternion,_bs.set(1,1,1));this.setBoneMatrix('foot_'+side[s],_mt,1,1,1)}}
     this.bat.visible=p.bat>.5&&!o.noBat;
-    if(this.bat.visible){const dvec=batDir(p.ba[0],p.ba[1],_a);this.bat.position.set(p.bg[0]-dvec.x*.1,p.bg[1]-dvec.y*.1,p.bg[2]-dvec.z*.1);this.bat.quaternion.setFromUnitVectors(UP,dvec)}
+    if(this.bat.visible){const dvec=batDir(p.ba[0],p.ba[1],_a);this.bat.position.set(p.bg[0]-dvec.x*.1,p.bg[1]-dvec.y*.1,p.bg[2]-dvec.z*.1).add(dH);this.bat.quaternion.setFromUnitVectors(UP,dvec)}
     this.glove.visible=!!o.glove;
     this.blob.position.set(p.hip[0],.05,p.hip[2])}}
-const _mb=new THREE.Matrix4(),_mn=new THREE.Matrix4(),_mt=new THREE.Matrix4(),_mh=new THREE.Matrix4(),_bx=V3(),_bs=V3(),_t1=V3(),_n1=V3(),_t2=V3(),_n2=V3(),_lq=new THREE.Quaternion();
+const _mi=new THREE.Matrix4(),_mb=new THREE.Matrix4(),_mn=new THREE.Matrix4(),_mt=new THREE.Matrix4(),_mh=new THREE.Matrix4(),_bx=V3(),_bs=V3(),_t1=V3(),_n1=V3(),_t2=V3(),_n2=V3(),_lq=new THREE.Quaternion();
 // upper and lower limb frames: the front direction projected off the upper bone, then carried through the joint bend
 function limbFrames(A,B,C,front){_t1.subVectors(B,A).normalize();_t2.subVectors(C,B).normalize();
   _n1.copy(front).addScaledVector(_t1,-front.dot(_t1));if(_n1.lengthSq()<1e-8)_n1.set(_t1.y,-_t1.x,0);if(_n1.lengthSq()<1e-8)_n1.set(0,0,1);_n1.normalize();
