@@ -1,4 +1,5 @@
 import type { Dyn } from './dynamics'
+import type { RailState } from './railDynamics'
 import type { TrackPos } from './track'
 
 export type Zone = 'f' | 'r' | 'l' | 'rt'
@@ -40,6 +41,8 @@ export type SimCar = {
   hitGripF: number; hitGripR: number; hitGripT: number; hitHoldT: number
   /** State of the Phase 4 vehicle model (`World.model === 'next'`). */
   dyn?: Dyn
+  /** The Setup Lab's car on the track test (`railDynamics.ts`): when set, it replaces both vehicle models. */
+  rail?: RailState
 }
 
 export function createCar(id: string, o: { local?: boolean; ai?: boolean; pace?: boolean; player?: boolean; stockCar?: boolean; fl?: number; fw?: number } = {}): SimCar {

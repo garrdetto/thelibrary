@@ -1,4 +1,5 @@
 import { Camera } from '@babylonjs/core/Cameras/camera'
+import { Viewport } from '@babylonjs/core/Maths/math.viewport'
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { Constants } from '@babylonjs/core/Engines/constants'
@@ -99,6 +100,8 @@ export type FrameOptions = {
   night: boolean
   /** The rear-view mirror rectangle in CSS pixels from the top left, or null when it is hidden. */
   mirror: { x: number; y: number; w: number; h: number } | null
+  /** Extra views drawn over the main one (CSS pixels from the top left), e.g. the track test's replay angles. */
+  views?: { camera: THREE.PerspectiveCamera; x: number; y: number; w: number; h: number }[]
 }
 
 export type ThreeInputs = {
@@ -445,6 +448,7 @@ export class Presenter {
     this.pipeline.bloomThreshold = o.bloom.threshold
     this.pipeline.bloomWeight = o.bloom.strength
     this.syncMirror(t, o)
+    this.syncViews(o)
     this.engine.beginFrame()
     this.scene.render()
     this.engine.endFrame()
@@ -545,6 +549,28 @@ export class Presenter {
     this.scene.fogStart = fog.near
     this.scene.fogEnd = fog.far
     this.scene.fogColor.set(fog.color.r, fog.color.g, fog.color.b)
+  }
+
+  private readonly viewCams: ThreeCamera[] = []
+
+  /** Extra cameras with their own viewports, drawn after the main view (without its post effects). */
+  private syncViews(o: FrameOptions): void {
+    const list = o.views ?? []
+    while (this.viewCams.length < list.length) {
+      const cam = new ThreeCamera(`view${this.viewCams.length}`, Vector3.Zero(), this.scene)
+      cam.layerMask = SCENE_LAYER
+      this.viewCams.push(cam)
+    }
+    const canvas = this.engine.getRenderingCanvas()!, cw = canvas.clientWidth || 1, ch = canvas.clientHeight || 1
+    list.forEach((v, i) => {
+      const cam = this.viewCams[i]
+      v.camera.updateMatrixWorld()
+      cam.copyFrom(v.camera)
+      cam.viewport = new Viewport(v.x / cw, 1 - (v.y + v.h) / ch, v.w / cw, v.h / ch)
+    })
+    const want = [this.camera, ...this.viewCams.slice(0, list.length)]
+    const now = this.scene.activeCameras ?? []
+    if (now.length !== want.length || now.some((c, i) => c !== want[i])) this.scene.activeCameras = want
   }
 
   private syncMirror(t: ThreeInputs, o: FrameOptions): void {

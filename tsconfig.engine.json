@@ -12,6 +12,7 @@
     "modules-src/bushleague/**/*.ts",
     "modules-src/hood/**/*.ts",
     "modules-src/shorttrack/next/**/*.ts",
+    "modules-src/shorttrack/rail-test.ts",
     "modules-src/rackreel/**/*.ts",
     "modules-src/darts/**/*.ts",
     "modules-src/arena/**/*.ts"
