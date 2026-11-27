@@ -71,6 +71,7 @@ export class ChassisScene {
   readonly jackArrow: THREE.ArrowHelper
   loaded = false
   rearGuess: number[] | null = null
+  private rearGuessFor: K.RearGeometry | null = null
   private readonly grid: THREE.GridHelper
   private readonly mats = {
     sprung: new THREE.MeshStandardMaterial({ metalness: 0.1, roughness: 0.85 }),
@@ -374,8 +375,9 @@ export class ChassisScene {
 
   placeRear(rollAng: number, heave: number, model: Model | null, tbType: number, tbFlip: number): { rp: RearPose; Aw: Vec; Cw: Vec } {
     const lab = this.lab, RG = lab.RG, t = this.tmp
-    const rp = K.rearPose(RG, -heave, -(rollAng + (model ? model.pose0.dphR : 0)), this.rearGuess)
-    this.rearGuess = rp.q
+    if (this.rearGuessFor !== RG) { this.rearGuess = null; this.rearGuessFor = RG }
+    const rp = K.rearPoseNear(RG, -heave, -(rollAng + (model ? model.pose0.dphR : 0)), this.rearGuess)
+    this.rearGuess = K.rearResidual(RG, rp.q) < 1e-6 ? rp.q : null
     this.uns.matrix.copy(this.sprung.matrix).multiply(this.axleM(rp.q, t.MQ)).multiply(this.MCADi)
     this.uns.matrixWorldNeedsUpdate = true
     const rear = CAD.rear as unknown as Record<string, Vec[]>

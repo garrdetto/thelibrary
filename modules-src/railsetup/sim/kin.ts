@@ -367,6 +367,23 @@ export function rearAdjust(g0: RearGeometry, adj: Partial<RearAdjust>): RearGeom
   return g
 }
 
+const BRANCH = 0.4
+
+/**
+ * `rearPose` from a previous pose, kept on the axle's ride-height branch: four links can also close with the housing
+ * pitched or yawed far round, and a stale guess (after a link move or an unreachable pose) can land there and stay.
+ * Such a pose, or one that misses the link lengths, is solved again from the design pose and the nearer valid one kept.
+ */
+export function rearPoseNear(g: RearGeometry, h: number, psi: number, guess?: AxlePose | null): RearPose {
+  const off = (q: AxlePose) => Math.max(Math.abs(q[4] - g.q0[4]), Math.abs(q[5] - g.q0[5]))
+  const ok = (q: AxlePose) => rearResidual(g, q) < 1e-6
+  if (!guess) return rearPose(g, h, psi)
+  const p = rearPose(g, h, psi, guess)
+  if (ok(p.q) && off(p.q) < BRANCH) return p
+  const f = rearPose(g, h, psi)
+  return ok(f.q) && (!ok(p.q) || off(f.q) < off(p.q)) ? f : p
+}
+
 export type RearPose = {
   q: AxlePose; R: Mat3; P: Record<LinkName, Vec>; W: { L: Vec; R: Vec }; h: number
   shift: number; ratio: number; rcz: number; steer: number; pinion: number; wbL: number; wbR: number
