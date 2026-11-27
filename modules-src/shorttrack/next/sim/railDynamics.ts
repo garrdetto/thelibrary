@@ -49,11 +49,31 @@ export type RailState = {
   downF: number; downR: number
   /** True while the track test's driver has the wheel: steering follows its hands (rate-limited) instead of the keys' ramp. */
   direct: boolean
+  /** Front and rear grip trim from the setup's handling against the baseline (1 = none), and the phase weights behind it. */
+  trimF: number; trimR: number
+  phaseW: { entry: number; center: number; exit: number }
   /** Running peaks the track page reads and clears. */
   peak: { bottom: number; bumpT: number; liftT: number; noseLift: number; minClear: number }
 }
 
 const G = 9.81, RHO = 1.2
+/** Grip taken off the overloaded end per balance point of handling change (tight: fronts, loose: rears), and the most. */
+export const HANDLING_GAIN = 0.025
+const HANDLING_MAX = 0.4
+
+/**
+ * How the setup's handling change acts right now: the corner phase comes from the pedals (braking = entry, throttle
+ * past 0.3 = exit, between = center) and only counts while the car is cornering. A tight phase takes grip off the
+ * fronts, a loose one off the rears, so the baseline setup stays balanced at the limit.
+ */
+export function handlingTrim(h: RailVehicle['handling'], thr: number, brk: number, ay: number): { f: number; r: number; w: { entry: number; center: number; exit: number } } {
+  const entry = clamp(brk / 0.15, 0, 1), exit = clamp((thr - 0.3) / 0.4, 0, 1) * (1 - entry), center = Math.max(0, 1 - entry - exit)
+  const w = { entry, center, exit }
+  if (!h) return { f: 1, r: 1, w }
+  const corner = clamp((Math.abs(ay) - 2) / 5, 0, 1)
+  const bal = (h.entry * entry + h.center * center + h.exit * exit) * corner * HANDLING_GAIN
+  return { f: 1 - clamp(bal, 0, HANDLING_MAX), r: 1 - clamp(-bal, 0, HANDLING_MAX), w }
+}
 const ENGINE = { peak: 720, peakRpm: 5600, limit: 7800, idle: 2600, drag: 55, eff: 0.9, inertia: 0.22 }
 const AERO = { cdA: 0.82, rearClA: 0.55, frontClA: 0.26, groundGain: 1.3, groundH: 0.1, rr: 0.012 }
 const TIRE = { grip: 1.12, C: 1.6, B: Math.tan(Math.PI / 3.2), alphaPk: 0.1, kappaPk: 0.14, sigma: 0.45, campOpt: 1.5, campK: 0.006 }
@@ -97,6 +117,7 @@ export function newRailState(veh: RailVehicle, T: Track): RailState {
     steerL: 0, steerR: 0, steerRear: 0, camberG: [lookup(veh.camber[0], 0), lookup(veh.camber[1], 0)],
     ax: 0, ay: 0, gn: G, fb: 0, avOut: 0, rpm: ENGINE.idle, ratio: railRatio(T, veh), slipR: [0, 0], downF: 0, downR: 0,
     peak: { bottom: 0, bumpT: 0, liftT: 0, noseLift: 0, minClear: Infinity }, direct: false,
+    trimF: 1, trimR: 1, phaseW: { entry: 0, center: 0, exit: 0 },
   }
 }
 
@@ -163,6 +184,10 @@ export function stepRailCar(w: World, c: SimCar, dt: number, ctl: Controls): voi
   const hA = T.heightAt(tp.s + ds, tp.lat + dl), h0 = T.heightAt(tp.s, tp.lat), hB = T.heightAt(tp.s - ds, tp.lat - dl)
   const aVert = clamp((hA - 2 * h0 + hB) / (look * look), -12, 12)
 
+  const trim = handlingTrim(v.handling, thr, brk, st.ay)
+  st.trimF = trim.f
+  st.trimR = trim.r
+  st.phaseW = trim.w
   const h = dt / SUB
   for (let k = 0; k < SUB; k++) subStep(w, c, st, v, B, h, thr, brk, { surf: surf * gripDmg, cosT, sinT, tanT, bx, bz, aVert })
 
@@ -302,7 +327,7 @@ function subStep(w: World, c: SimCar, st: RailState, v: RailVehicle, B: Body, dt
     st.alpha[i] += (target - st.alpha[i]) * Math.min(1, (Math.max(Math.abs(uw), 1) * dt) / TIRE.sigma)
     const dir = st.alpha[i] > 0 ? -1 : 1
     const camb = clamp(1 - TIRE.campK * (lean[i] * dir - TIRE.campOpt) ** 2, 0.82, 1)
-    caps[i] = tireMu(fz[i]) * TIRE.grip * fz[i] * S.surf * camb
+    caps[i] = tireMu(fz[i]) * TIRE.grip * fz[i] * S.surf * camb * (i < 2 ? st.trimF : st.trimR)
     sa[i] = Math.tan(st.alpha[i])
     uws[i] = uw
     re[i] = v.rollout[i] / (2 * Math.PI) - 0.35 * (fz[i] / v.tireRate)

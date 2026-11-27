@@ -90,6 +90,36 @@ export function railVehicle(src: Lab, name: string): RailVehicle {
   }
 }
 
+export type RailHandling = { entry: number; center: number; exit: number }
+
+/** The three corner phases the Lab solves for handling: lateral g and long g (− braking, + throttle). */
+export const HANDLING_PHASES: { key: keyof RailHandling; g: number; gx: number }[] = [
+  { key: 'entry', g: 0.9, gx: -0.45 },
+  { key: 'center', g: 1.15, gx: 0 },
+  { key: 'exit', g: 0.9, gx: 0.3 },
+]
+
+/** The Lab's grip balance (front minus rear grip in use, %, + = tight) in each corner phase, solved on a copy at the setup's banking. */
+export function railHandling(src: Lab): RailHandling {
+  const lab = new Lab(src.rawHardpoints())
+  lab.mrFixedFlag = src.mrFixedFlag
+  lab.applySnapshot(src.snapshot('handling'))
+  const out: RailHandling = { entry: 0, center: 0, exit: 0 }
+  for (const p of HANDLING_PHASES) {
+    Object.assign(lab.inputs, { g: p.g, gx: p.gx })
+    lab.recompute()
+    const b = lab.model.bal
+    out[p.key] = Number.isFinite(b) ? +b.toFixed(3) : 0
+  }
+  return out
+}
+
+/** How the setup handles against a baseline, per phase (balance points, + = tighter, − = looser). */
+export function handlingDelta(cur: RailHandling, base: RailHandling): RailHandling {
+  const d = (k: keyof RailHandling) => +Math.max(-40, Math.min(40, cur[k] - base[k])).toFixed(3)
+  return { entry: d('entry'), center: d('center'), exit: d('exit') }
+}
+
 /** The test track the setup describes, as the track page's query: corner radius (ft) and banking (°). */
 export function railTrackQuery(lab: Lab): { rad: number; bank: number } {
   return { rad: lab.num('rad'), bank: lab.num('bank') }
