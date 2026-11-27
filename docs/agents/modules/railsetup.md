@@ -2,6 +2,11 @@
 
 Chassis setup and suspension-geometry module (module id `railsetup`, `modules-src/railsetup/`, page `/modules/railsetup.html`, catalog card in `src/lib/modules.ts` with `public/images/modules/railsetup.webp`). It is a web port of the owner's Windows app StraightRailSetupLab.exe (version 1): a Go launcher that served an embedded web page in an Edge window. The launcher (local server, keep-alive pings, self-update) is not ported; the page and its math are. Keep this file current when the module changes.
 
+## Access and its own page
+
+- Private module: `privateModuleIds` in `src/lib/module-layout.ts` keeps it in `hidden` for everyone (`normalizeModuleLayout` adds it back, so Module order can't show it). The `/api/module-layout` GET drops it from `hidden` for administrators and for people granted `module:railsetup` (People & permissions lists it among the hidden modules), so only they see it in the library.
+- Its own page is the route `/railsetup` (`src/routes/railsetup.tsx`): a full-window iframe of `/modules/railsetup.html?page=1` with a small "Return to Homepage" tab fixed bottom left (`.standalone-home-tab` in `src/styles.css`). It needs no sign-in; anyone with the link can open it. `?page=1` adds `rs-page` to the module's root, which lifts `.stats` and pads `.wrap` clear of the tab. `standaloneModulePages` sends the library's nav entry and `#module-railsetup` links to that page instead of the in-site frame.
+
 ## Calculations (`sim/`, renderer-free and deterministic)
 
 - `sim/kin.ts`: typed line-for-line port of the app's `kin.js`. Front double A-arm corner (`build`, `poseAt`, `poseH`, `angles`, `ics`, `rollCenter`, `antiDive`, `shockLen`, `selfTest`) and the rear solid axle on four links (`rearBuild`, `rearAdjust`, `rearSolve`, `rearPose`). `rearResidual` says how far a solved axle pose misses the link lengths; above 1e-6 the links can't reach that pose.

@@ -25,6 +25,10 @@ const learningModules = allLearningModules.filter(item => isModuleAvailable(item
 
 export const moduleIds = learningModules.map(item => item.id) as [ModuleId, ...ModuleId[]]
 
+export const privateModuleIds: readonly ModuleId[] = ['railsetup']
+
+export const standaloneModulePages: Partial<Record<ModuleId, string>> = { railsetup: '/railsetup' }
+
 export const defaultCategories: ModuleCategory[] = [
   { id: 'sports', name: 'Sports' },
   { id: 'racing', name: 'Racing & Driving' },
@@ -76,7 +80,7 @@ export function normalizeModuleLayout(input: Partial<ModuleLayout> | null | unde
   const order: ModuleId[] = []
   for (const id of input?.order ?? []) if (known.has(id) && !seen.has(id)) { seen.add(id); order.push(id) }
   for (const id of moduleIds) if (!seen.has(id)) order.push(id)
-  const hidden = [...new Set((input?.hidden ?? []).filter(id => known.has(id)))]
+  const hidden = [...new Set([...(input?.hidden ?? []), ...privateModuleIds].filter(id => known.has(id)))]
   const featured = input?.featured && known.has(input.featured) && !hidden.includes(input.featured) ? input.featured : null
   const categories = cleanCategories(input?.categories) ?? defaultCategories.map(item => ({ ...item }))
   const categoryIds = new Set(categories.map(item => item.id))

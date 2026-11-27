@@ -6,6 +6,7 @@ import { formatTrackTime } from '@/lib/music'
 import type { MusicTrack } from '@/lib/music'
 import { learningModules } from '@/lib/modules'
 import { useModuleLayout } from '@/lib/use-module-layout'
+import { privateModuleIds } from '@/lib/module-layout'
 import { SlotWallet } from './SlotWallet'
 
 export type Account = { id: string; username: string; pages: string[]; grants: string[]; radar: boolean; isAdmin: boolean; isOwner: boolean; needsPassword: boolean; createdAt: number }
@@ -73,7 +74,7 @@ export function PersonAccess({ account, viewerIsOwner, busy, onBack, onSave, onS
 
   const pickedTracks = musicTrackGrants(grants)
   const hiddenModules = useMemo(() => {
-    const ids = new Set<string>([...(layout.hidden as string[]), ...moduleGrants(grants)])
+    const ids = new Set<string>([...(layout.hidden as string[]), ...privateModuleIds, ...moduleGrants(grants)])
     return [...ids].filter(id => moduleTitles.has(id)).sort((a, b) => moduleTitles.get(a)!.localeCompare(moduleTitles.get(b)!))
   }, [layout.hidden, grants])
 

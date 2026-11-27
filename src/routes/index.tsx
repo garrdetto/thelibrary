@@ -23,6 +23,7 @@ import { AdminRecordResetButton, RecordResetProvider } from '@/components/AdminR
 import { hasScoreBoard, isScoredModule } from '@/lib/module-scores'
 import { embeddedModules, isEmbeddedModuleId, isModuleAvailable, learningModules } from '@/lib/modules'
 import { useModuleLayout } from '@/lib/use-module-layout'
+import { standaloneModulePages } from '@/lib/module-layout'
 import { useMobileFullPlay } from '@/lib/use-mobile-full-play'
 import { ModuleNav } from '@/components/ModuleNav'
 import { ScoreNotices } from '@/components/ScoreNotices'
@@ -138,7 +139,9 @@ function Studio() {
     if (window.location.hash === '#park2') setView('park2')
     if (window.location.hash === '#lens') setView('lens')
     const playHash = window.location.hash.replace(/^#module-/, '').replace(/^(foxplains2|tello)$/, 'foxlake')
-    if (window.location.hash.startsWith('#module-') && isPlayId(playHash)) setView(playHash)
+    const standaloneHash = (standaloneModulePages as Record<string, string | undefined>)[playHash]
+    if (window.location.hash.startsWith('#module-') && standaloneHash) window.location.replace(standaloneHash)
+    else if (window.location.hash.startsWith('#module-') && isPlayId(playHash)) setView(playHash)
   }, [])
 
   useEffect(() => {
@@ -237,6 +240,8 @@ function Studio() {
   }
 
   function switchView(next: View) {
+    const standalone = (standaloneModulePages as Record<string, string | undefined>)[next]
+    if (standalone) { window.location.assign(standalone); return }
     if (!isModuleAvailable(next) || busy || studioViews.includes(next) && !access.pages.includes(next) || next === 'admin' && !access.isAdmin) return
     if (lobby.match && next !== 'pool') lobby.leave()
     setSelection(null)

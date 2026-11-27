@@ -3,7 +3,7 @@ import type { Env } from '../env'
 import { HttpError, json, parseStored, readJson, requireSameOrigin } from '../http'
 import { currentUser, requireUser } from '../auth'
 import { moduleGrants } from '../../lib/access'
-import { CATEGORY_LIMIT, CATEGORY_NAME_MAX, TOP_COUNT, categoryIdPattern, layoutPayload, moduleIds, normalizeModuleLayout } from '../../lib/module-layout'
+import { CATEGORY_LIMIT, CATEGORY_NAME_MAX, TOP_COUNT, categoryIdPattern, layoutPayload, moduleIds, normalizeModuleLayout, privateModuleIds } from '../../lib/module-layout'
 import type { ModuleLayout } from '../../lib/module-layout'
 
 const LAYOUT_KEY = 'module-layout'
@@ -32,7 +32,7 @@ async function readLayout(env: Env): Promise<ModuleLayout> {
 export async function moduleLayout(request: Request, env: Env) {
   if (request.method === 'GET') {
     const [layout, viewer] = await Promise.all([readLayout(env), currentUser(request, env)])
-    const shared = viewer && !viewer.isAdmin ? new Set(moduleGrants(viewer.grants)) : null
+    const shared = !viewer ? null : viewer.isAdmin ? new Set<string>(privateModuleIds) : new Set(moduleGrants(viewer.grants))
     if (!shared?.size) return json({ layout })
     const hidden = layout.hidden.filter(id => !shared.has(id))
     return json({ layout: { ...layout, hidden } })
