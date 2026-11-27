@@ -17,13 +17,14 @@
       <div class="warn" id="warn" hidden></div>
     </div>
     <div class="views">
-      <button type="button" id="v-front">Front</button><button type="button" id="v-34">3/4</button><button type="button" id="v-top">Top</button><button type="button" id="v-side">Side</button><button type="button" id="v-exag" aria-pressed="false" title="Shows roll, pitch and heave 5× bigger so you can see them. Numbers stay true.">Motion ×5</button><button type="button" id="v-help" aria-expanded="false">How to use</button>
+      <button type="button" id="v-front">Front</button><button type="button" id="v-34">3/4</button><button type="button" id="v-top">Top</button><button type="button" id="v-side">Side</button><button type="button" id="v-exag" aria-pressed="false" title="Shows roll, pitch and heave 5× bigger so you can see them. Numbers stay true.">Motion ×5</button><button type="button" id="v-help" aria-expanded="false">How to use</button><button type="button" id="v-track" class="go" title="Drive this setup on a short oval with the corner radius and banking you set">▶ Test on track</button>
     </div>
     <div class="help" id="help" hidden>
       <h2>How to use</h2>
       <ul>
         <li>Left-drag to rotate, right-drag to pan, scroll to zoom. The view buttons jump to set angles.</li>
         <li><b>Setup</b>: change weight, springs, bars, bump springs, scales, and lateral and long g. The car rolls, pitches and heaves, and the colored disc under each tire grows with its load.</li>
+        <li><b>Test on track</b> drives this setup on a short oval built from your corner radius and banking, in Short Track Showdown's Super Late Model at Thrill Park Speedway. Springs, bump springs, bars, ride heights, scales, stagger and the link geometry all change how it handles: watch it bottom out, lift the nose, roll and move weight, let the test driver run laps or drive it yourself, then replay any lap from several angles at once.</li>
         <li><b>Drive the corner</b> (Setup, Track) loops the car through braking, turn-in, mid-corner and exit so you can watch the loads change. <b>Motion ×5</b> makes small body movements easier to see.</li>
         <li><b>Kinematics</b>: pick LF or RF, then move the upper A-arm bar, lower arm mounts, slugs, and shims. <b>Rear</b> moves the 3rd link, lower links and track bar, swaps the track bar for a J-Bar, or mounts either one reversed. Use Heave, Roll, or Sweep to move the suspension and watch camber, toe, the roll centers and rear steer.</li>
         <li><b>Plots</b>: every kinematic curve, front and rear, through wheel travel, body roll and steering. Dashed lines are the baseline: the saved setup you last loaded or saved (the car as modeled until you do). Orange numbers on the Kinematics tab show which parts changed length.</li>
@@ -118,6 +119,8 @@
     </details>
     <fieldset><legend>Track</legend>
       <div class="row"><label for="rad">Corner radius, ft</label><input type="range" id="rad" min="40" max="300" step="5" value="120"><output id="rad-o"></output></div>
+      <div class="btnrow"><button type="button" id="tt-open" class="go">▶ Test on track</button></div>
+      <p class="note">Runs this setup on a short oval with this corner radius and the Banking under Move the car. A new radius or banking rebuilds the track.</p>
     </fieldset>
     <fieldset><legend>Wheels and rear end</legend>
       <div class="row"><label for="wwlf">LF wheel width, in</label><input type="number" id="wwlf" min="7" max="15" step="0.5" value="10"><span></span></div>

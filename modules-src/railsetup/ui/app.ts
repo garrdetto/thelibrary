@@ -9,6 +9,7 @@ import { Lab, OUTROWS } from '../sim/lab'
 import type { Model, Side, Snapshot } from '../sim/lab'
 import { fileName, parseSetupFile, setupFile } from '../sim/files'
 import { ChassisScene } from './scene'
+import { TrackTest } from './track-test'
 import { PGRP, buildCharts, markPlots, renderGroup } from './plots'
 import { clearHardpoints, deleteSetup, loadRemote, readPrefs, saveHardpoints, saveSetup, writePrefs } from './store'
 import type { Remote } from './store'
@@ -53,9 +54,11 @@ export class App {
   private signedIn = false
   private readonly reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
   private readonly tmpV = new THREE.Vector3()
+  private readonly track: TrackTest
 
   constructor() {
     this.scene = new ChassisScene($('stage'), this.lab)
+    this.track = new TrackTest(this.lab, () => $('sv-name').value.trim() || this.lab.BASE?.name || 'Current setup', () => $('tt-open').focus())
     this.buildInputs()
     this.bind()
     this.syncInputs()
@@ -134,6 +137,7 @@ export class App {
     ;(['k-heave', 'k-roll'] as const).forEach(id => $(id).addEventListener('input', () => { this.stopSweep(); this.readPose(); this.outputs(); this.update() }))
     $('k-sweep').onclick = () => { this.sweeping = !this.sweeping; this.sweepT = 0; $('k-sweep').textContent = this.sweeping ? 'Stop sweep' : 'Sweep bump and droop' }
     $('k-zero').onclick = () => { this.stopSweep(); $('k-heave').value = '0'; $('k-roll').value = '0'; this.readPose(); this.outputs(); this.update() }
+    for (const id of ['tt-open', 'v-track']) $(id).onclick = () => { this.stopDrive(); this.stopSweep(); this.track.show() }
     $('drive').onclick = () => { if (this.driving) { this.stopDrive(); return } this.driveKeep = { g: +$('g').value, gx: +$('gx').value }; this.driving = true; this.driveT = 0; $('drive').textContent = '■ Stop' }
     ;(['g', 'gx'] as const).forEach(id => $(id).addEventListener('pointerdown', () => this.stopDrive()))
     $('reset-setup').onclick = () => { this.stopDrive(); for (const s of SETUP_INPUTS) this.lab.inputs[s.id] = DEFAULTS[s.id]; this.syncInputs(); this.update() }

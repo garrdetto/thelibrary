@@ -1,3 +1,5 @@
+import { clamp } from './math'
+
 export type TrackId = 'prison' | 'bullring' | 'dells' | 'dellswide' | 'dirt' | 'parkoval'
 
 export type TrackDef = {
@@ -161,3 +163,22 @@ export const STEP = 1 / 120
 /** Truck body measurements the classic physics reads from the model (`TM.DIM`, `TRUCK_SCALE`). */
 export const TRUCK_DIM = { FA: 1.62, RA: -1.55 }
 export const TRUCK_SCALE = 0.9
+
+/**
+ * The Setup Lab's test track: Thrill Park Speedway's setting with the Lab's corner radius (ft) and banking (°). The
+ * overall length stays Thrill Park Speedway's, so the straights shorten as the turns open up and the track keeps to its lot.
+ */
+export function labTrack(spec: { radiusFt: number; bankDeg: number; straightBankDeg: number }): TrackDef {
+  const base = TRACKS.parkoval, R = clamp(spec.radiusFt * 0.3048, 12, 92)
+  const L = Math.max(24, base.L + 2 * (base.R - R)), P = 2 * L + 2 * Math.PI * R
+  const span = (L / 2 + (Math.PI * R) / 2) / (base.L / 2 + (Math.PI * base.R) / 2)
+  return {
+    ...base, name: 'Setup Lab Test Track', miles: `${(P / 1609.344).toFixed(2)} mi`, rec: 'labtest', L, R,
+    turnBank: spec.bankDeg, straightBank: Math.min(spec.straightBankDeg, spec.bankDeg),
+    bankIn: Math.min(base.bankIn, L / 2), bankOut: Math.min(base.bankOut, (Math.PI * R) / 2 - 1),
+    grooveHigh: base.grooveHigh, grooveLow: base.grooveLow, minLap: Math.round(base.minLap * span * 0.6),
+  }
+}
+
+/** How far the park scenery moves (m, along z) so its lot keeps the same room behind the back stretch. */
+export const labParkShift = (def: TrackDef): number => TRACKS.parkoval.R - def.R

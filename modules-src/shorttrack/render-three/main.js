@@ -22,7 +22,9 @@ import { buildLiveryGeo, fitDecal, planAtlas, upsamplePlan, applyAtlas, wrapCont
 import { sanitizeScheme, schemeForPainters } from '../shared/PaintScheme';
 import { initPaintDesigner } from '../paint-designer.js';
 import { initTrackTest } from '../track-test.js';
-import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
+import { TRACKS, AI_LEVELS, trackIdOf, labTrack, labParkShift } from '../next/sim/config';
+import { labTrackSpec } from '../next/sim/railCar';
+import { initRailTest } from '../rail-test';
 import { createCar } from '../next/sim/car';
 import { TM } from '../truck-model.js';
 import { PROTOCOL_VERSION, ROOM_PREFIX, helloAccepted, VERSION_MISMATCH, PHYSICS_MISMATCH } from '../next/net/protocol';
@@ -43,7 +45,11 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 
 // ===================== TRACK =====================
 // The track list, tuning and track math live in sim/ (config.ts, track.ts); one simulation world per page.
-const TRACK_ID=trackIdOf(new URLSearchParams(location.search).get('track')),TRACK=TRACKS[TRACK_ID];
+// ?lab=1: the Straight Rail Setup Lab's track test (rail-test.ts) on a track shaped by the Lab (?rad= ft, ?bank= °) in Thrill Park Speedway's setting.
+const LAB=new URLSearchParams(location.search).get('lab')==='1';
+const TRACK_ID=LAB?'parkoval':trackIdOf(new URLSearchParams(location.search).get('track')),TRACK=LAB?labTrack(labTrackSpec(new URLSearchParams(location.search))):TRACKS[TRACK_ID];
+const PARK_DZ=LAB?labParkShift(TRACK):0;
+let LABT=null;
 // The next engine (Babylon on WebGPU, next/sim/dynamics.ts physics) is the default; ?engine=classic keeps the three.js
 // renderer and the classic vehicle model for one release, and &physics=classic keeps only the classic model.
 const Q0=new URLSearchParams(location.search),ENGINE=Q0.get('engine')==='classic'?'classic':'next',PHYSICS=ENGINE==='next'&&Q0.get('physics')!=='classic'?'next':'classic';
@@ -233,7 +239,7 @@ addMesh(ribbon(pt(HW-0.6,0.015),pt(HW-0.35,0.015),0,P,SEG,10,'across'),lineMat(0
 addMesh(ribbon(pt(-HW,0.025),pt(HW,0.025),S_LINE-0.7,S_LINE+0.7,2,1.4,'across'),new THREE.MeshStandardMaterial({map:TEX.checker,roughness:.6,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
 {const gm=new THREE.MeshStandardMaterial({map:TEX.grass,normalMap:TEX.grassNormal,normalScale:new THREE.Vector2(0.6,0.6),roughness:1});
  // Thrill Park Speedway: the park's own terrain covers its map, so the flat grass only fills the land around it
- const pieces=TRACK.theme==='park'?[[-1400,PARK_MAP.x0,-1400,1400],[PARK_MAP.x1,1400,-1400,1400],[PARK_MAP.x0,PARK_MAP.x1,-1400,PARK_MAP.z0],[PARK_MAP.x0,PARK_MAP.x1,PARK_MAP.z1,1400]]:[[-1400,1400,-1400,1400]];
+ const pz0=PARK_MAP.z0+PARK_DZ,pz1=PARK_MAP.z1+PARK_DZ,pieces=TRACK.theme==='park'?[[-1400,PARK_MAP.x0,-1400,1400],[PARK_MAP.x1,1400,-1400,1400],[PARK_MAP.x0,PARK_MAP.x1,-1400,pz0],[PARK_MAP.x0,PARK_MAP.x1,pz1,1400]]:[[-1400,1400,-1400,1400]];
  for(const [x0,x1,z0,z1] of pieces){const gp=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,z1-z0).rotateX(-Math.PI/2),gm);gp.position.set((x0+x1)/2,-0.06,(z0+z1)/2);gp.receiveShadow=true;scene.add(gp);}}
 const wallMat=new THREE.MeshStandardMaterial({map:TEX.wall,roughness:.7,side:DS});
 addMesh(ribbon(ptY(HW+0.15,()=>0),ptY(HW+0.15,wallTop),0,P,SEG,-24,'along'),wallMat);
@@ -1164,6 +1170,7 @@ async function showRecords(boxId,mode){
   box.querySelector('p').textContent=res.error||`Every ${MODE_NAMES[mode]} lap \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
+  if(LAB)return;
   if(ms<=0||WORLD.model!=='next'||TT.blocksLaps())return;
   if(!vehicleCountsForRecords(myLv.veh)){if(!REC.offWarned){REC.offWarned=true;toast(`Laps in the ${VEHICLES[myLv.veh]?.name||'this vehicle'} don’t count toward records`);}return;}
   const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
@@ -1210,7 +1217,7 @@ function beginRace(msg){
   setNight(!!settings.night);
   camH=player.h;camSnap=true;camMode='chase';
   mode='race';showScreen(null);$('hud').classList.remove('hidden');onPhase(race.ph);
-  if(attack)bigMsg('TIME ATTACK',`${TRACK.name} \u00b7 the clock starts when you cross the line`,4);else bigMsg('ROLLING START',`${TRACK.name} \u00b7 autopilot holds the field two wide \u00b7 you take over at the green`,4);
+  if(LAB)bigMsg('SETUP LAB TEST',`${TRACK.miles} \u00b7 ${Math.round(TRACK.R/0.3048)} ft turns \u00b7 ${TRACK.turnBank}\u00b0 banking`,4);else if(attack)bigMsg('TIME ATTACK',`${TRACK.name} \u00b7 the clock starts when you cross the line`,4);else bigMsg('ROLLING START',`${TRACK.name} \u00b7 autopilot holds the field two wide \u00b7 you take over at the green`,4);
 }
 // The AI field comes from AI_FIELD (named drivers, fixed numbers, paint schemes and sponsor logos); sim/race.ts
 // buildGrid draws the starters, their skill and the grid order exactly as before.
@@ -1413,6 +1420,7 @@ function applyViewShift(){
 }
 function updCamera(dt){
   const inRace=player&&(mode==='race'||mode==='paused'||mode==='results');
+  if(LABT&&inRace&&LABT.camera(dt))return;
   applyViewShift();
   if(!inRace){const c=menuCar;if(!c)return;const y=heightAt(c.tp.s,c.tp.lat),v=mode==='garage'?GVIEWS[gView]:null;
     if(v){const fx=Math.sin(c.h),fz=Math.cos(c.h),sx=Math.cos(c.h),sz=-Math.sin(c.h);
@@ -1451,6 +1459,7 @@ function carVisual(c,dt){
   c.aLong=lerp(c.aLong,(vf-c.prevVf)*idt,k);c.aLat=lerp(c.aLat,vf*wrapA(c.h-c.prevH)*idt,k);c.prevVf=vf;c.prevH=c.h;c.vf=vf;
   m.body.rotation.z=clamp(c.aLat*0.0035,-0.07,0.07);m.body.rotation.x=clamp(-c.aLong*0.004,-0.04,0.04);
   c.wheelRot+=vf*dt/0.34;for(const w of m.wheels){if(w.spinZ)w.w.rotation.z=-c.wheelRot;else w.w.rotation.x=c.wheelRot;if(w.front)w.pivot.rotation.y=c.steer*0.45;}
+  if(c.rail&&LABT)LABT.visual(c);
   const lk=damageLookK()/1.5,dv=c.dmg,d={f:Math.min(100,dv.f*lk),r:Math.min(100,dv.r*lk),l:Math.min(100,dv.l*lk),rt:Math.min(100,dv.rt*lk)};
   m.bumperF.rotation.x=d.f>55?0.12+(d.f-55)*0.006:0;m.bumperF.position.y=d.f>55?0.32-(d.f-55)*0.003:0.32;m.bumperF.visible=d.f<92;
   m.bumperR.rotation.x=d.r>55?-0.12-(d.r-55)*0.006:0;m.bumperR.position.y=d.r>55?0.38-(d.r-55)*0.003:0.38;m.bumperR.visible=d.r<92;
@@ -1682,7 +1691,7 @@ function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)
 fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
 if(REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
-const TT=initTrackTest({cfg:CFG,trackId:TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack'),resetCar:()=>{if(!player||mode!=='race')return false;simResetCar(WORLD,player);return true;},restart:()=>startTestRun()});
+const TT=initTrackTest({cfg:CFG,trackId:LAB?'labtest':TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack'),resetCar:()=>{if(!player||mode!=='race')return false;simResetCar(WORLD,player);return true;},restart:()=>startTestRun()});
 
 // ===================== INPUT =====================
 const keys={};
@@ -1693,8 +1702,9 @@ addEventListener('keydown',e=>{
   if(mode==='race'||mode==='paused'||mode==='results'){
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
     if(e.code==='KeyC'&&!e.repeat)camMode=camMode==='chase'?'far':camMode==='far'?'hood':'chase';
-    if(e.code==='KeyR'&&!e.repeat&&player&&(player.speed<6||TT.isTesting())&&mode!=='paused')simResetCar(WORLD,player);
-    if(e.code==='Escape')togglePause();
+    if(e.code==='KeyR'&&!e.repeat&&LABT)LABT.reset();
+    else if(e.code==='KeyR'&&!e.repeat&&player&&(player.speed<6||TT.isTesting())&&mode!=='paused')simResetCar(WORLD,player);
+    if(e.code==='Escape'&&!LAB)togglePause();
   }
   if(e.code==='KeyM'&&!e.repeat)toggleMute();
 });
@@ -1741,11 +1751,12 @@ const CLASSIC_STATUS={track:TRACK_ID,frames:0,physics:WORLD.model,get debris(){r
 const STEP=1/120;let acc=0,lastT=performance.now(),hudT=0,crowdHype=0.6,pylonT=0;
 function simulate(dt){
   // rolling start: the AI drives every car (the player's too) in formation until the green flag drops
-  simSimulate(WORLD,dt,()=>AUTOPILOT?null:mode==='paused'?{thr:0,brk:0,steer:0}:playerCtl());
+  simSimulate(WORLD,dt,c=>LABT?LABT.controls(c):AUTOPILOT?null:mode==='paused'?{thr:0,brk:0,steer:0}:playerCtl());
+  if(LABT)LABT.afterStep();
 }
 function frame(now){
   requestAnimationFrame(frame);CLASSIC_STATUS.frames++;const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(parkScenery)parkScenery.update(dt);if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
-  const simOn=!SIM.frozen&&(mode==='race'||mode==='results'||(mode==='paused'&&NET.online));
+  const simOn=!SIM.frozen&&(mode==='race'||mode==='results'||(mode==='paused'&&NET.online))&&!(LABT&&LABT.replaying());
   if(simOn){
     acc+=dt;let n=0;while(acc>=STEP&&n<24){simulate(STEP);acc-=STEP;n++;}if(n>=24)acc=0;drainSim();
     cars.forEach(c=>{if(!c.local)interp(c,now);});
@@ -1754,6 +1765,7 @@ function frame(now){
     updateBoosts(WORLD,dt);
     if(race.ph!==lastPhase){lastPhase=race.ph;onPhase(race.ph);}
   }
+  if(LABT){if(LABT.replaying())LABT.replayFrame(dt);LABT.hud(dt);}
   cars.forEach(c=>carVisual(c,dt));if(menuCar&&menuCar.m.root.visible)carVisual(menuCar,dt);
   updSparks(dt);updSmoke(dt);updCamera(dt);audioUpdate();netTick(dt);
   if(mode==='race'||mode==='paused'){spotter(dt);hudT+=dt;if(hudT>0.1){hudT=0;hudUpdate();}speedHud();}
@@ -1761,9 +1773,12 @@ function frame(now){
   const focus=player&&simOn?player:menuCar;
   if(focus){sun.target.position.set(focus.x,0,focus.z);sun.position.copy(sun.target.position).add(SUN_OFF);sun.target.updateMatrixWorld();}
   crowdU.uTime.value=now/1000;crowdU.uLift.value=lerp(crowdU.uLift.value,crowdHype,1-Math.exp(-dt*2));crowdHype=Math.max(0.6,crowdHype-dt*0.25);
-  const mirrorOn=!!player&&(mode==='race'||mode==='paused');
-  if(GPU){GPU.frame({quality,exposure:renderer.toneMappingExposure,bloom:{...bloom,enabled:bloom.enabled&&useComposer},shadows:renderer.shadowMap.enabled,shadowSize:sun.shadow.mapSize.x,night:!!settings.night,mirror:mirrorOn?MIRROR:null});return;}
+  const mirrorOn=!!player&&(mode==='race'||mode==='paused')&&!LAB,labViews=LABT?LABT.views():null;
+  if(GPU){GPU.frame({quality,exposure:renderer.toneMappingExposure,bloom:{...bloom,enabled:bloom.enabled&&useComposer},shadows:renderer.shadowMap.enabled,shadowSize:sun.shadow.mapSize.x,night:!!settings.night,mirror:mirrorOn?MIRROR:null,views:labViews||undefined});return;}
   renderer.shadowMap.needsUpdate=true;renderer.setRenderTarget(null);if(useComposer)composer.render(dt);else renderer.render(scene,camera);
+  if(labViews){const H=wrap.clientHeight;renderer.autoClear=false;renderer.setScissorTest(true);
+    for(const v of labViews){const y=H-v.y-v.h;renderer.setViewport(v.x,y,v.w,v.h);renderer.setScissor(v.x,y,v.w,v.h);renderer.clearDepth();renderer.render(scene,v.camera);}
+    renderer.setScissorTest(false);renderer.setViewport(0,0,wrap.clientWidth,H);renderer.autoClear=true;}
   if(player&&(mode==='race'||mode==='paused')){
     renderer.setRenderTarget(mirrorRT);renderer.render(scene,mirrorCam);renderer.setRenderTarget(null);
     renderer.autoClear=false;renderer.clearDepth();renderer.render(ovScene,ovCam);renderer.autoClear=true;
@@ -1810,8 +1825,17 @@ addEventListener('message',e=>{
 
 // ===================== INIT =====================
 {const room=new URLSearchParams(location.search).get('room');if(room){$('joinCode').value=room.toUpperCase().replace(/[^A-Z]/g,'').slice(0,5);setTimeout(doJoin,300);}}
-if(PARK)createParkSpeedway(quality==='low'?320:520).then(p=>{parkScenery=p;scene.add(p.root);p.setNight(settings.night);}).catch(e=>console.warn('Thrill Park scenery unavailable',e));
-rebuildMenuCar();applyQuality();setNight(settings.night);showScreen('scrMain');requestAnimationFrame(frame);
+if(PARK)createParkSpeedway(quality==='low'?320:520).then(p=>{parkScenery=p;p.root.position.z=PARK_DZ;scene.add(p.root);p.setNight(settings.night);}).catch(e=>console.warn('Thrill Park scenery unavailable',e));
+rebuildMenuCar();applyQuality();setNight(settings.night);showScreen(LAB?null:'scrMain');requestAnimationFrame(frame);
+if(LAB){
+  const labLv=()=>({...myLv,veh:'car'});
+  const startLabRun=()=>{resetNet();NET.host=true;NET.online=false;NET.myId='host';NET.players.set('host',{id:'host',lv:labLv()});
+    beginRace({t:'start',set:{...settings,attack:true,ai:0},grid:[{id:'host',lv:labLv(),ai:false}]});
+    if(player&&!player.m.car)carAssetReady.then(ok=>{if(ok&&player&&!player.m.car)swapCarModel(player);});return player;};
+  LABT=initRailTest({world:WORLD,wrap,camera,carScale:CFG.carScale,start:startLabRun,manual:()=>mode==='paused'?{thr:0,brk:0,steer:0}:playerCtl(),toast});
+  // test hook (scripts and the module gate): run the simulation ahead without drawing
+  window.__stLab={state:()=>LABT.debug(),replay:n=>LABT.replayLap(n),ff(sec){if(!player||LABT.replaying())return;for(let i=0;i<sec*120;i++)simulate(STEP);WORLD.events.length=0;}};
+}
 carAssetReady.then(ok=>{if(ok&&myLv.veh==='car'&&!player)rebuildMenuCar();});
 NUM_FONTS.forEach(f=>loadNumFont(f.id).then(refreshNumberFonts));
 {const q=new URLSearchParams(location.search),fl=q.get('flow');if(FLOW_STEPS[fl]&&!q.get('room')){WIZ.flow=fl;WIZ.track=TRACK_ID;q.delete('flow');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:''));showSetup();}}

@@ -5,6 +5,7 @@ import { clamp, lerp, mod } from './math'
 import type { World } from './world'
 import { AI_TOUCH, aiPace, sgnDs } from './ai'
 import { stepCarNext } from './dynamics'
+import { stepRailCar } from './railDynamics'
 
 /** True while either axle has a tire on the flat concrete below the banking. */
 export function concreteContact(w: World, c: SimCar): boolean {
@@ -16,6 +17,11 @@ export function concreteContact(w: World, c: SimCar): boolean {
 }
 
 export function stepCar(w: World, c: SimCar, dt: number, ctl: Controls, cap: number | null): void {
+  if (c.rail) {
+    stepRailCar(w, c, dt, ctl)
+    finishStep(w, c)
+    return
+  }
   if (w.model === 'next') {
     stepCarNext(w, c, dt, ctl, cap)
     finishStep(w, c)

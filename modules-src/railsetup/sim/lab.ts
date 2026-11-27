@@ -10,7 +10,7 @@ export const SIDES: Record<Side, number> = { L: 1, R: -1 }
 
 const MRFIX = 0.65, LBAR = 38, G = 11.5e6
 const RBAR_L = 36, RBAR_ARM = 10, TIRE_RR = 13.3
-const PER = { pts: [[18.52, 13.5], [18.52, -15.5], [-58.63, 16.5], [-58.63, -15.5]], z: 3.68 }
+export const PER = { pts: [[18.52, 13.5], [18.52, -15.5], [-58.63, 16.5], [-58.63, -15.5]], z: 3.68 }
 const TIRE_IDS = ['tclf', 'tcrf', 'tclr', 'tcrr']
 const WHEEL_IDS = ['wwlf', 'wwrf', 'wwlr', 'wwrr', 'bslf', 'bsrf', 'bslr', 'bsrr', 'hulr', 'hurr']
 
