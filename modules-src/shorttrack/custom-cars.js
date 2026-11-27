@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { slickMaterial } from './slick-tire.js';
 import { STOCK_CAR, carIdOf, carVehicleKey, carGarage, paintMode, carSize, carFootprint, carCountsForRecords } from './shared/CustomCars';
 import { STOCK_BOUNDS, bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels, toLiveryFrame } from './shared/carRepaint';
 import { clearGroups, clearMask, clearPixels, cutClear } from './shared/carClear';
@@ -260,7 +261,8 @@ function plainAtlas(a, livery) {
 
 // Wheels from the stock car (scaled to the custom radius and width), or plain tyres if it hasn't loaded.
 function addWheels(g, a, carAsset) {
-  const tire = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.92 });
+  const tire = slickMaterial(THREE);
+  const plain = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 1, metalness: 0 });
   const rim = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.35, metalness: 0.8 });
   const mats = [tire, tire, tire, tire, rim, tire], wheels = [];
   const stock = carAsset ? carAsset.filter(p => p.center) : [];
@@ -276,7 +278,7 @@ function addWheels(g, a, carAsset) {
         w.scale.set(ax.radius / ref.radius, ax.radius / ref.radius, ax.width / ref.width);
       } else {
         w = new THREE.Group();
-        const t = new THREE.Mesh(new THREE.CylinderGeometry(ax.radius, ax.radius, ax.width, 28).rotateX(Math.PI / 2), tire);
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(ax.radius, ax.radius, ax.width, 28).rotateX(Math.PI / 2), plain);
         const r = new THREE.Mesh(new THREE.CylinderGeometry(ax.radius * 0.62, ax.radius * 0.62, ax.width * 1.02, 20).rotateX(Math.PI / 2), rim);
         w.add(t, r);
       }

@@ -125,7 +125,7 @@ test('low ride heights bottom the car on the banking; stock heights clear it', (
 })
 
 test('bump springs only work past their gap, and then hold the corner up', () => {
-  const soft = { lf: 300, rf: 300 }
+  const soft = { lf: 300, rf: 300, blf: 0, brf: 0 }
   const free = hold(car(soft), { thr: 0, brk: 1, steer: 0 }, 0.5, 32).rail!
   const stops = hold(car({ ...soft, blf: 4000, brf: 4000, glf: 0.25, grf: 0.25 }), { thr: 0, brk: 1, steer: 0 }, 0.5, 32).rail!
   assert.ok(stops.bump[0] && stops.bump[1], 'the front bump springs are touching under braking')

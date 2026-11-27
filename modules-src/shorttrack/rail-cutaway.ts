@@ -1,93 +1,172 @@
 import * as THREE from 'three'
+import type { Vec } from '../railsetup/sim/kin'
+import { CAD, END_LINKS } from '../railsetup/sim/hardpoints'
+import { affineMatrix, bakeChassis, loadChassisModel, nk, rodMatrix } from '../railsetup/ui/parts'
 import type { RailState } from './next/sim/railDynamics'
 
 /**
- * The 3D Show chassis view of the Setup Lab's track test: the body turns see-through and the car's chassis and
- * suspension are drawn inside it (frame rails and cage, front A-arms, coilover springs and shocks, front sway bar,
- * rear axle housing with its trailing links and track bar). The frame parts ride on the sprung body, so they pitch,
- * roll, squat and dive with it; the arms, axle and coilovers follow each wheel's live travel, so the springs
- * visibly compress and rebound (blue = extended, red = compressed, yellow bump rubber when the bump spring is working,
- * red flash at end of travel) and the sway bar warms up as it twists. Columns at each tire show its live load and
- * an arrow from the centre of gravity shows where the weight is moving.
+ * The 3D Show chassis view of the Setup Lab's track test: the car body (paint, glass, decals, numbers) is hidden and
+ * the Lab's own chassis model (`/models/railsetup/chassis.glb`, the 143 CAD parts the Lab's setup page poses) is
+ * fitted to the car's wheelbase and track and drawn in its place on the car's own wheels and tires. The frame and
+ * every sprung part ride on the sprung body, so they pitch, roll, squat and dive with it (and with Motion ×3); the
+ * front lower and upper A-arms swing about their inner pivots, the knuckles rise and steer with each wheel's live
+ * travel and steer, the coilovers stretch between their frame mounts and the arms or axle (coloured blue extended
+ * to red compressed, yellow on the bump spring, red at end of travel), and the rear axle housing heaves and rolls
+ * with the rear wheels while its trailing links, third link and track bar follow it. Columns at each tire show its
+ * live load and an arrow from the centre of gravity shows where the weight is moving.
  */
 
-type Link = { mesh: THREE.Mesh; a: THREE.Vector3; b: THREE.Vector3 }
-type Corner = {
-  front: boolean
-  sgn: number
-  hub0: THREE.Vector3
-  hub: THREE.Vector3
-  coil: THREE.Mesh
-  coilMat: THREE.MeshStandardMaterial
-  shockBody: THREE.Mesh
-  shockRod: THREE.Mesh
-  bumpRubber: THREE.Mesh
-  bumpMat: THREE.MeshStandardMaterial
-  top: THREE.Vector3
-  arms: Link[]
-  column: THREE.Mesh
-  columnMat: THREE.MeshStandardMaterial
+type Side = 'L' | 'R'
+type Shock = { parts: THREE.Mesh[]; top: THREE.Mesh[]; bot: THREE.Mesh[]; U?: Vec; L?: Vec; mat: THREE.MeshStandardMaterial }
+type FrontParts = { lower: THREE.Mesh[]; upper: THREE.Mesh[]; knuckle: THREE.Mesh[]; endlink: THREE.Mesh[] }
+
+export type ChassisParts = {
+  fit: THREE.Group
+  wheel: Vec[]
+  front: Record<Side, FrontParts>
+  links: Record<string, THREE.Mesh[]>
+  uns: THREE.Mesh[]
+  shocks: Record<string, Shock>
+  endLinks: Record<Side, { up: Vec; lo: Vec }>
 }
+
+type Corner = { hub0: THREE.Vector3; hub: THREE.Vector3; column: THREE.Mesh; columnMat: THREE.MeshStandardMaterial }
 export type CutawayRig = {
   frame: THREE.Group
   ground: THREE.Group
   corners: Corner[]
-  axle: Link
-  pumpkin: THREE.Mesh
-  trackBar: Link
-  barTube: THREE.Mesh
-  barMat: THREE.MeshStandardMaterial
-  endLinks: Link[]
   arrow: THREE.ArrowHelper
   cg: THREE.Vector3
-  ghosts: { mesh: THREE.Mesh; mat: THREE.Material | THREE.Material[]; shadow: boolean }[]
+  scale: number
+  pivots: Set<THREE.Object3D>
 }
 
 export type CutawayModel = { body: THREE.Group; root: THREE.Group; tmg?: THREE.Group; wheels: { pivot: THREE.Object3D; front: boolean }[] }
 
-const UP = new THREE.Vector3(0, 1, 0)
-const _d = new THREE.Vector3(), _c = new THREE.Color()
-const matte = (color: number, rough = 0.85, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal })
-const steel = () => matte(0x9aa3ad, 0.62, 0.35)
-
+const SHOCK_CORNER: Record<string, number> = { FL: 0, FR: 1, RL: 2, RR: 3 }
+const _d = new THREE.Vector3(), _c = new THREE.Color(), _v = new THREE.Vector3(), _a = new THREE.Vector3(), _p = new THREE.Vector3()
+const _M = new THREE.Matrix4(), _K = new THREE.Matrix4(), _T = new THREE.Matrix4(), _R = new THREE.Matrix4()
+const matte = (color: number, rough = 0.85, metal = 0.1) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal })
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 10)
-const coilGeo = (() => {
-  const turns = 7, pts: THREE.Vector3[] = []
-  for (let i = 0; i <= turns * 24; i++) {
-    const a = (i / 24) * Math.PI * 2
-    pts.push(new THREE.Vector3(Math.cos(a), i / (turns * 24), Math.sin(a)))
+
+const vec = (p: THREE.Vector3): Vec => [p.x, p.y, p.z]
+const apply = (q: Vec, M: THREE.Matrix4): Vec => vec(_v.set(q[0], q[1], q[2]).applyMatrix4(M))
+
+/** Sorts the baked CAD parts into the groups the track test poses; the rims are hidden so the car's own tires carry it. */
+export function chassisParts(root: THREE.Object3D): ChassisParts {
+  const fit = new THREE.Group()
+  fit.matrixAutoUpdate = false
+  const mats = { sprung: matte(0x7d8b99), link: matte(0xe8590c, 0.8), uns: matte(0x343a40) }
+  const front: Record<Side, FrontParts> = { L: { lower: [], upper: [], knuckle: [], endlink: [] }, R: { lower: [], upper: [], knuckle: [], endlink: [] } }
+  const links: Record<string, THREE.Mesh[]> = { LL: [], RL: [], UL: [], TB: [] }
+  const shocks: Record<string, Shock> = {}
+  for (const k of Object.keys(SHOCK_CORNER)) shocks[k] = { parts: [], top: [], bot: [], mat: matte(0x4fb3ff, 0.8) }
+  const endLinks: Record<Side, { up: Vec; lo: Vec }> = { L: { ...END_LINKS.L }, R: { ...END_LINKS.R } }
+  const wheel: Vec[] = [CAD.L.WC, CAD.R.WC, CAD.rear.WL, CAD.rear.WR]
+  const uns: THREE.Mesh[] = []
+  for (const { mesh: o, name, center: c, cls, side } of bakeChassis(root)) {
+    const n = nk(name)
+    o.castShadow = true
+    fit.add(o)
+    if (/wheels/.test(n)) {
+      const ci = cls === 'knuckle' ? (side === 'L' ? 0 : 1) : c.y > 0 ? 2 : 3
+      wheel[ci] = vec(c)
+      o.visible = false
+      continue
+    }
+    if (cls === 'sprung' || cls === 'bar' || cls === 'barArm') o.material = mats.sprung
+    else if (cls === 'shock') {
+      const [k, e] = side as [string, string], S = shocks[k]
+      o.material = S.mat
+      S.parts.push(o)
+      if (e === 'U' || e === 'L') { S[e] = vec(c); S[e === 'U' ? 'top' : 'bot'].push(o) } else S[e as 'top' | 'bot'].push(o)
+    } else if (cls === 'uns') {
+      o.material = mats.uns
+      if (side === 'JB') o.visible = false
+      else uns.push(o)
+    } else if (cls === 'JB') o.visible = false
+    else if (links[cls]) { o.material = mats.link; links[cls].push(o) } else if (cls === 'endlink') {
+      o.material = mats.link
+      front[side as Side].endlink.push(o)
+      if (/^balljoint3/.test(n)) endLinks[side as Side][c.z > 9 ? 'up' : 'lo'] = vec(c)
+    } else if (cls === 'lower' || cls === 'upper' || cls === 'knuckle') {
+      o.material = cls === 'knuckle' ? mats.uns : mats.link
+      front[side as Side][cls].push(o)
+    } else o.material = mats.sprung
   }
-  const curve = new THREE.CatmullRomCurve3(pts)
-  return new THREE.TubeGeometry(curve, turns * 24, 0.11, 6, false)
-})()
-
-function link(parent: THREE.Object3D, r: number, mat: THREE.Material, a = new THREE.Vector3(), b = new THREE.Vector3()): Link {
-  const mesh = new THREE.Mesh(cylGeo, mat)
-  mesh.scale.set(r, 1, r)
-  parent.add(mesh)
-  const l = { mesh, a, b }
-  place(l)
-  return l
+  return { fit, wheel, front, links, uns, shocks, endLinks }
 }
 
-function place(l: Link) {
-  _d.subVectors(l.b, l.a)
-  const len = Math.max(1e-4, _d.length())
-  l.mesh.position.addVectors(l.a, l.b).multiplyScalar(0.5)
-  l.mesh.quaternion.setFromUnitVectors(UP, _d.divideScalar(len))
-  l.mesh.scale.y = len
+/** Angle about the hinge F→R that lifts point P by dz (in the hinge's own frame), the solution nearest zero. */
+export function hingeAngle(F: Vec, R: Vec, P: Vec, dz: number): number {
+  _a.set(R[0] - F[0], R[1] - F[1], R[2] - F[2]).normalize()
+  _d.set(P[0] - F[0], P[1] - F[1], P[2] - F[2])
+  _p.copy(_a).multiplyScalar(_d.dot(_a))
+  _d.sub(_p)
+  const rho = _d.length()
+  if (rho < 1e-6) return 0
+  const uz = _d.z, wz = _v.crossVectors(_a, _d).z
+  const A = uz, B = wz, C = uz + dz, Rr = Math.hypot(A, B)
+  if (Rr < 1e-9) return 0
+  const phi = Math.atan2(B, A), ac = Math.acos(THREE.MathUtils.clamp(C / Rr, -1, 1))
+  const wrap = (t: number) => Math.atan2(Math.sin(t), Math.cos(t))
+  const t1 = wrap(phi + ac), t2 = wrap(phi - ac)
+  return Math.abs(t1) < Math.abs(t2) ? t1 : t2
 }
 
-function stretch(mesh: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3, r: number) {
-  _d.subVectors(b, a)
-  const len = Math.max(1e-4, _d.length())
-  mesh.position.copy(a)
-  mesh.quaternion.setFromUnitVectors(UP, _d.divideScalar(len))
-  mesh.scale.set(r, len, r)
+function hinge(F: Vec, R: Vec, ang: number, out: THREE.Matrix4) {
+  _a.set(R[0] - F[0], R[1] - F[1], R[2] - F[2]).normalize()
+  return out.makeTranslation(F[0], F[1], F[2]).multiply(_R.makeRotationAxis(_a, ang)).multiply(_T.makeTranslation(-F[0], -F[1], -F[2]))
 }
 
-function isWheelPart(o: THREE.Object3D, pivots: Set<THREE.Object3D>) {
-  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (pivots.has(p)) return true
+function poseShock(S: Shock, U1: Vec, L1: Vec) {
+  if (!S.U || !S.L) return
+  rodMatrix(S.U, S.L, U1, L1, _M); S.top.forEach(o => o.matrix.copy(_M))
+  rodMatrix(S.L, S.U, L1, U1, _M); S.bot.forEach(o => o.matrix.copy(_M))
+}
+
+/**
+ * Poses the Lab's chassis from each corner's vertical wheel travel `dz` (inches, + = bump) and the front road-wheel
+ * steer (rad): a rigid frame, front arms swung about their inner pivots, knuckles riding the ball joints, the rear
+ * housing heaved and rolled, links and coilovers stretched between their mounts.
+ */
+export function poseChassis(P: ChassisParts, dz: number[], steer: [number, number] = [0, 0]) {
+  ;(['L', 'R'] as Side[]).forEach((k, i) => {
+    const h = CAD[k], F = P.front[k]
+    const LM = hinge(h.LIF, h.LIR, hingeAngle(h.LIF, h.LIR, h.LBJ, dz[i]), new THREE.Matrix4())
+    const UM = hinge(h.UIF, h.UIR, hingeAngle(h.UIF, h.UIR, h.UBJ, dz[i]), new THREE.Matrix4())
+    F.lower.forEach(o => o.matrix.copy(LM))
+    F.upper.forEach(o => o.matrix.copy(UM))
+    const lbj = apply(h.LBJ, LM), ubj = apply(h.UBJ, UM), tro: Vec = [h.TRO[0], h.TRO[1], h.TRO[2] + dz[i]]
+    affineMatrix(h.LBJ, h.UBJ, h.TRO, lbj, ubj, tro, _K)
+    hinge(lbj, ubj, steer[i], _M)
+    _K.premultiply(_M)
+    F.knuckle.forEach(o => o.matrix.copy(_K))
+    const S = P.shocks['F' + k]
+    if (S.U && S.L) poseShock(S, S.U, apply(S.L, LM))
+    const E = P.endLinks[k]
+    rodMatrix(E.lo, E.up, apply(E.lo, LM), E.up, _M)
+    F.endlink.forEach(o => o.matrix.copy(_M))
+  })
+  const WL = CAD.rear.WL, WR = CAD.rear.WR, cy = (WL[1] + WR[1]) / 2, cz = (WL[2] + WR[2]) / 2
+  const roll = Math.atan2(dz[2] - dz[3], WL[1] - WR[1]), heave = (dz[2] + dz[3]) / 2
+  const HM = new THREE.Matrix4().makeTranslation(0, cy, cz + heave).multiply(_R.makeRotationX(roll)).multiply(_T.makeTranslation(0, -cy, -cz))
+  P.uns.forEach(o => o.matrix.copy(HM))
+  const rear = CAD.rear as unknown as Record<string, Vec[]>
+  for (const k of Object.keys(P.links)) {
+    const c = rear[k]
+    rodMatrix(c[1], c[0], c[1], apply(c[0], HM), _M)
+    P.links[k].forEach(o => o.matrix.copy(_M))
+  }
+  for (const k of ['RL', 'RR']) {
+    const S = P.shocks[k]
+    if (S.U && S.L) poseShock(S, S.U, apply(S.L, HM))
+  }
+  return HM
+}
+
+function isUnder(o: THREE.Object3D, set: Set<THREE.Object3D>) {
+  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (set.has(p)) return true
   return false
 }
 
@@ -97,6 +176,19 @@ function hubs(m: CutawayModel, sc: number, out: THREE.Vector3[]) {
   if (!g) return
   g.updateMatrix()
   m.wheels.forEach((w, i) => out[i].copy(w.pivot.position).applyMatrix4(g.matrix).multiplyScalar(sc))
+}
+
+/** Maps the Lab's frame (inches, x forward, y left, z up) onto the body's (m, x left, y up, z forward) so its four wheel centres meet the car's hubs. */
+export function fitMatrix(wheel: Vec[], hub: THREE.Vector3[], out: THREE.Matrix4) {
+  const lw = (wheel[0][0] + wheel[1][0]) / 2 - (wheel[2][0] + wheel[3][0]) / 2
+  const cw = (hub[0].z + hub[1].z) / 2 - (hub[2].z + hub[3].z) / 2
+  const lt = (wheel[0][1] - wheel[1][1] + wheel[2][1] - wheel[3][1]) / 2
+  const ct = (hub[0].x - hub[1].x + hub[2].x - hub[3].x) / 2
+  const s = cw / lw, sx = Math.abs(lt) > 1e-6 ? ct / lt : s
+  const lc = [0, 1, 2].map(j => wheel.reduce((a, w) => a + w[j], 0) / 4)
+  const hc = hub.reduce((a, h) => a.add(h), new THREE.Vector3()).multiplyScalar(1 / 4)
+  out.set(0, sx, 0, hc.x - sx * lc[1], 0, 0, s, hc.y - s * lc[2], s, 0, 0, hc.z - s * lc[0], 0, 0, 0, 1)
+  return s
 }
 
 function build(m: CutawayModel, st: RailState, sc: number, corner: number[]): CutawayRig {
@@ -110,125 +202,65 @@ function build(m: CutawayModel, st: RailState, sc: number, corner: number[]): Cu
   {
     const raw = m.wheels.map(() => new THREE.Vector3())
     hubs(m, sc, raw)
-    raw.forEach((p, i) => h0[corner[i]].copy(p))
+    raw.forEach((p, i) => h0[corner[i]].copy(p).setY(p.y - st.travel[corner[i]]))
   }
-  const fz = (h0[0].z + h0[1].z) / 2, rz = (h0[2].z + h0[3].z) / 2, hy = (h0[0].y + h0[1].y + h0[2].y + h0[3].y) / 4
-  const rail = matte(0x5c6b7d, 0.7, 0.3), cage = matte(0x7f8b99, 0.66, 0.3), arm = steel()
-  const railY = Math.max(0.16, hy - 0.1), halfW = Math.min(0.4, Math.abs(h0[0].x - h0[1].x) / 2 - 0.36)
-  const frontZ = fz + 0.85, rearZ = rz - 0.75
-  for (const s of [1, -1]) {
-    link(frame, 0.035, rail, new THREE.Vector3(s * halfW, railY, rearZ), new THREE.Vector3(s * halfW, railY, frontZ - 0.25))
-    link(frame, 0.03, rail, new THREE.Vector3(s * halfW, railY, frontZ - 0.25), new THREE.Vector3(s * (halfW - 0.08), railY - 0.02, frontZ))
-  }
-  for (const z of [frontZ, fz - 0.15, (fz + rz) / 2, rz + 0.25, rearZ]) link(frame, 0.028, rail, new THREE.Vector3(halfW, railY, z), new THREE.Vector3(-halfW, railY, z))
-  const hoopZ = (fz + rz) / 2 - 0.15, roofY = railY + 0.95
-  const hoop = [new THREE.Vector3(halfW, railY, hoopZ), new THREE.Vector3(halfW - 0.05, roofY, hoopZ), new THREE.Vector3(-halfW + 0.05, roofY, hoopZ), new THREE.Vector3(-halfW, railY, hoopZ)]
-  for (let i = 0; i < 3; i++) link(frame, 0.022, cage, hoop[i].clone(), hoop[i + 1].clone())
-  for (const s of [1, -1]) {
-    link(frame, 0.02, cage, new THREE.Vector3(s * (halfW - 0.05), roofY, hoopZ), new THREE.Vector3(s * halfW, railY + 0.25, fz - 0.1))
-    link(frame, 0.02, cage, new THREE.Vector3(s * (halfW - 0.05), roofY, hoopZ), new THREE.Vector3(s * halfW, railY + 0.15, rz + 0.3))
-  }
-
-  const corners: Corner[] = h0.map((hub0, ci) => {
-    const front = ci < 2, sgn = Math.sign(hub0.x) || 1
-    const coilMat = matte(0x4fb3ff, 0.6, 0.2), bumpMat = matte(0x3a3f47)
-    const coil = new THREE.Mesh(coilGeo, coilMat), shockBody = new THREE.Mesh(cylGeo, matte(0xd8dde4, 0.6, 0.35)), shockRod = new THREE.Mesh(cylGeo, steel())
-    const bumpRubber = new THREE.Mesh(cylGeo, bumpMat)
-    frame.add(coil, shockBody, shockRod, bumpRubber)
-    const arms: Link[] = []
-    if (front) {
-      const inX = sgn * (halfW - 0.02)
-      for (const dz of [0.17, -0.17]) arms.push(link(frame, 0.017, arm, new THREE.Vector3(inX, hub0.y - 0.1, hub0.z + dz)))
-      for (const dz of [0.12, -0.12]) arms.push(link(frame, 0.015, arm, new THREE.Vector3(inX - sgn * 0.04, hub0.y + 0.17, hub0.z + dz)))
-    } else {
-      for (const dy of [-0.1, 0.1]) arms.push(link(frame, 0.018, arm, new THREE.Vector3(sgn * halfW, hub0.y + dy, hub0.z + 0.6)))
-    }
+  const corners: Corner[] = h0.map((hub0) => {
     const columnMat = new THREE.MeshStandardMaterial({ color: 0x5ad17a, roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false })
     const column = new THREE.Mesh(cylGeo, columnMat)
     ground.add(column)
-    const lower0 = mount(front, sgn, hub0, hub0, halfW)
-    const top = lower0.clone().add(new THREE.Vector3(front ? -sgn * 0.06 : 0, 0.34, 0))
-    return { front, sgn, hub0, hub: hub0.clone(), coil, coilMat, shockBody, shockRod, bumpRubber, bumpMat, top, arms, column, columnMat }
+    return { hub0, hub: hub0.clone(), column, columnMat }
   })
-
-  const axle = link(frame, 0.045, matte(0x6f7782, 0.6, 0.3))
-  const pumpkin = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 10), matte(0x6f7782, 0.6, 0.3))
-  frame.add(pumpkin)
-  const trackBar = link(frame, 0.02, matte(0xffcc00, 0.65, 0.2), new THREE.Vector3(-halfW, railY + 0.14, rz - 0.05))
-  const barMat = matte(0x9aa3ad, 0.6, 0.35)
-  const barZ = fz + 0.26, barY = railY - 0.02
-  const barTube = new THREE.Mesh(cylGeo, barMat)
-  frame.add(barTube)
-  barTube.position.set(0, barY, barZ)
-  barTube.quaternion.setFromUnitVectors(UP, new THREE.Vector3(1, 0, 0))
-  barTube.scale.set(0.018, halfW * 2, 0.018)
-  const endLinks: Link[] = []
-  for (const s of [1, -1]) {
-    const tip = new THREE.Vector3(s * (halfW + 0.02), barY, fz + 0.05)
-    link(frame, 0.016, barMat, new THREE.Vector3(s * halfW, barY, barZ), tip)
-    endLinks.push(link(frame, 0.01, arm, tip.clone()))
-  }
   const cg = new THREE.Vector3(h0[0].x - v.tires[0][1], v.cgH, h0[0].z - v.tires[0][0])
   const arrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), cg.clone(), 0.5, 0xffcc00, 0.16, 0.1)
   ground.add(arrow)
-  const cgBall = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), matte(0xffcc00))
+  const cgBall = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), matte(0xffcc00, 0.85, 0))
   cgBall.position.copy(cg)
   frame.add(cgBall)
-
-  const pivots = new Set(m.wheels.map((w) => w.pivot))
-  const ghosts: CutawayRig['ghosts'] = []
-  m.tmg?.traverse((o) => {
-    const mesh = o as THREE.Mesh
-    if (!mesh.isMesh || isWheelPart(mesh, pivots)) return
-    ghosts.push({ mesh, mat: mesh.material, shadow: mesh.castShadow })
-  })
-  return { frame, ground, corners, axle, pumpkin, trackBar, barTube, barMat, endLinks, arrow, cg, ghosts }
+  return { frame, ground, corners, arrow, cg, scale: 1, pivots: new Set(m.wheels.map((w) => w.pivot)) }
 }
 
-/** Where the coilover sits on the lower arm (front) or the axle housing (rear), following the hub. */
-function mount(front: boolean, sgn: number, hub: THREE.Vector3, hub0: THREE.Vector3, halfW: number) {
-  if (front) {
-    const bj = new THREE.Vector3(hub.x - sgn * 0.06, hub.y - 0.11, hub.z), inner = new THREE.Vector3(sgn * (halfW - 0.02), hub0.y - 0.1, hub.z)
-    return bj.lerp(inner, 0.35)
-  }
-  return new THREE.Vector3(hub.x * 0.8, hub.y + 0.06, hub.z - 0.02)
-}
-
-const ghostCache = new WeakMap<THREE.Material, THREE.Material>()
-function ghostOf(mat: THREE.Material): THREE.Material {
-  let g = ghostCache.get(mat)
-  if (!g) {
-    g = mat.clone()
-    g.transparent = true
-    g.opacity = Math.min(g.opacity, 0.13)
-    g.depthWrite = false
-    g.side = THREE.DoubleSide
-    ghostCache.set(mat, g)
-  }
-  return g
-}
-
-export function createCutaway(carScale: number) {
+export function createCutaway(carScale: number, load: () => Promise<THREE.Object3D> = loadChassisModel) {
   const rigs = new WeakMap<CutawayModel, CutawayRig>()
   let shown: CutawayRig | null = null
+  let shownModel: CutawayModel | null = null
+  let parts: ChassisParts | null = null
+  let failed = false
+  let loading: Promise<void> | null = null
+  const hidden = new Map<THREE.Object3D, boolean>()
 
-  function setGhost(r: CutawayRig, on: boolean) {
-    for (const g of r.ghosts) {
-      g.mesh.material = on ? (Array.isArray(g.mat) ? g.mat.map(ghostOf) : ghostOf(g.mat)) : g.mat
-      g.mesh.castShadow = on ? false : g.shadow
-    }
-    r.frame.visible = on
-    r.ground.visible = on
+  function ready() {
+    if (!loading) loading = load().then((root) => { parts = chassisParts(root) }, () => { failed = true })
+    return loading
+  }
+
+  function restoreBody() {
+    hidden.forEach((vis, o) => { o.visible = vis })
+    hidden.clear()
+  }
+
+  function hideBody(m: CutawayModel, r: CutawayRig) {
+    const keep = new Set<THREE.Object3D>([r.frame, ...r.pivots])
+    m.body.traverse((o) => {
+      if (o === m.body || !(o as THREE.Mesh).isMesh || !o.visible || isUnder(o, keep)) return
+      if (!hidden.has(o)) hidden.set(o, o.visible)
+      o.visible = false
+    })
   }
 
   function hide() {
-    if (shown) setGhost(shown, false)
+    if (shown) {
+      shown.frame.visible = false
+      shown.ground.visible = false
+    }
+    restoreBody()
     shown = null
+    shownModel = null
   }
 
   /** Poses the chassis for this frame; `corner` maps each wheel pivot to its corner (LF, RF, LR, RR). */
   function update(m: CutawayModel, st: RailState, corner: number[], on: boolean) {
     if (!on || !m.tmg) return hide()
+    ready()
     let r = rigs.get(m)
     if (!r) {
       r = build(m, st, carScale, corner)
@@ -236,55 +268,39 @@ export function createCutaway(carScale: number) {
     }
     if (shown !== r) {
       hide()
-      setGhost(r, true)
       shown = r
+      shownModel = m
+      r.frame.visible = true
+      r.ground.visible = true
     }
+    if (parts && parts.fit.parent !== r.frame) {
+      r.frame.add(parts.fit)
+      r.scale = fitMatrix(parts.wheel, r.corners.map((c) => c.hub0), parts.fit.matrix)
+      parts.fit.matrixWorldNeedsUpdate = true
+    }
+    if (parts) hideBody(m, r)
+    else if (failed) restoreBody()
     const raw = m.wheels.map(() => new THREE.Vector3())
     hubs(m, carScale, raw)
     raw.forEach((p, i) => r.corners[corner[i]].hub.copy(p))
-    const halfW = Math.abs(r.trackBar.a.x)
     const v = st.veh, avg = v.mass * 9.81 / 4
-    r.corners.forEach((c, ci) => {
-      const low = mount(c.front, c.sgn, c.hub, c.hub0, halfW)
-      stretch(c.coil, low, c.top, 0.05)
-      _d.subVectors(c.top, low)
-      const len = _d.length()
-      stretch(c.shockBody, c.top, low.clone().addScaledVector(_d, 0.45 / Math.max(len, 1e-4)), 0.024)
-      stretch(c.shockRod, low, c.top, 0.009)
-      stretch(c.bumpRubber, c.top, c.top.clone().addScaledVector(_d, -0.06 / Math.max(len, 1e-4)), 0.03)
-      const tr = st.travel[ci]
-      const t = THREE.MathUtils.clamp((tr + 0.04) / 0.12, 0, 1)
-      c.coilMat.color.setHSL(0.58 - t * 0.58, 0.8, 0.55)
-      c.coilMat.emissive.setHex(st.stop[ci] ? 0x661010 : 0x000000)
-      c.bumpMat.color.setHex(st.stop[ci] ? 0xff4a4a : st.bump[ci] ? 0xffcc00 : 0x3a3f47)
-      if (c.front) {
-        const lbj = new THREE.Vector3(c.hub.x - c.sgn * 0.06, c.hub.y - 0.11, c.hub.z), ubj = new THREE.Vector3(c.hub.x - c.sgn * 0.09, c.hub.y + 0.13, c.hub.z)
-        c.arms[0].b.copy(lbj); c.arms[1].b.copy(lbj); c.arms[2].b.copy(ubj); c.arms[3].b.copy(ubj)
-        const el = r.endLinks[ci]
-        el.b.copy(lbj).lerp(new THREE.Vector3(c.sgn * halfW, c.hub0.y - 0.1, c.hub.z), 0.5)
-        place(el)
-      } else {
-        c.arms[0].b.set(c.hub.x * 0.85, c.hub.y - 0.1, c.hub.z)
-        c.arms[1].b.set(c.hub.x * 0.85, c.hub.y + 0.1, c.hub.z)
+    if (parts) {
+      const dz = r.corners.map((c) => (c.hub.y - c.hub0.y) / (r.scale || 1))
+      poseChassis(parts, dz, [st.steerL, st.steerR])
+      for (const [k, S] of Object.entries(parts.shocks)) {
+        const ci = SHOCK_CORNER[k], t = THREE.MathUtils.clamp((st.travel[ci] + 0.04) / 0.12, 0, 1)
+        if (st.stop[ci]) S.mat.color.setHex(0xff4a4a)
+        else if (st.bump[ci]) S.mat.color.setHex(0xffcc00)
+        else S.mat.color.setHSL(0.58 - t * 0.58, 0.8, 0.55)
       }
-      c.arms.forEach(place)
+    }
+    r.corners.forEach((c, ci) => {
       const load = Math.max(0, st.fz[ci]), hgt = Math.max(0.01, (load / avg) * 0.45)
       c.column.position.set(c.hub0.x, hgt / 2, c.hub0.z)
       c.column.scale.set(0.09, hgt, 0.09)
       const use = THREE.MathUtils.clamp(st.use[ci], 0, 1.2)
       c.columnMat.color.copy(load <= 0 ? _c.setHex(0x3a4458) : _c.setHSL(Math.max(0, 0.33 - use * 0.33), 0.75, 0.5))
     })
-    const L = r.corners[2].hub, R = r.corners[3].hub
-    r.axle.a.copy(L).lerp(R, 0.04)
-    r.axle.b.copy(R).lerp(L, 0.04)
-    place(r.axle)
-    r.pumpkin.position.copy(L).lerp(R, 0.45)
-    const fx = THREE.MathUtils.clamp((0.3 - L.x) / (R.x - L.x || 1), 0, 1)
-    r.trackBar.b.copy(L).lerp(R, fx)
-    r.trackBar.b.y += 0.04
-    place(r.trackBar)
-    const twist = Math.abs(st.travel[0] - st.travel[1])
-    r.barMat.color.setHSL(0.6 - Math.min(1, twist / 0.06) * 0.52, Math.min(1, twist / 0.06) * 0.8, 0.6)
     _d.set(-st.ay, 0, -st.ax).multiplyScalar(1 / 9.81)
     const g = _d.length()
     if (g > 0.03) {
@@ -295,5 +311,5 @@ export function createCutaway(carScale: number) {
     } else r.arrow.visible = false
   }
 
-  return { update, hide }
+  return { update, hide, ready, get model() { return shownModel } }
 }

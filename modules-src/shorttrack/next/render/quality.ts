@@ -13,7 +13,7 @@ export type TierSettings = {
   taa: boolean
   /** Off on every tier for now: Babylon's blur misreads the three-driven camera's history (`?fx=+motionBlur` to test). */
   motionBlur: boolean
-  /** Metallic flake under clear coats, tire sheen and the asphalt detail normals. */
+  /** Metallic flake under clear coats and the asphalt detail normals. */
   surfaceDetail: boolean
   /** Point lights at the night light towers (clustered on WebGPU). */
   nightLights: boolean

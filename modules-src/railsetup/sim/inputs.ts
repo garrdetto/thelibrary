@@ -84,11 +84,25 @@ export const POSE_INPUTS: InputSpec[] = [
 
 export type Inputs = Record<string, number>
 
+export const APP_DEFAULTS: Inputs = Object.fromEntries(SETUP_INPUTS.map(s => [s.id, s.def]))
+
+export const SLM_BASELINE: Inputs = {
+  wt: 2800, ls: 57, rp: 48, cr: 51, cg: 15.5,
+  lf: 500, rf: 550, lr: 175, rr: 200, tk: 1300,
+  bar: 1.5, bid: 1, bpre: 0,
+  blf: 1000, glf: 1, brf: 1500, grf: 1, blr: 0, glr: 1, brr: 0, grr: 1,
+  tclf: 85.5, tcrf: 86.25, tclr: 85.75, tcrr: 88.25,
+  hlf: 4, hrf: 4.125, hrr: 4.5,
+  pllf: 1.625, plrf: 1.375, pllr: 1.1875, plrr: 0.8125,
+}
+
+for (const s of SETUP_INPUTS) if (s.id in SLM_BASELINE) s.def = SLM_BASELINE[s.id]
+
 export const DEFAULTS: Inputs = Object.fromEntries(SETUP_INPUTS.map(s => [s.id, s.def]))
 export const INPUT_IDS = new Set(SETUP_INPUTS.map(s => s.id))
 
-export function withDefaults(values: Record<string, unknown> | undefined): Inputs {
-  const out: Inputs = { ...DEFAULTS }
+export function withDefaults(values: Record<string, unknown> | undefined, base: Inputs = DEFAULTS): Inputs {
+  const out: Inputs = { ...base }
   if (!values) return out
   for (const id of INPUT_IDS) {
     const raw = values[id]
