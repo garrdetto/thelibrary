@@ -1,6 +1,4 @@
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import * as K from '../sim/kin'
 import type { Corner, Pose, RearPose, Vec } from '../sim/kin'
@@ -8,42 +6,13 @@ import { CAD, END_LINKS } from '../sim/hardpoints'
 import type { FrontAdj } from '../sim/inputs'
 import type { Lab, Model, Side } from '../sim/lab'
 import { SIDES } from '../sim/lab'
+import { affineMatrix, bakeChassis, loadChassisModel, nk, rodMatrix } from './parts'
 
-const MODEL_URL = '/models/railsetup/chassis.glb'
 const GROUND = 0
-const nk = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, '')
 
 type CornerParts = { knuckle: THREE.Mesh[]; lower: THREE.Mesh[]; upper: THREE.Mesh[]; bar: THREE.Mesh[]; barArm: THREE.Mesh[] }
 type Shock = { top: THREE.Mesh[]; bot: THREE.Mesh[]; U?: Vec; L?: Vec }
 type EndLink = { parts: THREE.Mesh[]; up?: Vec; lo?: Vec; t?: number }
-
-const PART: Record<string, [string, string | 0]> = {}
-const put = (g: string, side: string | 0, ...ns: string[]) => ns.forEach(n => PART[nk(n)] = [g, side])
-put('LL', 0, 'RR Radius Rod 16-1', 'Ball Joint 1-1', 'Ball Joint 1-2', 'Ball Joint 3-9', 'Ball Joint 3-10')
-put('RL', 0, 'RR Radius Rod 20-1', 'Ball Joint 1-7', 'Ball Joint 1-8', 'Ball Joint 3-2', 'Ball Joint 3-3')
-put('UL', 0, '3rd link straight rail-2', 'Ball Joint 1-4', 'Ball Joint 1-5', 'Ball Joint 3-4', 'Ball Joint 3-5')
-put('TB', 0, 'Track Bar Straight Rail-1', 'Ball Joint 1-3', 'Ball Joint 1-6', 'Ball Joint 3-6', 'Ball Joint 3-7')
-put('JB', 0, 'JB J-Bar-1', 'JB Ball Joint 1-23', 'JB Ball Joint 1-24', 'JB Ball Joint 3-27', 'JB Ball Joint 3-28')
-put('uns', 'TB', 'rear housing-1'); put('uns', 'JB', 'JB rear housing-1')
-put('uns', 0, 'Drive Hub-1', 'Drive Hub-2', '15 x 10 Wheels Straight Rail-1', '15 x 10 Wheels Straight Rail-2', '3rd Link Mount Rear End-1')
-put('upper', 'L', 'LF Upper Control Arm Straight Rail-1'); put('upper', 'R', 'RF Upper Control Arm Straight Rail-1')
-put('bar', 'L', 'A Arm Bar-1', 'Center Slug-9', 'Center Slug-10'); put('bar', 'R', 'A Arm Bar-2', 'Center Slug-11', 'Center Slug-12')
-put('lower', 'L', 'LS Lower Control Arm-1', 'Lower Control Arm Aft 14.75-2', 'Ball Joint 2-1', 'Ball Joint 2-2', 'Ball Joint 1-9', 'Ball Joint 1-10', 'Ball Joint 1-13', 'Ball Joint 3-11', 'Center Slug-1', 'Center Slug-4', 'Center Slug-7', 'Center Slug-8')
-put('lower', 'R', 'RS Lower Control Arm-1', 'Lower Control Arm Aft 14.75-1', 'Ball Joint 2-3', 'Ball Joint 2-4', 'Ball Joint 1-11', 'Ball Joint 1-12', 'Ball Joint 1-14', 'Ball Joint 3-14', 'Center Slug-2', 'Center Slug-3', 'Center Slug-5', 'Center Slug-6')
-put('knuckle', 'L', 'LF Steering Knuckle V2 Straight Rail-1', 'Front Hub Straight Rail-1', '15 x 10 Wheels Straight Rail-3', 'Screw In Ball Joint-1', 'Screw In Ball Joint-2', 'Screw In Ball Joint Housing-1', 'Screw In Ball Joint Housing-2', 'Steer Arm 8.5-2', 'Ball Joint 1-22', 'Ball Joint 3-21', '.25 Slug 1 Inch-1')
-put('knuckle', 'R', 'RF Steering Knuckle V2 Straight Rail-1', 'Front Hub Straight Rail-2', '15 x 10 Wheels Straight Rail-4', 'Screw In Ball Joint-3', 'Screw In Ball Joint-4', 'Screw In Ball Joint Housing-3', 'Screw In Ball Joint Housing-4', 'Steer Arm 8.5-1', 'Ball Joint 1-20', 'Ball Joint 3-24', '.25 Slug 1 Inch-2')
-put('barArm', 'L', 'Sway Bar End Straight Rail-1'); put('barArm', 'R', 'Sway Bar End Right Straight Rail-1')
-put('endlink', 'L', 'Ball Joint 1-17', 'Ball Joint 1-18', 'Ball Joint 3-19', 'Ball Joint 3-20'); put('endlink', 'R', 'Ball Joint 1-15', 'Ball Joint 1-16', 'Ball Joint 3-17', 'Ball Joint 3-18')
-const SHN: Record<string, string> = { 1: 'FL', 2: 'FR', 3: 'RL', 4: 'RR' }
-const SHEYE: Record<string, [string, string]> = { balljoint313: ['FL', 'U'], balljoint312: ['FL', 'L'], balljoint315: ['FR', 'U'], balljoint316: ['FR', 'L'], balljoint325: ['RL', 'U'], balljoint38: ['RL', 'L'], balljoint326: ['RR', 'U'], balljoint31: ['RR', 'L'] }
-
-function classify(name: string): [string, unknown] {
-  const n = nk(name)
-  if (SHEYE[n]) return ['shock', SHEYE[n]]
-  const m = /^9in(body|shaft)simple(\d)/.exec(n)
-  if (m) return ['shock', [SHN[m[2]], m[1] === 'body' ? 'top' : 'bot']]
-  return PART[n] || ['sprung', 0]
-}
 
 const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -89,7 +58,7 @@ export class ChassisScene {
   private readonly KLB = {} as Record<Side, Vec>
   private WDEF = ''
   private MCADi: THREE.Matrix4
-  private readonly tmp = { M: new THREE.Matrix4(), KB: new THREE.Matrix4(), LM: new THREE.Matrix4(), R: new THREE.Matrix4(), m1: new THREE.Matrix4(), m2: new THREE.Matrix4(), q: new THREE.Quaternion(), d0: new THREE.Vector3(), d1: new THREE.Vector3(), v: new THREE.Vector3(), MQ: new THREE.Matrix4(), MIR: new THREE.Matrix4().makeScale(1, -1, 1), PM: new THREE.Matrix4(), T1: new THREE.Matrix4(), T2: new THREE.Matrix4(), pA: new THREE.Vector3(), pB: new THREE.Vector3(), dir: new THREE.Vector3() }
+  private readonly tmp = { M: new THREE.Matrix4(), KB: new THREE.Matrix4(), LM: new THREE.Matrix4(), R: new THREE.Matrix4(), v: new THREE.Vector3(), MQ: new THREE.Matrix4(), MIR: new THREE.Matrix4().makeScale(1, -1, 1), PM: new THREE.Matrix4(), T1: new THREE.Matrix4(), T2: new THREE.Matrix4(), pA: new THREE.Vector3(), pB: new THREE.Vector3(), dir: new THREE.Vector3() }
 
   constructor(readonly stage: HTMLElement, readonly lab: Lab) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -200,28 +169,9 @@ export class ChassisScene {
   }
 
   async load(onDone: () => void, onFail: () => void) {
-    const loader = new GLTFLoader()
-    loader.setMeshoptDecoder(MeshoptDecoder)
-    let gltf
-    try { gltf = await loader.loadAsync(MODEL_URL) } catch { onFail(); return }
-    const nodes: THREE.Mesh[] = []
-    gltf.scene.updateMatrixWorld(true)
-    gltf.scene.traverse(o => { if ((o as THREE.Mesh).isMesh) nodes.push(o as THREE.Mesh) })
-    const c = new THREE.Vector3()
-    for (const o of nodes) {
-      let n = o.name
-      if (!n) { let p = o.parent; while (p && p !== gltf.scene) { if (p.name) { n = p.name; break } p = p.parent } }
-      o.updateMatrixWorld(true)
-      const M = o.matrixWorld.clone()
-      o.parent?.remove(o)
-      o.matrixAutoUpdate = false
-      o.geometry = floatGeometry(o.geometry)
-      o.geometry.applyMatrix4(M)
-      o.matrix.identity()
-      o.geometry.computeBoundingBox()
-      ;(o.geometry.boundingBox as THREE.Box3).getCenter(c)
-      o.name = n
-      const [cls, side] = classify(n)
+    let root
+    try { root = await loadChassisModel() } catch { onFail(); return }
+    for (const { mesh: o, name: n, center: c, cls, side } of bakeChassis(root)) {
       if (cls === 'sprung') { o.material = this.mats.sprung; this.sprung.add(o) } else if (cls === 'shock') {
         const [k, e] = side as [string, string], S = this.SHK[k], fr = k[0] === 'F'
         o.material = this.mats.link
@@ -249,9 +199,7 @@ export class ChassisScene {
   }
 
   private rod(a0: Vec, b0: Vec, a1: Vec, b1: Vec, out: THREE.Matrix4): THREE.Matrix4 {
-    const t = this.tmp
-    t.q.setFromUnitVectors(t.d0.set(b0[0] - a0[0], b0[1] - a0[1], b0[2] - a0[2]).normalize(), t.d1.set(b1[0] - a1[0], b1[1] - a1[1], b1[2] - a1[2]).normalize())
-    return out.makeTranslation(a1[0], a1[1], a1[2]).multiply(t.R.makeRotationFromQuaternion(t.q)).multiply(t.R.makeTranslation(-a0[0], -a0[1], -a0[2]))
+    return rodMatrix(a0, b0, a1, b1, out)
   }
 
   private poseShock(S: Shock, U1: Vec, L1: Vec) {
@@ -261,12 +209,7 @@ export class ChassisScene {
   }
 
   private affine(a: Vec, b: Vec, c: Vec, A: Vec, B: Vec, C: Vec, out: THREE.Matrix4): THREE.Matrix4 {
-    const V = K.V
-    const e1 = V.sub(b, a), e2 = V.sub(c, a), n = V.mul(V.norm(V.cross(e1, e2)), 5)
-    const E1 = V.sub(B, A), E2 = V.sub(C, A), N = V.mul(V.norm(V.cross(E1, E2)), 5)
-    this.tmp.m1.set(e1[0], e2[0], n[0], a[0], e1[1], e2[1], n[1], a[1], e1[2], e2[2], n[2], a[2], 0, 0, 0, 1)
-    this.tmp.m2.set(E1[0], E2[0], N[0], A[0], E1[1], E2[1], N[1], A[1], E1[2], E2[2], N[2], A[2], 0, 0, 0, 1)
-    return out.copy(this.tmp.m2).multiply(this.tmp.m1.invert())
+    return affineMatrix(a, b, c, A, B, C, out)
   }
 
   deformWheels(num: (id: string) => number) {
@@ -448,18 +391,4 @@ export class ChassisScene {
 function kinToWorld(l: Vec, p: Pose): Vec {
   const F = p.F
   return [p.LBJ[0] + F[0][0] * l[0] + F[1][0] * l[1] + F[2][0] * l[2], p.LBJ[1] + F[0][1] * l[0] + F[1][1] * l[1] + F[2][1] * l[2], p.LBJ[2] + F[0][2] * l[0] + F[1][2] * l[1] + F[2][2] * l[2]]
-}
-
-function floatGeometry(src: THREE.BufferGeometry): THREE.BufferGeometry {
-  const g = new THREE.BufferGeometry()
-  if (src.index) g.setIndex(Array.from(src.index.array as ArrayLike<number>))
-  for (const name of ['position', 'normal']) {
-    const a = src.getAttribute(name) as THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined
-    if (!a) continue
-    const out = new Float32Array(a.count * 3)
-    for (let i = 0; i < a.count; i++) { out[i * 3] = a.getX(i); out[i * 3 + 1] = a.getY(i); out[i * 3 + 2] = a.getZ(i) }
-    g.setAttribute(name, new THREE.BufferAttribute(out, 3))
-  }
-  if (!g.getAttribute('normal')) g.computeVertexNormals()
-  return g
 }

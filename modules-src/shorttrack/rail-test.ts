@@ -160,7 +160,7 @@ export function initRailTest(api: RailTestApi) {
     <button type="button" id="rtExag" aria-pressed="false" title="Shows roll, pitch and ride height 3× bigger so you can see them; numbers stay true">Motion ×3</button>
     <button type="button" id="rtTelBtn" aria-pressed="false" title="Telemetry: loads, travel, clearance, balance">Data</button>
     <button type="button" id="rtLapsBtn" aria-pressed="false">Laps</button>
-    <button type="button" id="rtChBtn" aria-pressed="false" title="See-through car with its chassis and suspension moving live (springs, shocks, sway bar, track bar, weight transfer), plus a top view of tire loads, grip in use, travel, roll, pitch and g">Show chassis</button>
+    <button type="button" id="rtChBtn" aria-pressed="false" title="The Setup Lab's chassis in place of the car body, its suspension moving live (arms, coilovers, axle, links, weight transfer), plus a top view of tire loads, grip in use, travel, roll, pitch and g">Show chassis</button>
     <button type="button" id="rtPedBtn" aria-pressed="false" title="Throttle and brake curves for Drive yourself">Pedals</button>
     <span class="grow"></span>
     <span class="setup"><small id="rtSetup"></small></span>

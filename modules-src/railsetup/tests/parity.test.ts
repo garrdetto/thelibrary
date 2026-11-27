@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import * as K from '../sim/kin'
 import { Lab, MRG, SW } from '../sim/lab'
 import type { Side } from '../sim/lab'
-import { ADJ0, RADJ0, withDefaults } from '../sim/inputs'
+import { ADJ0, APP_DEFAULTS, RADJ0, withDefaults } from '../sim/inputs'
 import type { FrontAdj, RearAdj } from '../sim/inputs'
 import fixture from './fixtures/parity.json'
 
@@ -23,7 +23,7 @@ const pickRows = <T extends Record<string, number>>(rows: T[], keys: (keyof T)[]
 
 function replay(c: Case) {
   const lab = new Lab()
-  lab.inputs = withDefaults(c.inputs)
+  lab.inputs = withDefaults(c.inputs, APP_DEFAULTS)
   lab.adj = { L: { ...ADJ0, ...c.adj.L }, R: { ...ADJ0, ...c.adj.R } }
   lab.radj = { ...RADJ0, ...c.radj }
   lab.rearSet()

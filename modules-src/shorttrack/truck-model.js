@@ -216,7 +216,7 @@ function buildTruck(THREE, opts = {}) {
     carbon: new THREE.MeshStandardMaterial({ name: 'Carbon', color: 0x1c1c20, metalness: 0.35, roughness: 0.4 }),
     glass: new THREE.MeshPhysicalMaterial({ name: 'Glass', color: 0x9cc0e0, metalness: 0, roughness: 0.04, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }),
     cage: new THREE.MeshStandardMaterial({ name: 'RollCage', color: 0x5f7396, metalness: 0.6, roughness: 0.35 }),
-    tire: new THREE.MeshStandardMaterial({ name: 'Tire', color: 0x0e0e10, metalness: 0, roughness: 0.92 }),
+    tire: new THREE.MeshStandardMaterial({ name: 'Tire', color: 0x0e0e10, metalness: 0, roughness: 1 }),
     rim: new THREE.MeshStandardMaterial({ name: 'Rim', color: 0x1a1a1e, metalness: 0.75, roughness: 0.3 }),
     smoke: new THREE.MeshPhysicalMaterial({ name: 'SmokedLens', color: 0x222428, metalness: 0.3, roughness: 0.08, clearcoat: 1 }),
     led: new THREE.MeshStandardMaterial({ name: 'LED', color: 0xdfe8ff, emissive: 0xbfd2ff, emissiveIntensity: 1.4 }),

@@ -7,6 +7,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { slickWheel, slickMaterial } from '../slick-tire.js';
+import { dentParts } from '../body-dents.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from '../shorttrack-numbers.js';
 import { createParkSpeedway, PARK_MAP } from '../park-speedway';
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from '../prison-speedway.js';
@@ -881,7 +883,7 @@ function parseCarAsset(buf){
     if(uv16){const uv=new Float32Array(p.v*2);for(let i=0;i<uv.length;i++)uv[i]=uv16[i]/65535;geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));}
     geo.setIndex(new THREE.BufferAttribute(idx.slice(),1));for(const [st,ct,mi] of p.groups)geo.addGroup(st,ct,mi);
     if(!p.center)splitSpoiler(geo);
-    geo.computeBoundingSphere();return {center:p.center,geo};});
+    const out=p.center?slickWheel(THREE,geo):geo;out.computeBoundingSphere();return {center:p.center,geo:out};});
 }
 // The rear spoiler is clear Lexan: its triangles leave the paint group for their own group (material 6).
 function splitSpoiler(geo){
@@ -1016,7 +1018,7 @@ function buildStockCar(lv,o={}){
   const interior=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.85,metalness:0.2});
   const glass=new THREE.MeshPhysicalMaterial({color:0x3c4a54,roughness:0.04,metalness:0,clearcoat:1,clearcoatRoughness:0.03,transparent:true,opacity:0.38,depthWrite:false,side:THREE.DoubleSide});
   const lexan=new THREE.MeshPhysicalMaterial({color:0xe8eef2,roughness:0.04,metalness:0,clearcoat:1,clearcoatRoughness:0.03,transparent:true,opacity:0.2,depthWrite:false,side:THREE.DoubleSide});
-  const tire=new THREE.MeshStandardMaterial({color:0x161616,roughness:0.92});
+  const tire=slickMaterial(THREE);
   const rim=new THREE.MeshStandardMaterial({color:0x9aa0a8,roughness:0.35,metalness:0.8});
   const tail=new THREE.MeshPhysicalMaterial({color:0x5a0008,emissive:0xff1a26,emissiveIntensity:0.2,roughness:0.1,clearcoat:1});
   const M=[paint,interior,glass,tire,rim,tail,lexan],wheels=[];let bodyMesh=null;
@@ -1075,21 +1077,7 @@ const damageLookK=()=>WORLD.model==='next'?STOCK_STRENGTH*Math.max(0,CFG.damageL
 const impactLookK=()=>WORLD.model==='next'?damageLookK()*STOCK_STRENGTH/Math.max(0.1,CFG.strength):1;
 function deformCar(c,lp,dir,amt){
   const v=amt*damageLookK();if(v<=0.05)return;
-  const s=c.m.modelScale,L=[lp[2]/s,lp[1]/s,-lp[0]/s],D=[dir[2],dir[1],-dir[0]];
-  const r=(0.85+Math.min(1.35,v*0.042))/s,push=Math.min(0.5,v*0.02)/s,cap=0.62/s,crease=Math.min(1,v/14);
-  for(const part of c.m.deform){const g=part.geo,pa=g.attributes.position,ca=part.scuff?g.attributes.color:null,o=part.orig;
-    for(let i=0;i<pa.count;i++){
-      const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i),dx=x-L[0],dy=(y-L[1])*0.6,dz=z-L[2],d=Math.sqrt(dx*dx+dy*dy+dz*dz);
-      if(d>=r)continue;const k=(1-d/r)**2,ox=o[i*3],oy=o[i*3+1],oz=o[i*3+2];
-      const hs=Math.sin(ox*91.7+oy*47.3+oz*13.1)*43758.5453,jit=hs-Math.floor(hs)-0.5;
-      const wr=Math.sin(ox*s*23.1+oz*s*17.7)*Math.sin(oy*s*31.3+ox*s*7.9)*crease;
-      const pk=push*k*(1+jit*1.1+wr*0.45);
-      let ex=x+D[0]*pk+jit*push*k*0.35-ox,ey=y-push*k*(0.25+jit*0.6+wr*0.2)-oy,ez=z+D[2]*pk-oz;
-      const el=Math.hypot(ex,ey,ez);if(el>cap){const f=cap/el;ex*=f;ey*=f;ez*=f;}
-      pa.setXYZ(i,ox+ex,oy+ey,oz+ez);
-      if(ca){const cv=Math.max(0.22,ca.getX(i)-0.5*k*(0.75+jit*0.5)*Math.min(1.4,0.6+v/20));ca.setXYZ(i,cv,cv*0.96,cv*0.92);}
-    }
-    pa.needsUpdate=true;if(ca)ca.needsUpdate=true;g.computeVertexNormals();}
+  const s=c.m.modelScale;dentParts(c.m.deform,[lp[2]/s,lp[1]/s,-lp[0]/s],[dir[2],dir[1],-dir[0]],s,v);
 }
 
 class Car{

@@ -139,31 +139,31 @@
     </fieldset>
     <fieldset><legend>Tires</legend>
       <p class="note">Rollout: tire circumference, taped at the pressure you run. A bigger tire raises its corner and adds wedge, and every tire squashes under load. Both feed the ride heights.</p>
-      <div class="row"><label for="tclf">LF rollout, in</label><input type="number" id="tclf" min="70" max="100" step="0.125" value="84"><span></span></div>
-      <div class="row"><label for="tcrf">RF rollout, in</label><input type="number" id="tcrf" min="70" max="100" step="0.125" value="84.5"><span></span></div>
-      <div class="row"><label for="tclr">LR rollout, in</label><input type="number" id="tclr" min="70" max="100" step="0.125" value="84"><span></span></div>
-      <div class="row"><label for="tcrr">RR rollout, in</label><input type="number" id="tcrr" min="70" max="100" step="0.125" value="87"><span></span></div>
+      <div class="row"><label for="tclf">LF rollout, in</label><input type="number" id="tclf" min="70" max="100" step="0.125" value="85.5"><span></span></div>
+      <div class="row"><label for="tcrf">RF rollout, in</label><input type="number" id="tcrf" min="70" max="100" step="0.125" value="86.25"><span></span></div>
+      <div class="row"><label for="tclr">LR rollout, in</label><input type="number" id="tclr" min="70" max="100" step="0.125" value="85.75"><span></span></div>
+      <div class="row"><label for="tcrr">RR rollout, in</label><input type="number" id="tcrr" min="70" max="100" step="0.125" value="88.25"><span></span></div>
       <div class="row"><label for="tk"><abbr title="Vertical spring rate of the tire: the load that squashes it one inch. Racing tires run roughly 1,000 to 1,600 lb/in depending on size and pressure.">Tire rate</abbr>, lb/in</label><input type="number" id="tk" min="300" max="4000" step="25" value="1300"><span></span></div>
       <table class="k"><thead><tr><th></th><th>LF</th><th>RF</th><th>LR</th><th>RR</th></tr></thead><tbody id="tire-tab"></tbody></table>
       <p class="note" id="tire-note"></p>
     </fieldset>
     <fieldset><legend>Springs, lb/in</legend>
-      <div class="row"><label for="lf">LF</label><input type="number" id="lf" min="100" max="1500" step="25" value="650"><span></span></div>
-      <div class="row"><label for="rf">RF</label><input type="number" id="rf" min="100" max="1500" step="25" value="700"><span></span></div>
+      <div class="row"><label for="lf">LF</label><input type="number" id="lf" min="100" max="1500" step="25" value="500"><span></span></div>
+      <div class="row"><label for="rf">RF</label><input type="number" id="rf" min="100" max="1500" step="25" value="550"><span></span></div>
       <div class="row"><label for="lr">LR</label><input type="number" id="lr" min="100" max="1500" step="25" value="175"><span></span></div>
       <div class="row"><label for="rr">RR</label><input type="number" id="rr" min="100" max="1500" step="25" value="200"><span></span></div>
     </fieldset>
     <fieldset><legend>Front bar, hollow</legend>
-      <div class="row"><label for="bar">OD, in</label><input type="number" id="bar" min="1.25" max="2" step="0.0625" value="1.75"><span></span></div>
-      <div class="row"><label for="bid">ID, in</label><input type="number" id="bid" min="0" max="1.5" step="0.0625" value="1.125"><span></span></div>
+      <div class="row"><label for="bar">OD, in</label><input type="number" id="bar" min="1.25" max="2" step="0.0625" value="1.5"><span></span></div>
+      <div class="row"><label for="bid">ID, in</label><input type="number" id="bid" min="0" max="1.5" step="0.0625" value="1"><span></span></div>
       <div class="row"><label for="bpre"><abbr title="Measured at the bar arm. + = preloaded in the direction the car rolls in a left turn, which puts static load on RF and LR. − = slack: the bar does nothing until the car rolls far enough to take up the gap.">Preload</abbr>, in</label><input type="number" id="bpre" min="-0.25" max="0.5" step="0.03125" value="0"><span></span></div>
       <p class="note" id="bpre-note">− = slack, + = preload.</p>
     </fieldset>
     <fieldset><legend>Bump springs</legend>
       <p class="note">Gap is measured at the shock, at ride height. Rate 0 = no bump spring.</p>
-      <div class="row"><label for="blf">LF rate, lb/in</label><input type="number" id="blf" min="0" max="8000" step="50" value="0"><span></span></div>
+      <div class="row"><label for="blf">LF rate, lb/in</label><input type="number" id="blf" min="0" max="8000" step="50" value="1000"><span></span></div>
       <div class="row"><label for="glf">LF gap, in</label><input type="number" id="glf" min="0" max="2" step="0.0625" value="1"><span></span></div>
-      <div class="row"><label for="brf">RF rate, lb/in</label><input type="number" id="brf" min="0" max="8000" step="50" value="0"><span></span></div>
+      <div class="row"><label for="brf">RF rate, lb/in</label><input type="number" id="brf" min="0" max="8000" step="50" value="1500"><span></span></div>
       <div class="row"><label for="grf">RF gap, in</label><input type="number" id="grf" min="0" max="2" step="0.0625" value="1"><span></span></div>
       <div class="row"><label for="blr">LR rate, lb/in</label><input type="number" id="blr" min="0" max="8000" step="50" value="0"><span></span></div>
       <div class="row"><label for="glr">LR gap, in</label><input type="number" id="glr" min="0" max="2" step="0.0625" value="1"><span></span></div>
@@ -177,7 +177,7 @@
     </fieldset>
     <fieldset><legend>Geometry</legend>
       <div class="row"><label for="ctor"><abbr title="How hard the frame resists twisting between the front and rear axles. A softer chassis lets each end carry more of its own roll load, which makes spring and bar splits matter more. Estimated; 30,000 is close to rigid.">Chassis twist</abbr>, ft-lb/°</label><input type="number" id="ctor" min="1000" max="30000" step="250" value="4000"><span></span></div>
-      <div class="row"><label for="cg">CG height, in</label><input type="number" id="cg" min="13" max="19" step="0.25" value="16"><span></span></div>
+      <div class="row"><label for="cg">CG height, in</label><input type="number" id="cg" min="13" max="19" step="0.25" value="15.5"><span></span></div>
       <p class="note" id="per-note">Ride height: ground to the bottom of the frame rails, at the front and rear ends of the straight rails.</p>
       <div class="btnrow" role="group" aria-label="Ride height mode"><button type="button" id="m-std" aria-pressed="true">Standard</button><button type="button" id="m-adv" aria-pressed="false">Advanced</button></div>
       <input type="number" id="adv" value="0" hidden>
@@ -186,21 +186,21 @@
         <table class="k adv"><thead><tr><th></th><th>LF</th><th>RF</th><th>LR</th><th>RR</th></tr></thead><tbody>
           <tr><td>Rate, lb/in</td><td id="ak-lf"></td><td id="ak-rf"></td><td id="ak-lr"></td><td id="ak-rr"></td></tr>
           <tr><td>Free length, in</td><td><input type="number" id="fllf" aria-label="LF spring free length, in" min="6" max="22" step="0.25" value="12"></td><td><input type="number" id="flrf" aria-label="RF spring free length, in" min="6" max="22" step="0.25" value="12"></td><td><input type="number" id="fllr" aria-label="LR spring free length, in" min="6" max="22" step="0.25" value="16"></td><td><input type="number" id="flrr" aria-label="RR spring free length, in" min="6" max="22" step="0.25" value="16"></td></tr>
-          <tr><td>Preload, in</td><td><input type="number" id="pllf" aria-label="LF spring preload, in" min="0" max="4" step="0.0625" value="1"></td><td><input type="number" id="plrf" aria-label="RF spring preload, in" min="0" max="4" step="0.0625" value="1"></td><td><input type="number" id="pllr" aria-label="LR spring preload, in" min="0" max="4" step="0.0625" value="1"></td><td><input type="number" id="plrr" aria-label="RR spring preload, in" min="0" max="4" step="0.0625" value="1"></td></tr>
+          <tr><td>Preload, in</td><td><input type="number" id="pllf" aria-label="LF spring preload, in" min="0" max="4" step="0.0625" value="1.625"></td><td><input type="number" id="plrf" aria-label="RF spring preload, in" min="0" max="4" step="0.0625" value="1.375"></td><td><input type="number" id="pllr" aria-label="LR spring preload, in" min="0" max="4" step="0.0625" value="1.1875"></td><td><input type="number" id="plrr" aria-label="RR spring preload, in" min="0" max="4" step="0.0625" value="0.8125"></td></tr>
           <tr><td>Eye to Eye Extended length, in</td><td><input type="number" id="solf" aria-label="LF Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="19.625"></td><td><input type="number" id="sorf" aria-label="RF Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="20.4375"></td><td><input type="number" id="solr" aria-label="LR Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="26.625"></td><td><input type="number" id="sorr" aria-label="RR Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="24.75"></td></tr>
         </tbody><tbody id="adv-out"></tbody></table>
         <p class="note" id="adv-note"></p>
       </div>
-      <div class="row std"><label for="hlf">LF ride ht, in</label><input type="number" id="hlf" min="1" max="7" step="0.03125" value="3.1875"><span></span></div>
-      <div class="row std"><label for="hrf">RF ride ht, in</label><input type="number" id="hrf" min="1" max="7" step="0.03125" value="3.28125"><span></span></div>
-      <div class="row std"><label for="hrr">RR ride ht, in</label><input type="number" id="hrr" min="1" max="7" step="0.03125" value="3.4375"><span></span></div>
+      <div class="row std"><label for="hlf">LF ride ht, in</label><input type="number" id="hlf" min="1" max="7" step="0.03125" value="4"><span></span></div>
+      <div class="row std"><label for="hrf">RF ride ht, in</label><input type="number" id="hrf" min="1" max="7" step="0.03125" value="4.125"><span></span></div>
+      <div class="row std"><label for="hrr">RR ride ht, in</label><input type="number" id="hrr" min="1" max="7" step="0.03125" value="4.5"><span></span></div>
       <div class="row std"><label><abbr title="The frame is one rigid piece, so LR isn't set: it follows LF and RR 1 for 1 and goes opposite to RF. LR = LF + RR − RF.">LR ride ht</abbr>, in</label><span class="note">floats</span><output id="hlr-o"></output></div>
       <p class="note">Ride heights are to the ground, so the tire sizes and tire squash are taken out before the suspension positions are found. Front and rear roll centers, jacking and rear steer come from the Kinematics tab geometry, at the solved roll and ride height.</p>
     </fieldset>
     <fieldset><legend id="scale-leg">Scales</legend>
-      <div class="row"><label for="ls">Left, %</label><input type="number" id="ls" min="52" max="60" step="0.1" value="56"><span></span></div>
-      <div class="row"><label for="rp">Rear, %</label><input type="number" id="rp" min="45" max="54" step="0.1" value="50"><span></span></div>
-      <div class="row"><label for="cr">Cross, %</label><input type="number" id="cr" min="46" max="58" step="0.1" value="52"><span></span></div>
+      <div class="row"><label for="ls">Left, %</label><input type="number" id="ls" min="52" max="60" step="0.1" value="57"><span></span></div>
+      <div class="row"><label for="rp">Rear, %</label><input type="number" id="rp" min="45" max="54" step="0.1" value="48"><span></span></div>
+      <div class="row"><label for="cr">Cross, %</label><input type="number" id="cr" min="46" max="58" step="0.1" value="51"><span></span></div>
       <div class="row"><label for="tpi"><abbr title="Threads per inch on the shock body. One round moves the spring seat 1 ÷ TPI inches.">Shock threads, TPI</abbr></label><input type="number" id="tpi" min="1" step="any" value="8"><span></span></div>
       <p class="note">Rounds from where the car was scaled. + = rounds in: the spring is compressed, that corner comes up, and it and the opposite corner gain load (rounds in the RR take cross out and loosen the car). − = rounds out: that corner goes down and they lose load.</p>
       <div class="row"><label for="rnlf">LF rounds</label><input type="number" id="rnlf" step="any" value="0"><output id="rnlf-o"></output></div>

@@ -23,7 +23,7 @@ function noise(seed: number): () => number {
 
 /**
  * Phase 3 surface detail on top of the materials the bridge mirrors: metallic flake under clear-coated paint
- * (a fine random normal map on the base layer, the coat stays smooth), sheen on tires, and a high-frequency detail
+ * (a fine random normal map on the base layer, the coat stays smooth; tires stay matte), and a high-frequency detail
  * map on surfaces that already carry a normal map (asphalt and concrete).
  */
 export class SurfaceDetail {
@@ -56,14 +56,7 @@ export class SurfaceDetail {
       mat.bumpTexture = on ? this.flake : null
       if (on) mat.bumpTexture!.level = 0.18
     }
-    const c = p.color, dark = !!c && c.r + c.g + c.b < 0.06
-    const tire = !p.map && !p.transparent && (p.roughness ?? 0) >= 0.85 && dark
-    mat.sheen.isEnabled = on && tire
-    if (on && tire) {
-      mat.sheen.intensity = 0.35
-      mat.sheen.color.set(0.6, 0.6, 0.62)
-      mat.sheen.roughness = 0.45
-    }
+    mat.sheen.isEnabled = false
     const textured = !!p.normalMap && !paint
     mat.detailMap.isEnabled = on && textured
     if (on && textured) {
