@@ -43,6 +43,10 @@ export type Env = {
   GEMINI_API_KEY?: string
   /** `vertex` (Vertex AI express mode) or `studio` (Google AI Studio); unset picks Vertex for keys starting with AQ. */
   GEMINI_BACKEND?: string
+  /** OpenAI key the studios use when no Gemini key is set (an sk- key saved as GEMINI_API_KEY works too). */
+  OPENAI_API_KEY?: string
+  OPENAI_TEXT_MODEL?: string
+  OPENAI_IMAGE_MODEL?: string
   ANTHROPIC_API_KEY?: string
   SITE_CHANGES_GITHUB_TOKEN?: string
   SITE_CHANGES_SECRET?: string

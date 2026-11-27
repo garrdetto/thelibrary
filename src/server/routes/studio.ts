@@ -7,6 +7,7 @@ import { IMAGE_MODEL, base64ToBytes, bytesToBase64, gemini } from '../gemini'
 import { alternate, askStudio, asStudioImage, blockedResponse, geminiFailure, studioReady } from '../studio-ai'
 import { SVG_HEADERS, SVG_MIME } from '../svg-art'
 import { FluxRefused, fluxAvailable, fluxImage } from '../studio-image'
+import { OpenAIRefused, openAIImage, studioProvider } from '../studio-openai'
 import type { StudioBlock } from '../studio-ai'
 import { CHAT_CODE_RULE, NO_CODE_MESSAGE, NO_CODE_RULE, looksLikeCode, looksLikeProgram } from '../code-guard'
 import { clichesIn, echoedIdeas, keptLineShare, normalizeLine, readSong, repeatsSong, researchStyle, songSchema, songwriterInstruction, sungLines, validSong } from '../lyrics'
@@ -217,7 +218,7 @@ export async function studio(request: Request, env: Env) {
   }
 
   if (body.kind === 'image') {
-    const painter = gemini(env)
+    const useOpenAI = studioProvider(env) === 'openai'
     const id = crypto.randomUUID()
     let source: ArrayBuffer | null = null
     if (body.action === 'revise' && previous) {
@@ -241,8 +242,17 @@ export async function studio(request: Request, env: Env) {
     const noCode = 'Do not draw any code, programming text or terminal windows.'
     let painted: { bytes: Uint8Array; mime: string } | null = null
     let geminiError: unknown = null
-    try {
-      const result = await painter.models.generateContent({
+    if (useOpenAI) {
+      try {
+        const editSource = source && sourceType && sourceType !== 'image/gif' ? { bytes: new Uint8Array(source), mime: sourceType } : null
+        painted = await openAIImage(env, editSource ? `${imagePrompt}\nPreserve every element of this image that the instruction does not mention. ${noCode}` : `${imagePrompt}\n${noCode}`, body.aspect, editSource)
+      } catch (error) {
+        if (error instanceof OpenAIRefused) return json({ error: error.message }, 422)
+        geminiError = error
+        console.error('OpenAI image failed, trying Workers AI', error instanceof Error ? error.message.slice(0, 300) : '')
+      }
+    } else try {
+      const result = await gemini(env).models.generateContent({
         model: IMAGE_MODEL,
         contents: pixelSource && sourceType ? [{ role: 'user', parts: [
           { text: `${imagePrompt}\nPreserve every element of this image that the instruction does not mention. ${noCode}` },
