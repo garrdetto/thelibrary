@@ -1948,5 +1948,15 @@
   "matsBefore": 8,
   "matsAfter": 8,
   "preset": "aircraft"
+ },
+ "railsetup/chassis.glb": {
+  "hash": "41be2bfa102e2fb031a5332c4a7358c61e7dc9c5",
+  "before": 6827928,
+  "after": 2523980,
+  "primsBefore": 143,
+  "primsAfter": 143,
+  "matsBefore": 0,
+  "matsAfter": 0,
+  "preset": "chassis"
  }
 }

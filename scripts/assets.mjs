@@ -37,6 +37,7 @@ const KEEP_NODE_NAMES = /^(Wheel_|Tire_|RaceNumber_|Hitch|Trailer|Prop_)/i
  * quantization and meshopt (instanced crowds and trees: their per-instance float transforms only grow when quantized).
  * `palette: false` keeps every material (and its name) for modules that recolor slots by name; `keepAttributes: true` keeps UVs on
  * untextured materials whose textures the module paints at runtime.
+ * `instance: false` skips GPU instancing of repeated meshes, for modules that find and pose every part by its node name.
  */
 const PRESETS = [
   { match: /^maplestreet\/houses\//, name: 'house', join: true, simplify: 0.0005, textureQuality: 92 },
@@ -48,6 +49,7 @@ const PRESETS = [
   { match: /^(proskater\/skater|sandlot3d\/toons\/p\d+|gspro\/golfer)\.glb$/, name: 'character', join: false, flatten: false, simplify: 0, textureQuality: 92 },
   { match: /^sandlot3d\//, name: 'figure', join: true, simplify: 0, textureQuality: 92 },
   { match: /^takeflight\//, name: 'aircraft', join: false, flatten: false, palette: false, keepLeaves: true, keepAttributes: true, simplify: 0, textureQuality: 92 },
+  { match: /^railsetup\//, name: 'chassis', join: false, flatten: false, palette: false, keepLeaves: true, instance: false, simplify: 0, textureQuality: 92 },
   { match: /^tello\//, name: 'kit', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /./, name: 'rig', join: true, flatten: false, simplify: 0, textureQuality: 92 },
 ]
@@ -354,7 +356,7 @@ async function worker() {
   const optimize = async (document, preset) => {
     document.setLogger(quiet)
     const keep = rootNames(document)
-    await document.transform(fn.unpartition(), fn.dedup(), fn.instance({ min: 5 }))
+    await document.transform(fn.unpartition(), fn.dedup(), ...(preset.instance === false ? [] : [fn.instance({ min: 5 })]))
     if (preset.palette !== false) await document.transform(fn.palette({ min: 5 }))
     if (preset.flatten !== false) await document.transform(fn.flatten())
     if (preset.join) {
