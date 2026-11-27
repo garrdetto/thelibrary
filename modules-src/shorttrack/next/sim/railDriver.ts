@@ -44,7 +44,16 @@ export type RailDriver = {
   stuck: number
   /** Set when the car had to be put back on track this lap: every corner backs off. */
   incident: boolean
+  /** Seconds left on a sudden throttle lift after the rear stepped out, and what the driver is reacting to now. */
+  lift: number
+  note: RailNote
+  /** How far up the track (m) a push may carry the car before that corner is slowed: more when the setup is tight. */
+  pushOk: number
+  /** Corner speeds it ran before the last setup change: it never backs off more than `FLOOR` of them, so a badly balanced car still pushes into the wall or spins. */
+  ref: Float64Array | null
 }
+
+export type RailNote = '' | 'push' | 'tight-exit' | 'loose' | 'catch' | 'spin'
 
 export type RailPhase = 'straight' | 'entry' | 'apex' | 'exit'
 const PHASES: readonly RailPhase[] = ['straight', 'entry', 'apex', 'exit']
@@ -58,6 +67,8 @@ const BRAKE_PEAK = 0.9
 const APEX_THR = 0.15
 const START_MU = 0.85
 const TURNING = 0.004
+/** Least share of the previous setup's corner speeds the driver drops to while learning a new one. */
+const FLOOR = 0.92
 
 /** Distance from the outside wall and the inside edge (apron) to the car's centre on the line, m. */
 const WALL_GAP = 1.25
@@ -124,7 +135,7 @@ export function newRailDriver(T: Track): RailDriver {
     const k = Math.abs(shape.kappa)
     grip[i] = k > TURNING ? Math.min(80, Math.sqrt((T.cfg.g * (START_MU + t)) / ((1 - START_MU * t) * k))) : 80
   }
-  const d: RailDriver = { bin: BIN, grip, lo: new Float64Array(n), hi: new Float64Array(n).fill(Infinity), plan: new Float64Array(n), kappa, ds, phase, beta: new Float64Array(n), err: new Float64Array(n), wall: new Uint8Array(n), laps: 0, thr: 0, brk: 0, lock: 0, peak: 0, stuck: 0, incident: false }
+  const d: RailDriver = { bin: BIN, grip, lo: new Float64Array(n), hi: new Float64Array(n).fill(Infinity), plan: new Float64Array(n), kappa, ds, phase, beta: new Float64Array(n), err: new Float64Array(n), wall: new Uint8Array(n), laps: 0, thr: 0, brk: 0, lock: 0, peak: 0, stuck: 0, incident: false, lift: 0, note: '', pushOk: 1.5, ref: null }
   replan(d)
   return d
 }
@@ -158,6 +169,7 @@ function replan(d: RailDriver): void {
 
 /** Forget what the driver learned about the limit (keeps its speeds as a starting point), e.g. after a setup change. */
 export function railDriverRelearn(d: RailDriver): void {
+  d.ref = Float64Array.from(d.grip)
   d.lo.fill(0)
   d.hi.fill(Infinity)
 }
@@ -168,7 +180,7 @@ export function railDriverLap(d: RailDriver, _T?: Track): void {
   const turning = (i: number) => Math.abs(d.kappa[i]) > TURNING
   const slow = new Uint8Array(n)
   for (let i = 0; i < n; i++) {
-    if (!(d.beta[i] > 0.09 || d.err[i] > 1.5 || d.wall[i])) continue
+    if (!(d.beta[i] > 0.09 || d.err[i] > d.pushOk || d.wall[i])) continue
     const into = d.phase[i] === 1 || d.phase[i] === 2
     for (let k = 0; k < n; k++) {
       const j = (i - k + n) % n
@@ -198,6 +210,7 @@ export function railDriverLap(d: RailDriver, _T?: Track): void {
     const a = d.grip[(i - 1 + n) % n], b = d.grip[(i + 1) % n]
     if (turning(i)) d.grip[i] = Math.min(d.grip[i], (a + b) / 2 + 0.6)
   }
+  if (d.ref) for (let i = 0; i < n; i++) if (turning(i)) d.grip[i] = Math.max(d.grip[i], FLOOR * d.ref[i])
   d.beta.fill(0)
   d.err.fill(0)
   d.wall.fill(0)
@@ -209,6 +222,9 @@ export function railDriverLap(d: RailDriver, _T?: Track): void {
 export function railDriverControls(w: World, c: SimCar, d: RailDriver): Controls {
   const T = w.track, st = c.rail as RailState, v = st.veh
   st.direct = true
+  const hd = v.handling
+  d.pushOk = 1.5 + 0.25 * Math.max(0, hd?.entry ?? 0, hd?.center ?? 0)
+  let note: RailNote = ''
   const sh = Math.sin(c.h), ch = Math.cos(c.h)
   const u = c.vx * sh + c.vz * ch, vl = c.vx * ch - c.vz * sh
   const s = c.tp.s, n = d.grip.length, i = Math.floor(mod(s, T.P) / d.bin) % n
@@ -269,28 +285,46 @@ export function railDriverControls(w: World, c: SimCar, d: RailDriver): Controls
   const spin = flat ? 0 : Math.max(st.slipR[0], st.slipR[1])
   if (spin > 0.1) thr *= clamp(1 - (spin - 0.1) * 5, 0.3, 1)
   const loose = Math.max(excess - 0.05, Math.abs(slip) - 0.06)
-  if (!flat && loose > 0 && u > 8) thr *= clamp(1 - loose * 12, 0.25, 1)
+  if (!flat && loose > 0 && u > 8) {
+    thr *= clamp(1 - loose * 12, 0.25, 1)
+    note = 'loose'
+    if (loose > 0.03 && d.lift <= 0) d.lift = 0.3
+  }
+  if (d.lift > 0) {
+    d.lift -= 1 / 120
+    thr = Math.min(thr, loose > 0.03 ? 0 : 0.12 + (0.3 - d.lift) * 2)
+    note = 'catch'
+  }
   const rearAlpha = Math.max(Math.abs(st.alpha[2]), Math.abs(st.alpha[3]))
   if (!flat && rearAlpha > 0.065 && u > 8) thr *= clamp(1 - (rearAlpha - 0.065) * 15, 0.3, 1)
   if (excess < -0.08 && err > 1 && (phase === 'entry' || phase === 'apex')) thr *= 0.6
+  const frontUse = Math.min(st.use[0], st.use[1])
+  if (note === '' && (phase === 'entry' || phase === 'apex') && frontUse > 0.95 && excess < -0.02 && err > 0.5) note = 'push'
+  const commit = phase === 'exit' ? clamp(((hd?.exit ?? 0) - 6) / 6, 0, 1) : 0
+  if (phase === 'exit' && frontUse > 0.93 && excess < -0.02 && u > 8) {
+    thr = Math.min(thr, clamp(0.85 - (frontUse - 0.93) * 6 - Math.max(0, err) * 0.08, 0.2 + 0.4 * commit, 0.85))
+    if (note === '') note = 'tight-exit'
+  }
   const cp = T.center(s), outward = c.vx * cp.nx + c.vz * cp.nz
   const pushing = Math.min(st.use[0], st.use[1]) > 0.97 && excess < -0.03
   if (outward > 0.3 && pushing) {
     const tWall = (T.HW - 1.2 - c.tp.lat) / outward
     if (tWall < 1.2) {
-      thr = Math.min(thr, clamp(tWall - 0.4, 0, 1))
-      if (tWall < 0.8 && Math.abs(beta) < 0.12) brk = Math.max(brk, clamp((0.8 - tWall) * 0.6, 0, 0.45))
+      thr = Math.min(thr, Math.max(clamp(tWall - 0.4, 0, 1), 0.5 * commit))
+      if (tWall < 0.8 && Math.abs(beta) < 0.12 && commit < 0.5) brk = Math.max(brk, clamp((0.8 - tWall) * 0.6, 0, 0.45))
     }
   }
   if (Math.abs(beta) > 0.35) {
     thr = Math.min(thr, 0.35)
     brk = 0
+    note = 'spin'
   }
   if (brk > 0 && Math.min(st.use[0], st.use[1]) > 0.99) brk *= 0.75
   if (u < 5) brk = 0
   d.thr = thr > d.thr ? Math.min(thr, d.thr + 4 / 120) : thr
   d.brk = brk > d.brk ? Math.min(brk, d.brk + 8 / 120) : brk
   d.stuck = Math.abs(u) < 2 ? d.stuck + 1 / 120 : 0
+  d.note = note
   return { thr: d.thr, brk: d.brk, steer }
 }
 
@@ -310,6 +344,8 @@ export function railRecover(w: World, c: SimCar, d?: RailDriver): void {
     d.thr = 0
     d.brk = 0
     d.lock = 0
+    d.lift = 0
+    d.note = ''
     d.incident = true
   }
 }

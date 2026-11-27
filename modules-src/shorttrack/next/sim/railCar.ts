@@ -74,6 +74,8 @@ export type RailVehicle = {
   clearance: { name: string; x: number; y: number; h: number }[]
   /** The scale numbers, for the readouts. */
   scales: { left: number; rear: number; cross: number; weightLb: number }
+  /** Handling against the Lab's test drive baseline per corner phase (balance points, + = tighter, − = looser). */
+  handling?: { entry: number; center: number; exit: number }
 }
 
 const table = z.object({ x0: z.number().finite(), dx: z.number().finite().positive(), y: z.array(z.number().finite()).min(1).max(400) })
@@ -116,6 +118,7 @@ export const railVehicleSchema = z.object({
   brakeFront: z.number().min(0).max(1),
   clearance: z.array(z.object({ name: z.string().max(20), x: z.number().finite(), y: z.number().finite(), h: z.number().finite() })).max(12),
   scales: z.object({ left: z.number().finite(), rear: z.number().finite(), cross: z.number().finite(), weightLb: z.number().finite() }),
+  handling: z.object({ entry: z.number().min(-40).max(40), center: z.number().min(-40).max(40), exit: z.number().min(-40).max(40) }).optional(),
 })
 
 export function parseRailVehicle(raw: unknown): RailVehicle | null {

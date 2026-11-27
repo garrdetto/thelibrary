@@ -9,6 +9,8 @@ import { newRailState } from './next/sim/railDynamics'
 import type { RailState } from './next/sim/railDynamics'
 import { lineLat, newRailDriver, railDriverControls, railDriverLap, railDriverRelearn, railPhase, railRecover } from './next/sim/railDriver'
 import type { RailDriver } from './next/sim/railDriver'
+import { Pedals, PEDAL_CSS, mountPedalPanel } from './rail-pedals'
+import { CHASSIS_CSS, mountChassis } from './rail-chassis'
 import type { World } from './next/sim/world'
 
 /**
@@ -128,7 +130,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '
 export function initRailTest(api: RailTestApi) {
   const W = api.world, T = W.track, cfg = W.cfg
   const style = document.createElement('style')
-  style.textContent = CSS
+  style.textContent = CSS + PEDAL_CSS + CHASSIS_CSS
   document.head.append(style)
   api.wrap.classList.add('lab')
 
@@ -157,6 +159,8 @@ export function initRailTest(api: RailTestApi) {
     <button type="button" id="rtExag" aria-pressed="false" title="Shows roll, pitch and ride height 3× bigger so you can see them; numbers stay true">Motion ×3</button>
     <button type="button" id="rtTelBtn" aria-pressed="false" title="Telemetry: loads, travel, clearance, balance">Data</button>
     <button type="button" id="rtLapsBtn" aria-pressed="false">Laps</button>
+    <button type="button" id="rtChBtn" aria-pressed="false" title="Live top view of the chassis: tire loads, grip in use, travel, roll, pitch and g">Show chassis</button>
+    <button type="button" id="rtPedBtn" aria-pressed="false" title="Throttle and brake curves for Drive yourself">Pedals</button>
     <span class="grow"></span>
     <span class="setup"><small id="rtSetup"></small></span>
     <span class="timer" id="rtTimer">--.---</span>
@@ -170,10 +174,17 @@ export function initRailTest(api: RailTestApi) {
     <canvas id="rtTrace" width="1200" height="116" aria-label="Speed and nose clearance through the lap"></canvas>
   </div>
   <div id="rtTiles"></div>
+  <div id="rtPed" class="panel" aria-label="Pedal curves"></div>
+  <div id="rtCh" class="panel" aria-label="Chassis"></div>
+  <div id="rtIn" class="panel" aria-label="Driver inputs"></div>
   <div id="rtWait" class="panel">Waiting for the setup from Straight Rail Setup Lab…</div>`
   api.wrap.append(root)
   const $ = <E extends HTMLElement>(id: string) => root.querySelector('#' + id) as E
   const tel = $('rtTel'), rows = $('rtLapRows'), timer = $('rtTimer'), note = $('rtNote')
+  const pedals = new Pedals()
+  let lastCtl = { thr: 0, brk: 0 }
+  mountPedalPanel($('rtPed'), pedals)
+  const live = mountChassis($('rtIn'), $('rtCh'))
   const scrub = $<HTMLInputElement>('rtScrub'), trace = $<HTMLCanvasElement>('rtTrace'), tilesBox = $('rtTiles')
 
   const setPressed = (id: string, on: boolean) => {
@@ -209,6 +220,7 @@ export function initRailTest(api: RailTestApi) {
       c.rail.omega = 12 / ((veh.rollout[2] + veh.rollout[3]) / (4 * Math.PI))
     }
     c.steer = 0
+    pedals.reset()
     lastCross = c.cross
     lapStart = null
     cur = null
@@ -257,6 +269,13 @@ export function initRailTest(api: RailTestApi) {
   $('rtLapsBtn').addEventListener('click', () => { const on = !api.wrap.classList.contains('laps'); api.wrap.classList.toggle('laps', on); setPressed('rtLapsBtn', on) })
   const telOn = (on: boolean) => { api.wrap.classList.toggle('tel', on); setPressed('rtTelBtn', on); layoutTiles() }
   $('rtTelBtn').addEventListener('click', () => telOn(!api.wrap.classList.contains('tel')))
+  const panelToggle = (btn: string, cls: string) => $(btn).addEventListener('click', () => { const on = !api.wrap.classList.contains(cls); api.wrap.classList.toggle(cls, on); setPressed(btn, on) })
+  panelToggle('rtChBtn', 'chassis')
+  panelToggle('rtPedBtn', 'ped')
+  const shift = (e: KeyboardEvent) => { pedals.feather = e.shiftKey }
+  addEventListener('keydown', shift)
+  addEventListener('keyup', shift)
+  addEventListener('blur', () => { pedals.feather = false })
   $('rtBack').addEventListener('click', () => post({ type: 'rail-test-close' }))
   addEventListener('keydown', (e) => { if (e.key === 'Escape') post({ type: 'rail-test-close' }) })
   $('rtPlay').addEventListener('click', () => { if (replay) { replay.playing = !replay.playing; $('rtPlay').textContent = replay.playing ? 'Pause' : 'Play' } })
@@ -338,8 +357,8 @@ export function initRailTest(api: RailTestApi) {
       d[o + F.tr + i] = st.travel[i]
       d[o + F.fz + i] = st.fz[i]
     }
-    d[o + F.thr] = c.thr
-    d[o + F.brk] = c.brk
+    d[o + F.thr] = lastCtl.thr
+    d[o + F.brk] = lastCtl.brk
     d[o + F.rpm] = st.rpm
     d[o + F.ay] = st.ay
     d[o + F.ax] = st.ax
@@ -405,9 +424,15 @@ export function initRailTest(api: RailTestApi) {
   // ---------- simulation hooks ----------
   function controls(c: SimCar): Controls {
     if (!c.rail) return { thr: 0, brk: 0, steer: 0 }
-    if (auto) return railDriverControls(W, c, driver)
+    if (auto) {
+      const out = railDriverControls(W, c, driver)
+      lastCtl = { thr: Number(out.thr), brk: Number(out.brk) }
+      return out
+    }
     c.rail.direct = false
-    return api.manual()
+    const out = pedals.apply(api.manual(), 1 / 120)
+    lastCtl = { thr: Number(out.thr), brk: Number(out.brk) }
+    return out
   }
 
   function clearDriverLap() {
@@ -479,8 +504,8 @@ export function initRailTest(api: RailTestApi) {
     car.vx = Math.sin(car.h) * car.vf
     car.vz = Math.cos(car.h) * car.vf
     car.steer = v(F.steer)
-    car.thr = d[a + F.thr]
-    car.brk = d[a + F.brk]
+    car.thr = d[a + F.thr] > 0.05 ? 1 : 0
+    car.brk = d[a + F.brk] > 0.05 ? 1 : 0
     car.tp = T.toTrack(car.x, car.z)
     st.z = v(F.bz)
     st.th = v(F.th)
@@ -715,6 +740,12 @@ export function initRailTest(api: RailTestApi) {
   function hud(dt: number) {
     if (!car?.rail) return
     timer.textContent = replay ? `R ${replay.t.toFixed(2)}` : lapStart == null ? 'Out lap' : fmtT(clock - lapStart)
+    {
+      const st = car.rail, rep0 = replay ? sampleAt(replay.lap, replay.t) : null
+      const thr = rep0 ? replay!.lap.data[rep0.o * NF + F.thr] : lastCtl.thr, brk = rep0 ? replay!.lap.data[rep0.o * NF + F.brk] : lastCtl.brk
+      live.inputs({ thr, brk, steer: car.steer, note: driver.note, driver: auto && !replay }, ((st.steerL + st.steerR) / 2) * DEG)
+      if (api.wrap.classList.contains('chassis')) live.chassis(st)
+    }
     hudT += dt
     if (hudT < 0.1) return
     hudT = 0

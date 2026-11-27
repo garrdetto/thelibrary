@@ -9,7 +9,7 @@ import { Lab, OUTROWS } from '../sim/lab'
 import type { Model, Side, Snapshot } from '../sim/lab'
 import { fileName, parseSetupFile, setupFile } from '../sim/files'
 import { ChassisScene } from './scene'
-import { TrackTest } from './track-test'
+import { BASELINE_NAME, TrackTest } from './track-test'
 import { PGRP, buildCharts, markPlots, renderGroup } from './plots'
 import { clearHardpoints, deleteSetup, loadRemote, readPrefs, saveHardpoints, saveSetup, writePrefs } from './store'
 import type { Remote } from './store'
@@ -138,6 +138,8 @@ export class App {
     $('k-sweep').onclick = () => { this.sweeping = !this.sweeping; this.sweepT = 0; $('k-sweep').textContent = this.sweeping ? 'Stop sweep' : 'Sweep bump and droop' }
     $('k-zero').onclick = () => { this.stopSweep(); $('k-heave').value = '0'; $('k-roll').value = '0'; this.readPose(); this.outputs(); this.update() }
     for (const id of ['tt-open', 'v-track']) $(id).onclick = () => { this.stopDrive(); this.stopSweep(); this.track.show() }
+    $('tt-base').onclick = () => { void this.saveBaseline() }
+    $('tt-base-reset').onclick = () => { void this.resetBaseline() }
     $('drive').onclick = () => { if (this.driving) { this.stopDrive(); return } this.driveKeep = { g: +$('g').value, gx: +$('gx').value }; this.driving = true; this.driveT = 0; $('drive').textContent = '■ Stop' }
     ;(['g', 'gx'] as const).forEach(id => $(id).addEventListener('pointerdown', () => this.stopDrive()))
     $('reset-setup').onclick = () => { this.stopDrive(); for (const s of SETUP_INPUTS) this.lab.inputs[s.id] = DEFAULTS[s.id]; this.syncInputs(); this.update() }
@@ -610,6 +612,8 @@ export class App {
     $('sv-where').textContent = r.signedIn ? 'Saved to your library account.' : 'Not signed in: setups stay until you leave this page. Sign in to keep them, or export a file.'
     if (r.signedIn) {
       this.saved = (r.setups || []).flatMap(x => { try { return parseSetupFile(x) } catch { return [] } })
+      const base = this.saved.find(x => x.name === BASELINE_NAME)
+      if (first && base) this.useBaseline(base)
       this.fillLists()
       if (first && r.hardpoints) {
         try { this.useHardpoints(parseHardpoints(r.hardpoints.hardpoints), r.hardpoints.name) } catch { this.useHardpoints(null, null) }
@@ -660,10 +664,34 @@ export class App {
     if (this.signedIn) await this.remote(saveSetup(x))
   }
 
+  private useBaseline(x: Snapshot | null) {
+    this.track.setBaseline(x)
+    $('tt-base-note').textContent = 'Test drive baseline: ' + this.track.baselineName + '. On the baseline the test driver runs at the limit with balanced handling; changes from it make the car tighter or looser in entry, center and exit.'
+  }
+
+  private async saveBaseline() {
+    this.stopDrive()
+    const x = this.lab.snapshot(BASELINE_NAME), i = this.saved.findIndex(s => s.name === BASELINE_NAME)
+    if (i >= 0) this.saved[i] = x; else this.saved.push(x)
+    this.useBaseline(x)
+    this.fillLists()
+    if (this.signedIn) await this.remote(saveSetup(x))
+  }
+
+  private async resetBaseline() {
+    const had = this.saved.some(s => s.name === BASELINE_NAME)
+    if (had && !confirm('Go back to the Lab defaults as the test drive baseline? This removes the saved "' + BASELINE_NAME + '" setup.')) return
+    this.saved = this.saved.filter(s => s.name !== BASELINE_NAME)
+    this.useBaseline(null)
+    this.fillLists()
+    if (had && this.signedIn) await this.remote(deleteSetup(BASELINE_NAME))
+  }
+
   private async deleteSelected() {
     const i = +$('sv-list').value, x = this.saved[i]
     if (!x || !confirm('Delete "' + x.name + '"?')) return
     this.saved.splice(i, 1)
+    if (x.name === BASELINE_NAME) this.useBaseline(null)
     this.fillLists()
     if (this.signedIn) await this.remote(deleteSetup(x.name))
   }

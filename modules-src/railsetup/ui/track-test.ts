@@ -1,5 +1,9 @@
-import type { Lab } from '../sim/lab'
-import { railTrackQuery, railVehicle } from '../sim/vehicle'
+import { Lab } from '../sim/lab'
+import type { Snapshot } from '../sim/lab'
+import { handlingDelta, railHandling, railTrackQuery, railVehicle } from '../sim/vehicle'
+import type { RailHandling } from '../sim/vehicle'
+
+export const BASELINE_NAME = 'Test Drive Baseline'
 
 /**
  * Test on track: opens Short Track Showdown's track test (`shorttrack.html?lab=1`) over the Lab, on a track with the
@@ -12,6 +16,9 @@ export class TrackTest {
   private ready = false
   private src = ''
   private sent = ''
+  private base: Snapshot | null = null
+  private baseKey = ''
+  private baseHandling: RailHandling | null = null
 
   constructor(private readonly lab: Lab, private readonly name: () => string, private readonly onClose: () => void) {
     this.box = document.createElement('div')
@@ -61,10 +68,36 @@ export class TrackTest {
     this.onClose()
   }
 
+  /** The setup the test driver treats as balanced at the limit (null: the Lab's defaults). */
+  setBaseline(x: Snapshot | null) {
+    this.base = x
+    this.baseHandling = null
+    if (this.open) this.send()
+  }
+
+  get baselineName(): string {
+    return this.base ? BASELINE_NAME : 'Lab defaults'
+  }
+
+  /** The setup's handling against the baseline per corner phase (balance points, + tighter). */
+  handling(): RailHandling {
+    const key = JSON.stringify(this.lab.rawHardpoints()) + (this.base ? JSON.stringify(this.base.inputs) + JSON.stringify(this.base.adj) + JSON.stringify(this.base.radj) : '') + this.lab.num('bank')
+    if (!this.baseHandling || key !== this.baseKey) {
+      const b = new Lab(this.lab.rawHardpoints())
+      b.mrFixedFlag = this.lab.mrFixedFlag
+      if (this.base) b.applySnapshot(this.base)
+      Object.assign(b.inputs, { bank: this.lab.num('bank') })
+      b.recompute()
+      this.baseHandling = railHandling(b)
+      this.baseKey = key
+    }
+    return handlingDelta(railHandling(this.lab), this.baseHandling)
+  }
+
   private send() {
     if (!this.ready || !this.frame.contentWindow) return
     const name = this.name()
-    const vehicle = railVehicle(this.lab, name)
+    const vehicle = { ...railVehicle(this.lab, name), handling: this.handling() }
     const key = JSON.stringify(vehicle)
     if (key === this.sent) return
     this.sent = key

@@ -120,6 +120,8 @@
     <fieldset><legend>Track</legend>
       <div class="row"><label for="rad">Corner radius, ft</label><input type="range" id="rad" min="40" max="300" step="5" value="120"><output id="rad-o"></output></div>
       <div class="btnrow"><button type="button" id="tt-open" class="go">▶ Test on track</button></div>
+      <div class="btnrow"><button type="button" id="tt-base">Save as Test Drive Baseline</button><button type="button" id="tt-base-reset">Use default baseline</button></div>
+      <p class="note" id="tt-base-note">Test drive baseline: Lab defaults. On the baseline the test driver runs at the limit with balanced handling; changes from it make the car tighter or looser in entry, center and exit.</p>
       <p class="note">Runs this setup on a short oval with this corner radius and the Banking under Move the car. A new radius or banking rebuilds the track.</p>
     </fieldset>
     <fieldset><legend>Wheels and rear end</legend>
