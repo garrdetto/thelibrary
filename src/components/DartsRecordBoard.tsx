@@ -5,7 +5,7 @@ import { AVERAGE_MIN_DARTS, BOARD_KINDS, BOARD_NAMES, MODE_NAMES, RECORD_LIMITS,
 import type { RecordMode } from '../../modules-src/darts/shared/Records'
 import type { BoardKind } from '../../modules-src/darts/shared/interfaces'
 
-type BookEntry = { username: string; value: number; times: number; date: string }
+type BookEntry = { username: string; value: number; date: string }
 type AverageEntry = { username: string; darts: number; total: number; matches: number; average: number }
 type BookData = {
   records: BookEntry[]
@@ -25,7 +25,7 @@ function recordText(mode: RecordMode, value: number) {
   return mode === 'countup' ? `${value.toLocaleString()} pts` : `${value} darts`
 }
 
-/** The Darts record book under the module frame: one tab per board, then one per format, with the best of every player and the top five all-time averages. */
+/** The Darts record book under the module frame: one tab per board, then one per format, with the top 20 games ever saved (one player can hold several places) and the top five all-time averages. */
 export function DartsRecordBoard() {
   const [board, setBoard] = useState<BoardKind>('spider')
   const [mode, setMode] = useState<RecordMode>('501')
@@ -90,7 +90,7 @@ export function DartsRecordBoard() {
         <div>
           <span className="lap-board-eyebrow">All-time record book</span>
           <h2 id="darts-board-title">Darts records</h2>
-          <p>Each board keeps its own book: fewest darts to finish 501, 301 or Cricket and the best eight-round Count Up, from any leg played alone, against anyone or in a tournament (team matches don't count). Averages count when two people play each other or against the Pro computer.</p>
+          <p>Each board keeps its own book of the top 20 games: fewest darts to finish 501, 301 or Cricket and the best eight-round Count Up totals, from any leg played alone, against anyone or in a tournament (team matches don't count). Averages count when two people play each other or against the Pro computer.</p>
         </div>
       </div>
       <div className="lap-board-tabs" role="tablist" aria-label="Board" onKeyDown={event => moveTab(event, BOARD_KINDS, board, setBoard, 'data-board')}>
@@ -113,15 +113,15 @@ export function DartsRecordBoard() {
           : !result.signedIn && <p className="lap-board-note">Sign in to the library to put your legs in the record book.</p>)}
         <div className="darts-board-cols">
           <div>
-            <h3 className="darts-board-sub">{fewest ? 'Fewest darts' : 'Highest totals'}</h3>
+            <h3 className="darts-board-sub">{fewest ? 'Top 20 games: fewest darts' : 'Top 20 games: highest totals'}</h3>
             {rows === null
               ? <p className="lap-board-note" role="status">Loading records…</p>
               : rows.length
                 ? <div className="lap-board-scroll"><table>
-                    <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Result</th><th scope="col">Times</th><th scope="col">Date</th></tr></thead>
+                    <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Result</th><th scope="col">Date</th></tr></thead>
                     <tbody>{rows.map((row, index) => (
                       <tr key={`${row.username}:${row.date}:${index}`} className={index < 3 ? `podium-${index + 1}` : undefined}>
-                        <td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{row.username}</th><td>{recordText(mode, row.value)}</td><td>{row.times > 1 ? `×${row.times}` : '×1'}</td><td>{new Date(row.date).toISOString().slice(0, 10)}</td>
+                        <td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{row.username}</th><td>{recordText(mode, row.value)}</td><td>{new Date(row.date).toISOString().slice(0, 10)}</td>
                       </tr>
                     ))}</tbody>
                   </table></div>

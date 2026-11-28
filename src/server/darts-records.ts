@@ -19,6 +19,7 @@ export function ensureDartsTables(env: Env) {
       value INTEGER NOT NULL,
       created_at INTEGER NOT NULL
     )`),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS darts_legs_board_idx ON darts_legs (board, mode, value)'),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS darts_bests (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -105,18 +106,22 @@ export async function saveDartsAverage(env: Env, user: DartsScorer, board: Board
   return true
 }
 
-type BestRow = { username: string; value: number; times: number; set_at: number }
+type GameRow = { username: string; value: number; created_at: number }
+
+/** How many games the record book lists per board and format. */
+export const DARTS_BOOK_GAMES = 20
 type AverageRow = { username: string; darts: number; total: number; matches: number }
 
-/** The record book for one board and format: everyone's best (ties broken by how many times they've done it, then who did it first), the top five all-time averages, and the signed-in player's own best and average. */
+/** The record book for one board and format: the top games from every saved leg (`darts_legs`, so one player can hold several places; ties go to whoever played it first), the top five all-time averages, and the signed-in player's own best and average. */
 export async function dartsBoard(env: Env, board: BoardKind, mode: RecordMode, userId: string | null) {
   await ensureDartsTables(env)
   const order = bestOrder(mode)
   const averageMode = mode === 'countup' ? null : mode
-  const [bests, averages, mine, myAverage] = await Promise.all([
-    env.DB.prepare(`SELECT COALESCE(u.username, b.username) AS username, b.value, b.times, b.set_at FROM darts_bests b
-      LEFT JOIN users u ON u.id = b.user_id
-      WHERE b.board = ? AND b.mode = ? ORDER BY b.value ${order}, b.times DESC, b.set_at ASC, b.id ASC LIMIT 10`).bind(board, mode).all<BestRow>(),
+  const [games, averages, mine, myAverage] = await Promise.all([
+    env.DB.prepare(`SELECT COALESCE(u.username, b.username, 'Former player') AS username, l.value, l.created_at FROM darts_legs l
+      LEFT JOIN users u ON u.id = l.user_id
+      LEFT JOIN darts_bests b ON b.id = l.user_id || ':' || l.board || ':' || l.mode
+      WHERE l.board = ? AND l.mode = ? ORDER BY l.value ${order}, l.created_at ASC, l.id ASC LIMIT ${DARTS_BOOK_GAMES}`).bind(board, mode).all<GameRow>(),
     averageMode
       ? env.DB.prepare(`SELECT COALESCE(u.username, a.username) AS username, a.darts, a.total, a.matches FROM darts_averages a
         LEFT JOIN users u ON u.id = a.user_id
@@ -129,7 +134,7 @@ export async function dartsBoard(env: Env, board: BoardKind, mode: RecordMode, u
   return {
     board,
     mode,
-    records: bests.results.map(row => ({ username: row.username, value: row.value, times: row.times, date: new Date(row.set_at).toISOString() })),
+    records: games.results.map(row => ({ username: row.username, value: row.value, date: new Date(row.created_at).toISOString() })),
     averages: averages.results.map(row => ({ username: row.username, darts: row.darts, total: row.total, matches: row.matches, average: averageMode ? Number(averageValue(averageMode, row.darts, row.total).toFixed(2)) : 0 })),
     you: userId ? { best: mine?.value ?? null, times: mine?.times ?? 0, darts: myAverage?.darts ?? 0, total: myAverage?.total ?? 0, matches: myAverage?.matches ?? 0 } : null,
     signedIn: Boolean(userId),
