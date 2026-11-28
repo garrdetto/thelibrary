@@ -30,14 +30,3 @@ export const saveSetup = (setup: Snapshot) => post({ action: 'save', setup })
 export const deleteSetup = (name: string) => post({ action: 'delete', name })
 export const saveHardpoints = (name: string, hardpoints: Hardpoints) => post({ action: 'hardpoints', name, hardpoints })
 export const clearHardpoints = () => post({ action: 'clear-hardpoints' })
-
-const PREF = 'tl-railsetup-ui'
-type Prefs = { help?: boolean; shut?: number[]; shutMobile?: number[] }
-
-export function readPrefs(): Prefs {
-  try { return JSON.parse(localStorage.getItem(PREF) || '{}') as Prefs } catch { return {} }
-}
-
-export function writePrefs(p: Prefs) {
-  try { localStorage.setItem(PREF, JSON.stringify({ ...readPrefs(), ...p })) } catch { return }
-}

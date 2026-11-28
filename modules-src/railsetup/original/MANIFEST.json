@@ -1,0 +1,87 @@
+{
+ "source": "StraightRailSetupLab.exe",
+ "exeSha256": "8a0e2a953e31ef15fe5ed96c9ca9b920eab9e787baed88c7715ec59f45beed20",
+ "files": {
+  "car.glb": {
+   "bytes": 70447244,
+   "sha256": "ee1416481cb0df07c56287c8b1613cc2e64850d6cc754fb748d2a5d6a45ae5c6",
+   "from": "car"
+  },
+  "index.html": {
+   "bytes": 153571,
+   "sha256": "ff2084bda62a702bc04d0c051c53e83f6e252d17bf6e5f946c4b6f5804947b0f",
+   "from": "original"
+  },
+  "kin.js": {
+   "bytes": 18125,
+   "sha256": "ff61af95996df01f66c93517c82776c2e740486abfbbf3fab7b820c548e0eb23",
+   "from": "original"
+  },
+  "version.txt": {
+   "bytes": 2,
+   "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+   "from": "original"
+  },
+  "lib/GLTFLoader.js": {
+   "bytes": 96550,
+   "sha256": "5c15967ba830918a9caea6338712c994c354bccd4edc4569bde411c3ec06a3e6",
+   "from": "three-r128"
+  },
+  "lib/OrbitControls.js": {
+   "bytes": 26375,
+   "sha256": "02bb4ade710f3e607329e37a21f098bc3ac70eb6e33daf8a65e79f4db785e7b2",
+   "from": "three-r128"
+  },
+  "lib/fonts.css": {
+   "bytes": 972,
+   "sha256": "e4e282263053f962e22e09e467dcdb80d4a69b18bc15cef150fc5a0c49e8c67c",
+   "from": "original"
+  },
+  "lib/three.min.js": {
+   "bytes": 603445,
+   "sha256": "9274bbcec8d96168626c732b5d31c775aa8cfb7eaa0599bec0c175908a2c1ce2",
+   "from": "three-r128"
+  },
+  "lib/fonts/barlow-condensed-latin-500-normal.woff2": {
+   "bytes": 20432,
+   "sha256": "2d2c4912162eaa41299aaf5063ecb92a26d76071fe6d1f77742b32c833daab99",
+   "from": "original"
+  },
+  "lib/fonts/barlow-condensed-latin-600-normal.woff2": {
+   "bytes": 21352,
+   "sha256": "0b281bf2f4179c06ba68f0a427f2341287c41eacc2ce9d534c6f5c513ac633fb",
+   "from": "original"
+  },
+  "lib/fonts/ibm-plex-mono-latin-400-normal.woff2": {
+   "bytes": 14812,
+   "sha256": "3c5a451f9ec27a354b0c2bcca636c6ec17a651281aabf29f8427e210a1d31e85",
+   "from": "original"
+  },
+  "lib/fonts/ibm-plex-mono-latin-500-normal.woff2": {
+   "bytes": 14988,
+   "sha256": "756026ff72eb76fd971ac4b7504cec55eef62109d2684c2cad8da32170b80b37",
+   "from": "original"
+  },
+  "lib/fonts/ibm-plex-sans-latin-400-normal.woff2": {
+   "bytes": 19156,
+   "sha256": "db71f8a28ad8501544fb4e7668e3c6d0b731760b6f20de3525ebaeba597f1922",
+   "from": "original"
+  },
+  "lib/fonts/ibm-plex-sans-latin-500-normal.woff2": {
+   "bytes": 20064,
+   "sha256": "5ef914e59b0047a261844d96acabb60c34d3acab6b85ea24198726ce4781fd37",
+   "from": "original"
+  }
+ },
+ "car": {
+  "bytes": 70447244,
+  "sha256": "ee1416481cb0df07c56287c8b1613cc2e64850d6cc754fb748d2a5d6a45ae5c6",
+  "gzBytes": 42163685,
+  "gzSha256": "1870a0c963c2381e097a7d14b7814e90de277dbfc1c721995c6a709c188d8ca2",
+  "pieces": [
+   "car.glb.gz.0",
+   "car.glb.gz.1",
+   "car.glb.gz.2"
+  ]
+ }
+}

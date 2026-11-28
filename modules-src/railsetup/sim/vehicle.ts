@@ -13,9 +13,7 @@ const grid = (xs: number[], scale: number, ys: number[]): Table => ({ x0: xs[0] 
  * copied and re-solved at rest (no g, no banking, no steer) so the sliders under Move the car don't leak into the car.
  */
 export function railVehicle(src: Lab, name: string): RailVehicle {
-  const lab = new Lab(src.rawHardpoints())
-  lab.mrFixedFlag = src.mrFixedFlag
-  lab.applySnapshot(src.snapshot(name))
+  const lab = src.copy(name)
   Object.assign(lab.inputs, { g: 0, gx: 0, bank: 0 })
   lab.recompute()
   const m = lab.model, v = (id: string) => lab.num(id)
@@ -101,9 +99,7 @@ export const HANDLING_PHASES: { key: keyof RailHandling; g: number; gx: number }
 
 /** The Lab's grip balance (front minus rear grip in use, %, + = tight) in each corner phase, solved on a copy at the setup's banking. */
 export function railHandling(src: Lab): RailHandling {
-  const lab = new Lab(src.rawHardpoints())
-  lab.mrFixedFlag = src.mrFixedFlag
-  lab.applySnapshot(src.snapshot('handling'))
+  const lab = src.copy('handling')
   const out: RailHandling = { entry: 0, center: 0, exit: 0 }
   for (const p of HANDLING_PHASES) {
     Object.assign(lab.inputs, { g: p.g, gx: p.gx })
