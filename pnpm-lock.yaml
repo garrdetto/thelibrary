@@ -119,6 +119,9 @@ importers:
       three:
         specifier: 0.186.1
         version: 0.186.1
+      three-r128:
+        specifier: npm:three@0.128.0
+        version: three@0.128.0
       vite:
         specifier: 7.3.7
         version: 7.3.7(@types/node@22.20.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.15)(yaml@2.9.1)
@@ -3161,6 +3164,9 @@ packages:
     resolution: {integrity: sha512-XyGQrFmNQ5O/IoKm556ftwKsBg11TIb301MB5dWNicziQBEs2g3gtOYIf7pFiLa0zI2gUwhtCjv9fmjnxKZ1Cg==}
     peerDependencies:
       three: '>=0.128.0'
+
+  three@0.128.0:
+    resolution: {integrity: sha512-i0ap/E+OaSfzw7bD1TtYnPo3VEplkl70WX5fZqZnfZsE3k3aSFudqrrC9ldFZfYFkn1zwDmBcdGfiIm/hnbyZA==}
 
   three@0.186.1:
     resolution: {integrity: sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==}
@@ -6804,6 +6810,8 @@ snapshots:
       fflate: 0.6.11
       potpack: 1.0.2
       three: 0.186.1
+
+  three@0.128.0: {}
 
   three@0.186.1: {}
 

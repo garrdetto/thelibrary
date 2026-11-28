@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { build, type InlineConfig, type Plugin } from 'vite'
 import { bakeFoxLakeMap } from './modules-src/foxlake/tools/bake-map'
+import { railsetupOriginal } from './modules-src/railsetup/tools/original-page'
 
 const repoRoot = dirname(fileURLToPath(import.meta.url))
 const modulesSrc = join(repoRoot, 'modules-src')
@@ -79,7 +80,7 @@ export function learningModulesConfig(watch = false): InlineConfig {
     base: '/modules/',
     publicDir: false,
     logLevel: 'warn',
-    plugins: [cleanPreviousOutput(ids), foxDollar(), renameModulePages(), foxLakeMap(), tailwindcss()],
+    plugins: [cleanPreviousOutput(ids), foxDollar(), renameModulePages(), railsetupOriginal(), foxLakeMap(), tailwindcss()],
     build: {
       outDir: modulesOut,
       emptyOutDir: false,

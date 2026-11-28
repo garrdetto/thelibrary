@@ -1,0 +1,1447 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}</style><title>Straight Rail Setup Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="lib/fonts.css">
+<meta charset="utf-8">
+<style>
+[hidden]{display:none!important}
+/* Layout: a garage-floor 3D viewport with the setup sheet docked on the right, stacking under it on phones */
+:root{
+  --bg:#e9ecef; --panel:#f8f9fa; --ink:#1d2329; --muted:#5b6670; --line:#cfd5db;
+  --accent:#d9480f; --steel:#7d8b99; --link:#e8590c; --unsprung:#343a40;
+  --good:#2b8a3e; --warn:#c77700; --bad:#c92a2a;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15191d;--panel:#1d2329;--ink:#e9ecef;--muted:#9aa5b0;--line:#323a42;--steel:#8d9cab;--unsprung:#495057;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15191d;--panel:#1d2329;--ink:#e9ecef;--muted:#9aa5b0;--line:#323a42;--steel:#8d9cab;--unsprung:#495057;color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));min-height:100%;box-sizing:border-box}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.stage{position:relative;min-height:520px;border:1px solid var(--line);background:var(--panel);overflow:hidden}
+@media (max-width:860px){.stage{min-height:380px;height:60vh}}
+canvas{display:block;width:100%;height:100%}
+h1{font-family:var(--display);font-weight:600;font-size:28px;letter-spacing:.02em;margin:0;text-transform:uppercase;line-height:1}
+.hud{position:absolute;left:12px;top:12px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.sub{color:var(--muted);font-size:12px}
+.stats{position:absolute;left:12px;bottom:12px;display:flex;gap:8px;flex-wrap:wrap}
+.stat{background:var(--panel);border:1px solid var(--line);padding:6px 10px;min-width:78px}
+.stat p{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.stat b{font-family:var(--mono);font-weight:500;font-size:18px;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;padding:2px 8px;font-family:var(--display);font-size:18px;letter-spacing:.04em;text-transform:uppercase;color:#fff}
+.views{position:absolute;right:12px;top:12px;display:flex;gap:4px}
+button{font:inherit;font-size:12px;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:5px 10px;cursor:pointer}
+button:hover,button:focus-visible{border-color:var(--accent);outline:none}
+.tag{position:absolute;transform:translate(-50%,-100%);font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--line);padding:2px 6px;pointer-events:none;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tag i{font-style:normal;color:var(--muted);margin-right:4px}
+aside{background:var(--panel);border:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+fieldset{border:0;border-top:1px solid var(--line);margin:0;padding:10px 0 0;display:flex;flex-direction:column;gap:6px}
+legend{font-family:var(--display);font-weight:600;font-size:16px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);padding-right:8px}
+.row{display:grid;grid-template-columns:122px minmax(0,1fr) 62px;align-items:center;gap:8px}
+.row label{color:var(--muted);font-size:13px}
+.row output{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+input[type=number]{font:inherit;font-size:13px;min-width:0;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:3px 6px}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-family:var(--display);font-size:20px;letter-spacing:.06em;text-transform:uppercase}
+select{font:inherit;font-size:13px;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:3px 6px;width:100%}
+.inputs summary{font-family:var(--display);font-weight:600;font-size:16px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
+.inputs{display:flex;flex-direction:column;gap:6px;color:var(--ink);font-size:13px}
+.inputs[open]>summary{margin-bottom:6px}
+.fixed{margin:4px 0 0;font-size:12px;color:var(--muted)}
+details{font-size:12px;color:var(--muted);line-height:1.5}
+summary{cursor:pointer;color:var(--ink)}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+.stage{position:sticky;top:16px;align-self:start;height:calc(100vh - 32px);max-height:860px}
+@media (max-width:860px){.stage{position:relative;top:0;height:60vh}}
+table.k td:first-child{font-family:var(--body)}
+.warn{background:var(--bad);color:#fff;font-size:12px;padding:4px 8px;max-width:340px;line-height:1.4}
+.help{position:absolute;right:12px;top:52px;width:min(340px,calc(100% - 24px));background:var(--panel);border:1px solid var(--line);padding:14px 16px;font-size:13px;line-height:1.5;z-index:5}
+.help h2{font-family:var(--display);font-weight:600;font-size:18px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px;color:var(--accent)}
+.help ul{margin:0 0 8px;padding-left:18px}.help li{margin:2px 0}
+.help p{margin:0 0 8px}
+abbr[title]{text-decoration:underline dotted;cursor:help}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line)}
+/* Plots page: takes the 3D view's place */
+.plots{border:1px solid var(--line);background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.plots-head{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.plots .tabs{grid-template-columns:1fr 1fr;min-width:220px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px 22px}
+.pgrid figure{margin:0;display:flex;flex-direction:column;gap:4px}
+.pgrid figcaption{font-family:var(--mono);font-size:12px;color:var(--ink);line-height:1.5;font-variant-numeric:tabular-nums}
+.pgrid figcaption i{font-style:normal;color:var(--muted)}
+.pgroups{display:flex;gap:6px;flex-wrap:wrap}
+.pgroups button[aria-pressed=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pgrid h2{grid-column:1/-1;margin:8px 0 0;font-family:var(--display);font-weight:600;font-size:16px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);border-top:1px solid var(--line);padding-top:10px}
+.pgrid h2 small{font-family:var(--body);text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;font-size:12px;margin-left:8px}
+.tabs button{border:0;padding:8px;font-family:var(--display);font-weight:600;font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:transparent}
+.tabs button[aria-selected="true"]{background:var(--accent);color:#fff}
+.pane{display:flex;flex-direction:column;gap:14px}
+.seg{display:flex;gap:4px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+table.k{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+table.k th{font-weight:500;color:var(--muted);text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:2px 0}
+table.k th:first-child,table.k td:first-child{text-align:left;color:var(--muted)}
+table.k td{font-family:var(--mono);text-align:right;padding:3px 0;border-top:1px solid var(--line)}
+td.chg{color:var(--accent)}
+.chart{width:100%;height:auto;display:block}
+.chart text{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.chart .ax{stroke:var(--line)}
+.ckey{display:flex;gap:12px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+.ckey span::before{content:"";display:inline-block;width:14px;height:0;border-top:2px var(--st,solid) var(--c);margin-right:4px;vertical-align:3px}
+.note{font-size:12px;color:var(--muted);margin:0;line-height:1.5}
+.btnrow{display:flex;gap:6px;flex-wrap:wrap}
+.btnrow button[aria-pressed=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
+table.k.adv td:first-child{width:30%}table.k.adv td input{width:100%;min-width:0;box-sizing:border-box;padding-inline:2px;font:inherit;text-align:right;-moz-appearance:textfield;appearance:textfield}table.k.adv td input::-webkit-inner-spin-button,table.k.adv td input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+/* collapsible sections: click a heading to fold it */
+aside fieldset>legend{cursor:pointer;user-select:none}
+aside fieldset>legend::before{content:"▾ ";font-size:12px}
+aside fieldset.shut>legend::before{content:"▸ "}
+aside fieldset.shut>*:not(legend){display:none!important}
+.views button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media (max-width:860px){.stats{gap:4px}.stat{min-width:0;padding:4px 7px}.stat p{font-size:10px}.stat b{font-size:14px}}
+@media (max-width:600px){h1{font-size:20px}.hud .legend{display:none}.hud{max-width:calc(50% - 16px)}.views{flex-wrap:wrap;justify-content:flex-end;max-width:calc(50% - 16px)}
+  .stats{flex-wrap:nowrap;overflow-x:auto;right:12px}.stat{flex:none}}
+</style>
+
+<div class="wrap">
+  <div class="stage" id="stage">
+    <div class="loading" id="loading">Loading chassis…</div>
+    <div class="hud">
+      <h1>Straight Rail Setup Lab</h1>
+      <div class="sub" id="sub">Straight rail · steady-state corner</div>
+      <div class="legend"><span style="--c:var(--steel)">Sprung</span><span style="--c:var(--link)">Links</span><span style="--c:var(--unsprung)">Unsprung</span><span style="--c:var(--accent)" id="leg-axis">Roll axis</span></div>
+      <div class="warn" id="warn" hidden></div>
+    </div>
+    <div class="views">
+      <button id="v-front">Front</button><button id="v-34">3/4</button><button id="v-top">Top</button><button id="v-side">Side</button><button id="v-exag" aria-pressed="false" title="Shows roll, pitch and heave 5× bigger so you can see them. Numbers stay true.">Motion ×5</button><button id="v-help" aria-expanded="false">How to use</button>
+    </div>
+    <div class="help" id="help" hidden>
+      <h2>How to use</h2>
+      <ul>
+        <li>Left-drag to rotate, right-drag to pan, scroll to zoom. The view buttons jump to set angles.</li>
+        <li><b>Setup</b>: change weight, springs, bars, bump springs, scales, and lateral and long g. The car rolls, pitches and heaves, and the colored disc under each tire grows with its load.</li>
+        <li><b>Drive the corner</b> (Setup, Track) loops the car through braking, turn-in, mid-corner and exit so you can watch the loads change. <b>Motion ×5</b> makes small body movements easier to see.</li>
+        <li><b>Kinematics</b>: pick LF or RF, then move the upper A-arm bar, lower arm mounts, slugs, and shims. <b>Rear</b> moves the 3rd link, lower links and track bar, swaps the track bar for a J-Bar, or mounts either one reversed. Use Heave, Roll, or Sweep to move the suspension and watch camber, toe, the roll centers and rear steer.</li>
+        <li><b>Plots</b>: every kinematic curve, front and rear, through wheel travel, body roll and steering. Dashed lines are the baseline: the saved setup you last loaded or saved (the car as modeled until you do). Orange numbers on the Kinematics tab show which parts changed length.</li>
+        <li><b>Saved setups</b>: save, load, and compare setups side by side. Export a setup to a file to share it.</li>
+        <li><b>Load chassis hardpoints</b> runs the math on another car's pivot points. Download the current ones first to see the file format.</li>
+        <li>Click a section heading to fold it away. The camera stays where you put it when you switch tabs.</li>
+        <li>Hover any underlined term for a short definition.</li>
+      </ul>
+      <button id="help-close">Got it</button>
+    </div>
+    <div class="stats" id="stats-setup">
+      <div class="stat"><p>Body roll</p><b id="roll">—</b></div>
+      <div class="stat"><p><abbr title="Lateral load transfer distribution: the share of total load transfer carried by the front axle.">Front LLTD</abbr></p><b id="lltd">—</b></div>
+      <div class="stat"><p><abbr title="Front roll center height above the ground, from the kinematics.">Front RC</abbr></p><b id="rc-s">—</b></div>
+      <div class="stat"><p><abbr title="Vertical force the front arm geometry puts on the chassis: from cornering (arm instant centers) plus braking (anti-dive). + lifts the front.">Front jacking</abbr></p><b id="fjk-s">—</b></div>
+      <div class="stat"><p><abbr title="Rear roll center from the 3rd link, lower links and track bar, at this body roll and ride height.">Rear RC</abbr></p><b id="rrc-s">—</b></div>
+      <div class="stat"><p><abbr title="Vertical force the rear links put on the chassis: the links and track bar in the turn, plus anti-lift under braking or anti-squat on throttle. + lifts the rear.">Rear jacking</abbr></p><b id="jack-s">—</b></div>
+      <div class="stat"><p><abbr title="Body height change at the front and rear axles. + = up.">Ride F / R</abbr></p><b id="ride-s">—</b></div>
+      <div class="stat"><p><abbr title="+ = nose up.">Pitch</abbr></p><b id="pitch-s">—</b></div>
+      <div class="stat"><p><abbr title="Rear axle steer from the lower links and 3rd link at this body roll and ride height. + = axle aims right (LR ahead of RR), which loosens the car.">Rear steer</abbr></p><b id="rst-s">—</b></div>
+      <div class="stat"><p><abbr title="Front grip used minus rear grip used, from a simple load-sensitive tire. + = front runs out first (tight), − = rear runs out first (loose). Ignores camber, stagger and rear steer; compare setups, don't read it as a lap time.">Balance</abbr></p><b id="bal-s">—</b></div>
+      <div class="stat"><p><abbr title="Stagger set minus the stagger a locked axle needs for this corner radius. + = more than needed, which loosens the car.">Stagger vs corner</abbr></p><b id="stg-s">—</b></div>
+    </div>
+    <div class="stats" id="stats-rear" hidden>
+      <div class="stat"><p>Rear RC</p><b id="q-rc">—</b></div>
+      <div class="stat"><p>Bar angle</p><b id="q-ang">—</b></div>
+      <div class="stat"><p>Jacking</p><b id="q-jk">—</b></div>
+      <div class="stat"><p>Axle shift</p><b id="q-sh">—</b></div>
+      <div class="stat"><p><abbr title="+ = axle aims right (LR ahead of RR), loosens the car.">Rear steer</abbr></p><b id="q-st">—</b></div>
+      <div class="stat"><p><abbr title="Pinion angle change from ride height. + = pinion up.">Pinion</abbr></p><b id="q-pin">—</b></div>
+      <div class="stat"><p><abbr title="3rd link force at the Long g on the Setup tab. + = tension (throttle), − = compression (braking).">3rd link</abbr></p><b id="q-tl">—</b></div>
+      <div class="stat"><p><abbr title="Rear load the 3rd link moves at the Long g on the Setup tab. + = onto the LR, off the RR.">LR from 3rd</abbr></p><b id="q-tlr">—</b></div>
+    </div>
+    <div class="stats" id="stats-kin" hidden>
+      <div class="stat"><p>LF camber</p><b id="k-lfc">—</b></div>
+      <div class="stat"><p>RF camber</p><b id="k-rfc">—</b></div>
+      <div class="stat"><p><abbr title="Front roll center where the car sits now: the Setup solve plus Heave and Roll. Same number as Front RC on the Setup tab.">RC height</abbr></p><b id="k-rch">—</b></div>
+      <div class="stat"><p>RC lateral</p><b id="k-rcy">—</b></div>
+      <div class="stat"><p><abbr title="Total vertical force the front tires put on the chassis through the arm geometry, using the lateral and long g from the Setup tab. In brackets: the ride change on the springs alone. + lifts the front.">Front jacking</abbr></p><b id="k-fjk">—</b></div>
+    </div>
+  </div>
+
+  <section class="plots" id="plots" hidden aria-label="Plots">
+    <div class="plots-head"><h1>Plots</h1>
+      <div class="tabs" role="tablist"><button role="tab" id="pt-front" aria-selected="true">Front</button><button role="tab" id="pt-rear" aria-selected="false">Rear</button></div></div>
+    <div class="pgroups" id="pgroups" role="group" aria-label="Plot group"></div>
+    <div class="ckey" id="pkey"></div>
+    <p class="note" id="pnote"></p>
+    <div class="pgrid" id="pl-front"></div>
+    <div class="pgrid" id="pl-rear" hidden></div>
+  </section>
+
+  <aside>
+    <div class="btnrow"><button id="reset-all">Reset everything</button><button id="hp-load">Load chassis hardpoints…</button><button id="hp-save">Download hardpoints</button><input type="file" id="hp-file" accept=".json,application/json" hidden></div>
+    <p class="note" id="hp-note" hidden></p>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="t-setup" aria-selected="true">Setup</button>
+      <button role="tab" id="t-kin" aria-selected="false">Kinematics</button>
+      <button role="tab" id="t-plots" aria-selected="false">Plots</button>
+    </div>
+    <fieldset><legend>Move the car</legend>
+      <div class="row"><label for="g">Lateral g</label><input type="range" id="g" min="0" max="1.4" step="0.01" value="0"><output id="g-o"></output></div>
+      <div class="row"><label for="gx"><abbr title="− = braking, + = throttle.">Long g</abbr></label><input type="range" id="gx" min="-1.2" max="0.8" step="0.01" value="0"><output id="gx-o"></output></div>
+      <div class="row"><label for="bank"><abbr title="Track banking, inside (left) low. Lateral g is the car's cornering g measured level, the way speed and corner radius give it. The banking turns part of it into extra load pressing the tires into the track and leaves less sliding the car across the track.">Banking</abbr>, °</label><input type="range" id="bank" min="0" max="20" step="0.5" value="0"><output id="bank-o"></output></div>
+      <p class="note" id="bank-note" hidden></p>
+      <div class="btnrow"><button id="drive">▶ Drive the corner</button><span class="note" id="drive-phase"></span></div>
+      <div class="row"><label for="k-heave"><abbr title="Pushes the body down (+) or pulls it up (−) on top of where the Setup tab solves it. Geometry only: the springs don't push back.">Heave, in</abbr></label><input type="range" id="k-heave" min="-3" max="3" step="0.05" value="0"><output id="k-heave-o"></output></div>
+      <div class="row"><label for="k-roll"><abbr title="Extra body roll on top of the solved roll. + = left side up, like a left turn. Geometry only: the springs and bar don't push back.">Roll, deg</abbr></label><input type="range" id="k-roll" min="-3" max="3" step="0.05" value="0"><output id="k-roll-o"></output></div>
+      <div class="btnrow"><button id="k-sweep">Sweep bump and droop</button><button id="k-zero">Zero heave and roll</button></div>
+    </fieldset>
+
+    <div class="pane" id="p-setup">
+    <div class="btnrow"><button id="reset-setup">Reset setup to defaults</button></div>
+    <fieldset><legend>Saved setups</legend>
+      <div class="row"><label for="sv-name">Name</label><input id="sv-name" placeholder="e.g. Heavy track, 3 in stagger" style="font:inherit;font-size:13px;min-width:0;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:3px 6px"><button id="sv-save">Save</button></div>
+      <div class="row"><label for="sv-list">Saved</label><select id="sv-list"></select><button id="sv-load">Load</button></div>
+      <div class="row"><label for="sv-cmp">Compare to</label><select id="sv-cmp"></select><span></span></div>
+      <div class="btnrow"><button id="sv-del">Delete selected</button><button id="sv-exp">Export selected</button><button id="sv-imp">Import file…</button><input type="file" id="sv-file" accept=".json,application/json" hidden></div>
+      <p class="note">Saves include both tabs: setup, front adjustments and track bar. Saved on this computer.</p>
+      <table class="k" id="cmp-tab" hidden><thead><tr><th></th><th>Now</th><th id="cmp-name">Saved</th><th>Δ</th></tr></thead><tbody id="cmp-body"></tbody></table>
+    </fieldset>
+    <details class="inputs"><summary>Car inputs</summary>
+      <div class="row"><label for="wt">Weight, lb</label><select id="wt"></select><span></span></div>
+      <div class="row"><label for="mrb">Bar MR</label><input type="range" id="mrb" min="0.3" max="1" step="0.05" value="0.65"><output id="mrb-o"></output></div>
+      <div class="row"><label for="arm">Bar arm, in</label><input type="range" id="arm" min="6" max="16" step="0.125" value="9.625"><output id="arm-o"></output></div>
+      <div class="row"><label for="rsb">Rear spring base, in</label><input type="range" id="rsb" min="16" max="48" step="0.125" value="41.25"><output id="rsb-o"></output></div>
+      <div class="row"><label for="unf">Front unsprung, lb</label><input type="range" id="unf" min="120" max="400" step="10" value="220"><output id="unf-o"></output></div>
+      <div class="row"><label for="unr">Rear unsprung, lb</label><input type="range" id="unr" min="250" max="700" step="10" value="450"><output id="unr-o"></output></div>
+      <div class="row"><label for="bb">Front brake, %</label><input type="range" id="bb" min="50" max="75" step="1" value="60"><output id="bb-o"></output></div>
+      <p class="fixed" id="mr-note">Spring MR from the coilover geometry</p>
+      <label class="chk"><input type="checkbox" id="mr-fixed"> Use a fixed 0.65 front motion ratio instead</label>
+    </details>
+    <fieldset><legend>Track</legend>
+      <div class="row"><label for="rad">Corner radius, ft</label><input type="range" id="rad" min="40" max="300" step="5" value="120"><output id="rad-o"></output></div>
+    </fieldset>
+    <fieldset><legend>Wheels and rear end</legend>
+      <div class="row"><label for="wwlf">LF wheel width, in</label><input type="number" id="wwlf" min="7" max="15" step="0.5" value="10"><span></span></div>
+      <div class="row"><label for="wwrf">RF wheel width, in</label><input type="number" id="wwrf" min="7" max="15" step="0.5" value="10"><span></span></div>
+      <div class="row"><label for="wwlr">LR wheel width, in</label><input type="number" id="wwlr" min="7" max="15" step="0.5" value="10"><span></span></div>
+      <div class="row"><label for="wwrr">RR wheel width, in</label><input type="number" id="wwrr" min="7" max="15" step="0.5" value="10"><span></span></div>
+      <div class="row"><label for="bslf"><abbr title="Back spacing: from the wheel's mounting face to the inner edge of the rim. Less back spacing moves the wheel out.">LF back spacing</abbr>, in</label><input type="number" id="bslf" min="1" max="9" step="0.25" value="5"><span></span></div>
+      <div class="row"><label for="bsrf"><abbr title="Back spacing: from the wheel's mounting face to the inner edge of the rim. Less back spacing moves the wheel out.">RF back spacing</abbr>, in</label><input type="number" id="bsrf" min="1" max="9" step="0.25" value="5"><span></span></div>
+      <div class="row"><label for="bslr"><abbr title="Back spacing: from the wheel's mounting face to the inner edge of the rim. Less back spacing moves the wheel out.">LR back spacing</abbr>, in</label><input type="number" id="bslr" min="1" max="9" step="0.25" value="5"><span></span></div>
+      <div class="row"><label for="bsrr"><abbr title="Back spacing: from the wheel's mounting face to the inner edge of the rim. Less back spacing moves the wheel out.">RR back spacing</abbr>, in</label><input type="number" id="bsrr" min="1" max="9" step="0.25" value="5"><span></span></div>
+      <div class="row"><label for="hulr"><abbr title="Rear end width on the left: moves the LR hub face out (+) or in (−) from the car's centerline, as a longer or shorter housing and axle on that side.">LR hub out</abbr>, in</label><input type="number" id="hulr" min="-3" max="3" step="0.125" value="0"><span></span></div>
+      <div class="row"><label for="hurr"><abbr title="Rear end width on the right: moves the RR hub face out (+) or in (−) from the car's centerline, as a longer or shorter housing and axle on that side.">RR hub out</abbr>, in</label><input type="number" id="hurr" min="-3" max="3" step="0.125" value="0"><span></span></div>
+      <p class="note" id="trk-note"></p>
+    </fieldset>
+    <fieldset><legend>Tires</legend>
+      <p class="note">Rollout: tire circumference, taped at the pressure you run. A bigger tire raises its corner and adds wedge, and every tire squashes under load. Both feed the ride heights.</p>
+      <div class="row"><label for="tclf">LF rollout, in</label><input type="number" id="tclf" min="70" max="100" step="0.125" value="84"><span></span></div>
+      <div class="row"><label for="tcrf">RF rollout, in</label><input type="number" id="tcrf" min="70" max="100" step="0.125" value="84.5"><span></span></div>
+      <div class="row"><label for="tclr">LR rollout, in</label><input type="number" id="tclr" min="70" max="100" step="0.125" value="84"><span></span></div>
+      <div class="row"><label for="tcrr">RR rollout, in</label><input type="number" id="tcrr" min="70" max="100" step="0.125" value="87"><span></span></div>
+      <div class="row"><label for="tk"><abbr title="Vertical spring rate of the tire: the load that squashes it one inch. Racing tires run roughly 1,000 to 1,600 lb/in depending on size and pressure.">Tire rate</abbr>, lb/in</label><input type="number" id="tk" min="300" max="4000" step="25" value="1300"><span></span></div>
+      <table class="k"><thead><tr><th></th><th>LF</th><th>RF</th><th>LR</th><th>RR</th></tr></thead><tbody id="tire-tab"></tbody></table>
+      <p class="note" id="tire-note"></p>
+    </fieldset>
+    <fieldset><legend>Springs, lb/in</legend>
+      <div class="row"><label for="lf">LF</label><input type="number" id="lf" min="100" max="1500" step="25" value="650"><span></span></div>
+      <div class="row"><label for="rf">RF</label><input type="number" id="rf" min="100" max="1500" step="25" value="700"><span></span></div>
+      <div class="row"><label for="lr">LR</label><input type="number" id="lr" min="100" max="1500" step="25" value="175"><span></span></div>
+      <div class="row"><label for="rr">RR</label><input type="number" id="rr" min="100" max="1500" step="25" value="200"><span></span></div>
+    </fieldset>
+    <fieldset><legend>Front bar, hollow</legend>
+      <div class="row"><label for="bar">OD, in</label><input type="number" id="bar" min="1.25" max="2" step="0.0625" value="1.75"><span></span></div>
+      <div class="row"><label for="bid">ID, in</label><input type="number" id="bid" min="0" max="1.5" step="0.0625" value="1.125"><span></span></div>
+      <div class="row"><label for="bpre"><abbr title="Measured at the bar arm. + = preloaded in the direction the car rolls in a left turn, which puts static load on RF and LR. − = slack: the bar does nothing until the car rolls far enough to take up the gap.">Preload</abbr>, in</label><input type="number" id="bpre" min="-0.25" max="0.5" step="0.03125" value="0"><span></span></div>
+      <p class="note" id="bpre-note">− = slack, + = preload.</p>
+    </fieldset>
+    <fieldset><legend>Bump springs</legend>
+      <p class="note">Gap is measured at the shock, at ride height. Rate 0 = no bump spring.</p>
+      <div class="row"><label for="blf">LF rate, lb/in</label><input type="number" id="blf" min="0" max="8000" step="50" value="0"><span></span></div>
+      <div class="row"><label for="glf">LF gap, in</label><input type="number" id="glf" min="0" max="2" step="0.0625" value="1"><span></span></div>
+      <div class="row"><label for="brf">RF rate, lb/in</label><input type="number" id="brf" min="0" max="8000" step="50" value="0"><span></span></div>
+      <div class="row"><label for="grf">RF gap, in</label><input type="number" id="grf" min="0" max="2" step="0.0625" value="1"><span></span></div>
+      <div class="row"><label for="blr">LR rate, lb/in</label><input type="number" id="blr" min="0" max="8000" step="50" value="0"><span></span></div>
+      <div class="row"><label for="glr">LR gap, in</label><input type="number" id="glr" min="0" max="2" step="0.0625" value="1"><span></span></div>
+      <div class="row"><label for="brr">RR rate, lb/in</label><input type="number" id="brr" min="0" max="8000" step="50" value="0"><span></span></div>
+      <div class="row"><label for="grr">RR gap, in</label><input type="number" id="grr" min="0" max="2" step="0.0625" value="1"><span></span></div>
+      <table class="k"><thead><tr><th></th><th>LF</th><th>RF</th><th>LR</th><th>RR</th></tr></thead><tbody id="bump-tab"></tbody></table>
+    </fieldset>
+    <fieldset><legend>Rear roll stiffness</legend>
+      <div class="row"><label for="rbar">Rear bar OD, in</label><input type="number" id="rbar" min="0" max="1.25" step="0.0625" value="0"><span></span></div>
+      <p class="note" id="rk-note"></p>
+    </fieldset>
+    <fieldset><legend>Geometry</legend>
+      <div class="row"><label for="ctor"><abbr title="How hard the frame resists twisting between the front and rear axles. A softer chassis lets each end carry more of its own roll load, which makes spring and bar splits matter more. Estimated; 30,000 is close to rigid.">Chassis twist</abbr>, ft-lb/°</label><input type="number" id="ctor" min="1000" max="30000" step="250" value="4000"><span></span></div>
+      <div class="row"><label for="cg">CG height, in</label><input type="number" id="cg" min="13" max="19" step="0.25" value="16"><span></span></div>
+      <p class="note" id="per-note">Ride height: ground to the bottom of the frame rails, at the front and rear ends of the straight rails.</p>
+      <div class="btnrow" role="group" aria-label="Ride height mode"><button id="m-std" aria-pressed="true">Standard</button><button id="m-adv" aria-pressed="false">Advanced</button></div>
+      <input type="number" id="adv" value="0" hidden>
+      <div id="adv-box" hidden>
+        <p class="note">Advanced: the springs and tires set the ride heights and the cross weight. Preload = free length − installed length on the shock at full extension. Eye to Eye Extended length: shock eye center to eye center, fully extended. Weight, Left % and Rear % say where the car's weight sits (bar unhooked); cross, all four ride heights and each spring's installed length on the car come out. Tape an installed spring length on the car and compare it to the table to check your numbers.</p>
+        <table class="k adv"><thead><tr><th></th><th>LF</th><th>RF</th><th>LR</th><th>RR</th></tr></thead><tbody>
+          <tr><td>Rate, lb/in</td><td id="ak-lf"></td><td id="ak-rf"></td><td id="ak-lr"></td><td id="ak-rr"></td></tr>
+          <tr><td>Free length, in</td><td><input type="number" id="fllf" aria-label="LF spring free length, in" min="6" max="22" step="0.25" value="12"></td><td><input type="number" id="flrf" aria-label="RF spring free length, in" min="6" max="22" step="0.25" value="12"></td><td><input type="number" id="fllr" aria-label="LR spring free length, in" min="6" max="22" step="0.25" value="16"></td><td><input type="number" id="flrr" aria-label="RR spring free length, in" min="6" max="22" step="0.25" value="16"></td></tr>
+          <tr><td>Preload, in</td><td><input type="number" id="pllf" aria-label="LF spring preload, in" min="0" max="4" step="0.0625" value="1"></td><td><input type="number" id="plrf" aria-label="RF spring preload, in" min="0" max="4" step="0.0625" value="1"></td><td><input type="number" id="pllr" aria-label="LR spring preload, in" min="0" max="4" step="0.0625" value="1"></td><td><input type="number" id="plrr" aria-label="RR spring preload, in" min="0" max="4" step="0.0625" value="1"></td></tr>
+          <tr><td>Eye to Eye Extended length, in</td><td><input type="number" id="solf" aria-label="LF Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="19.625"></td><td><input type="number" id="sorf" aria-label="RF Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="20.4375"></td><td><input type="number" id="solr" aria-label="LR Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="26.625"></td><td><input type="number" id="sorr" aria-label="RR Eye to Eye Extended length, in" min="12" max="32" step="0.0625" value="24.75"></td></tr>
+        </tbody><tbody id="adv-out"></tbody></table>
+        <p class="note" id="adv-note"></p>
+      </div>
+      <div class="row std"><label for="hlf">LF ride ht, in</label><input type="number" id="hlf" min="1" max="7" step="0.03125" value="3.1875"><span></span></div>
+      <div class="row std"><label for="hrf">RF ride ht, in</label><input type="number" id="hrf" min="1" max="7" step="0.03125" value="3.28125"><span></span></div>
+      <div class="row std"><label for="hrr">RR ride ht, in</label><input type="number" id="hrr" min="1" max="7" step="0.03125" value="3.4375"><span></span></div>
+      <div class="row std"><label><abbr title="The frame is one rigid piece, so LR isn't set: it follows LF and RR 1 for 1 and goes opposite to RF. LR = LF + RR − RF.">LR ride ht</abbr>, in</label><span class="note">floats</span><output id="hlr-o"></output></div>
+      <p class="note">Ride heights are to the ground, so the tire sizes and tire squash are taken out before the suspension positions are found. Front and rear roll centers, jacking and rear steer come from the Kinematics tab geometry, at the solved roll and ride height.</p>
+    </fieldset>
+    <fieldset><legend id="scale-leg">Scales</legend>
+      <div class="row"><label for="ls">Left, %</label><input type="number" id="ls" min="52" max="60" step="0.1" value="56"><span></span></div>
+      <div class="row"><label for="rp">Rear, %</label><input type="number" id="rp" min="45" max="54" step="0.1" value="50"><span></span></div>
+      <div class="row"><label for="cr">Cross, %</label><input type="number" id="cr" min="46" max="58" step="0.1" value="52"><span></span></div>
+      <div class="row"><label for="tpi"><abbr title="Threads per inch on the shock body. One round moves the spring seat 1 ÷ TPI inches.">Shock threads, TPI</abbr></label><input type="number" id="tpi" min="1" step="any" value="8"><span></span></div>
+      <p class="note">Rounds from where the car was scaled. + = rounds in: the spring is compressed, that corner comes up, and it and the opposite corner gain load (rounds in the RR take cross out and loosen the car). − = rounds out: that corner goes down and they lose load.</p>
+      <div class="row"><label for="rnlf">LF rounds</label><input type="number" id="rnlf" step="any" value="0"><output id="rnlf-o"></output></div>
+      <div class="row"><label for="rnrf">RF rounds</label><input type="number" id="rnrf" step="any" value="0"><output id="rnrf-o"></output></div>
+      <div class="row"><label for="rnlr">LR rounds</label><input type="number" id="rnlr" step="any" value="0"><output id="rnlr-o"></output></div>
+      <div class="row"><label for="rnrr">RR rounds</label><input type="number" id="rnrr" step="any" value="0"><output id="rnrr-o"></output></div>
+      <table class="k"><thead><tr><th></th><th>LF</th><th>RF</th><th>LR</th><th>RR</th></tr></thead><tbody id="rh-now"></tbody></table>
+      <p class="note" id="wdg-note"></p>
+    </fieldset>
+    <details><summary>Assumptions to check</summary>
+      <p id="geo-note"></p>
+      From your straight rail CAD: front double A-arms with the strut-rod style lower arm (front leg + 14.75 in aft link), screw-in ball joints, 8.5 in steering arms on a centerlink, coilovers on the lower arms; rear 3-link: LR lower link 16 in, RR lower link 20 in, 3rd link on top of the center section, track bar from the left side of the housing to the chassis on the right; coilovers behind the axle; front bar 1.75 OD × 1.125 ID, about 38 in between arms, 9.6 in arms. The CAD car is not posed on flat ground (RF 0.8 in high, rear end rolled 2.2° and steered 1.4°), so the lab re-seats it: each front corner moves until its tire touches the ground, and the rear end is set square, level and centered at ride height with the link lengths set to match, the way you'd square it with the link adjusters and track bar. The ground is where the LF and LR tires sit in the CAD; at that stance the frame rails are 3.68 in up with a rigid 26.6 in tire. Spring motion ratios come from the coilover eye points through travel, front and rear. Bar MR 0.65: end link travel per inch of wheel travel from the CAD end link points is LF 0.69, RF 0.66. Still assumed: G = 11.5e6 psi, tire rate (default 1,300 lb/in), chassis twist stiffness (default 4,000 ft-lb/°). The front and rear each roll against their own springs and bars, joined by the frame's twist stiffness. Front roll stiffness = (k<sub>LF</sub>+k<sub>RF</sub>)·MR²·(t/2)² + bar; rear = (k<sub>LR</sub>+k<sub>RR</sub>)·MR²·(base/2)² + rear bar. A 3-link on rod ends adds no roll stiffness of its own. Bar = (G·J/L)·(t·MR<sub>bar</sub>/arm)², J = π(OD⁴−ID⁴)/32. Load transfer per axle = sprung W·Ay·h<sub>rc</sub>/t + K·φ/t + unsprung W·Ay·13.3/t. Roll, both roll centers and both jacking forces are solved together. The rear roll center is found from the whole linkage: the body is rolled a hair about the axle and the point the axle swings about, seen from the front, is the roll center. Rear jacking = lateral force × how far the axle moves sideways per inch of bump, from the same linkage. Rear steer, pinion change and wheelbase change come straight from solving the axle's position with all four link lengths held. Anti-squat uses the side-view instant center of each lower link with the 3rd link (averaged left and right), from the rear contact patch. Ride heights: tire loaded radius = rollout ÷ 2π − load ÷ tire rate. In Standard mode you enter three ride heights (the frame is rigid, so the fourth follows) and the lab takes the tires out to find where the suspension sits. In Advanced mode the springs, shocks and tires find the ride heights and cross: the frame rises, pitches and rolls until the four spring forces plus unsprung weight carry the scale weight with the given left and rear percentages. Wedge and bar preload are solved as a rigid chassis on four springs plus the bar. Bump springs add their rate once shock travel passes the gap. Balance uses a simple tire whose friction falls with load (μ = 1.5 − 0.0004·F<sub>z</sub>); it ignores camber, stagger and rear steer. Stagger needed = rear tire rollout × rear track ÷ corner radius. Long g moves W·g·h/WB between the axles; the springs see it less the anti-dive (front, braking), anti-lift (rear, braking) or anti-squat (throttle). Shocks aren't modeled: each moment is a steady state. Banking θ (inside low): lateral g is the level cornering g a<sub>y</sub>; across the track the car feels a<sub>y</sub>·cosθ − sinθ, and every tire is pressed in by cosθ + a<sub>y</sub>·sinθ times its static load.
+    </details>
+    </div>
+
+    <div class="pane" id="p-plots" hidden>
+      <p class="note">Every plot is the geometry as you have it on the Kinematics tab (solid) against the baseline (dashed): the saved setup you last loaded or saved, or the car as modeled until you load or save one. The dotted vertical line is where the car sits now: move it with Heave, Roll, Steer and the g sliders above.</p>
+      <p class="note">Jacking plots use the lateral g from Move the car, or 1 g when that is 0. Anti-dive, anti-squat and anti-lift use the Setup tab's CG height and front brake %.</p>
+    </div>
+
+    <div class="pane" id="p-kin" hidden>
+      <p class="note" id="k-gnote"></p>
+      <div class="seg" role="group" aria-label="Corner to adjust">
+        <button id="c-lf" aria-pressed="false">Adjust LF</button><button id="c-rf" aria-pressed="true">Adjust RF</button><button id="c-rear" aria-pressed="false">Rear</button>
+        <button id="k-reset" style="margin-left:auto">Reset</button>
+      </div>
+      <div class="pane" id="k-front">
+      <fieldset><legend>Upper A-arm bar</legend>
+        <label class="chk"><input type="checkbox" id="k-tog" checked> Move front and rear bolts together</label>
+        <div class="row"><label for="k-ufz">Front bolt up</label><input type="range" id="k-ufz" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-ufz-o"></output></div>
+        <div class="row"><label for="k-urz">Rear bolt up</label><input type="range" id="k-urz" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-urz-o"></output></div>
+        <div class="row"><label for="k-ufx">Front bolt fwd</label><input type="range" id="k-ufx" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-ufx-o"></output></div>
+        <div class="row"><label for="k-urx">Rear bolt fwd</label><input type="range" id="k-urx" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-urx-o"></output></div>
+      </fieldset>
+      <fieldset><legend>Lower A-arm mounts</legend>
+        <label class="chk"><input type="checkbox" id="k-ltog" checked> Move front and rear mounts together</label>
+        <div class="row"><label for="k-lfz">Front mount up</label><input type="range" id="k-lfz" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-lfz-o"></output></div>
+        <div class="row"><label for="k-lrz">Rear mount up</label><input type="range" id="k-lrz" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-lrz-o"></output></div>
+        <div class="row"><label for="k-lfx">Front mount fwd</label><input type="range" id="k-lfx" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-lfx-o"></output></div>
+        <div class="row"><label for="k-lrx">Rear mount fwd</label><input type="range" id="k-lrx" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-lrx-o"></output></div>
+      </fieldset>
+      <fieldset><legend>Arm lengths and position</legend>
+        <div class="row"><label for="k-ulen"><abbr title="Lengthens (+) or shortens (−) the upper arm: the upper ball joint moves out or in along the arm and the knuckle tips about the lower ball joint.">Upper arm length</abbr></label><input type="range" id="k-ulen" min="-1" max="1" step="0.0625" value="0"><output id="k-ulen-o"></output></div>
+        <div class="row"><label for="k-llen"><abbr title="Lengthens (+) or shortens (−) the lower arm: the lower ball joint moves out or in along the arm and the knuckle tips about the upper ball joint, so camber and track width both change.">Lower arm length</abbr></label><input type="range" id="k-llen" min="-1" max="1" step="0.0625" value="0"><output id="k-llen-o"></output></div>
+        <div class="row"><label for="k-uax"><abbr title="Cross-shaft spacers: the whole upper arm slides forward (+) or back (−) — inner pivots and ball joint together. Moving the upper ball joint back adds caster.">Upper arm fwd</abbr></label><input type="range" id="k-uax" min="-1.5" max="1.5" step="0.0625" value="0"><output id="k-uax-o"></output></div>
+        <p class="note">Upper arm fwd is how most cars set caster: spacers move the whole arm on its cross shaft, so the arm angles don't change. Its readout shows the caster that results.</p>
+      </fieldset>
+      <fieldset><legend>Ball joints and shims</legend>
+        <div class="row"><label for="k-lslug">Lower BJ slug</label><select id="k-lslug"></select><span></span></div>
+        <div class="row"><label for="k-uslug">Upper BJ slug</label><select id="k-uslug"></select><span></span></div>
+        <div class="row"><label for="k-cam">Camber shim</label><input type="range" id="k-cam" min="-1.25" max="1.25" step="0.03125" value="0"><output id="k-cam-o"></output></div>
+        <div class="row"><label for="k-cas">Caster shim</label><input type="range" id="k-cas" min="-2.5" max="2.5" step="0.03125" value="0"><output id="k-cas-o"></output></div>
+        <p class="note">Camber shim moves the upper ball joint out (+) or in (−). Caster shim moves it back (+) or forward (−), and its readout shows the caster angle that results — positive is the upper ball joint behind the lower. As modelled this car is LF 7.1°, RF 2.1°.</p>
+        <div class="btnrow"><button id="k-casview">See caster from the side</button><button id="k-frview">Back to front view</button></div>
+        <p class="note">The orange line through the two ball joints is the kingpin axis; the gray dashed line is vertical. The angle between them, seen from the side, is caster.</p>
+      </fieldset>
+      <fieldset><legend>Steering knuckle</legend>
+        <div class="row"><label for="k-umh"><abbr title="Moves the upper ball joint mount up (+) or down (−) on the knuckle. The chassis mounts and arm lengths don't change: the arms swing until the wheel is back at ride height, and toe is reset with the tie rod adjuster.">Upper mount height</abbr></label><input type="range" id="k-umh" min="-1" max="1.5" step="0.0625" value="0"><output id="k-umh-o"></output></div>
+        <div class="row"><label for="k-lmh"><abbr title="Moves the lower ball joint mount up (+) or down (−) on the knuckle. The chassis mounts and arm lengths don't change: the arms swing until the wheel is back at ride height, and toe is reset with the tie rod adjuster.">Lower mount height</abbr></label><input type="range" id="k-lmh" min="-1.5" max="1" step="0.0625" value="0"><output id="k-lmh-o"></output></div>
+        <p class="note">Both mounts down by the same amount is a raised snout: the ball joints sit lower at the same ride height, so the arms angle down and the roll center moves. Upper up or lower down makes the knuckle taller. Static toe is reset; camber and caster show what the arms did, so re-shim if you want them back.</p>
+      </fieldset>
+      <fieldset><legend>Steering</legend>
+        <div class="row"><label for="k-tro">Outer tie rod shim</label><input type="range" id="k-tro" min="-3" max="3" step="0.0625" value="0"><output id="k-tro-o"></output></div>
+        <div class="row"><label for="k-tri"><abbr title="Raises (+) or lowers (−) the inner tie rod end (centerlink or rack spacer). Bump steer follows the tie rod's angle, so both ends matter.">Inner tie rod up</abbr></label><input type="range" id="k-tri" min="-3" max="3" step="0.0625" value="0"><output id="k-tri-o"></output></div>
+        <div class="row"><label for="k-toe">Static toe-out, in</label><input type="range" id="k-toe" min="-0.5" max="0.5" step="0.03125" value="0"><output id="k-toe-o"></output></div>
+        <div class="row"><label for="k-steer"><abbr title="Average of the two front wheels. The tie rod inner ends move sideways together, like a centerlink, and each knuckle steers about its own kingpin, so Ackermann comes out of the geometry.">Steer</abbr>, ° (+ left)</label><input type="range" id="k-steer" min="-8" max="8" step="0.25" value="0"><output id="k-steer-o"></output></div>
+        <p class="note">Steering is applied to both corners and to the scales: with caster, turning the wheel raises one front corner and lowers the other, which moves cross weight. That is what a caster split is for.</p>
+      </fieldset>
+      </div>
+      <div class="pane" id="k-rear" hidden>
+      <fieldset><legend id="r-tbleg">Track bar</legend>
+        <div class="row"><label for="r-TBtype"><abbr title="What locates the axle side to side. A J-Bar is a short bar bent to clear the 3rd link: its axle end bolts near the pinion instead of out on the housing tube.">Lateral link</abbr></label><select id="r-TBtype"><option value="0">Track bar</option><option value="1">J-Bar</option></select></div>
+        <div class="row"><label for="r-TBflip"><abbr title="Mirror the bar side to side. Reversed, the axle is pulled the other way as it moves, so the roll center, side shift and jacking change direction.">Mounting</abbr></label><select id="r-TBflip"><option value="0">Chassis right, axle left</option><option value="1">Chassis left, axle right</option></select></div>
+        <label class="chk"><input type="checkbox" id="r-tog"> Move both ends together</label>
+        <div class="row"><label for="r-TBa">Axle end up</label><input type="range" id="r-TBa" min="-4" max="4" step="0.125" value="0"><output id="r-TBa-o"></output></div>
+        <div class="row"><label for="r-TBc">Chassis end up</label><input type="range" id="r-TBc" min="-4" max="4" step="0.125" value="0"><output id="r-TBc-o"></output></div>
+        <p class="note" id="r-tbnote"></p>
+      </fieldset>
+      <fieldset><legend>3rd link</legend>
+        <div class="row"><label for="r-ULc">Chassis end up</label><input type="range" id="r-ULc" min="-3" max="3" step="0.125" value="0"><output id="r-ULc-o"></output></div>
+        <div class="row"><label for="r-ULa">Axle end up</label><input type="range" id="r-ULa" min="-3" max="3" step="0.125" value="0"><output id="r-ULa-o"></output></div>
+        <div class="row"><label for="r-ULlen"><abbr title="Longer (+) or shorter (−) 3rd link. Longer rolls the pinion down at ride height.">Length</abbr></label><input type="range" id="r-ULlen" min="-1" max="1" step="0.0625" value="0"><output id="r-ULlen-o"></output></div>
+        <label class="chk"><input type="checkbox" id="r-utog"> Slide both ends together</label>
+        <div class="row"><label for="r-ULya"><abbr title="Slide the axle end toward the left (+) or right (−), anywhere along the housing between the wheels. → shows where it ends up from the car's center line (L or R).">Axle end left</abbr></label><input type="range" id="r-ULya" min="-21.5" max="20.5" step="0.25" value="0"><output id="r-ULya-o"></output></div>
+        <div class="row"><label for="r-ULyc"><abbr title="Slide the chassis end toward the left (+) or right (−), the same span as the housing. → shows where it ends up from the car's center line (L or R).">Chassis end left</abbr></label><input type="range" id="r-ULyc" min="-25" max="17" step="0.25" value="0"><output id="r-ULyc-o"></output></div>
+        <p class="note">Moving an end keeps the axle where it is at ride height (the link length follows). The link angle, with the lower links, sets anti-squat and how the pinion moves through travel. Sliding the link sideways only matters when it is angled: the up or down part of its pull, off center, leans on one rear tire more than the other.</p>
+      </fieldset>
+      <fieldset><legend>Lower links</legend>
+        <div class="row"><label for="r-LLc">LR chassis end up</label><input type="range" id="r-LLc" min="-3" max="3" step="0.125" value="0"><output id="r-LLc-o"></output></div>
+        <div class="row"><label for="r-LLa">LR axle end up</label><input type="range" id="r-LLa" min="-3" max="3" step="0.125" value="0"><output id="r-LLa-o"></output></div>
+        <div class="row"><label for="r-RLc">RR chassis end up</label><input type="range" id="r-RLc" min="-3" max="3" step="0.125" value="0"><output id="r-RLc-o"></output></div>
+        <div class="row"><label for="r-RLa">RR axle end up</label><input type="range" id="r-RLa" min="-3" max="3" step="0.125" value="0"><output id="r-RLa-o"></output></div>
+        <p class="note">Link lengths follow so the axle stays square at ride height. Different link angles left and right steer the axle as it rolls and moves up and down.</p>
+      </fieldset>
+      </div>
+      <div class="pane" id="k-front-out">
+      <fieldset><legend>At this position</legend>
+        <table class="k"><thead><tr><th></th><th>LF</th><th>RF</th></tr></thead><tbody id="k-tab"></tbody></table>
+      </fieldset>
+      <fieldset><legend>Parts resized to hold ride height</legend>
+        <table class="k"><thead><tr><th></th><th>LF</th><th>RF</th></tr></thead><tbody id="k-parts"></tbody></table>
+      </fieldset>
+      </div>
+      <div class="pane" id="k-rear-out" hidden>
+      <fieldset><legend>Rear at this position</legend>
+        <table class="k"><tbody id="r-tab"></tbody></table>
+      </fieldset>
+      <p class="note">Curves through travel, roll and steering are on the Plots tab.</p>
+      </div>
+      <details><summary>How this is solved</summary>
+        Each front corner is a double A-arm. The lower ball joint swings about the lower inner pivot axis; the upper ball joint swings about the upper inner pivot axis and must stay a fixed kingpin length from the lower; the outer tie rod end must stay a fixed tie rod length from the inner end, which sets steer. The knuckle, hub, and wheel ride on those three points. When you move a pivot, the wheel stays at its ride-height position and the arm, kingpin, and tie rod lengths change to fit. Camber and caster shims, upper arm length and the upper arm slide rotate the knuckle about the lower ball joint; lower arm length rotates it about the upper ball joint; then toe is reset with the tie rod. The front spring motion ratio comes from the coilover eye points in your CAD: the lower eye rides on the lower arm, and spring travel per inch of wheel travel is worked out through the whole range, so the wheel rate changes with travel. Roll moves the wheels ±(track/2)·φ relative to the body; camber is reported to the ground. Anti-dive = tan θ · (wheelbase / CG height) · front brake %, where θ is the side-view instant center angle from the contact patch. Front jacking: each front tire's lateral force (its load × lateral g) acts along the line from its contact patch to its front-view instant center, so its vertical part on the chassis is F<sub>y</sub> × (rise ÷ run) of that line. Front ride change in brackets = total ÷ ((LF + RF spring rate) × MR²), springs only; the Setup tab's Ride F / R also counts bump springs. Under braking or throttle, the share of the weight transfer the arms carry (anti-dive at the front, truck arm anti-lift or anti-squat at the rear) is added to jacking. Rear: the axle is a solid body on four rod-end links (two lower links, the 3rd link and the track bar). For any bump and roll of the axle the lab solves its fore-aft and sideways position, pinion angle and steer so all four links keep their lengths. At ride height it sits square, level and centered. The rear roll center is the point the axle swings about, seen from the front, when the body rolls; rear jacking = (rear weight − rear unsprung) × lateral g × the axle's sideways move per inch of bump. Rear spring motion ratio comes from the rear shock eyes through the same solve. Pivot points were taken from the centers of your ball joint, spherical bearing, slug and tie rod parts.
+      </details>
+    </div>
+  </aside>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/GLTFLoader.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script src="kin.js"></script>
+<script>
+// CAD hardpoints from tools/make_model.py, where the parts sit in car.glb (app frame: x forward, y left, z up, in)
+const HPC={"L":{"LIF":[53.143,4.283,6.551],"LIR":[33.9,9.736,6.551],"UIF":[55.14,13.74,15.526],"UIR":[48.14,13.74,15.526],"LBJ":[53.232,21.538,7.13],"UBJ":[51.635,22.325,19.452],"TRI":[57.312,10.578,7.301],"TRO":[59.41,22.635,9.59],"WC":[52.15,29.99,13.387],"AX":[-0.01772,0.99444,-0.10378],"SHU":[49.568,15.825,26.926],"SHL":[53.053,19.071,8.835]},"R":{"LIF":[53.143,-6.279,6.551],"LIR":[33.9,-11.731,6.551],"UIF":[55.14,-14.735,15.526],"UIR":[48.14,-14.735,15.526],"LBJ":[54.008,-22.23,6.075],"UBJ":[51.635,-21.82,19.097],"TRI":[57.457,-11.422,7.301],"TRO":[59.905,-23.634,9.514],"WC":[52.543,-29.883,14.114],"AX":[0.00392,0.9981,-0.06155],"SHU":[49.547,-17.82,26.926],"SHL":[53.181,-19.69,7.842]},"rear":{"LL":[[-53.119,20.606,10.5],[-33.464,20.903,8.593]],"RL":[[-52.065,-19.055,11.305],[-28.35,-19.211,12.584]],"UL":[[-47.474,1.025,19.298],[-33.03,4.008,19.505]],"TB":[[-47.932,16.535,12.183],[-32.056,-14.307,14.264]],"SL":[[-57.272,21.227,7.952],[-57.72,21.377,31.091]],"SR":[[-56.107,-20.051,9.52],[-57.72,-17.873,31.091]],"WL":[-53.062,28.588,13.206],"WR":[-51.636,-28.258,15.432],"AX":[-0.025,0.999,-0.039],"JB":[[-44.08,4.571,10.536],[-32.056,-14.307,9.571]],"JBm":[-44.117,5.78,11.21]},"barAxis":[64.135,9.276]};
+// The CAD car isn't on flat ground: re-seat each front corner until its tire touches it (rear: kin.js rearBuild)
+function reseat(hp){const out={rear:hp.rear};
+  for(const [k,s] of [['L',1],['R',-1]]){const c=KIN.build(hp[k],s,{});let h=0,p;
+    for(let i=0;i<30;i++){p=KIN.poseH(c,h);const z=KIN.angles(c,p).CP[2];if(Math.abs(z)<1e-8)break;h-=z;}
+    out[k]={...hp[k],LBJ:p.LBJ,UBJ:p.UBJ,TRO:p.TRO,WC:p.WC,AX:p.AX,SHL:KIN.shockEye(c,p)};}
+  return out;}
+const HP=reseat(HPC);
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const stage=$('stage');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(Math.max(devicePixelRatio,2),3));   // at least 2× so edges stay sharp up close
+stage.prepend(renderer.domElement);
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(35,1,0.25,2000); cam.up.set(0,0,1);
+const controls=new THREE.OrbitControls(cam,renderer.domElement); controls.target.set(5,0,10);
+scene.add(new THREE.HemisphereLight(0xffffff,0x667788,0.9));
+const sun=new THREE.DirectionalLight(0xffffff,0.8); sun.position.set(80,120,200); scene.add(sun);
+const GROUND=0;
+const grid=new THREE.GridHelper(400,40); grid.rotation.x=Math.PI/2; grid.position.z=GROUND; scene.add(grid);
+
+const mats={};
+function themeMats(){
+  scene.background=new THREE.Color(css('--panel'));
+  mats.sprung=mats.sprung||new THREE.MeshStandardMaterial({metalness:.3,roughness:.6});
+  mats.link=mats.link||new THREE.MeshStandardMaterial({metalness:.2,roughness:.5});
+  mats.uns=mats.uns||new THREE.MeshStandardMaterial({metalness:.4,roughness:.5});
+  mats.sprung.color.set(css('--steel')); mats.link.color.set(css('--link')); mats.uns.color.set(css('--unsprung'));
+  grid.material.color=new THREE.Color(css('--line'));
+}
+themeMats();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',themeMats);
+new MutationObserver(themeMats).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+const sprung=new THREE.Group(), links=new THREE.Group(), uns=new THREE.Group();
+scene.add(sprung,links,uns); sprung.matrixAutoUpdate=links.matrixAutoUpdate=uns.matrixAutoUpdate=false;
+
+// tire centers from the assembly (in): LF, RF, LR, RR
+let RG0=KIN.rearBuild(HP.rear), RG=RG0;   // rear linkage as modeled, and with the Kinematics tab moves
+const rearW=g=>KIN.rearPose(g,0,0).W;
+const TIRE=[[HP.L.WC[0],HP.L.WC[1]],[HP.R.WC[0],HP.R.WC[1]],[rearW(RG0).L[0],rearW(RG0).L[1]],[rearW(RG0).R[0],rearW(RG0).R[1]]], TIRE0=TIRE.map(a=>a.slice());
+var WOUT={L:0,R:0};   // front wheel center plane moved out along the spindle, in (set from the Setup tab)
+const discs=[],tags=[];
+TIRE.forEach((p,i)=>{
+  const d=new THREE.Mesh(new THREE.CircleGeometry(1,48),new THREE.MeshBasicMaterial({transparent:true,opacity:.75,depthWrite:false}));
+  d.position.set(p[0],p[1],GROUND+.05); scene.add(d); discs.push(d);
+  const t=document.createElement('div'); t.className='tag'; stage.appendChild(t); tags.push(t);
+});
+const axisGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+const axisLine=new THREE.Line(axisGeo,new THREE.LineBasicMaterial({color:0xd9480f})); scene.add(axisLine);
+const cgDot=new THREE.Mesh(new THREE.SphereGeometry(1.4,20,16),new THREE.MeshBasicMaterial({color:0xd9480f})); sprung.add(cgDot);
+
+// ---------- kinematic corner groups ----------
+const SIDES={L:1,R:-1};
+const corner={L:{knuckle:[],lower:[],upper:[],bar:[],barArm:[]},R:{knuckle:[],lower:[],upper:[],bar:[],barArm:[]}};
+const tieRod={}, icLines={};
+for(const k in SIDES){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,1,16),mats.link); m.matrixAutoUpdate=false; sprung.add(m); tieRod[k]=m;
+  const lg=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()]);
+  const ln=new THREE.Line(lg,new THREE.LineDashedMaterial({color:0xd9480f,dashSize:1.2,gapSize:.8})); ln.visible=false; sprung.add(ln); icLines[k]=ln;
+}
+const rcDot=new THREE.Mesh(new THREE.SphereGeometry(1.1,20,16),new THREE.MeshBasicMaterial({color:0xd9480f})); rcDot.visible=false; sprung.add(rcDot);
+const svLines={};   // side-view instant center lines (anti-dive geometry)
+for(const k in SIDES){const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  const l=new THREE.Line(g,new THREE.LineDashedMaterial({color:0x2b8a3e,dashSize:1.6,gapSize:1})); l.visible=false; sprung.add(l); svLines[k]=l;}
+
+const RLM={LL:[],RL:[],UL:[],TB:[],JB:[]}, HOUS={TB:[],JB:[]};   // rear link parts: lower links, 3rd link, track bar, J-Bar; housing with each bar's bracket
+const nk=n=>n.toLowerCase().replace(/[^a-z0-9]/g,'');
+const PART={};   // CAD name (letters and digits only) → [group, side]
+const put=(g,side,...ns)=>ns.forEach(n=>PART[nk(n)]=[g,side]);
+put('LL',0,'RR Radius Rod 16-1','Ball Joint 1-1','Ball Joint 1-2','Ball Joint 3-9','Ball Joint 3-10');
+put('RL',0,'RR Radius Rod 20-1','Ball Joint 1-7','Ball Joint 1-8','Ball Joint 3-2','Ball Joint 3-3');
+put('UL',0,'3rd link straight rail-2','Ball Joint 1-4','Ball Joint 1-5','Ball Joint 3-4','Ball Joint 3-5');
+put('TB',0,'Track Bar Straight Rail-1','Ball Joint 1-3','Ball Joint 1-6','Ball Joint 3-6','Ball Joint 3-7');
+put('JB',0,'JB J-Bar-1','JB Ball Joint 1-23','JB Ball Joint 1-24','JB Ball Joint 3-27','JB Ball Joint 3-28');
+put('uns','TB','Straight Winters-1');put('uns','JB','JB Straight Winters-1');
+put('uns',0,'Drive Hub-1','Drive Hub-2','15 x 10 Wheels Straight Rail-1','15 x 10 Wheels Straight Rail-2','3rd Link Mount Rear End-1');
+put('upper','L','LF Upper Control Arm Straight Rail-1');put('upper','R','RF Upper Control Arm Straight Rail-1');
+put('bar','L','A Arm Bar-1','Center Slug-9','Center Slug-10');put('bar','R','A Arm Bar-2','Center Slug-11','Center Slug-12');
+put('lower','L','LS Lower Control Arm-1','Lower Control Arm Aft 14.75-2','Ball Joint 2-1','Ball Joint 2-2','Ball Joint 1-9','Ball Joint 1-10','Ball Joint 1-13','Ball Joint 3-11','Center Slug-1','Center Slug-4','Center Slug-7','Center Slug-8');
+put('lower','R','RS Lower Control Arm-1','Lower Control Arm Aft 14.75-1','Ball Joint 2-3','Ball Joint 2-4','Ball Joint 1-11','Ball Joint 1-12','Ball Joint 1-14','Ball Joint 3-14','Center Slug-2','Center Slug-3','Center Slug-5','Center Slug-6');
+put('knuckle','L','LF Steering Knuckle V2 Straight Rail-1','Front Hub Straight Rail-1','15 x 10 Wheels Straight Rail-3','Screw In Ball Joint-1','Screw In Ball Joint-2','Screw In Ball Joint Housing-1','Screw In Ball Joint Housing-2','Steer Arm 8.5-2','Ball Joint 1-22','Ball Joint 3-21','.25 Slug 1 Inch-1');
+put('knuckle','R','RF Steering Knuckle V2 Straight Rail-1','Front Hub Straight Rail-2','15 x 10 Wheels Straight Rail-4','Screw In Ball Joint-3','Screw In Ball Joint-4','Screw In Ball Joint Housing-3','Screw In Ball Joint Housing-4','Steer Arm 8.5-1','Ball Joint 1-20','Ball Joint 3-24','.25 Slug 1 Inch-2');
+put('barArm','L','Sway Bar End Straight Rail-1');put('barArm','R','Sway Bar End Right Straight Rail-1');
+put('endlink','L','Ball Joint 1-17','Ball Joint 1-18','Ball Joint 3-19','Ball Joint 3-20');put('endlink','R','Ball Joint 1-15','Ball Joint 1-16','Ball Joint 3-17','Ball Joint 3-18');
+// shocks: simple-1 LF, -2 RF, -3 LR, -4 RR; top = body and top eye (chassis), bottom = shaft and bottom eye (arm or axle)
+const SHN={1:'FL',2:'FR',3:'RL',4:'RR'}, SHEYE={'balljoint313':['FL','U'],'balljoint312':['FL','L'],'balljoint315':['FR','U'],'balljoint316':['FR','L'],
+  'balljoint325':['RL','U'],'balljoint38':['RL','L'],'balljoint326':['RR','U'],'balljoint31':['RR','L']};
+function classify(name){const n=nk(name);
+  if(SHEYE[n])return ['shock',SHEYE[n]];
+  const m=/^9in(body|shaft)simple(\d)/.exec(n); if(m)return ['shock',[SHN[m[2]],m[1]==='body'?'top':'bot']];
+  return PART[n]||['sprung'];}
+
+const BARAX=HPC.barAxis, _LM=new THREE.Matrix4();   // front bar axis (x, z), from the bar tube
+const ENDL={L:{parts:[]},R:{parts:[]}}, SHK={};   // end links; shocks FL FR RL RR: U/L = static top/bottom eye
+for(const k of ['FL','FR','RL','RR'])SHK[k]={top:[],bot:[]};
+// pose a two-ended part: rotate it so a0→b0 lines up with a1→b1, pinned at a (a0 lands on a1)
+const _q=new THREE.Quaternion(),_d0=new THREE.Vector3(),_d1=new THREE.Vector3(),_R=new THREE.Matrix4();
+function rod(a0,b0,a1,b1,out){
+  _q.setFromUnitVectors(_d0.set(b0[0]-a0[0],b0[1]-a0[1],b0[2]-a0[2]).normalize(),_d1.set(b1[0]-a1[0],b1[1]-a1[1],b1[2]-a1[2]).normalize());
+  return out.makeTranslation(...a1).multiply(_R.makeRotationFromQuaternion(_q)).multiply(_R.makeTranslation(-a0[0],-a0[1],-a0[2]));}
+// shock: body hangs from the top eye, shaft from the bottom eye, both on the eye-to-eye line, so they stay coaxial
+function poseShock(S,U1,L1){if(!S.U||!S.L)return;
+  rod(S.U,S.L,U1,L1,_tmpM);S.top.forEach(o=>o.matrix.copy(_tmpM));
+  rod(S.L,S.U,L1,U1,_tmpM);S.bot.forEach(o=>o.matrix.copy(_tmpM));}
+let loaded=false;
+fetch('car.glb').then(r=>r.arrayBuffer()).then(buf=>{new THREE.GLTFLoader().parse(buf,'',g=>{
+  const nodes=[]; g.scene.updateMatrixWorld(true);
+  g.scene.traverse(o=>{ if(o.isMesh) nodes.push(o); });
+  nodes.forEach(o=>{
+    // newer trimesh wraps every part in a node called "world"; walking up blindly renamed
+    // every mesh to "world" and dumped the whole car in the unsprung group
+    let n=o.name; if(!n){ let p=o.parent; while(p&&p!==g.scene){ if(p.name){ n=p.name; break; } p=p.parent; } }
+    o.updateMatrixWorld(true); const M=o.matrixWorld.clone();
+    o.parent.remove(o); o.matrixAutoUpdate=false; o.matrix.copy(M); if(!o.geometry.attributes.normal)o.geometry.computeVertexNormals();   // car.glb carries sharp-edge normals
+    o.geometry.applyMatrix4(M); o.matrix.identity();
+    o.geometry.computeBoundingBox(); const c=new THREE.Vector3(); o.geometry.boundingBox.getCenter(c);
+    const [cls,side]=classify(n);
+    if(cls==='sprung'){o.material=mats.sprung;sprung.add(o);}
+    else if(cls==='shock'){const [k,e]=side,S=SHK[k],fr=k[0]==='F';o.material=mats.link;
+      if(e==='U'||e==='L'){S[e]=[c.x,c.y,c.z];S[e==='U'?'top':'bot'].push(o);} else S[e].push(o);
+      (fr?sprung:scene).add(o);}
+    else if(cls==='endlink'){o.material=mats.link;sprung.add(o);ENDL[side].parts.push(o);
+      if(/^balljoint3/.test(nk(n)))ENDL[side][c.z>9?'up':'lo']=[c.x,c.y,c.z];}
+    else if(cls==='uns'){o.material=mats.uns;uns.add(o);if(side)HOUS[side].push(o);}
+    else if(RLM[cls]){o.material=mats.link;scene.add(o);RLM[cls].push(o);}
+    else{o.material=(cls==='knuckle')?mats.uns:(cls==='bar'||cls==='barArm'?mats.sprung:mats.link);sprung.add(o);corner[side][cls].push(o);if(cls==='knuckle')o.userData.wheel=/fronthub|wheels/.test(nk(n));}
+  });
+  loaded=true; $('loading').hidden=true; recompute();
+},()=>{$('loading').textContent='Could not load the chassis model'});}).catch(()=>{$('loading').textContent='Could not load the chassis model'});
+
+function view(p,t){cam.position.set(...p); if(t)controls.target.set(...t); controls.update();}
+$('v-front').onclick=()=>view([270,0,30],[5,0,10]);
+$('v-34').onclick=()=>view([200,-175,115],[5,0,10]);
+$('v-top').onclick=()=>view([5,-1,330],[5,0,10]);
+$('v-side').onclick=()=>view([5,-300,25],[5,0,10]);
+view([200,-175,115]);
+
+// ---------- kinematics state ----------
+const ADJ0={ufz:0,urz:0,ufx:0,urx:0,lfz:0,lrz:0,lfx:0,lrx:0,lslug:0,uslug:0,camber:0,caster:0,tro:0,toeIn:0,ucaLen:0,lcaLen:0,ucaX:0,tri:0,umh:0,lmh:0};
+const adj={L:{...ADJ0},R:{...ADJ0}};
+let sel='R';
+const SLUGS=[0,0.25,0.375,0.5,1];
+['k-lslug','k-uslug'].forEach(id=>SLUGS.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v?('+'+v+' in'):'As modeled';$(id).appendChild(o);}));
+const kc={}, base={};
+function toeDeg(inch){return Math.atan(inch/26.6)*180/Math.PI;}
+function buildCorner(k,a){return KIN.build(HP[k],SIDES[k],{ufz:a.ufz,urz:a.urz,ufx:a.ufx,urx:a.urx,lfz:a.lfz,lrz:a.lrz,lfx:a.lfx,lrx:a.lrx,lslug:a.lslug,uslug:a.uslug,camber:a.camber,caster:a.caster,tro:a.tro,toe:toeDeg(a.toeIn),ucaLen:a.ucaLen,lcaLen:a.lcaLen,ucaX:a.ucaX,tri:a.tri,umh:a.umh,lmh:a.lmh,wo:WOUT[k]});}
+for(const k in SIDES){base[k]=buildCorner(k,ADJ0);}
+// reference knuckle points (as modeled), carried rigidly with the knuckle
+let pose={L:null,R:null}, guess={L:null,R:null};
+
+// affine Matrix4 mapping three static points (+ normal) to three new points
+const _m1=new THREE.Matrix4(),_m2=new THREE.Matrix4();
+// wheel meshes (rim and tire, one mesh): slide out by the wheel offset and widen with the wheel width.
+// Rear: the drive hubs and the housing ends move out with the hub, the axle tube between stretches.
+let WDEF='';
+function deformWheels(){if(!loaded||typeof num!=='function')return;const key=['wwlf','wwrf','wwlr','wwrr','bslf','bsrf','bslr','bsrr','hulr','hurr'].map(num).join('/');
+  if(key===WDEF)return;WDEF=key;
+  const cl=x=>Math.max(0,Math.min(1,x)),w=c=>num('ww'+c)/2-num('bs'+c),hu={L:num('hulr'),R:num('hurr')};
+  const fit=(o,f)=>{const g=o.geometry,P=g.attributes.position;if(!o.userData.p0)o.userData.p0=P.array.slice();const p0=o.userData.p0;
+    for(let i=0;i<p0.length;i+=3)P.array[i+1]=f(p0[i+1]);P.needsUpdate=true;g.computeBoundingSphere();g.computeBoundingBox();};
+  const wheel=(o,c,y0,out,s)=>fit(o,y=>y0+s*out+(y-y0)*num('ww'+c)/10);
+  for(const k of ['L','R']){const s=SIDES[k],c=k==='L'?'lf':'rf';
+    corner[k].knuckle.forEach(o=>{if(/wheels/i.test(o.name))wheel(o,c,HPC[k].WC[1],w(c),s);});}
+  uns.children.forEach(o=>{if(!o.isMesh)return;if(!o.userData.p0){const b=o.geometry.boundingBox;o.userData.cy=(b.min.y+b.max.y)/2;}
+    const k=o.userData.cy>0?'L':'R',s=k==='L'?1:-1,c=k==='L'?'lr':'rr';
+    if(/wheels/i.test(o.name))wheel(o,c,o.userData.cy,w(c)+hu[k],s);
+    else if(/drive_?hub/i.test(o.name))fit(o,y=>y+s*hu[k]);
+    else if(/winters/i.test(o.name))fit(o,y=>y+(y>0?hu.L:-hu.R)*cl((Math.abs(y)-22)/2));});   // tube stretches inboard of the hubs
+}
+// knuckle mesh: only the ball joint bosses move up or down the knuckle (with their ball joints, slugs and
+// housings); the spindle, steering arm and the rest keep their CAD shape. Hub and wheel ride on the spindle.
+const KDEF={L:'',R:''}, KUB={}, KLB={};
+function deformKnuckle(k){const a=adj[k],key=a.umh+'/'+a.lmh;if(KDEF[k]===key)return;KDEF[k]=key;
+  const V=KIN.V,h=HPC[k],up=V.norm(V.sub(h.UBJ,h.LBJ)),zs=h.WC[2],xb=h.LBJ[0];
+  const cl=x=>Math.max(0,Math.min(1,x));
+  KUB[k]=V.add(h.UBJ,V.mul(up,a.umh)); KLB[k]=V.add(h.LBJ,V.mul(up,a.lmh));
+  corner[k].knuckle.forEach(o=>{if(o.userData.wheel)return;const g=o.geometry,P=g.attributes.position;
+    if(!o.userData.p0){o.userData.p0=P.array.slice();const b=g.boundingBox;o.userData.cz=(b.min.z+b.max.z)/2;o.userData.cx=(b.min.x+b.max.x)/2;}
+    const p0=o.userData.p0,body=/knuckle/i.test(o.name),near=Math.abs(o.userData.cx-xb)<3;
+    const part=!body&&near?(o.userData.cz>zs+1?1:o.userData.cz<zs-1?-1:0):0;   // whole upper (1) or lower (−1) ball joint parts
+    if(!body&&!part)return;
+    for(let i=0;i<p0.length;i+=3){const x=p0[i],y=p0[i+1],z=p0[i+2];let d;
+      if(body){const wx=cl((3.5-Math.abs(x-xb))/1);                                   // the upright, not the steering arm
+        d=a.umh*cl((z-zs-1.4)/0.7)+a.lmh*cl((zs-1.4-z)/0.7)*wx;}                         // above / below the spindle
+      else d=part>0?a.umh:a.lmh;
+      P.array[i]=x+up[0]*d;P.array[i+1]=y+up[1]*d;P.array[i+2]=z+up[2]*d;}
+    P.needsUpdate=true;g.computeBoundingSphere();if(body)g.computeVertexNormals();});
+}
+function affine(a,b,c,A,B,C,out){
+  const V=KIN.V;
+  const e1=V.sub(b,a),e2=V.sub(c,a),n=V.mul(V.norm(V.cross(e1,e2)),5);
+  const E1=V.sub(B,A),E2=V.sub(C,A),N=V.mul(V.norm(V.cross(E1,E2)),5);
+  _m1.set(e1[0],e2[0],n[0],a[0], e1[1],e2[1],n[1],a[1], e1[2],e2[2],n[2],a[2], 0,0,0,1);
+  _m2.set(E1[0],E2[0],N[0],A[0], E1[1],E2[1],N[1],A[1], E1[2],E2[2],N[2],A[2], 0,0,0,1);
+  return out.copy(_m2).multiply(_m1.invert());
+}
+const _tmpM=new THREE.Matrix4(),_KB=new THREE.Matrix4();
+function applyCorner(k,c,p){
+  const h=HPC[k];   // meshes sit at the CAD points
+  affine(h.LIF,h.LIR,h.LBJ,c.LIF,c.LIR,p.LBJ,_LM); corner[k].lower.forEach(o=>o.matrix.copy(_LM));
+  const onArm=q=>{_v.set(...q).applyMatrix4(_LM);return [_v.x,_v.y,_v.z];};   // a point carried by the lower arm
+  const S=SHK['F'+k]; if(S.L)poseShock(S,S.U,onArm(S.L));
+  // bar arm: twists about the bar axis until its tip is one end link length from the link's lower arm mount
+  const E=ENDL[k];
+  if(E.up&&E.lo){const lo=onArm(E.lo),dx=E.up[0]-BARAX[0],dz=E.up[2]-BARAX[1],Ll=KIN.V.dist(E.up,E.lo);
+    const tip=t=>[BARAX[0]+dx*Math.cos(t)+dz*Math.sin(t),E.up[1],BARAX[1]-dx*Math.sin(t)+dz*Math.cos(t)];   // same sense as makeRotationY
+    const t=KIN.solve(t=>KIN.V.dist(tip(t),lo)-Ll,E.t||0); if(isFinite(t)&&Math.abs(t)<1)E.t=t;
+    _tmpM.makeTranslation(BARAX[0],0,BARAX[1]).multiply(_R.makeRotationY(E.t||0)).multiply(_R.makeTranslation(-BARAX[0],0,-BARAX[1]));
+    corner[k].barArm.forEach(o=>o.matrix.copy(_tmpM));
+    rod(E.lo,E.up,lo,tip(E.t||0),_tmpM); E.parts.forEach(o=>o.matrix.copy(_tmpM));}
+  // knuckle body: modeled LBJ/UBJ/TRO carried through shims+toe (c.kref) then posed via knuckle frame
+  const kr=c.kref.map(l=>KIN_toWorld(l,p));
+  affine(h.LBJ,h.UBJ,h.TRO,kr[0],kr[1],kr[2],_tmpM);
+  deformKnuckle(k);
+  const kb=c.kbody.map(l=>KIN_toWorld(l,p));
+  affine(KLB[k],KUB[k],h.TRO,kb[0],kb[1],kb[2],_KB);
+  corner[k].knuckle.forEach(o=>o.matrix.copy(o.userData.wheel?_tmpM:_KB));
+  affine(h.UIF,h.UIR,h.UBJ,c.UIF,c.UIR,p.UBJ,_tmpM); corner[k].upper.forEach(o=>o.matrix.copy(_tmpM));
+  const s=SIDES[k], off=a=>[a[0],a[1]-s*4,a[2]+1];
+  affine(h.UIF,h.UIR,off(h.UIF),c.UIF,c.UIR,off(c.UIF),_tmpM); corner[k].bar.forEach(o=>o.matrix.copy(_tmpM));
+  // tie rod tube
+  const a=new THREE.Vector3(...c.TRI), b=new THREE.Vector3(...p.TRO), d=b.clone().sub(a), L=d.length();
+  const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d.clone().normalize());
+  tieRod[k].matrix.compose(a.clone().add(b).multiplyScalar(.5),q,new THREE.Vector3(1,L,1));
+}
+function KIN_toWorld(l,p){const F=p.F;return [p.LBJ[0]+F[0][0]*l[0]+F[1][0]*l[1]+F[2][0]*l[2],p.LBJ[1]+F[0][1]*l[0]+F[1][1]*l[1]+F[2][1]*l[2],p.LBJ[2]+F[0][2]*l[0]+F[1][2]*l[1]+F[2][2]*l[2]];}
+</script>
+<script>
+// ---------- vehicle (setup) model ----------
+// TF0/TR0: CAD tracks with the 15 × 10 wheels as modeled; TF/TR/HF follow the wheel inputs
+let TF0=0, TR0=0, TF=0, TR=0, HF={L:0,R:0}, WB=0; const MRFIX=0.65, LBAR=38, G=11.5e6; let MRF=MRFIX, MRR=1;   // MRF/MRR: average front / rear spring motion ratio at ride height
+const RBAR_L=36, RBAR_ARM=10, TIRE_RR=13.3; // ponytail: rear bar size and unsprung CG height are assumed, make inputs if you run them
+// ride height points: bottom of the frame rails at the front and rear ends of the straight rails (CAD), LF RF LR RR [x, y];
+// z = rail bottom above the ground with the CAD's rigid 26.6 in tires
+const PER={pts:[[18.52,13.5],[18.52,-15.5],[-58.63,16.5],[-58.63,-15.5]],z:3.68};
+const num=id=>{const x=$(id).value;return x===''||isNaN(x)?+DEF[id]:+x;};   // half-typed or empty box → its default
+// tires: loaded radius = rollout ÷ 2π − load ÷ tire rate. Returned per corner vs the CAD tire (13.3 in): + = wheel center higher
+const TIRE_IDS=['tclf','tcrf','tclr','tcrr'];
+function tireOff(loads){const k=Math.max(1,num('tk'));return TIRE_IDS.map((id,i)=>num(id)/(2*Math.PI)-Math.max(0,loads[i])/k-KIN.TIRE_R);}
+// the heave (a) and roll (p, + = left up) the tires put between the ground and each axle
+function tireAxles(d){const pF=(d[0]-d[1])/(HF.L+HF.R),pR=(d[2]-d[3])/TR;return {aF:d[0]-HF.L*pF,pF,aR:(d[2]+d[3])/2,pR};}
+function scaleLoads(){const W=num('wt'),L=W*num('ls')/100,F=W*(1-num('rp')/100),X=W*num('cr')/100,b=[(L+F-X)/2];b[1]=F-b[0];b[2]=L-b[0];b[3]=W-b[0]-b[1]-b[2];return b;}
+// LF, RF, RR ride heights (to the ground) set the frame plane (rigid frame, 3 points); LR floats.
+// The tires are taken out to find the suspension: dzF/dzR = body rise at the axles and phi = roll, both vs the CAD stance;
+// dphR = how much more the rear suspension is rolled than the front (different tire sizes front and rear).
+function rideSet(){const d=id=>num(id)-PER.z, P=PER.pts;
+  const [a,b,c]=solve3([0,1,3].map(i=>[1,P[i][0],P[i][1]]),[d('hlf'),d('hrf'),d('hrr')]), at=(x,y)=>a+b*x+c*y;
+  const t=tireOff(scaleLoads()), A=tireAxles(t);
+  return {lr:PER.z+at(...P[2]), phi:c-A.pF, dphR:A.pF-A.pR, dzF:at(TIRE[0][0],0)-A.aF, dzR:at(TIRE[2][0],0)-A.aR, t, ground:c};}
+// Advanced mode: springs and tires set the ride heights. Each corner's spring is squeezed by its preload at full shock
+// extension, plus the shock travel from there to where the car sits. Solve frame rise at the front and rear axles and
+// roll (to the ground) until the spring loads plus unsprung match the scale weight, front and left totals; the tires
+// squash with their loads. Bar unhooked, like the Scales numbers: bar preload and rounds go on top in calc().
+function advSolve(){const v=num, W=v('wt'), ls=v('ls')/100, rp=v('rp')/100, sb=v('rsb')/2, Uf=v('unf')/2, Ur=v('unr')/2;
+  const ids=['lf','rf','lr','rr'], k=ids.map(c=>v(c)), fl=ids.map(c=>v('fl'+c)), pl=ids.map(c=>v('pl'+c)), so=ids.map(c=>v('so'+c));
+  const T=[mrFixed()?null:MRT.L,mrFixed()?null:MRT.R,MRTR.L,MRTR.R], L0=T.map(t=>t?t.L0:19.4);
+  // h: wheel travel from the CAD stance (+ bump); s: shock travel; spring squeeze = preload + shock travel from full extension
+  const corner=(i,h)=>{const s=T[i]?tblAt(T[i],'s',h):MRFIX*h, mr=T[i]?tblAt(T[i],'mr',h):MRFIX,
+    sq=pl[i]+s-(L0[i]-so[i]);return {f:mr*k[i]*Math.max(0,sq),sq,top:s<L0[i]-so[i]};};
+  const run=([zF,zR,ph])=>{let loads=[W/4,W/4,W/4,W/4],c;
+    for(let it=0;it<10;it++){const A=tireAxles(tireOff(loads));   // tire squash depends on the loads: a few passes settle it
+      const h=[-zF-HF.L*ph+A.aF+HF.L*A.pF,-zF+HF.R*ph+A.aF-HF.R*A.pF,-zR-sb*ph+A.aR+sb*A.pR,-zR+sb*ph+A.aR-sb*A.pR];
+      c=h.map((x,i)=>corner(i,x));const rS=c[2].f+c[3].f, rD=(c[3].f-c[2].f)*sb*2/TR;
+      loads=[c[0].f+Uf,c[1].f+Uf,(rS-rD)/2+Ur,(rS+rD)/2+Ur];}
+    return {c,loads};};
+  const res=x=>{const L=run(x).loads;return [L[0]+L[1]+L[2]+L[3]-W, L[0]+L[1]-W*(1-rp), L[0]+L[2]-W*ls];};
+  let x=[0,0,0];
+  for(let it=0;it<40;it++){const r=res(x);if(Math.abs(r[0])+Math.abs(r[1])+Math.abs(r[2])<1e-3)break;
+    const J=[[],[],[]];for(let j=0;j<3;j++){const e=j<2?1e-4:1e-6,xp=[...x];xp[j]+=e;const rp2=res(xp);for(let q=0;q<3;q++)J[q][j]=(rp2[q]-r[q])/e;}
+    const d=solve3(J,r.map(t=>-t));x=x.map((t,j)=>t+Math.max(-1,Math.min(1,d[j])));}
+  const [zF,zR,ph]=x, out=run(x), at=(X,Y)=>PER.z+zR+(zF-zR)*(X-TIRE[2][0])/(TIRE[0][0]-TIRE[2][0])+ph*Y;
+  return {hts:PER.pts.map(p=>at(p[0],p[1])), loads:out.loads, cross:(out.loads[1]+out.loads[2])/W,
+    sq:out.c.map(c=>c.sq), len:out.c.map((c,i)=>fl[i]-c.sq), top:out.c.map(c=>c.top), ok:Math.abs(res(x)[0])<1};}
+const wsel=$('wt'); for(let w=2200;w<=4000;w+=25){const o=document.createElement('option');o.value=w;o.textContent=w.toLocaleString();if(w===3200)o.selected=true;wsel.appendChild(o);}
+let target=0, shown=0, model=null;
+// front jacking: tire lateral force along contact patch -> front-view instant center line
+function frontJack(P,mdl,K){K=K||kc;const out={L:0,R:0};if(!P||!mdl)return {L:0,R:0,tot:0,dz:0};   // K: which corners (default: as adjusted)
+  for(const s of ['L','R']){const ic=KIN.ics(K[s],P[s]).fv,cp=KIN.angles(K[s],P[s]).CP;if(!ic)continue;
+    const Fy=Math.max(0,mdl.loads[s==='L'?0:1])*mdl.ay; out[s]=Fy*(ic[1]-cp[2])/(ic[0]-cp[1]);}
+  out.tot=out.L+out.R; out.dz=out.tot/(((+$('lf').value)+(+$('rf').value))*MRF*MRF); return out;}
+// wheels: center plane out from the hub face = width/2 − back spacing (zero for the CAD 10 in × 5 in wheels).
+// Front: the wheel slides out along the spindle. Rear: plus the hub moved out by a wider housing on that side.
+function wheelGeom(){const w=c=>num('ww'+c)/2-num('bs'+c);
+  const o={lf:w('lf'),rf:w('rf'),lr:w('lr')+num('hulr'),rr:w('rr')+num('hurr')};
+  WOUT.L=o.lf;WOUT.R=o.rf;HF.L=TF0/2+o.lf;HF.R=TF0/2+o.rf;TF=HF.L+HF.R;TR=TR0+o.lr+o.rr;
+  TIRE[0][1]=TIRE0[0][1]+o.lf;TIRE[1][1]=TIRE0[1][1]-o.rf;TIRE[2][1]=TIRE0[2][1]+o.lr;TIRE[3][1]=TIRE0[3][1]-o.rr;
+  return o;}
+// simple load-sensitive tire: friction falls as load rises
+const mu=Fz=>Math.max(0.6,1.5-0.0004*Fz);
+let calcGuess={L:null,R:null};
+function solveN(M,r){ // Gaussian elimination with pivoting, n×n
+  const n=r.length,A=M.map((row,i)=>[...row,r[i]]);
+  for(let i=0;i<n;i++){let p=i;for(let j=i+1;j<n;j++)if(Math.abs(A[j][i])>Math.abs(A[p][i]))p=j;[A[i],A[p]]=[A[p],A[i]];
+    for(let j=i+1;j<n;j++){const f=A[j][i]/A[i][i];for(let k=i;k<=n;k++)A[j][k]-=f*A[i][k];}}
+  const x=new Array(n).fill(0);for(let i=n-1;i>=0;i--){let t=A[i][n];for(let k=i+1;k<n;k++)t-=A[i][k]*x[k];x[i]=t/A[i][i];}return x;}
+function solve3(M,r){ // Gaussian elimination, 3×3
+  const A=M.map((row,i)=>[...row,r[i]]);
+  for(let i=0;i<3;i++){let p=i;for(let j=i+1;j<3;j++)if(Math.abs(A[j][i])>Math.abs(A[p][i]))p=j;[A[i],A[p]]=[A[p],A[i]];
+    for(let j=i+1;j<3;j++){const f=A[j][i]/A[i][i];for(let k=i;k<4;k++)A[j][k]-=f*A[i][k];}}
+  const x=[0,0,0];for(let i=2;i>=0;i--){let t=A[i][3];for(let k=i+1;k<3;k++)t-=A[i][k]*x[k];x[i]=t/A[i][i];}return x;}
+function bisect(f,lo,hi){let flo=f(lo);for(let i=0;i<60;i++){const m=(lo+hi)/2,fm=f(m);if((fm>0)===(flo>0)){lo=m;flo=fm;}else hi=m;}return (lo+hi)/2;}
+function calc(){
+  const v=num;
+  const W=v('wt'),lf=v('lf'),rf=v('rf'),lr=v('lr'),rr=v('rr'),od=v('bar'),id=Math.min(v('bid'),v('bar')-0.125),ay=v('g'),h=v('cg');
+  const ls=v('ls')/100,rp=v('rp')/100,cr=v('cr')/100, mrb=v('mrb'), arm=v('arm'), sbase=v('rsb');
+  const Uf=v('unf'),Ur=v('unr'),rbar=v('rbar'),pre=v('bpre'),gx=v('gx'),bf=v('bb')/100;
+  // banking (inside low): level cornering g ayH and gravity, resolved into the track plane
+  const bk=(v('bank')||0)*Math.PI/180, ayH=ay, ayT=ayH*Math.cos(bk)-Math.sin(bk), nz=Math.cos(bk)+ayH*Math.sin(bk);   // ayT: g across the track, nz: load factor into it
+  const L=W*ls,F=W*(1-rp),X=W*cr;
+  const base=[(L+F-X)/2,0,0,0]; base[1]=F-base[0]; base[2]=L-base[0]; base[3]=W-base[0]-base[1]-base[2];
+  const Kb=G*(Math.PI*(od**4-id**4)/32)/LBAR*(TF0*mrb/arm)**2;            // front bar roll stiffness, in-lb/rad
+  const Krb=rbar>0?G*(Math.PI*rbar**4/32)/RBAR_L*(TR0/RBAR_ARM)**2:0;   // rear bar, in-lb/rad (a 3-link on rod ends adds none)
+  const phiB=pre/(TF0*mrb);                                              // preload (+) or slack (−) as an equivalent roll angle
+  // corners LF, RF, LR, RR: c = side (+ right), a = lateral distance to the spring line, mr = spring motion ratio
+  const Kc=v('ctor')*12*180/Math.PI;                                   // chassis torsional stiffness, in-lb/rad
+  const C=[{k:lf,mr:mr0('L'),a:HF.L,c:-1,kb:v('blf'),gap:v('glf'),T:mrFixed()?null:MRT.L},{k:rf,mr:mr0('R'),a:HF.R,c:1,kb:v('brf'),gap:v('grf'),T:mrFixed()?null:MRT.R},
+           {k:lr,mr:MRTR.L.mr0,a:sbase/2,c:-1,kb:v('blr'),gap:v('glr'),T:MRTR.L},{k:rr,mr:MRTR.R.mr0,a:sbase/2,c:1,kb:v('brr'),gap:v('grr'),T:MRTR.R}];
+  // ---- at rest: wedge and bar preload on a rigid chassis (heave z, roll φ, pitch θ; front at x = WB, rear at 0)
+  const rs=rideSet(); let phS=rs.phi;                                      // set ride heights: front/rear heave and static roll
+  const slL=-steerLift(kc.L,-rs.dzF-HF.L*phS), slR=-steerLift(kc.R,-rs.dzF+HF.R*phS);   // + = that corner is jacked up
+  const tpi=v('tpi')>0?v('tpi'):8, rnd=['rnlf','rnrf','rnlr','rnrr'].map(id=>(v(id)||0)/tpi);   // rounds → spring seat move, in (+ round in = seat up into the spring, corner rises)
+  const Kbs=pre>=0?Kb:0, phiBs=Math.max(phiB,0), seat=[slL,slR,0,0].map((s,i)=>s+rnd[i]/C[i].mr), xs=[WB,WB,0,0];   // seat at the spring → at the wheel
+  const w=C.map(q=>q.k*q.mr*q.mr), g4=i=>[1,i<2?C[i].c*C[i].a:0,i<2?0:C[i].c*C[i].a,xs[i]];
+  const M=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]], r=[0,0,0,0];
+  for(let i=0;i<4;i++){const gi=g4(i);
+    for(let row=0;row<4;row++){for(let col=0;col<4;col++)M[row][col]+=w[i]*gi[row]*gi[col];r[row]-=w[i]*gi[row]*seat[i];}}
+  M[1][1]+=Kbs+Kc;M[1][2]-=Kc;M[2][1]-=Kc;M[2][2]+=Krb+Kc; r[1]-=Kbs*phiBs;
+  const [z0,pf0,pr0,t0]=solveN(M,r), dF=[0,1,2,3].map(i=>w[i]*(z0+(i<2?C[i].c*C[i].a*pf0:C[i].c*C[i].a*pr0)+xs[i]*t0+seat[i])), Mb0=Kbs*(pf0+phiBs);
+  const rS=dF[2]+dF[3], rD=(dF[3]-dF[2])*sbase/TR;
+  const Mr0=Krb*pr0;   // rear roll stiffness reacts through the rear tires
+  const dStatic=[dF[0]-Mb0/TF,dF[1]+Mb0/TF,(rS-rD)/2-Mr0/TR,(rS+rD)/2+Mr0/TR];
+  const [LF,RF,LR,RR]=base.map((x,i)=>x+dStatic[i]);
+  // the same solve moves the body off the scaled ride heights: rise = −(z + roll·y·c + pitch·x) at each spring
+  // ponytail: one static roll for the whole frame (front/rear average), so LR keeps floating 1 for 1; split them if frame twist at rest matters
+  const pr=(pf0+pr0)/2, rise=(x,y)=>-z0-t0*(x-TIRE[2][0])+pr*y;
+  const rest={dzF:rs.dzF+rise(TIRE[0][0],0), dzR:rs.dzR+rise(TIRE[2][0],0), phi:rs.phi+pr, dphR:rs.dphR,
+    hNow:[v('hlf'),v('hrf'),rs.lr,v('hrr')].map((h,i)=>h+rise(...PER.pts[i])), rnd};
+  // Move the car (Heave, Roll): extra body motion on top of the solve, geometry only (springs don't push back)
+  const mh=-(+$('k-heave').value), pose0={dzF:rest.dzF+mh, dzR:rest.dzR+mh, phi:rest.phi+(+$('k-roll').value)*Math.PI/180, dphR:rest.dphR};
+  phS=pose0.phi;
+  // ---- in the turn: corner forces with gapped bump springs, bar with slack
+  const slackRoll=pre<0?-phiB:0;
+  const travel=(i,phi,dzJ)=>-dzJ+C[i].c*C[i].a*phi;                     // + = bump, at the spring line
+  const force=(i,t)=>{const q=C[i];if(q.T){const s=tblAt(q.T,'s',t),m=tblAt(q.T,'mr',t);return m*(q.k*s+q.kb*Math.max(0,s-q.gap));}   // real coilover: spring travel and ratio through travel
+    const s=q.mr*t;return q.mr*(q.k*s+q.kb*Math.max(0,s-q.gap));};
+  const barM=phi=>pre<0?Kb*Math.max(0,phi-slackRoll):Kb*phi;
+  const Mf=(phi,zf)=>-force(0,travel(0,phi,zf))*C[0].a+force(1,travel(1,phi,zf))*C[1].a+barM(phi);
+  const Mr=(phi,zr)=>-force(2,travel(2,phi,zr))*C[2].a+force(3,travel(3,phi,zr))*C[3].a+Krb*phi;
+  const Wf=F,Wr=W-F, Ws=W-Uf-Ur, aS=(Wr-Ur)/Ws;     // sprung weight and its rear fraction
+  const hs0=(W*h-(Uf+Ur)*TIRE_RR)/Ws;               // sprung CG from total CG (unsprung CG at axle height)
+  // solve roll, both roll centers and jacking together: each changes the others
+  let phi=0, phiF=0, phiR=0, zJF=0, zJR=0, dzF=pose0.dzF, dzR=pose0.dzR, hf=2, hr=10, P=null, rpo=null, fj=null, jk=null, loads, dWf, dWr, hs=hs0;
+  const g=RG, dWx=W*gx*h/WB;                // longitudinal transfer, + = onto the rear
+  let sF=0, sR=0, ad=0, asq=0;
+  for(let it=0;it<12;it++){
+    dzF=pose0.dzF+zJF; dzR=pose0.dzR+zJR;
+    const hL=-dzF-HF.L*(phiF+phS), hR=-dzF+HF.R*(phiF+phS);   // geometry sees set static roll + roll in the turn
+    P={L:KIN.poseH(kc.L,Math.max(-3.5,Math.min(3.5,hL)),calcGuess.L,STEER),R:KIN.poseH(kc.R,Math.max(-3.5,Math.min(3.5,hR)),calcGuess.R,STEER)};
+    calcGuess={L:P.L,R:P.R};
+    const rc=KIN.rollCenter(kc.L,P.L,kc.R,P.R); if(rc)hf=rc[1]+dzF;
+    rpo=KIN.rearPose(g,-dzR,-(phiR+phS+pose0.dphR),rpo&&rpo.q); hr=rpo.rcz;
+    hs=hs0+dzF+(dzR-dzF)*aS;
+    const hra=hf+(hr-hf)*aS;                          // roll axis height under the sprung CG
+    const Mapp=Ws*ayT*(hs-hra);
+    // each end carries its share of the roll moment; the frame's twist stiffness passes moment between them
+    const MappF=Mapp*(1-aS),MappR=Mapp*aS;let pF=phiF,pR=phiR;
+    for(let k=0;k<40;k++){const a=pF,b=pR;pF=bisect(x=>Mf(x,zJF)+Kc*(x-pR)-MappF,-0.3,0.3);pR=bisect(x=>Mr(x,zJR)-Kc*(pF-x)-MappR,-0.3,0.3);if(Math.abs(pF-a)+Math.abs(pR-b)<1e-9)break;}
+    const phiN=pF*(1-aS)+pR*aS;
+    dWf=(Wf-Uf)*ayT*hf/TF+Mf(pF,zJF)/TF+Uf*ayT*TIRE_RR/TF;
+    dWr=(Wr-Ur)*ayT*hr/TR+Mr(pR,zJR)/TR+Ur*ayT*TIRE_RR/TR;
+    loads=[LF*nz-dWf-dWx/2,RF*nz+dWf-dWx/2,LR*nz-dWr+dWx/2,RR*nz+dWr+dWx/2];
+    // share of the longitudinal transfer that goes through the springs (the arm geometry carries the rest)
+    ad=(KIN.antiDive(kc.L,P.L,h,WB,bf)+KIN.antiDive(kc.R,P.R,h,WB,bf))/200;
+    asq=rpo.tanSV*WB/h;
+    if(gx<0){sF=-dWx*(1-ad);sR=dWx*(1-asq*(1-bf));}       // braking: anti-dive front, truck arms anti-lift with rear brakes on the housing
+    else{sF=-dWx;sR=dWx*(1-asq);}                          // throttle: front unloads fully, anti-squat at the rear
+    sF+=(nz-1)*(Wf-Uf); sR+=(nz-1)*(Wr-Ur);                // banking presses the sprung mass into the springs
+    const m={loads,ay:ayT,W,front:F/W};
+    fj=frontJack(P,m); jk=jacking(rpo,m);
+    // jacking lifts the body until the springs (and any bump springs touched) unload by the same force
+    const zF=bisect(z=>force(0,travel(0,pF,z))+force(1,travel(1,pF,z))+fj.tot-sF,-6,6);
+    const zR=bisect(z=>force(2,travel(2,pR,z))+force(3,travel(3,pR,z))+jk.Fz-sR,-6,6);
+    const d=Math.abs(pF-phiF)+Math.abs(pR-phiR)+Math.abs(zF-zJF)+Math.abs(zR-zJR);
+    phi=phiN; phiF=pF; phiR=pR; zJF+=(zF-zJF)*0.6; zJR+=(zR-zJR)*0.6;    // damped so jacking doesn't oscillate
+    if(d<1e-5)break;
+  }
+  dzF=pose0.dzF+zJF; dzR=pose0.dzR+zJR;
+  const bump=C.map((q,i)=>{const t=travel(i,i<2?phiF:phiR,i<2?zJF:zJR),s=q.T?tblAt(q.T,'s',t):q.mr*t;return {s,kb:q.kb,into:q.kb?Math.max(0,s-q.gap):0,left:q.gap-s};});
+  // grip balance: share of each axle's grip used
+  const cap=i=>mu(Math.max(loads[i],0))*Math.max(loads[i],0);
+  const Fxf=gx<0?W*-gx*bf:0, Fxr=gx<0?W*-gx*(1-bf):W*gx;     // braking split by brake bias, drive on the rear
+  const uf=Math.hypot(Wf*ayT,Fxf)/(cap(0)+cap(1)), ur=Math.hypot(Wr*ayT,Fxr)/(cap(2)+cap(3));
+  // stagger a locked axle needs: circumference × rear track ÷ corner radius
+  const stgNeed=(v('tclr')+v('tcrr'))/2*TR/(v('rad')*12), ta=rpo;
+  // the part of the longitudinal transfer the arms carry instead of the springs pushes on the chassis: that is jacking too
+  const fjL=gx<0?-dWx*ad:0, rjL=gx<0?dWx*asq*(1-bf):dWx*asq;
+  const Kfront=Kb+lf*C[0].mr**2*HF.L**2+rf*C[1].mr**2*HF.R**2, Krear=(lr+rr)*MRR*MRR*(sbase/2)**2+Krb;
+  return {rs,rest,pose0,phiF,phiR,Kc,mrL:C[0].mr,mrR:C[1].mr,Kfront,Krear,Kb,fjL,rjL,dWx,asq,bf,ad,loads,phi,lltd:dWf/(dWf+dWr),front:F/W,hf,hr,ay:ayT,ayH,bank:bk,nz,W,h:hs0,hs,dzF,dzR,P,rp:rpo,fj,jk,cross:(LR+RF)/W,dStatic,gx,pitch:Math.atan((dzF-dzR)/WB),slackRoll,bump,
+    bal:(uf-ur)*100,stg:v('tcrr')-v('tclr')-stgNeed,stgNeed,ta};
+}
+
+// ---------- rear: 3-link + track bar (solver in kin.js) ----------
+const RADJ0={LLa:0,LLc:0,RLa:0,RLc:0,ULa:0,ULc:0,ULlen:0,ULya:0,ULyc:0,TBa:0,TBc:0,TBtype:0,TBflip:0}, RK=Object.keys(RADJ0), radj={...RADJ0};
+let rearGuess=null, MRTR={L:null,R:null};
+// rear coilovers: spring travel and motion ratio through axle travel, from the shock eye points
+function rearMr(g){const P=MRG.map(h=>KIN.rearPose(g,h,0)),i0=MRG.indexOf(0),o={};
+  for(const k of ['L','R']){const Ls=P.map(p=>p.shock[k]),s=Ls.map(l=>Ls[i0]-l),mr=s.map((v,i)=>{const a=Math.max(0,i-1),b=Math.min(s.length-1,i+1);return (s[b]-s[a])/(MRG[b]-MRG[a]);});o[k]={s,mr,mr0:mr[i0],L0:Ls[i0]};}
+  return o;}
+function rearSet(){RG=KIN.rearAdjust(RG0,radj);rearGuess=null;MRTR=rearMr(RG);MRR=(MRTR.L.mr0+MRTR.R.mr0)/2;}
+let STEER=0;                                   // tie rod inner lateral travel, in (+ = toward the left side)
+const steerDeg=()=>{const e=$('k-steer');return e?+e.value:0;};
+// rack travel that gives this average front steer angle, + = turning left
+function steerRack(deg){
+  if(!deg)return 0;
+  const avg=r=>{const aL=KIN.angles(kc.L,KIN.poseH(kc.L,0,null,r)).toe,aR=KIN.angles(kc.R,KIN.poseH(kc.R,0,null,r)).toe;return (aL-aR)/2;};
+  const b=avg(0);
+  return bisect(r=>avg(r)-b-deg,-2,2);
+}
+// caster jacking: at a FIXED suspension position, steering moves the wheel center up or down.
+// The wheel has to stay on the ground, so the corner rises or falls — the same thing a spring
+// seat move does, which is why it feeds the wedge solve.
+const casterNow=s=>KIN.angles(kc[s],KIN.poseH(kc[s],0,null)).caster;   // caster the shim actually gives, deg
+function steerLift(c,h){
+  if(!STEER)return 0;
+  const p0=KIN.poseH(c,h,null);
+  let g=p0;const N=Math.max(4,Math.ceil(Math.abs(STEER)/0.05));                // same near-root walk
+  for(let i=1;i<=N;i++)g=KIN.poseAt(c,p0.th,g,STEER*i/N);
+  return g.WC[2]-p0.WC[2];
+}
+// 3rd link pull under drive or rear braking (Long g on the Setup tab). Side-view statics of the axle and wheels:
+// tire force at the contact patch against the lower links (lumped) and the 3rd link; the springs sit near the axle
+// center and are left out. The vertical part of the pull, off center, rolls the axle against the chassis; the front
+// springs hold the chassis, so the rear tires see the share Kfront / (Kfront + Krear).
+function thirdLink(rp,m,g){g=g||RG;
+  const Fx=m.gx<0?m.W*m.gx*(1-m.bf):m.W*m.gx, V=KIN.V, e=k=>V.norm(V.sub(g.C[k],rp.P[k]));
+  const wx=(rp.W.L[0]+rp.W.R[0])/2, wz=(rp.W.L[2]+rp.W.R[2])/2, eU=e('UL'), eL=V.mul(V.add(e('LL'),e('RL')),0.5), pL=V.mul(V.add(rp.P.LL,rp.P.RL),0.5);
+  const mom=(p,d)=>(p[2]-wz)*d[0]-(p[0]-wx)*d[2], mL=mom(pL,eL), mU=mom(rp.P.UL,eU);
+  const u=(eL[0]*KIN.TIRE_R*Fx+mL*Fx)/(eL[0]*mU-eU[0]*mL);     // + = tension
+  const y=rp.P.UL[1]-rp.q[1];
+  return {u,y,side:u*eU[1],dLR:-u*eU[2]*y/TR*m.Kfront/(m.Kfront+m.Krear)};}
+function jacking(rp,mdl){const Fy=Math.max(0,mdl.W*(1-mdl.front)-(+$('unr').value))*mdl.ay;const Fz=Fy*rp.ratio;return {Fy,Fz,dz:Fz/((+$('lr').value)+(+$('rr').value))};}
+
+// ---------- tabs ----------
+let tab='setup';
+const camMem={}, CAMDEF={main:[[200,-175,115],[5,0,10]],'kin-rear':[[-200,-45,22],[-60,0,12]]};
+const camKey=()=>sel==='rear'?'kin-rear':'main';   // one camera for both tabs; the Rear button keeps its own view
+function saveCam(){camMem[camKey()]={p:cam.position.toArray(),t:controls.target.toArray()};}
+function restoreCam(){const m=camMem[camKey()];if(m)view(m.p,m.t);else view(...CAMDEF[camKey()]);}
+function setTab(t){tab=t;lastKey='';   // camera stays put across tabs
+  for(const x of ['setup','kin','plots']){$('t-'+x).setAttribute('aria-selected',t===x);$('p-'+x).hidden=t!==x;}
+  $('stage').hidden=t==='plots';$('plots').hidden=t!=='plots';if(t==='plots')plotsDirty=true;
+  $('stats-setup').hidden=t!=='setup';$('stats-kin').hidden=!(t==='kin'&&sel!=='rear');$('stats-rear').hidden=!(t==='kin'&&sel==='rear');
+  discs.forEach(d=>d.visible=t==='setup');tags.forEach(x=>x.style.visibility=t==='setup'?'visible':'hidden');
+  axisLine.visible=cgDot.visible=t==='setup'; rcDot.visible=t==='kin'; for(const k in icLines)icLines[k].visible=t==='kin';
+  $('leg-axis').textContent=t==='kin'?'Instant center lines':'Roll axis';
+  $('sub').textContent=t==='kin'?'Straight rail · front suspension kinematics':'Straight rail · steady-state corner';
+}
+$('t-setup').onclick=()=>setTab('setup'); $('t-kin').onclick=()=>{setTab('kin');recompute();}; $('t-plots').onclick=()=>setTab('plots');
+
+// ---------- kinematics controls ----------
+const KCTL=[['k-ufz','ufz'],['k-urz','urz'],['k-ufx','ufx'],['k-urx','urx'],['k-lfz','lfz'],['k-lrz','lrz'],['k-lfx','lfx'],['k-lrx','lrx'],['k-cam','camber'],['k-cas','caster'],['k-tro','tro'],['k-toe','toeIn'],['k-ulen','ucaLen'],['k-llen','lcaLen'],['k-uax','ucaX'],['k-tri','tri'],['k-umh','umh'],['k-lmh','lmh']];
+const frac=v=>{const s=v<0?'−':v>0?'+':'';return s+Math.abs(v).toFixed(3);};
+function loadCorner(){lastKey='';
+  $('c-lf').setAttribute('aria-pressed',sel==='L');$('c-rf').setAttribute('aria-pressed',sel==='R');$('c-rear').setAttribute('aria-pressed',sel==='rear');
+  const rr=sel==='rear';$('k-front').hidden=$('k-front-out').hidden=rr;$('k-rear').hidden=$('k-rear-out').hidden=!rr;
+  RK.forEach(k=>$('r-'+k).value=radj[k]);
+  $('stats-kin').hidden=!(tab==='kin'&&!rr);$('stats-rear').hidden=!(tab==='kin'&&rr);
+  $('sub').textContent=tab==='kin'?(rr?'Straight rail · rear '+TBN().toLowerCase()+' and jacking':'Straight rail · front suspension kinematics'):$('sub').textContent;
+  if(rr){outputs();return;}
+  KCTL.forEach(([id,key])=>{$(id).value=adj[sel][key];});
+  $('k-lslug').value=adj[sel].lslug;$('k-uslug').value=adj[sel].uslug;
+  outputs();
+}
+function outputs(){KCTL.forEach(([id])=>{$(id+'-o').textContent=frac(+$(id).value);});
+  $('k-steer-o').textContent=frac(steerDeg());
+  if(sel!=='rear'&&kc[sel]){$('k-cas-o').textContent=frac(+$('k-cas').value)+' → '+casterNow(sel).toFixed(1)+'°';$('k-uax-o').textContent=frac(+$('k-uax').value)+' → '+casterNow(sel).toFixed(1)+'°';}
+  RK.forEach(k=>{const o=$('r-'+k+'-o');if(o)o.textContent=frac(+$('r-'+k).value);});
+  tbText();
+  const at=y=>' → '+Math.abs(y).toFixed(1)+(y>0.05?' L':y<-0.05?' R':'');   // 3rd link end from the center line
+  if(RG0){$('r-ULya-o').textContent+=at(RG0.A.UL[1]+radj.ULya);$('r-ULyc-o').textContent+=at(RG0.C.UL[1]+radj.ULyc);}
+  $('k-heave-o').textContent=(+$('k-heave').value).toFixed(2);$('k-roll-o').textContent=(+$('k-roll').value).toFixed(2);}
+KCTL.forEach(([id,key])=>$(id).addEventListener('input',()=>{
+  const v=+$(id).value;
+  if($('k-tog').checked){
+    if(key==='ufz'||key==='urz'){adj[sel].ufz=adj[sel].urz=v;$('k-ufz').value=$('k-urz').value=v;}
+    else if(key==='ufx'||key==='urx'){adj[sel].ufx=adj[sel].urx=v;$('k-ufx').value=$('k-urx').value=v;}
+    else if(!key.startsWith('l'))adj[sel][key]=v;
+  } else if(!key.startsWith('l'))adj[sel][key]=v;
+  if(key.startsWith('l')){
+    if($('k-ltog').checked&&(key==='lfz'||key==='lrz')){adj[sel].lfz=adj[sel].lrz=v;$('k-lfz').value=$('k-lrz').value=v;}
+    else if($('k-ltog').checked&&(key==='lfx'||key==='lrx')){adj[sel].lfx=adj[sel].lrx=v;$('k-lfx').value=$('k-lrx').value=v;}
+    else adj[sel][key]=v;
+  }
+  outputs(); recompute();
+}));
+['k-lslug','k-uslug'].forEach(id=>$(id).addEventListener('change',()=>{adj[sel][id==='k-lslug'?'lslug':'uslug']=+$(id).value;recompute();}));
+$('k-steer').addEventListener('input',()=>{STEER=steerRack(steerDeg());$('k-steer-o').textContent=frac(steerDeg());update();});
+const camFront=()=>view([200,-60,40],[48,0,12]), camRear=()=>view([-200,-45,22],[-60,0,12]);
+$('c-lf').onclick=()=>{const w=sel==='rear';if(w)saveCam();sel='L';loadCorner();if(w)restoreCam();};$('c-rf').onclick=()=>{const w=sel==='rear';if(w)saveCam();sel='R';loadCorner();if(w)restoreCam();};
+$('k-casview').onclick=()=>view(sel==='L'?[52,150,16]:[52,-150,16],[52,0,12]);
+$('k-frview').onclick=()=>camFront();
+$('c-rear').onclick=()=>{if(sel!=='rear')saveCam();sel='rear';loadCorner();restoreCam();lastKey='';};
+RK.forEach(k=>$('r-'+k).addEventListener('input',()=>{const v=+$('r-'+k).value;
+  if($('r-tog').checked&&(k==='TBa'||k==='TBc')){radj.TBa=radj.TBc=v;$('r-TBa').value=$('r-TBc').value=v;}
+  else if($('r-utog').checked&&k.startsWith('ULy')){const d=v-radj[k],o=k==='ULya'?'ULyc':'ULya',e=$('r-'+o);   // keep the gap between the ends
+    radj[k]=v;e.value=radj[o]+d;radj[o]=+e.value;}
+  else radj[k]=v;
+  rearSet();outputs();recomputeRear();update();lastKey='';}));
+$('k-reset').onclick=()=>{if(sel==='rear'){Object.assign(radj,RADJ0);rearSet();loadCorner();recomputeRear();update();lastKey='';return;}adj[sel]={...ADJ0};loadCorner();recompute();};
+['k-heave','k-roll'].forEach(id=>$(id).addEventListener('input',()=>{sweeping=false;$('k-sweep').textContent='Sweep bump and droop';outputs();update();}));
+let sweeping=false,sweepT=0;
+$('k-sweep').onclick=()=>{sweeping=!sweeping;sweepT=0;$('k-sweep').textContent=sweeping?'Stop sweep':'Sweep bump and droop';};
+$('k-zero').onclick=()=>{sweeping=false;$('k-sweep').textContent='Sweep bump and droop';$('k-heave').value=0;$('k-roll').value=0;outputs();update();};
+
+// ---------- solve, tables, charts ----------
+const SW=[];for(let h=-3;h<=3.001;h+=0.25)SW.push(+h.toFixed(2));
+let curves=null;
+function sweep(c){let g=null;const out=[];
+  // start from ride height outward both ways so the solver tracks one branch
+  const idx0=SW.indexOf(0);const res=new Array(SW.length);
+  const hcg=+$('cg').value,bf=+$('bb').value/100,at=p=>Object.assign(KIN.angles(c,p),{ad:KIN.antiDive(c,p,hcg,WB,bf),WCx:p.WC[0]});
+  g=null;for(let i=idx0;i<SW.length;i++){const p=KIN.poseH(c,SW[i],g);g=p;res[i]=at(p);}
+  g=null;for(let i=idx0;i>=0;i--){const p=KIN.poseH(c,SW[i],g);g=p;res[i]=at(p);}
+  res.forEach(r=>{r.dy=c.s*(r.CP[1]-res[idx0].CP[1]);r.wx=r.WCx-res[idx0].WCx;});      // + = contact patch moves outboard; wheel center forward
+  return res;}
+// front coilover: spring travel s and motion ratio ds/dh through wheel travel, from the real eye points
+const MRT={L:null,R:null}, MRG=[];for(let h=-4;h<=4.001;h+=0.2)MRG.push(+h.toFixed(2));
+function mrTable(c){if(!c.shLoc)return null;const i0=MRG.indexOf(0),Ls=new Array(MRG.length);let g=null;
+  for(let i=i0;i<MRG.length;i++){const p=KIN.poseH(c,MRG[i],g);g=p;Ls[i]=KIN.shockLen(c,p);}
+  g=null;for(let i=i0;i>=0;i--){const p=KIN.poseH(c,MRG[i],g);g=p;Ls[i]=KIN.shockLen(c,p);}
+  const s=Ls.map(l=>Ls[i0]-l),mr=s.map((v,i)=>{const a=Math.max(0,i-1),b=Math.min(s.length-1,i+1);return (s[b]-s[a])/(MRG[b]-MRG[a]);});return {s,mr,mr0:mr[i0],L0:Ls[i0]};}
+function tblAt(T,key,h){const x=Math.max(MRG[0],Math.min(MRG[MRG.length-1],h)),f=(x-MRG[0])/0.2,i=Math.min(MRG.length-2,Math.floor(f)),u=f-i;return T[key][i]+(T[key][i+1]-T[key][i])*u;}
+const mrFixed=()=>$('mr-fixed').checked||!MRT.L||!MRT.R;
+function mr0(s){return mrFixed()?MRFIX:MRT[s].mr0;}
+function recompute(){
+  wheelGeom();deformWheels();
+  for(const k in SIDES){kc[k]=buildCorner(k,adj[k]);guess[k]=null;MRT[k]=mrTable(kc[k]);}
+  MRF=mrFixed()?MRFIX:(MRT.L.mr0+MRT.R.mr0)/2;
+  calcGuess={L:null,R:null};
+  STEER=steerRack(steerDeg());                 // rack travel depends on the geometry, so re-solve it here
+  curves={L:sweep(kc.L),R:sweep(kc.R),bL:sweep(base.L),bR:sweep(base.R)};   // base re-swept: anti-dive follows the Setup tab
+  partsTable();
+  update();
+}
+const RX=[];for(let d=-3;d<=3.001;d+=0.25)RX.push(+d.toFixed(2));
+function recomputeRear(){plotsDirty=true;}
+function gNote(){$('k-gnote').textContent='Jacking uses '+model.ay.toFixed(2)+' lateral g'+(model.bank?' (across the banking)':'')+' and '+(model.gx>0?'+':model.gx<0?'−':'')+Math.abs(model.gx).toFixed(2)+' long g from the Setup tab.';}
+function TBN(){return radj.TBtype?'J-Bar':'Track bar';}
+function tbText(){const j=radj.TBtype,f=radj.TBflip;$('r-tbleg').textContent=TBN();
+  if(/^Straight rail · rear /.test($('sub').textContent))$('sub').textContent='Straight rail · rear '+TBN().toLowerCase()+' and jacking';
+  $('r-tbnote').textContent=(j?'Axle end is near the pinion, chassis end on the ':'Axle end is on the '+(f?'right':'left')+' side of the housing, chassis end on the ')+(f?'left':'right')+' frame rail ahead of the axle'+(f?' (reversed)':'')+'. The bar length changes so the axle stays centered at ride height.';}
+function rearTable(rp){
+  const m=model,jk=jacking(rp,m),tl=thirdLink(rp,m),g=RG,g0=RG0,as=rp.tanSV*WB/(+$('cg').value),sg=(x,d)=>(x>=0?'+':'−')+Math.abs(x).toFixed(d);
+  jk.Fz+=m.gx<0?m.dWx*as*(1-m.bf):m.dWx*as; jk.dz=jk.Fz/((+$('lr').value)+(+$('rr').value));   // braking anti-lift / throttle anti-squat
+  gNote();
+  const len=k=>{const d=g.L[k]-g0.L[k];return g.L[k].toFixed(3)+(Math.abs(d)>5e-4?' ('+(d>0?'+':'−')+Math.abs(d).toFixed(3)+')':'');};
+  const ang=k=>{const a=rp.P[k],c=g.C[k];return Math.atan2(c[2]-a[2],Math.abs(c[0]-a[0]))*180/Math.PI;};   // side view, + = chassis end higher
+  const rows=[['Rear RC height, in','The point the axle swings about when the body rolls, seen from the front, above the ground.',rp.rcz.toFixed(2)],
+    ['Jacking force, lb','Vertical push of the links and track bar (cornering) plus anti-lift or anti-squat (braking or throttle) on the chassis. + lifts the rear.',sg(jk.Fz,1)],
+    ['Rear ride change, in','Jacking force ÷ (LR + RR spring rate). + = rear rises.',sg(jk.dz,3)],
+    ['Lateral force, lb','(Rear weight − rear unsprung) × lateral g from the Setup tab.',jk.Fy.toFixed(0)],
+    ['Rear steer, °','Axle steer at this roll and ride height. + = axle aims right (LR ahead of RR), loosens the car.',sg(rp.steer,3)],
+    ['Pinion change, °','Pinion angle change from ride height. + = pinion up.',sg(rp.pinion,2)],
+    ['Axle side shift, in','How far the axle moves sideways under the body. + = left.',rp.shift.toFixed(3)],
+    ['LR wheelbase change, in','+ = longer.',sg(rp.wbL,3)],['RR wheelbase change, in','+ = longer.',sg(rp.wbR,3)],
+    ['Anti-squat, %','Side-view line from the rear contact patch to where each lower link meets the 3rd link, × wheelbase ÷ CG height, averaged left and right. 100% = no squat under power.',(as*100).toFixed(0)],
+    [TBN()+' angle, °','Rise from axle end to chassis end. + = chassis end higher.',rp.tbAng.toFixed(2)],
+    ['3rd link angle, °','Side view. + = chassis end higher.',ang('UL').toFixed(2)],
+    ['3rd link offset, in','Axle end from the center of the housing. + = left.',sg(tl.y,2)],
+    ['3rd link force, lb','Pull in the 3rd link from drive (throttle) or the rear brakes, at the Long g on the Setup tab. + = tension (throttle), − = compression (braking).',sg(tl.u,0)],
+    ['3rd link side pull, lb','Sideways part of that force on the housing, held by the track bar or J-Bar. + = pulls the axle left.',sg(tl.side,0)],
+    ['LR load from 3rd link, lb','Rear load moved by the up or down part of the 3rd link force acting off center. + = onto the LR (off the RR by the same amount). Grows with link angle and offset; flips between throttle and brakes.',sg(tl.dLR,1)],
+    ['LR link angle, °','Side view. + = chassis end higher.',ang('LL').toFixed(2)],['RR link angle, °','Side view. + = chassis end higher.',ang('RL').toFixed(2)],
+    [TBN()+' length, in','Follows the end moves so the axle stays centered at ride height.'+(radj.TBtype?' Measured between the rod ends; the bend is not counted.':''),len('TB')],['3rd link length, in','',len('UL')],
+    ['LR link length, in','',len('LL')],['RR link length, in','',len('RL')]];
+  $('q-rc').textContent=rp.rcz.toFixed(2)+' in';$('q-ang').textContent=rp.tbAng.toFixed(2)+'°';$('q-jk').textContent=sg(jk.Fz,0)+' lb';$('q-sh').textContent=rp.shift.toFixed(3)+' in';
+  $('q-st').textContent=sg(rp.steer,2)+'°';$('q-pin').textContent=sg(rp.pinion,2)+'°';
+  $('q-tl').textContent=sg(tl.u,0)+' lb';$('q-tlr').textContent=sg(tl.dLR,1)+' lb';
+  $('r-tab').innerHTML=rows.map(([n,tip,v])=>'<tr><td>'+(tip?'<abbr title="'+tip+'">'+n+'</abbr>':n)+'</td><td'+(/\(/.test(v)?' class="chg"':'')+'>'+v+'</td></tr>').join('');
+}
+// ---------- plots page ----------
+// baseline for the dashed lines: the saved setup last loaded or saved (null name = the car as modeled)
+let BASE=null;
+function setBaseline(x){BASE=x?{name:x.name,adj:{L:{...ADJ0,...(x.adj&&x.adj.L)},R:{...ADJ0,...(x.adj&&x.adj.R)}},radj:{...RADJ0,...x.radj},inputs:x.inputs||{}}:null;plotsDirty=true;}
+const baseNum=id=>BASE&&BASE.inputs[id]!=null&&BASE.inputs[id]!==''?+BASE.inputs[id]:num(id);
+const baseName=()=>BASE?'baseline: '+BASE.name:'baseline: as modeled (load or save a setup to set one)';
+const sameAdj=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+let plotsDirty=true, plotsAt=0, ptab='front';
+const _LMp=new THREE.Matrix4(), _vp=new THREE.Vector3();
+// one chart. sp: {t: title, x: x label, ax: which live position marks it, s: [{p: [[x,y]..], c: color, d: dashed}], pad}
+function plotSVG(svg,sp){
+  const W=320,H=190,l=44,r=10,t=22,b=32, pts=sp.s.flatMap(q=>q.p).filter(q=>isFinite(q[0])&&isFinite(q[1]));
+  if(!pts.length){svg.innerHTML=`<text x="${l}" y="13" style="fill:var(--ink)">${sp.t}</text><text x="${l}" y="60">Not available</text>`;return;}
+  const x0=Math.min(...pts.map(q=>q[0])),x1=Math.max(...pts.map(q=>q[0]));let lo=Math.min(...pts.map(q=>q[1])),hi=Math.max(...pts.map(q=>q[1]));
+  const pad=Math.max(sp.pad||0.1,(hi-lo)*0.08);lo-=pad;hi+=pad;
+  const X=v=>l+(v-x0)/((x1-x0)||1)*(W-l-r),Y=v=>t+(hi-v)/(hi-lo)*(H-t-b);
+  const path=p=>p.filter(q=>isFinite(q[1])).map((q,i)=>(i?'L':'M')+X(q[0]).toFixed(1)+' '+Y(q[1]).toFixed(1)).join(' ');
+  const ys=niceStep((hi-lo)/4),xs=niceStep((x1-x0)/6);let g='';
+  for(let v=Math.ceil(lo/ys)*ys;v<=hi;v+=ys)g+=`<line class="ax" x1="${l}" x2="${W-r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text x="${l-4}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end">${+v.toFixed(3)}</text>`;
+  for(let v=Math.ceil(x0/xs-1e-9)*xs;v<=x1+1e-9;v+=xs)g+=`<text x="${X(v).toFixed(1)}" y="${H-17}" text-anchor="middle">${+v.toFixed(2)}</text>`;
+  if(x0<0&&x1>0)g+=`<line class="ax" x1="${X(0)}" x2="${X(0)}" y1="${t}" y2="${H-b}"/>`;
+  svg.innerHTML=`<text x="${l}" y="13" style="fill:var(--ink);font-size:11px">${sp.t}</text>${g}<text x="${(l+W-r)/2}" y="${H-3}" text-anchor="middle">${sp.x}</text>`+
+    sp.s.map(q=>`<path d="${path(q.p)}" fill="none" stroke="${q.c}" stroke-width="${q.d?1.3:2}"${q.d?' stroke-dasharray="4 3" opacity=".75"':''}/>`).join('')+
+    `<line class="mk" x1="0" x2="0" y1="${t}" y2="${H-b}" style="stroke:var(--ink);stroke-dasharray:2 2"/>`;
+  Object.assign(svg.dataset,{ax:sp.ax||'',x0,x1,l,w:W-l-r});
+}
+// value of a series at x (straight line between its points)
+function interp(p,x){p=p.filter(q=>isFinite(q[1]));if(!p.length)return NaN;if(x<=p[0][0])return p[0][1];
+  for(let i=1;i<p.length;i++)if(x<=p[i][0]){const a=p[i-1],b=p[i];return a[1]+(b[1]-a[1])*(x-a[0])/((b[0]-a[0])||1);}return p[p.length-1][1];}
+// move each chart's marker to where the car sits, and write the numbers there under it
+function markPlots(at){document.querySelectorAll('#pl-'+ptab+' figure').forEach(f=>{const svg=f.querySelector('svg'),sp=f._sp,m=svg&&svg.querySelector('.mk');if(!m||!sp)return;
+  const v=at[sp.ax],d=svg.dataset;if(v==null||!isFinite(v)){m.style.display='none';return;}
+  const xv=Math.max(+d.x0,Math.min(+d.x1,v)),x=+d.l+(xv-d.x0)/((d.x1-d.x0)||1)*d.w;m.style.display='';m.setAttribute('x1',x);m.setAttribute('x2',x);
+  const key=xv.toFixed(3);if(f._at===key)return;f._at=key;
+  const sgn=(y,dp,plus)=>{const a=Math.abs(y).toFixed(dp);return (+a===0?'':y<0?'−':plus?'+':'')+a;};   // no sign on a value that rounds to zero
+  const fmt=y=>isFinite(y)?sgn(y,sp.dp,sp.sg)+sp.u:'—',sx=sgn(xv,2,1)+(sp.xu==='°'?'°':' '+sp.xu);
+  const list=dash=>sp.s.filter(q=>!!q.d===dash).map(q=>(q.n?q.n+' ':'')+fmt(interp(q.p,xv))).join(' · ');
+  f.querySelector('figcaption').innerHTML='<i>at '+sx+'</i>  '+list(false)+'<br><i>baseline</i>  '+list(true);});}
+// lateral g the jacking plots use: the Move the car g, or 1 g on a straight
+const jackModel=()=>model.ay>=0.05?model:{...model,ay:1};
+// front bar arm angle for a posed corner: the arm turns about the bar until its tip is one end link length from the lower arm
+function barArmAngle(k,c,p){const E=ENDL[k],h=HPC[k];if(!E.up||!E.lo)return NaN;
+  affine(h.LIF,h.LIR,h.LBJ,c.LIF,c.LIR,p.LBJ,_LMp);_vp.set(...E.lo).applyMatrix4(_LMp);const lo=[_vp.x,_vp.y,_vp.z];
+  const dx=E.up[0]-BARAX[0],dz=E.up[2]-BARAX[1],Ll=KIN.V.dist(E.up,E.lo),tip=t=>[BARAX[0]+dx*Math.cos(t)+dz*Math.sin(t),E.up[1],BARAX[1]-dx*Math.sin(t)+dz*Math.cos(t)];
+  return KIN.solve(t=>KIN.V.dist(tip(t),lo)-Ll,0)*180/Math.PI;}
+// front through body roll: both corners posed at ±(track/2)·φ
+function frontRollAll(cL,cR){const out=new Array(RX.length),i0=RX.indexOf(0),mJ=jackModel();
+  const run=st=>{let gL=null,gR=null;for(let i=i0;i>=0&&i<RX.length;i+=st){const d=RX[i],ph=d*Math.PI/180,pL=KIN.poseH(cL,-HF.L*ph,gL),pR=KIN.poseH(cR,HF.R*ph,gR);gL=pL;gR=pR;
+    const rc=KIN.rollCenter(cL,pL,cR,pR),fj=frontJack({L:pL,R:pR},mJ,{L:cL,R:cR});
+    out[i]={rc:rc?rc[1]:NaN,y:rc?rc[0]:NaN,camL:KIN.angles(cL,pL).camber-d,camR:KIN.angles(cR,pR).camber+d,jL:fj.L,jR:fj.R,jT:fj.tot,
+      twist:barArmAngle('L',cL,pL)-barArmAngle('R',cR,pR)};}};
+  run(1);run(-1);const t0=out[i0].twist;out.forEach(o=>o.twist-=t0);return out;}
+// front through steering: rack walked out from center both ways (keeps the solver on one branch)
+const RACK=[];for(let r=-1.6;r<=1.601;r+=0.05)RACK.push(+r.toFixed(2));
+function steerAll(cL,cR){const i0=RACK.indexOf(0),out=new Array(RACK.length),C={L:cL,R:cR},p0={L:KIN.poseH(cL,0,null),R:KIN.poseH(cR,0,null)},a0={L:KIN.angles(cL,p0.L).toe,R:KIN.angles(cR,p0.R).toe};
+  const run=st=>{const g={...p0},q={...p0};for(let i=i0;i>=0&&i<RACK.length;i+=st){const o={};
+    for(const k of ['L','R']){g[k]=KIN.poseH(C[k],0,g[k],RACK[i]);q[k]=KIN.poseAt(C[k],p0[k].th,q[k],RACK[i]);o[k]={toe:KIN.angles(C[k],g[k]).toe-a0[k],lift:-(q[k].WC[2]-p0[k].WC[2])};}
+    out[i]={x:(o.L.toe-o.R.toe)/2,lf:o.L.toe,rf:-o.R.toe,lL:o.L.lift,lR:o.R.lift};}};
+  run(1);run(-1);return out;}
+function rearRollAll(g){const mJ=jackModel();return RX.map(d=>{const p=KIN.rearPose(g,0,-d*Math.PI/180);
+  return {rc:p.rcz,jack:jacking(p,mJ).Fz,shift:p.shift,steer:p.steer,lead:p.W.L[0]-p.W.R[0],tb:p.tbAng};});}
+function rearHeaveAll(g,T,n){n=n||num;const hcg=n('cg'),bf=n('bb')/100,k={L:n('lr'),R:n('rr')};return SW.map(h=>{const p=KIN.rearPose(g,h,0),as=p.tanSV*WB/hcg*100;
+  const mr=s=>tblAt(T[s],'mr',h);return {ula:Math.atan2(g.C.UL[2]-p.P.UL[2],Math.abs(g.C.UL[0]-p.P.UL[0]))*180/Math.PI,as,al:as*(1-bf),pin:p.pinion,steer:p.steer,wbL:p.wbL,wbR:p.wbR,lead:p.W.L[0]-p.W.R[0],shift:p.shift,rc:p.rcz,mrL:mr('L'),mrR:mr('R'),wrL:k.L*mr('L')**2,wrR:k.R*mr('R')**2};});}
+// 3rd link loads at ride height across long g, braking (−) to throttle (+), the Setup tab's range
+const GX=[];for(let x=-1.2;x<=0.801;x+=0.05)GX.push(+x.toFixed(2));
+function thirdAll(g){const p=KIN.rearPose(g,0,0);return GX.map(gx=>thirdLink(p,{...model,gx},g));}
+// groups of about four charts; the chips above the charts pick one
+const PGRP={front:['Alignment','Tire position','Roll','Springs and forces','Steering'],rear:['Roll','Rear steer','Anti-squat and pinion','3rd link','Axle and springs']}, pgrp={front:'Alignment',rear:'Roll'};
+function drawPlots(){
+  const C={lf:'var(--steel)',rf:'var(--accent)',now:'var(--accent)',was:'var(--muted)',tot:'var(--ink)'};
+  const ser=(xs,arr,key,c,d,n)=>({p:arr.map((a,i)=>[typeof xs==='function'?xs(a,i):xs[i],typeof key==='function'?key(a,i):a[key]]),c,d,n});
+  const two=(xs,cur,bas,key)=>[ser(xs,bas,key,C.was,1),ser(xs,cur,key,C.now)];                                 // now vs baseline
+  const four=(xs,cL,cR,bL,bR,kL,kR,nL,nR)=>[ser(xs,bL,kL,C.lf,1,nL||'LF'),ser(xs,bR,kR||kL,C.rf,1,nR||'RF'),ser(xs,cL,kL,C.lf,0,nL||'LF'),ser(xs,cR,kR||kL,C.rf,0,nR||'RF')];
+  const sp=[], BA=BASE?BASE.adj:{L:ADJ0,R:ADJ0}, BR=BASE?BASE.radj:RADJ0, G=PGRP[ptab], grp=pgrp[ptab];
+  const bc={L:buildCorner('L',BA.L),R:buildCorner('R',BA.R)}, bg=KIN.rearAdjust(RG0,BR);
+  // spec: t title (with units), x axis label, xu x unit, ax marker axis, u value unit, dp decimals, sg show + sign, g group, s series
+  const deg={u:'°',dp:2,sg:1}, inch={u:' in',dp:3,sg:1}, pct={u:'%',dp:1,sg:1}, lb={u:' lb',dp:0,sg:1}, rate={u:' lb/in',dp:0}, ratio={u:'',dp:3};
+  if(ptab==='front'){
+    $('pkey').innerHTML='<span style="--c:var(--steel)">LF</span><span style="--c:var(--accent)">RF</span><span style="--c:var(--ink)">Total</span><span style="--c:var(--muted);--st:dashed">Dashed: '+baseName()+'</span>';
+    const S={L:sweep(kc.L),R:sweep(kc.R),bL:sweep(bc.L),bR:sweep(bc.R)},MB={L:mrTable(bc.L),R:mrTable(bc.R)},k={L:num('lf'),R:num('rf')},kB={L:baseNum('lf'),R:baseNum('rf')};
+    const mrv=(T,s)=>(a,i)=>T&&T[s]?tblAt(T[s],'mr',SW[i]):NaN, wr=(T,s,kk)=>(a,i)=>(kk||k)[s]*mrv(T,s)(a,i)**2;
+    const TX={x:'wheel travel, in (+ bump)',xu:'in',ax:'ft'}, RO={x:'body roll, ° (+ left side up, a left turn)',xu:'°',ax:'roll'}, ST={x:'average front steer, ° (+ left)',xu:'°',ax:'steer'};
+    const tr=(g,t,key,f)=>({g,t,...TX,...f,s:four(SW,S.L,S.R,S.bL,S.bR,key)});
+    sp.push(tr(G[0],'Camber, ° (+ top out), to the body','camber',deg),tr(G[0],'Caster, ° (+ upper BJ back)','caster',deg),tr(G[0],'Toe, ° (+ out): bump steer','toe',{...deg,dp:3}),tr(G[0],'KPI, ° (+ upper BJ inboard)','kpi',deg),
+      tr(G[1],'Scrub radius, in','scrub',inch),tr(G[1],'Mechanical trail, in','trail',inch),tr(G[1],'Track change, in (+ contact patch out)','dy',inch),tr(G[1],'Wheel center fore-aft, in (+ forward)','wx',inch));
+    const R0=frontRollAll(kc.L,kc.R),RB=frontRollAll(bc.L,bc.R),ro=(g,t,kL,kR,f)=>({g,t,...RO,...f,s:kR?four(RX,R0,R0,RB,RB,kL,kR):two(RX,R0,RB,kL)});
+    const jk=jackModel().ay;
+    sp.push(ro(G[2],'Camber to the ground, °','camL','camR',deg),ro(G[2],'Front roll center height, in','rc',null,{...inch,dp:2,sg:0}),ro(G[2],'Front roll center lateral, in (+ left)','y',null,{...inch,dp:2}),
+      ro(G[2],'Bar twist, ° (from ride height)','twist',null,{...deg,pad:0.2}),
+      {g:G[3],t:'Spring motion ratio',...TX,...ratio,pad:0.01,s:[ser(SW,S.bL,mrv(MB,'L'),C.lf,1,'LF'),ser(SW,S.bR,mrv(MB,'R'),C.rf,1,'RF'),ser(SW,S.L,mrv(MRT,'L'),C.lf,0,'LF'),ser(SW,S.R,mrv(MRT,'R'),C.rf,0,'RF')]},
+      {g:G[3],t:'Wheel rate, lb/in (spring × MR²)',...TX,...rate,pad:2,s:[ser(SW,S.bL,wr(MB,'L',kB),C.lf,1,'LF'),ser(SW,S.bR,wr(MB,'R',kB),C.rf,1,'RF'),ser(SW,S.L,wr(MRT,'L'),C.lf,0,'LF'),ser(SW,S.R,wr(MRT,'R'),C.rf,0,'RF')]},
+      tr(G[3],'Anti-dive, %','ad',pct),
+      {...ro(G[3],'Front jacking at '+jk.toFixed(2)+' g, lb (+ lifts)','jL','jR',{...lb,pad:5}),s:[...four(RX,R0,R0,RB,RB,'jL','jR'),ser(RX,RB,'jT',C.tot,1,'total'),ser(RX,R0,'jT',C.tot,0,'total')]});
+    const T0=steerAll(kc.L,kc.R),TB=steerAll(bc.L,bc.R),st=(t,kL,kR,f)=>({g:G[4],t,...ST,...f,s:kR?[ser(a=>a.x,TB,kL,C.lf,1,'LF'),ser(a=>a.x,TB,kR,C.rf,1,'RF'),ser(a=>a.x,T0,kL,C.lf,0,'LF'),ser(a=>a.x,T0,kR,C.rf,0,'RF')]:[ser(a=>a.x,TB,kL,C.was,1),ser(a=>a.x,T0,kL,C.now)]});
+    sp.push(st('Wheel steer angle, ° (+ toward the turn)','lf','rf',deg),st('Ackermann: LF − RF steer, °',(a)=>a.lf-a.rf,null,{...deg,dp:3,pad:0.05}),st('Corner lift from steering, in (caster jacking)','lL','lR',{...inch,pad:0.02}));
+    $('pnote').textContent='Front, '+baseName()+'. '+(sameAdj(adj.L,BA.L)&&sameAdj(adj.R,BA.R)?'No Kinematics tab changes from the baseline, so solid and dashed lines sit together.':'Solid lines include your Kinematics tab changes from the baseline.');
+  } else {
+    $('pkey').innerHTML='<span style="--c:var(--accent)">Now (RR on two-sided plots)</span><span style="--c:var(--steel)">LR</span><span style="--c:var(--muted);--st:dashed">Dashed: '+baseName()+'</span>';
+    const R0=rearRollAll(RG),RB=rearRollAll(bg),MB=rearMr(bg),H0=rearHeaveAll(RG,MRTR),HB=rearHeaveAll(bg,MB,baseNum);
+    const ro=(g,t,key,f)=>({g,t,x:'body roll, ° (+ left side up, a left turn)',xu:'°',ax:'roll',...f,s:two(RX,R0,RB,key)});
+    const hv=(g,t,kL,kR,f)=>({g,t,x:'rear ride travel, in (+ bump)',xu:'in',ax:'rt',...f,s:kR?four(SW,H0,H0,HB,HB,kL,kR,'LR','RR'):two(SW,H0,HB,kL)});
+    const jk=jackModel().ay;
+    sp.push(ro(G[0],'Rear roll center height, in','rc',{...inch,dp:2,sg:0}),ro(G[0],'Rear jacking at '+jk.toFixed(2)+' g, lb (+ lifts)','jack',{...lb,pad:5}),ro(G[0],'Axle side shift, in (+ left)','shift',{...inch,pad:0.02}),ro(G[0],TBN()+' angle, ° (+ chassis end high)','tb',deg),
+      ro(G[1],'Rear steer through roll, ° (+ aims right, loose)','steer',{...deg,dp:3,pad:0.02}),hv(G[1],'Rear steer through travel, ° (+ aims right, loose)','steer',null,{...deg,dp:3,pad:0.02}),
+      ro(G[1],'LR lead through roll, in (+ LR ahead of RR)','lead',{...inch,pad:0.02}),hv(G[1],'LR lead through travel, in (+ LR ahead of RR)','lead',null,{...inch,pad:0.02}),
+      hv(G[2],'Anti-squat, % (throttle)','as',null,{...pct,pad:2}),hv(G[2],'Anti-lift, % (braking: the rear\'s anti-dive)','al',null,{...pct,pad:2}),hv(G[2],'Pinion angle change, ° (+ up)','pin',null,deg),hv(G[2],'Rear roll center height through travel, in','rc',null,{...inch,dp:2,sg:0}),
+      hv(G[4],'Wheelbase change, in (+ longer)','wbL','wbR',{...inch,pad:0.02}),hv(G[4],'Axle side shift through travel, in (+ left)','shift',null,{...inch,pad:0.02}),hv(G[4],'Spring motion ratio','mrL','mrR',{...ratio,pad:0.01}),hv(G[4],'Wheel rate, lb/in (spring × MR²)','wrL','wrR',{...rate,pad:2}));
+    const T0=thirdAll(RG),TB=thirdAll(bg),gx=(t,key,f)=>({g:G[3],t,x:'long g (− braking, + throttle)',xu:'g',ax:'gx',...f,s:two(GX,T0,TB,key)});
+    sp.push(gx('LR load from 3rd link, lb (+ onto LR)','dLR',{...lb,dp:1,pad:2}),gx('3rd link force, lb (+ tension)','u',{...lb,pad:20}),
+      gx('3rd link side pull, lb (+ left)','side',{...lb,pad:20}),hv(G[3],'3rd link angle, ° (+ chassis end high)','ula',null,deg));
+    $('pnote').textContent='Rear, '+baseName()+'. '+(sameAdj({...radj},{...BR})?'No link moves from the baseline, so solid and dashed lines sit together.':'Solid lines include your link moves from the baseline.');
+  }
+  $('pgroups').innerHTML=G.map(g=>'<button aria-pressed="'+(g===grp)+'">'+g+'</button>').join('');
+  $('pgroups').querySelectorAll('button').forEach(b=>b.onclick=()=>{pgrp[ptab]=b.textContent;plotsDirty=true;plotsAt=0;});
+  const show=sp.filter(x=>x.g===grp), pg=$('pl-'+ptab);
+  pg.innerHTML=show.map(()=>'<figure><svg class="chart" viewBox="0 0 320 190" role="img"></svg><figcaption></figcaption></figure>').join('');
+  pg.querySelectorAll('figure').forEach((f,i)=>{const x=show[i],svg=f.querySelector('svg');f._sp=x;svg.setAttribute('aria-label',x.t+' versus '+x.x);plotSVG(svg,x);});
+}
+for(const t of ['front','rear'])$('pt-'+t).onclick=()=>{ptab=t;$('pt-front').setAttribute('aria-selected',t==='front');$('pt-rear').setAttribute('aria-selected',t==='rear');
+  $('pl-front').hidden=t!=='front';$('pl-rear').hidden=t!=='rear';plotsDirty=true;plotsAt=0;};
+function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(x)));const m=x/p;return (m<1.5?1:m<3.5?2:m<7.5?5:10)*p;}
+function partsTable(){
+  const rows=[['Upper arm, front leg','uf'],['Upper arm, rear leg','ur'],['Lower arm, front leg','lf'],['Lower arm, rear leg','lr'],['Kingpin (BJ to BJ)','kp'],['Tie rod','tr']];
+  $('k-parts').innerHTML=rows.map(([n,k])=>'<tr><td>'+n+'</td>'+['L','R'].map(s=>{const d=kc[s].L[k]-base[s].L[k];return '<td class="'+(Math.abs(d)>5e-4?'chg':'')+'">'+kc[s].L[k].toFixed(3)+(Math.abs(d)>5e-4?' ('+(d>0?'+':'−')+Math.abs(d).toFixed(3)+')':'')+'</td>';}).join('')+'</tr>').join('');
+}
+
+let WKEY='';
+function update(){
+  {const k=['wwlf','wwrf','wwlr','wwrr','bslf','bsrf','bslr','bsrr','hulr','hurr'].map(id=>$(id).value).join('/');   // wheels moved (typed, loaded or reset): rebuild the corners
+   if(k!==WKEY&&loaded){WKEY=k;recompute();return;}}
+  ['g','lf','rf','lr','rr','bar','bid','rbar','unf','unr','cg','ls','rp','cr','mrb','arm','rsb','bb','hlf','hrf','hrr','rad','bpre','blf','brf','blr','brr','glf','grf','glr','grr','gx','ctor','bank'].forEach(id=>{
+    const v=+$(id).value,o=$(id+'-o'); if(o)o.textContent=['bar','bid','rbar','hlf','hrf','hrr','bpre','glf','grf','glr','grr'].includes(id)?v.toFixed(3):id==='mrb'?v.toFixed(2):['ls','rp','cr'].includes(id)?v.toFixed(1)+'%':id==='g'||id==='gx'?v.toFixed(2):id==='ctor'?v.toLocaleString('en-US'):id==='bank'?v.toFixed(1)+'°':v;
+  });
+  {const o=wheelGeom(),f=x=>(x>=0?'+':'−')+Math.abs(x).toFixed(2);
+   $('trk-note').textContent='Front track '+TF.toFixed(2)+' in (LF '+f(o.lf)+', RF '+f(o.rf)+') · rear track '+TR.toFixed(2)+' in (LR '+f(o.lr)+', RR '+f(o.rr)+'), wheel centers out vs the CAD car.';}
+  {const adv=$('adv').value==='1';$('adv-box').hidden=!adv;document.querySelectorAll('.std').forEach(e=>e.hidden=adv);
+   $('m-std').setAttribute('aria-pressed',!adv);$('m-adv').setAttribute('aria-pressed',adv);$('cr').readOnly=adv;
+   if(adv){const A=advSolve(),C=['LF','RF','LR','RR'];   // springs → ride heights and cross, fed to the standard solve below
+     ['hlf','hrf','hrr'].forEach((id,i)=>$(id).value=A.hts[[0,1,3][i]].toFixed(4));$('cr').value=(A.cross*100).toFixed(2);
+     ['lf','rf','lr','rr'].forEach(c=>$('ak-'+c).textContent=num(c));
+     const row=(n,a,d)=>'<tr><td>'+n+'</td>'+a.map(x=>'<td>'+x.toFixed(d)+'</td>').join('')+'</tr>';
+     $('adv-out').innerHTML=row('Installed length, in',A.len,3)+row('Corner wt, lb',A.loads,0)+row('Ride ht, in',A.hts,3);
+     const top=C.filter((c,i)=>A.top[i]),flat=C.filter((c,i)=>A.len[i]<=0);
+     $('adv-note').textContent=(!A.ok?'These springs can\'t hold the car up: check the numbers. ':'')+(flat.length?flat.join(', ')+': spring squeezed past its free length. ':'')+
+       (top.length?top.join(', ')+': shock topped out, that tire is light or off the ground. ':'')+'Cross with the bar unhooked: '+(A.cross*100).toFixed(1)+'%.';}}
+  model=calc();
+  $('bank-note').hidden=!model.bank;
+  if(model.bank)$('bank-note').textContent='On '+(model.bank*180/Math.PI).toFixed(1)+'° of banking: '+model.ay.toFixed(2)+' g across the track (load transfer, balance) and '+model.nz.toFixed(2)+'× weight into it (more total grip).'+(model.ay<0?' Below this g the car would slide down the banking.':'');
+  $('hlr-o').textContent=model.rs.lr.toFixed(3);
+  {const t=model.rs.t,L=scaleLoads(),k=num('tk'),row=(n,f)=>'<tr><td>'+n+'</td>'+[0,1,2,3].map(i=>'<td>'+f(i)+'</td>').join('')+'</tr>';
+   $('tire-tab').innerHTML=row('Loaded radius, in',i=>(t[i]+KIN.TIRE_R).toFixed(3))+row('Squash, in',i=>(Math.max(0,L[i])/k).toFixed(3));
+   const st=num('tcrr')-num('tclr'),fs=num('tcrf')-num('tclf');
+   $('tire-note').textContent='Stagger '+st.toFixed(2)+' in (RR − LR), front '+fs.toFixed(2)+' in (RF − LF). Squash at the scale weights. Rear tire sizes lift the RR side '+((t[3]-t[2])).toFixed(2)+' in over the LR.';}
+  {const sg=x=>(x>=0?'+':'−')+Math.abs(x).toFixed(3);['rnlf','rnrf','rnlr','rnrr'].forEach((id,i)=>$(id+'-o').textContent=sg(model.rest.rnd[i]));
+   $('rh-now').innerHTML='<tr><td>Ride ht now</td>'+model.rest.hNow.map(h=>'<td>'+h.toFixed(3)+'</td>').join('')+'</tr>';}
+  $('scale-leg').textContent='Scales, '+model.W.toLocaleString()+' lb';
+  {const d=model.dStatic,big=d.some(x=>Math.abs(x)>=0.5),f=x=>(x>=0?'+':'−')+Math.abs(x).toFixed(0);
+   $('wdg-note').textContent=big?'Rounds and bar preload change the scaled weights: LF '+f(d[0])+', RF '+f(d[1])+', LR '+f(d[2])+', RR '+f(d[3])+' lb. Cross is now '+(model.cross*100).toFixed(1)+'%.':'';
+   const pre=+$('bpre').value;$('bpre-note').textContent=pre<0?'Slack: the bar starts working at '+(model.slackRoll*180/Math.PI).toFixed(2)+'° of roll.'+(model.phi>model.slackRoll?' It is working in this turn.':' It is not working in this turn.'):pre>0?'Preloaded: loads RF and LR at rest (see Scales).':'− = slack, + = preload.';}
+  {const t=model.bump,f=x=>(x>=0?'+':'−')+Math.abs(x).toFixed(2);
+   $('bump-tab').innerHTML='<tr><td>Travel at shock, in</td>'+t.map(c=>'<td>'+f(c.s)+'</td>').join('')+'</tr><tr><td>Into bump, in</td>'+t.map(c=>'<td'+(c.into>0?' class="chg"':'')+'>'+(c.kb?(c.into>0?c.into.toFixed(2):'gap '+c.left.toFixed(2)):'—')+'</td>').join('')+'</tr>';}
+  target=model.phi; plotsDirty=true;
+  const sg=x=>(x>=0?'+':'−');
+  $('roll').textContent=(model.phi*180/Math.PI).toFixed(2)+'°';
+  const turning=model.ayH>=0.05;   // shares and balance mean nothing on a straight
+  $('lltd').textContent=turning?(model.lltd*100).toFixed(1)+'%':'—';
+  $('rc-s').textContent=model.hf.toFixed(2)+' in';
+  {const t=model.fj.tot+model.fjL;$('fjk-s').textContent=sg(t)+Math.abs(t).toFixed(0)+' lb';}
+  $('rrc-s').textContent=model.hr.toFixed(2)+' in';
+  {const t=model.jk.Fz+model.rjL;$('jack-s').textContent=sg(t)+Math.abs(t).toFixed(0)+' lb';}
+  $('ride-s').textContent=sg(model.dzF)+Math.abs(model.dzF).toFixed(2)+' / '+sg(model.dzR)+Math.abs(model.dzR).toFixed(2);
+  $('pitch-s').textContent=sg(model.pitch)+Math.abs(model.pitch*180/Math.PI).toFixed(2)+'°';
+  $('rst-s').textContent=sg(model.ta.steer)+Math.abs(model.ta.steer).toFixed(2)+'°';
+  $('bal-s').textContent=!turning?'—':sg(model.bal)+Math.abs(model.bal).toFixed(1)+(Math.abs(model.bal)<1?' neutral':model.bal>0?' tight':' loose');
+  $('stg-s').textContent=sg(model.stg)+Math.abs(model.stg).toFixed(2)+' in';
+  {const k=x=>Math.round(x*Math.PI/180).toLocaleString('en-US'),f=model.Kfront,r=model.Krear;
+   $('rk-note').textContent='Roll stiffness, in-lb/°: front '+k(f)+' · rear '+k(r)+' ('+Math.round(r/(f+r)*100)+'% of total) · chassis twist '+((model.phiF-model.phiR)*180/Math.PI).toFixed(2)+'° in this turn'+'.';}
+  $('mr-note').textContent='Spring MR at ride height: '+(mrFixed()?'front fixed at '+MRFIX:'LF '+model.mrL.toFixed(2)+', RF '+model.mrR.toFixed(2))+', LR '+MRTR.L.mr0.toFixed(2)+', RR '+MRTR.R.mr0.toFixed(2)+' from the coilover geometry · bar length '+LBAR+' in';
+  compareTable();
+  model.loads.forEach((w,i)=>{
+    const r=Math.sqrt(Math.max(w,0))*0.55; discs[i].scale.set(r,r,1);
+    const t=Math.min(Math.max(w/(model.W*0.45),0),1);
+    discs[i].material.color.setHSL(0.6-0.6*t,0.75,0.5);
+    tags[i].innerHTML='<i>'+['LF','RF','LR','RR'][i]+'</i>'+(w<0?'0 lb · lifted':Math.round(w)+' lb');
+  });
+  // say when the inputs push past what this model can stand behind
+  {const n=['LF','RF','LR','RR'],lift=n.filter((x,i)=>model.loads[i]<0),far=n.filter((x,i)=>Math.abs(model.bump[i].s/(i<2?MRF:MRR))>3.5),msg=[];
+   if(lift.length)msg.push(lift.join(' and ')+' lifted off the ground. This model doesn’t move the extra load to the other tires, so the numbers past this point aren’t real.');
+   if(far.length)msg.push(far.join(', ')+' travel is past ±3.5 in, beyond the modeled suspension range. A real car would be on the bump stops or bottomed out.');
+   $('warn').hidden=!msg.length;$('warn').textContent=msg.join(' ');}
+  axisGeo.setFromPoints([new THREE.Vector3(TIRE[0][0]+12,0,GROUND+model.hf),new THREE.Vector3(TIRE[2][0]-12,0,GROUND+model.hr)]);
+  cgDot.position.set(TIRE[0][0]-WB*(1-model.front),0,GROUND+model.h);
+}
+document.querySelectorAll('#p-setup input[type=range], #p-setup input[type=number], #wt, #g, #gx, #bank').forEach(e=>e.addEventListener('input',update));
+$('mr-fixed').addEventListener('change',()=>recompute());
+$('m-std').onclick=()=>{$('adv').value=0;update();};$('m-adv').onclick=()=>{$('adv').value=1;update();};
+['wwlf','wwrf','wwlr','wwrr','bslf','bsrf','bslr','bsrr','hulr','hurr'].forEach(id=>$(id).addEventListener('input',()=>recompute()));
+
+// live table at the current position
+function liveTable(P,rollDeg,hb){hb=hb||0;
+  const A={L:KIN.angles(kc.L,P.L),R:KIN.angles(kc.R,P.R)};
+  // camber to ground: body roll φ (left side up) adds −φ to LF, +φ to RF
+  const cg={L:A.L.camber-rollDeg,R:A.R.camber+rollDeg};
+  const bf=+$('bb').value/100, hcg=+$('cg').value;
+  const ad={L:KIN.antiDive(kc.L,P.L,hcg,WB,bf),R:KIN.antiDive(kc.R,P.R,hcg,WB,bf)};
+  const bs=s=>{const i=SW.indexOf(1),j=SW.indexOf(-1);return (curves[s][i].toe-curves[s][j].toe)/2;};
+  const fj=frontJack(P,model);
+  if(model.gx<0)for(const s of ['L','R'])fj[s]+=-model.dWx/2*ad[s]/100;   // braking: anti-dive share of the front weight transfer
+  fj.tot=fj.L+fj.R; fj.dz=fj.tot/(((+$('lf').value)+(+$('rf').value))*MRF*MRF);
+  gNote();
+  $('k-fjk').textContent=(fj.tot>=0?'+':'−')+Math.abs(fj.tot).toFixed(0)+' lb ('+(fj.dz>=0?'+':'−')+Math.abs(fj.dz).toFixed(2)+' in)';
+  const T={'Camber to ground, °':'Wheel tilt seen from the front, measured to the track. + = top of tire out.','Caster, °':'Kingpin tilt seen from the side. + = upper ball joint behind the lower.','KPI, °':'Kingpin inclination: kingpin tilt seen from the front. + = upper ball joint inboard.','Toe-out, °':'Wheel steer angle. + = front of tire points out.','Bump steer, °/in':'Toe change per inch of wheel travel around ride height. Zero is ideal.','Scrub radius, in':'Distance at the ground from the kingpin line to the tire center, seen from the front.','Mech. trail, in':'Distance at the ground from the kingpin line to the tire center, seen from the side.','Jacking force, lb':'Vertical push of this tire on the chassis through the arm geometry: its cornering force along the instant-center line, plus its share of anti-dive under braking. Uses the Setup tab g. + lifts.','Anti-dive, %':'How much of the braking dive the arm geometry resists. 100% = no dive.'};
+  const rows=[['Camber to ground, °',s=>cg[s].toFixed(2)],['Caster, °',s=>A[s].caster.toFixed(2)],['KPI, °',s=>A[s].kpi.toFixed(2)],
+    ['Toe-out, °',s=>A[s].toe.toFixed(3)],['Jacking force, lb',s=>(fj[s]>=0?'+':'−')+Math.abs(fj[s]).toFixed(1)],['Bump steer, °/in',s=>bs(s).toFixed(3)],['Scrub radius, in',s=>A[s].scrub.toFixed(2)],['Mech. trail, in',s=>A[s].trail.toFixed(2)],['Anti-dive, %',s=>ad[s].toFixed(1)]];
+  $('k-tab').innerHTML=rows.map(([n,f])=>'<tr><td><abbr title="'+T[n]+'">'+n+'</abbr></td><td>'+f('L')+'</td><td>'+f('R')+'</td></tr>').join('');
+  $('k-lfc').textContent=cg.L.toFixed(2)+'°';$('k-rfc').textContent=cg.R.toFixed(2)+'°';
+  const rc=KIN.rollCenter(kc.L,P.L,kc.R,P.R);
+  if(rc){$('k-rch').textContent=(rc[1]-hb).toFixed(2)+' in';$('k-rcy').textContent=Math.abs(rc[0]).toFixed(2)+(rc[0]>0?' in L':' in R');}
+  return {A,rc,fj};
+}
+
+// ---------- animation ----------
+const pA=new THREE.Vector3(),pB=new THREE.Vector3(),dir=new THREE.Vector3(),T1=new THREE.Matrix4(),R=new THREE.Matrix4(),T2=new THREE.Matrix4(),tmp=new THREE.Vector3();
+const PM=new THREE.Matrix4();
+// body pose: roll about the roll axis, then pitch so the body sits zF up at the front axle and zR up at the rear
+function bodyMatrix(out,ang,zF,zR){
+  rollMatrix(out,ang,0);
+  const xR=TIRE[2][0], th=Math.atan2(zF-zR,TIRE[0][0]-xR);
+  PM.makeTranslation(xR,0,zR).multiply(new THREE.Matrix4().makeRotationY(-th)).multiply(new THREE.Matrix4().makeTranslation(-xR,0,0));
+  out.premultiply(PM);
+}
+function rollMatrix(out,ang,heave){
+  pA.set(TIRE[0][0],0,GROUND+(model?model.hf:2)); pB.set(TIRE[2][0],0,GROUND+(model?model.hr:10));
+  dir.subVectors(pA,pB).normalize();
+  T1.makeTranslation(-pB.x,-pB.y,-pB.z); R.makeRotationAxis(dir,ang); T2.makeTranslation(pB.x,pB.y,pB.z+(heave||0));
+  out.copy(T2).multiply(R).multiply(T1);
+}
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}
+new ResizeObserver(resize).observe(stage); resize();
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let lastKey='', shownF=0, shownR=0, exag=false;
+$('v-exag').onclick=()=>{exag=!exag;$('v-exag').setAttribute('aria-pressed',exag);lastKey='';};
+// ---------- drive the corner: [seconds, share of your lateral g, long g] ----------
+// ponytail: braking −0.6 g and throttle +0.35 g are fixed; make them inputs if you want to tune entry/exit
+const DRIVE=[[0,0,0.3],[1.2,0,0.3],[1.6,0.05,-0.6],[2.6,0.45,-0.45],[3.4,1,-0.1],[4.6,1,0],[5.4,0.85,0.3],[6.6,0.3,0.35],[7.4,0,0.3],[8.4,0,0.3]];
+const PHASES=[[1.2,'Straight'],[2.6,'Braking'],[3.4,'Turn-in, trail brake'],[4.6,'Mid-corner'],[6.6,'Throttle, exit'],[9,'Straight']];
+let driving=false, driveT=0, driveKeep=null;
+function driveStep(dt){
+  driveT=(driveT+dt)%DRIVE[DRIVE.length-1][0];
+  let i=0;while(DRIVE[i+1][0]<driveT)i++;
+  const [t0,a0,x0]=DRIVE[i],[t1,a1,x1]=DRIVE[i+1],u=(driveT-t0)/(t1-t0),e=u*u*(3-2*u);
+  $('g').value=((a0+(a1-a0)*e)*driveKeep.g).toFixed(2); $('gx').value=(x0+(x1-x0)*e).toFixed(2);
+  const ph=PHASES.find(p=>driveT<p[0])[1];$('drive-phase').textContent=ph;$('sub').textContent='Straight rail · '+ph.toLowerCase();
+  update();
+}
+function stopDrive(){if(!driving)return;driving=false;$('g').value=driveKeep.g;$('gx').value=driveKeep.gx;$('drive').textContent='▶ Drive the corner';$('drive-phase').textContent='';if(tab==='setup')$('sub').textContent='Straight rail · steady-state corner';update();}
+$('drive').onclick=()=>{if(driving){stopDrive();return;}driveKeep={g:+$('g').value,gx:+$('gx').value};driving=true;driveT=0;$('drive').textContent='■ Stop';};
+['g','gx'].forEach(id=>$(id).addEventListener('pointerdown',stopDrive));
+const kpLines={},fjArrows={},kpRef={},kpDots={};
+for(const s of ['L','R']){const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xd9480f,depthTest:false}));l.renderOrder=10;l.visible=false;sprung.add(l);kpLines[s]=l;
+  const rg=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  const r=new THREE.Line(rg,new THREE.LineDashedMaterial({color:0x5b6670,dashSize:.8,gapSize:.6,depthTest:false}));r.renderOrder=10;r.visible=false;sprung.add(r);kpRef[s]=r;
+  kpDots[s]=[0,1].map(()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.7,16,12),new THREE.MeshBasicMaterial({color:0xd9480f,depthTest:false}));m.renderOrder=11;m.visible=false;sprung.add(m);return m;});
+  const a=new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(),10,0x2b8a3e,3,2);a.visible=false;sprung.add(a);fjArrows[s]=a;}
+const rrcDot=new THREE.Mesh(new THREE.SphereGeometry(1.1,20,16),new THREE.MeshBasicMaterial({color:0xd9480f}));rrcDot.visible=false;sprung.add(rrcDot);
+const tbLineGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+const tbLine=new THREE.Line(tbLineGeo,new THREE.LineDashedMaterial({color:0xd9480f,dashSize:1.2,gapSize:.8}));tbLine.visible=false;scene.add(tbLine);
+const jackArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(),10,0x2b8a3e,3,2);jackArrow.visible=false;scene.add(jackArrow);
+const _M=new THREE.Matrix4(),_v=new THREE.Vector3();
+function axleM(q,out){const R=KIN.Rq(q);return out.set(R[0][0],R[0][1],R[0][2],q[0],R[1][0],R[1][1],R[1][2],q[1],R[2][0],R[2][1],R[2][2],q[2],0,0,0,1);}
+const _MIR=new THREE.Matrix4().makeScale(1,-1,1), _MQ=new THREE.Matrix4(), MCADi=axleM(RG0.qc,new THREE.Matrix4()).invert();   // CAD axle frame → axle-local
+const toW=p=>{_v.set(...p).applyMatrix4(sprung.matrix);return [_v.x,_v.y,_v.z];};
+// the axle hangs off the body through the solved linkage: body → axle pose → back out of the CAD pose the meshes sit in
+function placeRear(rollAng,heave){
+  const rp=KIN.rearPose(RG,-heave,-(rollAng+(model?model.pose0.dphR:0)),rearGuess); rearGuess=rp.q;
+  uns.matrix.copy(sprung.matrix).multiply(axleM(rp.q,_MQ)).multiply(MCADi); uns.matrixWorldNeedsUpdate=true;
+  for(const k of KIN.LINKS){if(k==='TB')continue;const c=HPC.rear[k];rod(c[1],c[0],toW(RG.C[k]),toW(rp.P[k]),_M);RLM[k].forEach(o=>o.matrix.copy(_M));}   // pinned at the chassis end
+  // lateral link: track bar or J-Bar; reversed = the CAD part mirrored side to side (three.js flips the faces for a mirror)
+  const jb=!!(radj.TBtype&&RLM.JB.length&&HPC.rear.JB), f=radj.TBflip?-1:1, m=p=>[p[0],f*p[1],p[2]], c=jb?[HPC.rear.JBm,HPC.rear.JB[1]]:HPC.rear.TB;
+  rod(m(c[1]),m(c[0]),toW(RG.C.TB),toW(rp.P.TB),_M); if(f<0)_M.multiply(_MIR);
+  RLM.TB.forEach(o=>{o.visible=!jb;o.matrix.copy(_M);});RLM.JB.forEach(o=>{o.visible=jb;o.matrix.copy(_M);});
+  HOUS.TB.forEach(o=>o.visible=!jb);HOUS.JB.forEach(o=>o.visible=jb);
+  for(const k of ['RL','RR']){const S=SHK[k];if(S.U&&S.L){_v.set(...S.L).applyMatrix4(uns.matrix);const L1=[_v.x,_v.y,_v.z];poseShock(S,toW(S.U),L1);}}   // L1 first: toW reuses _v
+  return {rp,Aw:toW(rp.P.TB),Cw:toW(RG.C.TB)};
+}
+let lastT=0;
+function frame(now){
+  now=now||performance.now();const dt=Math.min(0.1,lastT?(now-lastT)/1000:1/60);lastT=now;   // real seconds, so speed doesn't depend on the screen
+  let rollAng, rollF, heave=0, zF, zR;
+  if(driving)driveStep(dt);
+  if(sweeping){sweepT+=dt;$('k-heave').value=(Math.sin(sweepT*1.6)*2.5).toFixed(2);outputs();update();}
+  // one car on both tabs: the Setup solve plus Heave/Roll (in pose0); eased on Setup so g changes animate
+  {const e=reduce||tab==='kin'||sweeping?1:0.12;
+    shown+=(target-shown)*e; rollAng=shown;
+    if(model){shownF+=(model.dzF-shownF)*e;shownR+=(model.dzR-shownR)*e;}
+    const x=exag?5:1, S=model?model.pose0:{phi:0,dzF:0,dzR:0};   // ×5 shows the solved motion only, not ride heights or Heave/Roll
+    rollAng=rollAng*x+S.phi; zF=S.dzF+(shownF-S.dzF)*x; zR=S.dzR+(shownR-S.dzR)*x; heave=zR;
+    rollF=rollAng+(model?(model.phiF-model.phi)*x:0);}   // the front suspension sees the front's own roll (frame twist), as in the solve
+  // wheel travel relative to the body: body up = droop, roll right = RF bump
+  const hL=-zF-(TF/2)*rollF, hR=-zF+(TF/2)*rollF;
+  bodyMatrix(sprung.matrix,rollAng,zF,zR); rollMatrix(links.matrix,rollAng/2,heave/2);
+  sprung.matrixWorldNeedsUpdate=links.matrixWorldNeedsUpdate=true;
+  const rearShow=tab==='kin'&&sel==='rear', frontShow=tab==='kin'&&sel!=='rear';
+  for(const s of ['L','R']){fjArrows[s].visible=frontShow;kpLines[s].visible=kpRef[s].visible=kpDots[s][0].visible=kpDots[s][1].visible=svLines[s].visible=frontShow&&s===sel;}
+  if(loaded){const tb=placeRear(rollAng,zR);
+    rrcDot.visible=tbLine.visible=jackArrow.visible=rearShow;
+    if(rearShow){
+      rrcDot.position.set(TIRE[2][0],0,tb.rp.rcz-heave);
+      // dashed line along the bar, extended past the centerline
+      const A=new THREE.Vector3(...tb.Aw),C=new THREE.Vector3(...tb.Cw),d=A.clone().sub(C);
+      tbLineGeo.setFromPoints([C.clone().addScaledVector(d,-0.2),A.clone().addScaledVector(d,0.2)]);tbLine.computeLineDistances();
+      const jk=jacking(tb.rp,model);const len=Math.max(2,Math.min(30,Math.abs(jk.Fz)*0.15));
+      jackArrow.position.set(tb.Cw[0],0,tb.Cw[2]+(jk.Fz>=0?2:-2));jackArrow.setDirection(new THREE.Vector3(0,0,jk.Fz>=0?1:-1));jackArrow.setLength(len,Math.min(3,len*.4),2);
+      const key='r'+rollAng.toFixed(4)+heave.toFixed(3)+JSON.stringify(radj);
+      if(key!==lastKey){lastKey=key;rearTable(tb.rp);
+}
+    }
+  }
+  if(loaded&&kc.L&&!rearShow){
+    const key=hL.toFixed(3)+'|'+hR.toFixed(3)+'|'+JSON.stringify(adj);
+    if(key!==lastKey){
+      lastKey=key;
+      const P={};
+      for(const s of ['L','R']){const h=Math.max(-3.5,Math.min(3.5,s==='L'?hL:hR));P[s]=KIN.poseH(kc[s],h,guess[s],STEER);guess[s]=P[s];applyCorner(s,kc[s],P[s]);}
+      pose=P;
+      if(tab==='kin'){
+        const {A,rc,fj}=liveTable(P,rollF*180/Math.PI,-zF);
+        for(const s of ['L','R']){const lb=P[s].LBJ,ub=P[s].UBJ,d=[ub[0]-lb[0],ub[1]-lb[1],ub[2]-lb[2]],t0=-lb[2]/d[2],t1=1.6;
+          kpLines[s].geometry.setFromPoints([new THREE.Vector3(lb[0]+d[0]*t0,lb[1]+d[1]*t0,lb[2]+d[2]*t0),new THREE.Vector3(lb[0]+d[0]*t1,lb[1]+d[1]*t1,lb[2]+d[2]*t1)]);kpLines[s].computeLineDistances();
+          const g0=[lb[0]+d[0]*t0,lb[1]+d[1]*t0,lb[2]+d[2]*t0];kpRef[s].geometry.setFromPoints([new THREE.Vector3(...g0),new THREE.Vector3(g0[0],g0[1],lb[2]+d[2]*t1)]);kpRef[s].computeLineDistances();
+          kpDots[s][0].position.set(...lb);kpDots[s][1].position.set(...ub);
+          const cp=A[s].CP,len=Math.max(2,Math.min(25,Math.abs(fj[s])*0.12));
+          fjArrows[s].position.set(cp[0],cp[1],cp[2]+(fj[s]>=0?30:-1));fjArrows[s].setDirection(new THREE.Vector3(0,0,fj[s]>=0?1:-1));fjArrows[s].setLength(len,Math.min(3,len*.4),2);
+          const sv=KIN.ics(kc[s],P[s]).sv,y=P[s].WC[1];   // side view: contact patch to instant center, drawn in the wheel's plane
+          if(sv){const dx=sv[0]-cp[0],dz=sv[1]-cp[2],L=Math.hypot(dx,dz),k=Math.min(1,90/L);svLines[s].geometry.setFromPoints([new THREE.Vector3(cp[0],y,cp[2]),new THREE.Vector3(cp[0]+dx*k,y,cp[2]+dz*k)]);svLines[s].computeLineDistances();}}
+        if(rc){rcDot.position.set(P.L.WC[0],rc[0],rc[1]);
+          for(const s of ['L','R']){const ic=KIN.ics(kc[s],P[s]).fv,cp=A[s].CP;
+            if(ic)icLines[s].geometry.setFromPoints([new THREE.Vector3(cp[0],cp[1],cp[2]),new THREE.Vector3(cp[0],rc[0],rc[1]),new THREE.Vector3(cp[0],ic[0],ic[1])]),icLines[s].computeLineDistances();}}
+      }
+    }
+  }
+  scene.rotation.x=tab==='setup'&&model?-model.bank:0; scene.updateMatrixWorld();   // banking: inside (left) low
+  if(tab==='plots'){if(plotsDirty&&now-plotsAt>250){plotsAt=now;plotsDirty=false;drawPlots();}
+    markPlots({ft:(hL+hR)/2,roll:rollAng*180/Math.PI,steer:steerDeg(),rt:-zR,gx:model.gx});}
+  else{controls.update(); renderer.render(scene,cam);}
+  if(tab==='setup'){const w=stage.clientWidth,h=stage.clientHeight;
+    TIRE.forEach((p,i)=>{tmp.set(p[0],p[1],GROUND+28).applyMatrix4(scene.matrixWorld).project(cam);
+      tags[i].style.left=((tmp.x+1)/2*w)+'px'; tags[i].style.top=((1-tmp.y)/2*h)+'px'; tags[i].hidden=tmp.z>1;});}
+  requestAnimationFrame(frame);
+}
+// help card: open on first launch
+function showHelp(on){$('help').hidden=!on;$('v-help').setAttribute('aria-expanded',on);}
+$('v-help').onclick=()=>showHelp($('help').hidden);
+$('help-close').onclick=()=>{showHelp(false);try{localStorage.setItem('srsl-help','1')}catch(e){}};
+try{if(!localStorage.getItem('srsl-help'))showHelp(true);}catch(e){showHelp(true);}
+// ---------- setup inputs, reset ----------
+const SETUP_EL=[...document.querySelectorAll('#p-setup input[type=range], #p-setup input[type=number], #wt, #g, #gx, #bank')];
+const DEF={};SETUP_EL.forEach(e=>DEF[e.id]=e.value);
+function setSetup(vals){stopDrive();
+  for(const id in vals){if(id in DEF)$(id).value=vals[id];}}
+$('reset-setup').onclick=()=>{setSetup(DEF);update();};
+$('reset-all').onclick=()=>{setBaseline(null);setSetup(DEF);adj.L={...ADJ0};adj.R={...ADJ0};Object.assign(radj,RADJ0);rearSet();$('k-zero').click();loadCorner();recompute();};
+
+// ---------- saved setups ----------
+const SKEY='srsl-setups';
+function readSaved(){try{return JSON.parse(localStorage.getItem(SKEY))||[]}catch(e){return []}}
+function writeSaved(){try{localStorage.setItem(SKEY,JSON.stringify(saved))}catch(e){alert('Could not save on this computer. Use Export to keep a file.')}}
+let saved=readSaved();
+function outSummary(){const m=model;return {roll:m.phi*180/Math.PI,lltd:m.lltd*100,cross:m.cross*100,LF:m.loads[0],RF:m.loads[1],LR:m.loads[2],RR:m.loads[3],
+  fRC:m.hf,rRC:m.hr,fjk:m.fj.tot+m.fjL,rjk:m.jk.Fz+m.rjL,steer:m.ta.steer,bal:m.bal,stg:m.stg};}
+const OUTROWS=[['Body roll, °','roll',2],['Front LLTD, %','lltd',1],['Cross, %','cross',1],['LF load, lb','LF',0],['RF load, lb','RF',0],['LR load, lb','LR',0],['RR load, lb','RR',0],
+  ['Front RC, in','fRC',2],['Rear RC, in','rRC',2],['Front jacking, lb','fjk',0],['Rear jacking, lb','rjk',0],['Rear steer, °','steer',2],['Balance','bal',1],['Stagger vs corner, in','stg',2]];
+function snapshot(name){stopDrive();const inputs={};SETUP_EL.forEach(e=>inputs[e.id]=e.value);
+  return {name,inputs,adj:JSON.parse(JSON.stringify(adj)),radj:{...radj},out:outSummary()};}
+function applySnapshot(x){setSetup(x.inputs||{});
+  for(const s of ['L','R'])adj[s]={...ADJ0,...(x.adj&&x.adj[s])};Object.assign(radj,RADJ0,x.radj);rearSet();
+  setBaseline(x);loadCorner();recompute();}
+function fillLists(){for(const id of ['sv-list','sv-cmp']){const s=$(id),cur=s.value;s.replaceChildren();
+  if(id==='sv-cmp')s.add(new Option('None',''));saved.forEach((x,i)=>s.add(new Option(x.name,i)));
+  if([...s.options].some(o=>o.value===cur))s.value=cur;}compareTable();}
+function compareTable(){const sc=$('sv-cmp'),x=sc&&saved[sc.value];$('cmp-tab').hidden=!x;if(!x||!model)return;
+  $('cmp-name').textContent=x.name.length>14?x.name.slice(0,13)+'…':x.name;
+  const now=outSummary(),tb=$('cmp-body');tb.replaceChildren();
+  for(const [n,k,d] of OUTROWS){const a=now[k],b=x.out&&x.out[k];if(b==null)continue;const dd=a-b,ds=Math.abs(dd).toFixed(d),moved=+ds!==0,tr=tb.insertRow();
+    [n,a.toFixed(d),b.toFixed(d),(moved?(dd>0?'+':'−'):'')+ds].forEach((t,j)=>{const c=tr.insertCell();c.textContent=t;if(j===3&&moved)c.className='chg';});}}
+function download(name,obj){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:'application/json'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);}
+$('sv-save').onclick=()=>{const name=$('sv-name').value.trim()||('Setup '+(saved.length+1));const x=snapshot(name),i=saved.findIndex(s=>s.name===name);
+  if(i>=0)saved[i]=x;else saved.push(x);writeSaved();fillLists();setBaseline(x);$('sv-list').value=i>=0?i:saved.length-1;$('sv-name').value='';};
+$('sv-load').onclick=()=>{const x=saved[$('sv-list').value];if(x)applySnapshot(x);};
+$('sv-del').onclick=()=>{const i=$('sv-list').value;if(saved[i]&&confirm('Delete "'+saved[i].name+'"?')){saved.splice(i,1);writeSaved();fillLists();}};
+$('sv-exp').onclick=()=>{const x=saved[$('sv-list').value];if(x)download(x.name.replace(/[^\w .-]+/g,'_')+'.json',{app:'StraightRailSetupLab',kind:'setup',setup:x});};
+$('sv-imp').onclick=()=>$('sv-file').click();
+$('sv-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const j=JSON.parse(await f.text()),list=[].concat(j.setup||j.setups||j);
+    for(const x of list){if(!x||typeof x.name!=='string'||typeof x.inputs!=='object')throw new Error('not a setup file');saved=saved.filter(s=>s.name!==x.name);saved.push(x);}
+    writeSaved();fillLists();$('sv-list').value=saved.length-1;}
+  catch(err){alert('Could not import that file: '+err.message);}};
+$('sv-cmp').onchange=compareTable;
+
+// ---------- chassis hardpoints ----------
+const HP0=JSON.parse(JSON.stringify(HP));
+const PTS=['LIF','LIR','UIF','UIR','LBJ','UBJ','TRI','TRO','WC'];
+const isPt=p=>Array.isArray(p)&&p.length===3&&p.every(n=>typeof n==='number'&&isFinite(n));
+// wheelbase, tracks and tire centers from the front wheel centers and the rear axle at ride height
+function setDims(){const w=rearW(RG0);TIRE0[0]=[HP.L.WC[0],HP.L.WC[1]];TIRE0[1]=[HP.R.WC[0],HP.R.WC[1]];TIRE0[2]=[w.L[0],w.L[1]];TIRE0[3]=[w.R[0],w.R[1]];
+  TF0=TIRE0[0][1]-TIRE0[1][1];TR0=TIRE0[2][1]-TIRE0[3][1];WB=(TIRE0[0][0]+TIRE0[1][0]-TIRE0[2][0]-TIRE0[3][0])/2;
+  TIRE.forEach((t,i)=>{t[0]=TIRE0[i][0];t[1]=TIRE0[i][1];});wheelGeom();
+  $('geo-note').textContent='Wheelbase '+WB.toFixed(2)+' in, front track '+TF0.toFixed(2)+' in, rear track '+TR0.toFixed(2)+' in (15 × 10 wheels as modeled).';}
+// hardpoints file: L and R front corners at ride height (PTS, optional AX, SHU, SHL), rear: LL RL UL TB SL SR as
+// [axle end, chassis end] (shocks [lower eye, upper eye]), WL WR wheel centers and AX spin axis. App frame, inches.
+function useHardpoints(j,name){
+  for(const s of ['L','R'])for(const p of PTS)if(!isPt(j[s]&&j[s][p]))throw new Error('missing '+s+'.'+p+' as [x, y, z] in inches');
+  const r=j.rear||HP0.rear;
+  for(const k of ['LL','RL','UL','TB','SL','SR'])if(!(Array.isArray(r[k])&&isPt(r[k][0])&&isPt(r[k][1])))throw new Error('rear.'+k+' needs two [x, y, z] points: axle end, chassis end');
+  for(const k of ['WL','WR','AX'])if(!isPt(r[k]))throw new Error('rear.'+k+' must be [x, y, z]');
+  HP.L=j.L;HP.R=j.R;HP.rear=r;RG0=KIN.rearBuild(r);rearSet();setDims();
+  for(const k in SIDES)base[k]=buildCorner(k,ADJ0);curves=null;
+  $('hp-note').hidden=!name;$('hp-note').replaceChildren();
+  if(name){$('hp-note').append('Using hardpoints from '+name+'. The 3D parts are still this car, stretched to fit. ');
+    const b=document.createElement('button');b.textContent='Back to the straight rail chassis';b.onclick=()=>{try{localStorage.removeItem('srsl-hp')}catch(e){}useHardpoints(HP0);};$('hp-note').append(b);}
+  recompute();
+}
+$('hp-load').onclick=()=>$('hp-file').click();
+$('hp-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const j=JSON.parse(await f.text());useHardpoints(j,f.name);try{localStorage.setItem('srsl-hp',JSON.stringify({name:f.name,j}))}catch(e){}}
+  catch(err){alert('Could not use that file: '+err.message);useHardpoints(HP0);}};
+$('hp-save').onclick=()=>download('hardpoints.json',{L:HP.L,R:HP.R,rear:HP.rear});
+
+rearSet();setDims();loadCorner();
+{let hp=null;try{hp=JSON.parse(localStorage.getItem('srsl-hp'))}catch(e){}
+ try{if(hp)useHardpoints(hp.j,hp.name);else recompute();}catch(e){useHardpoints(HP0);}}
+fillLists();
+{const fs=[...document.querySelectorAll('aside fieldset')];let shut=null;
+ try{shut=JSON.parse(localStorage.getItem('srsl-shut'))}catch(e){}
+ if(!Array.isArray(shut))shut=fs.map(f=>/Bump springs|Rear bar/.test(f.querySelector('legend').textContent)?1:0);   // folded until you need them
+ fs.forEach((f,i)=>{const lg=f.querySelector('legend');f.classList.toggle('shut',!!shut[i]);lg.tabIndex=0;lg.setAttribute('role','button');
+   const flip=()=>{f.classList.toggle('shut');lg.setAttribute('aria-expanded',!f.classList.contains('shut'));try{localStorage.setItem('srsl-shut',JSON.stringify(fs.map(x=>x.classList.contains('shut')?1:0)))}catch(e){}};
+   lg.setAttribute('aria-expanded',!f.classList.contains('shut'));lg.onclick=flip;lg.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();flip();}};});}
+frame();
+</script>
+<script>
+// keep the launcher alive while this window is open
+setInterval(()=>fetch('/ping',{method:'POST'}).catch(()=>{}),2000);fetch('/ping',{method:'POST'}).catch(()=>{});
+addEventListener('pagehide',()=>{try{navigator.sendBeacon('/bye')}catch(e){}});
+</script>

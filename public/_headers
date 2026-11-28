@@ -10,6 +10,8 @@
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 /modules/sprites/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+/modules/railsetup/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 /modules/shorttrack-car.bin
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 /images/*

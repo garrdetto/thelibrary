@@ -91,6 +91,7 @@ export type Model = {
   dzF: number; dzR: number; P: Record<Side, Pose>; rp: RearPose; fj: FrontJack; jk: RearJack
   cross: number; dStatic: number[]; gx: number; pitch: number; slackRoll: number; bump: Bump[]
   bal: number; stg: number; stgNeed: number; ta: RearPose
+  settled: boolean
 }
 
 export type Baseline = { name: string; adj: Record<Side, FrontAdj>; radj: RearAdj; inputs: Record<string, unknown> }
@@ -135,6 +136,7 @@ export class Lab {
   calcGuess: Record<Side, Pose | null> = { L: null, R: null }
   adj: Record<Side, FrontAdj> = { L: { ...ADJ0 }, R: { ...ADJ0 } }
   radj: RearAdj = { ...RADJ0 }
+  defaults: Inputs = DEFAULTS
   inputs: Inputs = { ...DEFAULTS }
   mrFixedFlag = false
   model!: Model
@@ -159,7 +161,7 @@ export class Lab {
 
   num(id: string): number {
     const v = this.inputs[id]
-    return Number.isFinite(v) ? v : DEFAULTS[id]
+    return Number.isFinite(v) ? v : this.defaults[id]
   }
 
   rearW(g: RearGeometry) {
@@ -360,8 +362,8 @@ export class Lab {
     this.wheelGeom()
   }
 
-  useHardpoints(hp: Hardpoints, name: string | null) {
-    this.HP = reseat(hp)
+  useHardpoints(hp: Hardpoints, name: string | null, seat = true) {
+    this.HP = seat ? reseat(hp) : hp
     this.RG0 = K.rearBuild(this.HP.rear)
     this.rearSet()
     this.setDims()
@@ -369,6 +371,17 @@ export class Lab {
     this.curves = null
     this.customHardpoints = name
     this.recompute()
+  }
+
+  /** A fresh Lab with this one's hardpoints exactly as they stand (no second seating), defaults, fixed-MR switch and setup; view sliders at zero. */
+  copy(name = ''): Lab {
+    const lab = new Lab()
+    lab.useHardpoints(JSON.parse(JSON.stringify(this.rawHardpoints())) as Hardpoints, this.customHardpoints, false)
+    lab.defaults = this.defaults
+    lab.inputs = { ...this.defaults }
+    lab.mrFixedFlag = this.mrFixedFlag
+    lab.applySnapshot(this.snapshot(name))
+    return lab
   }
 
   rawHardpoints(): Hardpoints {
@@ -471,6 +484,7 @@ export class Lab {
     let loads: number[] = [0, 0, 0, 0], dWf = 0, dWr = 0, hs = hs0
     const g = this.RG, dWx = W * gx * h / WB
     let ad = 0, asq = 0, sF = 0, sR = 0
+    let settled = false
     for (let it = 0; it < 12; it++) {
       dzF = pose0.dzF + zJF; dzR = pose0.dzR + zJR
       const hL = -dzF - HF.L * (phiF + phS), hR = -dzF + HF.R * (phiF + phS)
@@ -508,7 +522,7 @@ export class Lab {
       const zR = bisect(zz => force(2, travel(2, pRv, zz)) + force(3, travel(3, pRv, zz)) + jkz - sRv, -6, 6)
       const d = Math.abs(pF - phiF) + Math.abs(pR - phiR) + Math.abs(zF - zJF) + Math.abs(zR - zJR)
       phi = phiN; phiF = pF; phiR = pR; zJF += (zF - zJF) * 0.6; zJR += (zR - zJR) * 0.6
-      if (d < 1e-5) break
+      if (d < 1e-5) { settled = true; break }
     }
     dzF = pose0.dzF + zJF; dzR = pose0.dzR + zJR
     const bump = C.map((q, i) => {
@@ -525,7 +539,7 @@ export class Lab {
     return {
       rs, rest, pose0, phiF, phiR, Kc, mrL: C[0].mr, mrR: C[1].mr, Kfront, Krear, Kb, fjL, rjL, dWx, asq, bf, ad, loads, phi, lltd: dWf / (dWf + dWr), front: F / W, hf, hr,
       ay: ayT, ayH, bank: bk, nz, W, h: hs0, hs, dzF, dzR, P: P as Record<Side, Pose>, rp: rpf, fj: fj as FrontJack, jk: jk as RearJack, cross: (LR + RF) / W, dStatic, gx,
-      pitch: Math.atan((dzF - dzR) / WB), slackRoll, bump, bal: (uf - ur) * 100, stg: v('tcrr') - v('tclr') - stgNeed, stgNeed, ta: rpf,
+      pitch: Math.atan((dzF - dzR) / WB), slackRoll, bump, bal: (uf - ur) * 100, stg: v('tcrr') - v('tclr') - stgNeed, stgNeed, ta: rpf, settled,
     }
   }
 
@@ -550,7 +564,7 @@ export class Lab {
   }
 
   applySnapshot(x: Snapshot) {
-    this.inputs = withDefaults({ ...this.inputs, ...(x.inputs || {}) })
+    this.inputs = withDefaults({ ...this.inputs, ...(x.inputs || {}) }, this.defaults)
     for (const s of ['L', 'R'] as Side[]) this.adj[s] = { ...ADJ0, ...(x.adj && x.adj[s]) }
     this.radj = { ...RADJ0, ...x.radj }
     this.rearSet()
@@ -560,7 +574,7 @@ export class Lab {
 
   resetAll() {
     this.setBaseline(null)
-    this.inputs = { ...DEFAULTS }
+    this.inputs = { ...this.defaults }
     this.adj = { L: { ...ADJ0 }, R: { ...ADJ0 } }
     this.radj = { ...RADJ0 }
     this.rearSet()
