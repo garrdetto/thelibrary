@@ -1140,6 +1140,7 @@ const RUN_ID=(crypto.randomUUID&&crypto.randomUUID())||'00000000-0000-4000-8000-
 const REC_TRACK=WORLD.model==='next'?TRACK.rec+'-v2':TRACK.rec;
 const REC={lists:{},state:{},me:null,warned:false,classicAttack:null};let runLap=0;
 async function fetchRecords(mode){
+  if(LAB){REC.state[mode]='off';REC.lists[mode]=[];return {error:'Lap records aren’t kept on the Setup Lab test track: it changes with the corner radius and banking.'};}
   REC.state[mode]='loading';
   try{const r=await fetch(`/api/racing?records=1&mode=${mode}&track=${REC_TRACK}`,{credentials:'same-origin'});
     if(r.status===401){REC.state[mode]='signedout';return {error:'Sign in on the library to see and set lap records.'};}
@@ -1677,7 +1678,7 @@ wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)r
 function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)};const gn=$('gName');gn.value=myLv.name;gn.disabled=true;gn.title='Your library username is your driver name';
   const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(mode==='garage')renderGarage();if(!player)rebuildMenuCar();}
 fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
-if(REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
+if(!LAB&&REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
 const TT=initTrackTest({cfg:CFG,trackId:LAB?'labtest':TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack'),resetCar:()=>{if(!player||mode!=='race')return false;simResetCar(WORLD,player);return true;},restart:()=>startTestRun()});
 
