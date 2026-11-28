@@ -4,6 +4,8 @@ import { clearHardpoints, deleteSetup, loadRemote, saveHardpoints, saveSetup } f
 import type { RailPage } from './page'
 
 const key = (x: Snapshot) => JSON.stringify(x)
+const NAME_MAX = 60
+const warned = new Set<string>()
 
 /**
  * Keeps the original page's saved setups and loaded hardpoints file in the account instead of the browser: signed in,
@@ -35,11 +37,16 @@ export async function useAccount(p: RailPage, onSaved: () => void) {
         const now = new Map(p.saved.map(x => [x.name, key(x)]))
         for (const [name, value] of now) {
           if (synced.get(name) === value) continue
+          if (name.trim() !== name || name.length > NAME_MAX) {
+            if (!warned.has(name)) { warned.add(name); alert(`"${name.slice(0, 40)}" stays on this page only: names saved to your account can be up to ${NAME_MAX} characters, with no spaces at either end.`) }
+            continue
+          }
           const r = await saveSetup(p.saved.find(x => x.name === name) as Snapshot)
           if ('error' in r) { alert(r.error); break }
           synced.set(name, value)
         }
         for (const name of [...synced.keys()]) {
+          if (name.trim() !== name || name.length > NAME_MAX) continue
           if (now.has(name)) continue
           const r = await deleteSetup(name)
           if ('error' in r) { alert(r.error); break }
